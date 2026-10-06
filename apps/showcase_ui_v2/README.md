@@ -72,3 +72,46 @@ src/
 
 M0 脚手架（当前）→ M1 会话列表/队列 → M2 详情/轨迹 → M3 SSE 实时流 →
 M4 回放/投屏 → M5 系统诊断 → M6 i18n/主题/打包收尾与切换。
+
+## M1 完成范围（骨架 + 会话列表/队列/任务提交）
+
+> 对应调研报告 §5.3 的 M1 行与 §3.3 运行时语义条款 3 / 4 / 6。
+
+### 交付内容
+
+| 模块 | 文件 | 说明 |
+| --- | --- | --- |
+| fetch 封装 | `src/services/api.ts` | `apiGet` / `apiPost`，JSON 解析与错误透传（`ApiError.detail` 对应 Angular `err.error?.detail`） |
+| 会话合并纯函数 | `src/utils/session-merge.ts` | 4 步合并算法 `mergeSessions`、queue 映射 `mapPendingQueue`、状态推导 `getTaskStatus`、设备序列号 `resolveDeviceSerial`、轮询签名 `statusSignature`（框架无关，配 vitest 单测） |
+| 会话 store | `src/stores/session.ts` | 从 Angular `AgentService` 逻辑平移：合并算法 + **2s/6s 双频轮询** + **轮询签名去重** + **停止/删除/清空乐观更新与签名失效** + **localStorage 会话缓存**（key 与 Angular 版一致）+ pin 语义的会话选择 + **页面隐藏暂停轮询 / visibilitychange 立即刷新** |
+| 系统 store（最小） | `src/stores/system.ts` | 仅 `/api/status` 连通性轮询（5s）与顶栏小圆点；完整诊断功能留给 M5 |
+| 工作台 | `src/views/WorkspaceView.vue` | `a-layout` + 可拖拽分栏（rAF 合帧）+ 时间线 M2 占位 |
+| 任务队列面板 | `src/components/TaskQueuePanel.vue` | 队列/历史两个 tab（`a-badge` 计数），`a-list` + `a-tag` 状态色，运行中停止、历史 `a-popconfirm` 删除、`a-popconfirm` 清空历史，点击选中会话（pin 语义） |
+| 命令条 | `src/components/CommandDock.vue` | Ctrl+K / ⌘K 唤起，`a-input` 回车提交 `/api/run`，flash/pro profile 持久化，错误 5s 自动消失 |
+| 顶部导航 | `src/components/AppNav.vue` | 页面入口 + 连接小圆点 + 运行器状态 tag |
+| 启动器 | `src/views/LauncherView.vue` | `a-textarea` 任务提交（复用同一 store 提交路径）+ 会话数摘要（`a-statistic`）；诊断向导不做（M5） |
+| i18n | `src/locales/{zh-CN,en-US}.ts` | 状态 / 连接 / 队列 / 命令条 / 启动器 key 全量补齐，键集一致性由 `locales.spec.ts` 锁定 |
+
+### 与后端的端点契约（与 Angular 版实际调用一致）
+
+- `GET /api/status`（2s 轮询）、`GET /api/sessions`（6s 轮询）
+- `POST /api/run`（`{goal, profile}`，可选 `expected_output` / `enable_outputter` / `verification_level` / `explorer_mode`）
+- `POST /api/stop?all=&session_id=`（query + body 双通道）、`POST /api/resume`
+- `POST /api/sessions/{id}/delete`、`POST /api/cleanup`
+
+### 测试
+
+- `src/utils/session-merge.spec.ts`：合并 4 步算法逐条覆盖（含 §3.3 条款 3 的
+  「队列→运行不闪烁」桥接用例）、queue 映射、状态推导、签名去重。
+- `src/stores/session.spec.ts`：平移自 `agent.service.spec.ts` 的停止/恢复/提交用例 +
+  签名去重（payload 不变时响应式引用稳定）、签名失效（乐观更新后强制重新应用）、
+  轮询节奏（2s/6s）、visibilitychange 立即刷新（§3.3 条款 6）、localStorage 缓存恢复。
+
+```
+src/
+  ...（M0 部分不变）
+  services/        api.ts（fetch 封装）
+  utils/           session-merge.ts（会话合并纯函数）+ spec
+  stores/          session.ts / system.ts（M1）
+  components/      AppNav / TaskQueuePanel / CommandDock（M1）
+```
