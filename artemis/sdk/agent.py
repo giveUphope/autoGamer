@@ -22,7 +22,6 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 from google import genai
-from langchain_google_genai import ChatGoogleGenerativeAI
 
 from artemis.clients.screen_client_factory import (
     describe_backend,
@@ -34,6 +33,7 @@ from artemis.config import (
     run_tuning_for_profile,
     settings,
 )
+from artemis.services.llm import get_default_deployment, get_default_deployment_llm
 from artemis.context import (
     ArtemisContext,
     DevicePlatform,
@@ -137,34 +137,38 @@ class Agent(AgentBase):
         publish_startup_progress(
             "model_warmup", "Warming the model connection", session_id=self._session_id
         )
-        logger.info("Starting background pre-warming of Gemini API connection pools...")
+        deployment = get_default_deployment()
+        logger.info(
+            f"Starting background pre-warming of {deployment.provider} API connection pools..."
+        )
         try:
-            key = api_key
-            if not key and settings.GOOGLE_API_KEY:
-                key = settings.GOOGLE_API_KEY.get_secret_value()
+            pings = []
+            if deployment.provider == "google":
+                key = api_key or deployment.api_key
+                if not key and settings.GOOGLE_API_KEY:
+                    key = settings.GOOGLE_API_KEY.get_secret_value()
 
-            if not key:
-                logger.warning("Skipping LLM pre-warming: No API key available.")
-                publish_startup_progress(
-                    "model_ready",
-                    "Model connection will initialize on first use",
-                    session_id=self._session_id,
+                if not key:
+                    logger.warning("Skipping LLM pre-warming: No API key available.")
+                    publish_startup_progress(
+                        "model_ready",
+                        "Model connection will initialize on first use",
+                        session_id=self._session_id,
+                    )
+                    return
+
+                # 1. Pre-warm Native GenAI SDK client (Google-only path)
+                client = genai.Client(api_key=key)
+                pings.append(
+                    client.aio.models.count_tokens(model=deployment.model, contents="ping")
                 )
-                return
 
-            # 1. Pre-warm Native SDK client
-            client = genai.Client(api_key=key)
+            # 2. Pre-warm the LangChain client on the configured default endpoint
+            pings.append(get_default_deployment_llm().ainvoke("ping"))
 
-            # 2. Pre-warm LangChain client
-            chat = ChatGoogleGenerativeAI(model="gemini-3.8-flash", google_api_key=key)
-
-            # Fire both calls concurrently in the background
-            await asyncio.gather(
-                client.aio.models.count_tokens(model="gemini-3.8-flash", contents="ping"),
-                chat.ainvoke("ping"),
-                return_exceptions=True,
-            )
-            logger.success("Gemini API connection pools successfully pre-warmed.")
+            # Fire all calls concurrently in the background
+            await asyncio.gather(*pings, return_exceptions=True)
+            logger.success(f"{deployment.provider} API connection pools successfully pre-warmed.")
             publish_startup_progress(
                 "model_ready", "Model connection is ready", session_id=self._session_id
             )
