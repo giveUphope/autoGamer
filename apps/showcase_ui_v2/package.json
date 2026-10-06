@@ -4,6 +4,9 @@
   "private": true,
   "type": "module",
   "description": "ARTEMIS showcase UI v2 - Vue 3 + Arco Design Vue rewrite (M0 scaffold)",
+  "engines": {
+    "node": ">=20.19.0"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vue-tsc --noEmit && vite build",

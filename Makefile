@@ -12,7 +12,7 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-.PHONY: help test test-integration test-device test-all install install-deps setup start ui restart stop status build-ui doctor clean precommit-install precommit lint format typecheck quality-ratchet
+.PHONY: help test test-integration test-device test-all install install-deps setup start ui restart stop status build-ui release-ui doctor clean precommit-install precommit lint format typecheck quality-ratchet
 
 help: ## Show this help message
 	@echo 'Usage: make [target]'
@@ -38,6 +38,11 @@ status: ## Display Artemis Web UI & server status
 build-ui: ## Build the Showcase UI (Vue 3 + Vite) frontend
 	@echo "🎨 Building Showcase UI..."
 	@cd apps/showcase_ui_v2 && npm install && npm run build
+
+release-ui: ## Build the Showcase UI and sync it into the wheel fallback resources
+	@echo "🚀 Releasing Showcase UI resources..."
+	@$(MAKE) build-ui
+	@cd apps/showcase_ui_v2 && npm run sync:resources
 
 doctor: ## Run system, device, and toolchain diagnostics
 	@uv run artemis doctor

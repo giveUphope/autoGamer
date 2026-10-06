@@ -192,3 +192,32 @@
 | 10-06 五测 | 故障注入：`api_base` 指向死端口 | ✅ CLI 显示 `Connection error.` + 定位提示；`sessions.error_message` 持久化（#3-1） |
 | 10-06 六测 | Flash 回归（恢复配置）+ 编译产物 | ✅ 任务成功；`Materialized N steps`、`steps.json` 非空、`trace.gif` 生成；成功会话 error_message 为 NULL（#3-2） |
 | 10-06 七测 | 无控制台父进程启动 Jupyter 内核 + 窗口快照 diff | ✅ 无新窗口弹出；内核执行正常（`print(2+3)`→`5`），输出落盘 `kernel.log`（#5） |
+
+---
+
+### #6 前端 Web 控制台重构迁移完成（Angular 22 → Vue 3 + Arco Design Vue）
+
+- **日期**: 2026-10-06
+- **状态**: ✅ 已完成
+- **优先级**: 高（Web 控制台前端工程整体一次性替换）
+- **来源**: 前端迁移专项（M0–M6 里程碑收官）
+
+#### 迁移内容
+
+旧 Angular 22 工程（`apps/showcase_ui`）已删除，由 Vue 3 + Arco Design Vue 新工程
+（`apps/showcase_ui_v2`）完整承接，M0–M6 全部里程碑完成：
+
+- **SSE 实时流**：任务时间线 / 截图 / 工具调用事件实时推送渲染，替代旧轮询与增量构建链路。
+- **回放投屏**：会话回放视图与投屏（cast）桥接层按编译期结构断言对齐真实契约。
+- **系统诊断**：连通性 / 就绪度（readiness）诊断接入，联动顶栏在线状态指示。
+- **托管切换（决策 D2，一次性替换）**：`server.py` 的静态产物探测候选指向
+  `apps/showcase_ui_v2/dist/browser`（源码树托管）；wheel 回退产物
+  `artemis/resources/showcase_ui` 经 `npm run sync:resources` 同步为 Vite 产物
+  （发布流程可 `make release-ui` 一键构建 + 同步）；无 /v2 并行子路径。
+
+#### 验收标准
+
+- [x] 前端：vitest 198 用例全绿 + vue-tsc 零错误 + 生产构建通过
+- [x] 后端：托管链路 66 用例全绿
+- [x] 打包：`uv build --wheel` 解包确认 `showcase_ui` 资源完整
+

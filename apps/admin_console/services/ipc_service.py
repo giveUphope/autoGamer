@@ -133,9 +133,6 @@ class IPCService:
 
         return data
 
-    # Backward compatibility alias
-    filter_event_for_angular = sanitize_event_data
-
     @classmethod
     async def start_server(cls):
         async def handle_client(reader: asyncio.StreamReader, writer: asyncio.StreamWriter):
