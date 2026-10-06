@@ -7,12 +7,14 @@
   // 1. Global Default Model (Applied to all sub-agents unless overridden below)
   // ------------------------------------------------------------------------------
   "default": {
-    "provider": "google",
-    "model": "gemini-3.8-flash",
+    "provider": "openai",
+    "model": "qwen3.6-35b-a3b-mtp",
+    "api_base": "http://127.0.0.1:1234/v1",
+    "api_key": "lm-studio",
     "thinking_level": "medium",
     "fallback": {
-      "provider": "google",
-      "model": "gemini-3.7-flash",
+      "provider": "openai",
+      "model": "qwen3.6-35b-a3b-mtp",
       "thinking_level": "medium"
     }
   },
@@ -44,7 +46,15 @@
     "local-ollama": {
       "provider": "openai",
       "model": "llama3.2-vision",
+      "api_base": "http://localhost:11434/v1",
       "fallback": { "provider": "openai", "model": "llama3.2-vision" }
+    },
+    "local-lmstudio": {
+      "provider": "openai",
+      "model": "qwen3.6-35b-a3b-mtp",
+      "api_base": "http://127.0.0.1:1234/v1",
+      "api_key": "lm-studio",
+      "fallback": { "provider": "openai", "model": "qwen3.6-35b-a3b-mtp" }
     }
   },
 
@@ -75,10 +85,10 @@
     // To achieve accurate [x, y] point and bounding box localization, this node MUST use specialized Gemini ER (Embodied Reasoning / Robotics) models:
     // e.g., "gemini-robotics-er-2-preview". Non-ER models will fail spatial coordinate detection.
     "object_detector": {
-      "model": "gemini-robotics-er-2-preview",
+      "model": "qwen3.6-35b-a3b-mtp",
       "fallback": {
-        "provider": "google",
-        "model": "gemini-robotics-er-2-preview"
+        "provider": "openai",
+        "model": "qwen3.6-35b-a3b-mtp"
       }
     },
 
@@ -95,10 +105,10 @@
 
     // 🔽 Hopper: Fast lightweight package name locator
     "hopper": {
-      "model": "gemini-3.5-flash-lite",
+      "model": "qwen3.6-35b-a3b-mtp",
       "fallback": {
-        "provider": "google",
-        "model": "gemini-3.1-flash-lite"
+        "provider": "openai",
+        "model": "qwen3.6-35b-a3b-mtp"
       }
     },
 
@@ -145,7 +155,7 @@
       // replacing images only after strictly objective, high-density summaries are ready.
       "step_summarizer": {
         "enabled": true, // Whether background step summarization is active
-        "model": "gemini-3.5-flash-lite", // Lightweight model for fast background inference
+        "model": "qwen3.6-35b-a3b-mtp", // Lightweight model for fast background inference
         "prune_history_xml": true // Prune outdated heavy XML trees from historical steps
       }
     },
@@ -246,7 +256,7 @@
         // call each); milestone closes are exempt, the hard line waives it.
         "min_steps": 3,
         "target_source_tokens": 2000,
-        "model": "gemini-3.8-flash",
+        "model": "qwen3.6-35b-a3b-mtp",
         "max_chunks": 8
         // "max_eras": 8 // independent era cap; omitted = follows max_chunks
       },
