@@ -245,14 +245,18 @@ def find_server_pids(port: int = 8000) -> list[int]:
     # 2c. netstat (Windows fallback)
     if not discovered and sys.platform == "win32":
         try:
+            # netstat emits OEM/ANSI codepage text (e.g. GBK on zh-CN Windows) that
+            # breaks strict UTF-8 decoding; only ASCII tokens are matched below, so
+            # undecodable bytes can be safely replaced instead of failing the read.
             res = subprocess.run(
                 ["netstat", "-ano"],
                 stdin=subprocess.DEVNULL,
                 capture_output=True,
                 text=True,
+                errors="replace",
                 timeout=3.0,
             )
-            if res.returncode == 0:
+            if res.returncode == 0 and res.stdout:
                 for line in res.stdout.splitlines():
                     if f":{port}" in line and "LISTENING" in line.upper():
                         parts = line.strip().split()
