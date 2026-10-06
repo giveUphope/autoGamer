@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, reactive } from 'vue';
+import { computed, reactive, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
   IconCamera,
@@ -9,6 +9,7 @@ import {
   IconExclamationCircle,
   IconFile,
   IconPlayArrow,
+  IconSync,
 } from '@arco-design/web-vue/es/icon';
 
 import { usePlayerStore } from '@/stores/player';
@@ -68,6 +69,7 @@ import {
 } from '@/utils/tool-formatter';
 import { formatTokenCount, getSortedStepEvents, isBackendSwitchNote } from '@/utils/stream-aggregator';
 import { renderMarkdown } from '@/utils/markdown';
+import { useStreamTypewriter } from './useTypewriter';
 
 /**
  * 单步动作卡片（对应 Angular agent-stream 的 step/llm_stream 块，UI 按 Arco 重做）：
@@ -152,12 +154,53 @@ const rawThinking = computed<string | null>(() => {
 });
 
 // ---- 断流重置提示（M3：llm_stream 块被服务端重置时，聚合器把 isReset / resetMessage
-// 透传到 block.data；文案优先后端 resetMessage，缺省 DEFAULT_STREAM_RESET_MESSAGE） ----
+// 透传到 block.data；文案优先后端 resetMessage，缺省 DEFAULT_STREAM_RESET_MESSAGE。
+// B5 补齐 isWaiting 语义：流未完成显示等待态（旋转指示）；已完成时按 Angular
+// formatResetMessage 去掉 "Retrying automatically..." 尾缀） ----
+const streamResetWaiting = computed(
+  () => Boolean(props.block.data?.isReset) && props.block.data?.isCompleted === false,
+);
+
 const streamResetNotice = computed<string | null>(() => {
   const data = props.block.data;
   if (!data?.isReset) return null;
   const message = data.resetMessage || DEFAULT_STREAM_RESET_MESSAGE;
-  return typeof message === 'string' && message.trim() ? message : DEFAULT_STREAM_RESET_MESSAGE;
+  const finalMessage =
+    typeof message === 'string' && message.trim() ? message : DEFAULT_STREAM_RESET_MESSAGE;
+  return streamResetWaiting.value ? finalMessage : formatResetMessage(finalMessage);
+});
+
+function formatResetMessage(message: string): string {
+  return message.replace(/[,.\s]*(?:Retrying automatically(?:\.{3}|\.\.\.)?)\s*$/i, '').trim();
+}
+
+// ---- B5 打字机（平移自 Angular typedTexts 体系，节奏与 rewind 见 useTypewriter.ts） ----
+// 块每次因流式 chunk 更新都会以新对象出现（聚合器整体重建块），以它为 watch 源驱动 sync。
+const typewriter = useStreamTypewriter();
+
+watch(
+  () => [props.block, props.sessionActive] as const,
+  ([block]) => {
+    typewriter.syncStreamBlock({
+      blockId: block.id,
+      nativeText: nativeThinking.value,
+      rawText: rawThinking.value,
+      live: block.data?.isCompleted === false,
+      isReset: Boolean(block.data?.isReset),
+    });
+  },
+  { immediate: true },
+);
+
+// 渲染切片：live 流随打字机 tick 增长；历史 / 已完成块为全文
+const nativeStreamText = computed<string | null>(() => {
+  const text = nativeThinking.value;
+  return text ? typewriter.typedNative(props.block.id, text) : null;
+});
+
+const rawStreamText = computed<string | null>(() => {
+  const text = rawThinking.value;
+  return text ? typewriter.typedRaw(props.block.id, text) : null;
 });
 
 // ---- 工具行辅助 ----
@@ -340,29 +383,31 @@ function resumePausedTask(): void {
       <span v-if="tokenCount" class="meta-item" :title="formatTokenCount(tokenCount)">{{ formatTokenCount(tokenCount) }}</span>
     </div>
 
-    <!-- 断流重置提示（M3：isReset 透传自 llm_stream 聚合块，后端语义文案不 i18n） -->
+    <!-- 断流重置提示（M3：isReset 透传自 llm_stream 聚合块，后端语义文案不 i18n；
+      B5：isWaiting 语义——流未完成显示等待态旋转指示） -->
     <div v-if="streamResetNotice" class="reset-row" role="alert">
-      <icon-exclamation-circle />
+      <icon-sync v-if="streamResetWaiting" class="spin-icon" />
+      <icon-exclamation-circle v-else />
       <span>{{ streamResetNotice }}</span>
     </div>
 
-    <!-- Thought（原生思考流） -->
+    <!-- Thought（原生思考流；B5：live 流逐字符打出，历史块为全文） -->
     <div v-if="nativeThinking" class="thinking-section" :class="{ collapsed: streamCollapsed.has('native') }">
       <button type="button" class="section-header" @click="toggleStream('native')">
         <span class="status-dot done" />
         <span class="header-label">{{ t('workspace.timeline.thought') }}</span>
         <icon-down class="expand-icon" :class="{ rotated: streamCollapsed.has('native') }" />
       </button>
-      <div v-show="!streamCollapsed.has('native')" class="section-content stream-text" v-html="renderMarkdown(nativeThinking)" />
+      <div v-show="!streamCollapsed.has('native')" class="section-content stream-text" v-html="renderMarkdown(nativeStreamText || '')" />
     </div>
 
-    <!-- Work（原始思考 / 计划 / 消息） -->
+    <!-- Work（原始思考 / 计划 / 消息；B5：live 流逐字符打出，历史块为全文） -->
     <div v-if="rawThinking" class="work-section">
       <div class="section-header static">
         <span class="status-dot done" />
         <span class="header-label">{{ t('workspace.timeline.work') }}</span>
       </div>
-      <div class="section-content stream-text" v-html="renderMarkdown(rawThinking)" />
+      <div class="section-content stream-text" v-html="renderMarkdown(rawStreamText || '')" />
     </div>
 
     <!-- 事件时间线 -->
@@ -1083,6 +1128,21 @@ function resumePausedTask(): void {
   background-color: rgb(var(--orange-1) / 60%);
   color: rgb(var(--orange-6));
   font-size: 12.5px;
+}
+
+/* B5：断流等待态（isWaiting）旋转指示 */
+.reset-row .spin-icon {
+  flex-shrink: 0;
+  animation: step-card-spin 1.2s linear infinite;
+}
+
+@keyframes step-card-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
 }
 
 .failure-retries {

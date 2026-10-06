@@ -215,9 +215,9 @@ src/
 ### 已知边界（M4/M6 接入）
 
 - ~~`recording_ready` / `recording_failed` 事件分支已预留~~ —— 播放器联动已随 **M4** 接入（见下节）。
-- 逐字符打字机动画与流重置 rewind（Angular typedTexts/rewind 系统）未做：流文本随
-  80ms 合批 flush 增长，M6 打磨期再评估。
-- 重试延时文案保留 1 位小数（Angular 为 2 位）；planning loader 未平移 Angular 的轮换短语。
+- ~~逐字符打字机动画与流重置 rewind~~ —— 已随**迁移后增量**补齐（见文末"迁移后增量迭代"）。
+- 重试延时文案保留 1 位小数（Angular 为 2 位）；~~planning loader 未平移 Angular 的
+  轮换短语~~ —— 16 条轮换短语已随**迁移后增量**补齐。
 
 ## M4 完成范围（回放 / 投屏）
 
@@ -326,6 +326,7 @@ src/
   （含 `assets/` 子目录与 `public/` 拷入的 favicon/logo）→ 打印同步文件清单摘要。
 - 用法：发布流程为 `npm run build && npm run sync:resources`。`sync:resources`
   是**发布动作，手动执行**，有意不挂进 `build`（避免日常构建误改 wheel 回退目录）。
+  也可在仓库根目录用 `make release-ui` 一键完成构建 + 同步。
 - 目标目录判定：`artemis/resources/showcase_ui` 是 wheel 安装态的回退产物
   （`artemis/resources/__init__.py::get_bundled_showcase_dist` 以 `index.html`
   存在为准）。同步后旧 Angular 平铺文件在 git 状态中显示为 deleted，属预期变更。
@@ -361,10 +362,22 @@ src/
 
 ### 已知边界（长期）
 
-- `src/utils/**` 生成的语义文案（如动作描述 "Tapping Element"、probe 的
-  title/summary 等后端字段）保持原样不 i18n——自 M2 起明确的边界：它们是
-  面向协议/调试的语义标签而非界面文案，深度 i18n 不做。
-- 逐字符打字机动画与流重置 rewind（Angular typedTexts/rewind 系统）未平移
-  （M3 已知边界，流文本以 80ms 合批增长替代）。
+- ~~`src/utils/**` 生成的语义文案不 i18n~~ —— **已完成深度 i18n**（迁移后增量）：
+  tool-formatter/action-formatter 共 89 处用户可见文案迁入 `tools.*` / `actions.*`
+  键（157 键 ×2 locale，经 `utils/i18n.ts` 的 `tUtil` 走 vue-i18n 全局实例，
+  en-US 输出与迁移前逐字节一致，util spec 以 en-US 断言锁定）。仅保留非 i18n
+  对象：后端字段透传（probe title/summary 等）、协议 token、专有名词。
+- ~~逐字符打字机动画与流重置 rewind 未平移~~ —— 已补齐（迁移后增量）。
 - 主 bundle 超过 Vite 500 kB 分包提示（Arco 全量注册所致），gzip 后约 327 kB，
   保持全量引入以对齐 Angular 版能力，不做按需拆分优化。
+
+## 迁移后增量迭代
+
+M0–M6 之外的挂起项收尾（对应各里程碑已知边界与调研报告 §2.2 的"未消费端点"）。
+
+| 项 | 内容 |
+| --- | --- |
+| 工程收尾 | `ipc_service.py` 删除 Angular 时代遗留别名 `filter_event_for_angular`；`package.json` 补 `engines: node>=20.19.0`（对齐 Vite 7 要求与 start.sh 校验）；`make release-ui` 一键构建 + 同步 wheel 回退资源；`changelogs.md` 补迁移完成记录 |
+| 深度 i18n | 见上文 M6 已知边界的修订说明 |
+| 打字机与轮换短语 | `useTypewriter` composable（双泳道 text/thought、母本节奏 667 chars/s 等价移植、live 判定零常驻定时器、`isReset` 单次 rewind）；planning loader 16 条轮换短语（2800ms，loader 可见才轮转） |
+| 未消费端点接入 | `GET /api/tasks/presets` → 启动器推荐任务 chips（点击填入不直接提交，失败静默）；`GET /api/sessions/{id}/tree` → 时间线工具条"轨迹树"抽屉（a-tree，按 trace 树节点归一渲染）；回放调试组（`/api/replay/tools|config`、`replay_steps`、`steps/{n}/replay`、`replay_traces`）→ 时间线工具条"步骤回放"抽屉（设备/工具选择 + **真实执行二次确认** + 结果折叠展示） |

@@ -6,8 +6,10 @@ import {
   IconCheckCircle,
   IconEye,
   IconFile,
+  IconHistory,
   IconImage,
   IconLiveBroadcast,
+  IconMindMapping,
   IconPauseCircle,
   IconPlayArrow,
   IconSync,
@@ -22,6 +24,8 @@ import { checkPlanningLoader, formatTokenCount } from '@/utils/stream-aggregator
 import { isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
 import { parseNote } from '@/utils/markdown';
 import type { PhaseBlock, StepBlock } from '@/types/stream.model';
+import ReplayDrawer from '@/components/session-extras/ReplayDrawer.vue';
+import SessionTreeDrawer from '@/components/session-extras/SessionTreeDrawer.vue';
 import CheckerPanel from './CheckerPanel.vue';
 import NoteDocument from './NoteDocument.vue';
 import NotesPanel from './NotesPanel.vue';
@@ -38,7 +42,7 @@ import StepCard from './StepCard.vue';
  * - M3 实时流：planning loader、LLM 重试警示条、任务暂停卡 + 恢复、
  *   自动滚动（接近底部才跟随，平移自 Angular scheduleAutoScroll）。
  */
-const { t } = useI18n();
+const { t, tm } = useI18n();
 const sessionStore = useSessionStore();
 const streamStore = useStreamStore();
 const timelineStore = useTimelineStore();
@@ -48,6 +52,10 @@ timelineStore.start();
 
 const notesPopoverOpen = ref(false);
 const scrollContainer = ref<HTMLElement | null>(null);
+
+// ---- B6 轨迹树 / 步骤回放抽屉（仅点击时打开，抽屉自行按需拉取） ----
+const treeDrawerVisible = ref(false);
+const replayDrawerVisible = ref(false);
 
 // ---- 启动准备（平移自 startupWorkItems computed） ----
 const startupWorkItems = computed(() => {
@@ -121,6 +129,59 @@ const showPlanningRow = computed(() =>
   && (startupWorkItems.value.length === 0
     || startupPreparationIsComplete.value
     || timelineStore.consolidatedBlocks.length > 0),
+);
+
+// ---- B5 planning loader 轮换短语（平移自 PLANNING_LOADER_PHRASES 16 条 + 轮换 effect） ----
+
+/** vue-i18n `tm()` 取数组消息：条目可能是字符串或编译 AST（含 source），统一归一为字符串。 */
+function normalizeMessageValue(value: unknown): string {
+  if (typeof value === 'string') return value;
+  if (value && typeof value === 'object' && 'source' in value) {
+    return String((value as { source?: unknown }).source ?? '');
+  }
+  return '';
+}
+
+const planningPhrases = computed<string[]>(() => {
+  const messages: unknown = tm('workspace.timeline.planningPhrases');
+  if (!Array.isArray(messages)) return [];
+  return messages.map(normalizeMessageValue).filter((text) => text.length > 0);
+});
+
+/** 轮换间隔（母本 2800ms，游戏加载提示式轮换）。 */
+const PLANNING_ROTATE_MS = 2800;
+let planningPhraseIndex = 0;
+let planningRotateTimer: ReturnType<typeof setInterval> | null = null;
+const currentPlanningText = ref('');
+
+function stopPlanningRotation(): void {
+  if (planningRotateTimer !== null) {
+    clearInterval(planningRotateTimer);
+    planningRotateTimer = null;
+  }
+}
+
+/** 仅 loader 可见时轮转（watch 启停 interval，避免常驻定时器；不可见 / 卸载时清理）。 */
+watch(
+  showPlanningLoader,
+  (visible) => {
+    if (visible) {
+      const phrases = planningPhrases.value;
+      if (phrases.length === 0 || planningRotateTimer) return;
+      // 随机起点（母本：Math.floor(Math.random() * length)）
+      planningPhraseIndex = Math.floor(Math.random() * phrases.length);
+      currentPlanningText.value = phrases[planningPhraseIndex] ?? t('workspace.timeline.planning');
+      planningRotateTimer = setInterval(() => {
+        const list = planningPhrases.value;
+        if (list.length === 0) return;
+        planningPhraseIndex = (planningPhraseIndex + 1) % list.length;
+        currentPlanningText.value = list[planningPhraseIndex] ?? t('workspace.timeline.planning');
+      }, PLANNING_ROTATE_MS);
+    } else {
+      stopPlanningRotation();
+    }
+  },
+  { immediate: true },
 );
 
 /** LLM 重试警示文案（组装自 stream store 的 retryInfo，语义对齐 Angular agent.service L932-933）。 */
@@ -216,6 +277,7 @@ onBeforeUnmount(() => {
     clearTimeout(autoScrollTimer);
     autoScrollTimer = null;
   }
+  stopPlanningRotation();
   scrollContainer.value?.removeEventListener('scroll', onScrollContainerScroll);
 });
 
@@ -303,6 +365,15 @@ const isRecordBtnProcessing = computed(
         </template>
         {{ t('workspace.player.recordBtnDefault') }}
       </a-button>
+      <!-- B6：轨迹树 / 步骤回放入口（点击时才拉取数据） -->
+      <a-button size="small" class="tree-btn" @click="treeDrawerVisible = true">
+        <template #icon><icon-mind-mapping /></template>
+        {{ t('workspace.tree.button') }}
+      </a-button>
+      <a-button size="small" class="replay-btn" @click="replayDrawerVisible = true">
+        <template #icon><icon-history /></template>
+        {{ t('workspace.replay.button') }}
+      </a-button>
     </div>
 
     <main ref="scrollContainer" class="timeline-content">
@@ -368,10 +439,11 @@ const isRecordBtnProcessing = computed(
           </div>
         </div>
 
-        <!-- Planning loader（M3：运行中等待下一步，平移自 Angular html L1410 展示条件） -->
+        <!-- Planning loader（M3：运行中等待下一步，平移自 Angular html L1410 展示条件；
+          B5：文案为轮换短语之一，随机起点 + 2.8s 间隔，`planning` 键保留为兜底文案） -->
         <div v-if="showPlanningRow" class="planning-loader" aria-live="polite">
           <icon-sync class="spin-icon" />
-          <span>{{ t('workspace.timeline.planning') }}</span>
+          <span>{{ currentPlanningText || t('workspace.timeline.planning') }}</span>
         </div>
 
         <!-- 任务暂停卡（M3：isViewingPausedTask，恢复按钮走 sessionStore.resumeTask） -->
@@ -408,6 +480,10 @@ const isRecordBtnProcessing = computed(
         </div>
       </div>
     </main>
+
+    <!-- B6：轨迹树 / 步骤回放抽屉（数据由抽屉打开时按需拉取，不进 store） -->
+    <SessionTreeDrawer v-model:visible="treeDrawerVisible" :session-id="sessionStore.currentSessionId" />
+    <ReplayDrawer v-model:visible="replayDrawerVisible" :session-id="sessionStore.currentSessionId" />
   </section>
 </template>
 

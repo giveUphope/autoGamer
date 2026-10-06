@@ -1,4 +1,5 @@
 import { mount } from '@vue/test-utils';
+import type { VueWrapper } from '@vue/test-utils';
 import ArcoVue from '@arco-design/web-vue';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
@@ -6,6 +7,7 @@ import { reactive } from 'vue';
 import { createI18n } from 'vue-i18n';
 
 import zhCN from '../../locales/zh-CN';
+import appI18n from '@/locales';
 import { useSessionStore } from '../../stores/session';
 import { useTimelineStore } from '../../stores/timeline';
 import type { LLMStreamResetEventData } from '../../types/stream.model';
@@ -39,6 +41,19 @@ const i18n = createI18n({
   locale: 'zh-CN',
   messages: { 'zh-CN': zhCN },
 });
+
+// 动作标题等由 util 生成的语义文案走 app 级 i18n 实例（src/utils/i18n.ts）。
+// 本 spec 将该实例固定在 en-US，使 util 产出的英文断言与迁移前行为逐字节一致；
+// 组件自身的界面文案仍使用上方 zh-CN 实例，不受影响。
+appI18n.global.locale.value = 'en-US';
+
+// B5：planning loader 轮换短语（zh-CN 消息）——loader 文案断言不再依赖单一静态文案
+const PLANNING_PHRASES: string[] = zhCN.workspace.timeline.planningPhrases ?? [];
+
+function planningLoaderText(wrapper: VueWrapper<any>): string {
+  const loader = wrapper.find('.planning-loader');
+  return loader.exists() ? loader.text().trim() : '';
+}
 
 function mountTimeline() {
   return mount(AgentTimeline, {
@@ -162,7 +177,7 @@ describe('AgentTimeline (M2)', () => {
   it('renders step cards with action details from the steps snapshot', async () => {
     const wrapper = await mountWithSession();
     // 动作卡与目标 / 坐标（来自 /steps 的 action_taken 实际字段；
-    // 动作标题由 util 生成，保持与 Angular 一致的英文文案）
+    // 动作标题由 util 生成——app 级 i18n 实例在本 spec 中固定 en-US，保持迁移前英文断言）
     await vi.waitFor(() => expect(wrapper.text()).toContain('Tapping Element'));
     expect(wrapper.text()).toContain('设置应用图标');
     expect(wrapper.text()).toContain('[319, 909]');
@@ -217,12 +232,22 @@ describe('AgentTimeline (M3 实时流)', () => {
 
   it('shows the planning loader while running with no logs', async () => {
     const wrapper = await mountRunningEmptySession();
-    await vi.waitFor(() => expect(wrapper.text()).toContain('正在规划下一步…'));
+    // B5：loader 文案为轮换短语之一，断言容器出现即可，不依赖具体短语
+    await vi.waitFor(() => expect(wrapper.find('.planning-loader').exists()).toBe(true));
+    wrapper.unmount();
+  });
+
+  it('displays one of the rotating planning phrases in the loader', async () => {
+    const wrapper = await mountRunningEmptySession();
+    await vi.waitFor(() => expect(wrapper.find('.planning-loader').exists()).toBe(true));
+    // B5：随机起点 + 2.8s 轮换的可见结果——起始文案必为 planningPhrases 之一
+    expect(PLANNING_PHRASES).toContain(planningLoaderText(wrapper));
+    wrapper.unmount();
   });
 
   it('hides the planning loader while an llm_stream chunk is incomplete', async () => {
     const wrapper = await mountRunningEmptySession();
-    await vi.waitFor(() => expect(wrapper.text()).toContain('正在规划下一步…'));
+    await vi.waitFor(() => expect(wrapper.find('.planning-loader').exists()).toBe(true));
     const timelineStore = useTimelineStore();
     timelineStore.sessionLogs.push({
       type: 'llm_stream',
@@ -230,12 +255,13 @@ describe('AgentTimeline (M3 实时流)', () => {
       session_id: 'sess-empty',
       data: { execution_id: 'e1', text: 'partial answer', stream_type: 'text', isCompleted: false },
     });
-    await vi.waitFor(() => expect(wrapper.text()).not.toContain('正在规划下一步…'));
+    await vi.waitFor(() => expect(wrapper.find('.planning-loader').exists()).toBe(false));
+    wrapper.unmount();
   });
 
   it('hides the planning loader after session_ended', async () => {
     const wrapper = await mountRunningEmptySession();
-    await vi.waitFor(() => expect(wrapper.text()).toContain('正在规划下一步…'));
+    await vi.waitFor(() => expect(wrapper.find('.planning-loader').exists()).toBe(true));
     const timelineStore = useTimelineStore();
     timelineStore.sessionLogs.push({
       type: 'session_ended',
@@ -243,7 +269,8 @@ describe('AgentTimeline (M3 实时流)', () => {
       session_id: 'sess-empty',
       data: {},
     });
-    await vi.waitFor(() => expect(wrapper.text()).not.toContain('正在规划下一步…'));
+    await vi.waitFor(() => expect(wrapper.find('.planning-loader').exists()).toBe(false));
+    wrapper.unmount();
   });
 
   it('shows the paused card with resume action while viewing the paused task', async () => {

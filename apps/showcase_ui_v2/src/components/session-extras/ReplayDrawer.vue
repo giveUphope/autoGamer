@@ -1,0 +1,627 @@
+<script setup lang="ts">
+import { computed, ref, watch } from 'vue';
+import { useI18n } from 'vue-i18n';
+import { IconLoading } from '@arco-design/web-vue/es/icon';
+
+import { ApiError, apiGet, apiPost } from '@/services/api';
+
+/**
+ * 步骤回放调试抽屉（B6）：
+ * - `GET /api/sessions/{id}/replay_steps`：可回放 chunked 步骤元数据
+ *   （{step_number, summary, is_replayed, param_defaults, ...}；404 = 无回放数据）；
+ * - `GET /api/devices`（{serial, status}[]）与 `GET /api/replay/tools`
+ *   （{name, display_name, description}[]）提供设备/工具选择；
+ * - `GET /api/replay/config?tool_name=` 展示所选工具的参数说明
+ *   （{name, default, input_type}[]）；
+ * - "回放"先经 a-modal 二次确认（真实沙箱执行、期间占用设备），确认后
+ *   POST /api/sessions/{id}/steps/{n}/replay（body: device_id / user_submits /
+ *   tool_name / replay_id）；"查看上次结果"走 GET replay_traces；
+ * - 结果（{live, preloaded} 轨迹树）在抽屉下方 a-collapse + <pre> 折叠展示。
+ * 设备 / 工具 / 步骤任一未就绪时回放按钮禁用。
+ */
+interface DeviceItem {
+  serial?: unknown;
+  status?: unknown;
+}
+
+interface ToolItem {
+  name?: unknown;
+  display_name?: unknown;
+  description?: unknown;
+}
+
+interface ToolParamDef {
+  name?: unknown;
+  default?: unknown;
+  input_type?: unknown;
+}
+
+interface ReplayStep {
+  step_number?: unknown;
+  summary?: unknown;
+  is_replayed?: unknown;
+  param_defaults?: Record<string, Record<string, unknown>> | unknown;
+}
+
+type StepsState = 'idle' | 'loading' | 'ready' | 'notFound' | 'error';
+
+interface ReplayResult {
+  stepNumber: number;
+  kind: 'replay' | 'last';
+  live: unknown[];
+  preloaded: unknown[];
+}
+
+const props = defineProps<{ visible: boolean; sessionId: string | null }>();
+const emit = defineEmits<{ (e: 'update:visible', value: boolean): void }>();
+const { t } = useI18n();
+
+const globalError = ref<string | null>(null);
+const requestError = ref<string | null>(null);
+
+const devices = ref<DeviceItem[]>([]);
+const devicesLoading = ref(false);
+const selectedDevice = ref('');
+
+const tools = ref<ToolItem[]>([]);
+const toolsLoading = ref(false);
+const selectedTool = ref('');
+
+const toolConfig = ref<ToolParamDef[] | null>(null);
+const toolConfigLoading = ref(false);
+
+const steps = ref<ReplayStep[]>([]);
+const stepsState = ref<StepsState>('idle');
+
+const runningStep = ref<number | null>(null);
+const lastResultLoading = ref<number | null>(null);
+const pendingStep = ref<ReplayStep | null>(null);
+const result = ref<ReplayResult | null>(null);
+
+const canReplay = computed(
+  () =>
+    Boolean(props.sessionId)
+    && stepsState.value === 'ready'
+    && steps.value.length > 0
+    && Boolean(selectedDevice.value)
+    && Boolean(selectedTool.value)
+    && runningStep.value === null
+    && pendingStep.value === null,
+);
+
+function detailOf(err: unknown): string {
+  if (err instanceof ApiError) return err.detail || `HTTP ${err.status}`;
+  return err instanceof Error && err.message ? err.message : String(err);
+}
+
+function stepNumber(step: ReplayStep): number {
+  const num = Number(step?.step_number);
+  return Number.isFinite(num) ? num : 0;
+}
+
+function deviceLabel(device: DeviceItem): string {
+  const serial = typeof device?.serial === 'string' ? device.serial : '';
+  const status = typeof device?.status === 'string' ? device.status : '';
+  return status ? `${serial} · ${status}` : serial;
+}
+
+function toolLabel(tool: ToolItem): string {
+  return (typeof tool?.display_name === 'string' && tool.display_name) || (typeof tool?.name === 'string' ? tool.name : '');
+}
+
+function stepSummary(step: ReplayStep): string {
+  return typeof step?.summary === 'string' ? step.summary : '';
+}
+
+/** 从步骤的 param_defaults[tool] 取回放入参（后端已按工具签名解析好默认值）。 */
+function userSubmitsFor(step: ReplayStep, toolName: string): Record<string, unknown> {
+  const defaults = step?.param_defaults;
+  const perTool = defaults && typeof defaults === 'object' && !Array.isArray(defaults)
+    ? (defaults as Record<string, unknown>)[toolName]
+    : undefined;
+  return perTool && typeof perTool === 'object' && !Array.isArray(perTool)
+    ? { ...(perTool as Record<string, unknown>) }
+    : {};
+}
+
+function formatJson(value: unknown): string {
+  try {
+    return JSON.stringify(value, null, 2);
+  } catch {
+    return String(value);
+  }
+}
+
+function arrayNodes(value: unknown): unknown[] {
+  return Array.isArray(value) ? value : [];
+}
+
+async function fetchDevices(): Promise<void> {
+  devicesLoading.value = true;
+  try {
+    const res = await apiGet<unknown>('/api/devices');
+    devices.value = arrayNodes(res).filter(
+      (item): item is DeviceItem => Boolean(item) && typeof item === 'object',
+    );
+    if (!selectedDevice.value) {
+      const first = devices.value[0]?.serial;
+      selectedDevice.value = typeof first === 'string' ? first : '';
+    }
+  } catch {
+    devices.value = [];
+  } finally {
+    devicesLoading.value = false;
+  }
+}
+
+async function fetchTools(): Promise<void> {
+  toolsLoading.value = true;
+  try {
+    const res = await apiGet<unknown>('/api/replay/tools');
+    tools.value = arrayNodes(res).filter(
+      (item): item is ToolItem => Boolean(item) && typeof item === 'object',
+    );
+    if (!selectedTool.value) {
+      const first = tools.value[0]?.name;
+      selectedTool.value = typeof first === 'string' ? first : '';
+    }
+  } catch {
+    tools.value = [];
+  } finally {
+    toolsLoading.value = false;
+  }
+}
+
+async function fetchSteps(sid: string): Promise<void> {
+  stepsState.value = 'loading';
+  try {
+    const res = await apiGet<unknown>(`/api/sessions/${encodeURIComponent(sid)}/replay_steps`);
+    steps.value = arrayNodes(res).filter(
+      (item): item is ReplayStep => Boolean(item) && typeof item === 'object',
+    );
+    stepsState.value = 'ready';
+  } catch (err) {
+    steps.value = [];
+    stepsState.value = err instanceof ApiError && err.status === 404 ? 'notFound' : 'error';
+  }
+}
+
+async function fetchToolConfig(toolName: string): Promise<void> {
+  if (!toolName) {
+    toolConfig.value = null;
+    return;
+  }
+  toolConfigLoading.value = true;
+  try {
+    const res = await apiGet<unknown>('/api/replay/config', { params: { tool_name: toolName } });
+    toolConfig.value = arrayNodes(res).filter(
+      (item): item is ToolParamDef => Boolean(item) && typeof item === 'object',
+    );
+  } catch {
+    toolConfig.value = null;
+  } finally {
+    toolConfigLoading.value = false;
+  }
+}
+
+watch(selectedTool, (toolName) => {
+  if (props.visible) void fetchToolConfig(toolName);
+});
+
+async function fetchAll(): Promise<void> {
+  const sid = props.sessionId;
+  if (!sid) return;
+  globalError.value = null;
+  requestError.value = null;
+  result.value = null;
+  pendingStep.value = null;
+  toolConfig.value = null;
+  selectedDevice.value = '';
+  selectedTool.value = '';
+  // 工具列表就绪后 selectedTool 变化会经 watch 触发 fetchToolConfig。
+  await Promise.all([fetchDevices(), fetchTools(), fetchSteps(sid)]);
+}
+
+// 仅抽屉打开时拉取；会话切换后若仍打开则重拉。
+watch(
+  () => [props.visible, props.sessionId] as const,
+  ([visible]) => {
+    if (visible) void fetchAll();
+  },
+  { immediate: true },
+);
+
+function requestReplay(step: ReplayStep): void {
+  if (!canReplay.value) return;
+  requestError.value = null;
+  pendingStep.value = step;
+}
+
+function cancelReplay(): void {
+  if (runningStep.value !== null) return;
+  pendingStep.value = null;
+}
+
+async function confirmReplay(): Promise<void> {
+  const step = pendingStep.value;
+  const sid = props.sessionId;
+  if (!step || !sid || runningStep.value !== null) return;
+  const num = stepNumber(step);
+  runningStep.value = num;
+  requestError.value = null;
+  try {
+    const res = await apiPost<Record<string, unknown>>(
+      `/api/sessions/${encodeURIComponent(sid)}/steps/${num}/replay`,
+      {
+        device_id: selectedDevice.value,
+        user_submits: userSubmitsFor(step, selectedTool.value),
+        tool_name: selectedTool.value,
+        replay_id: null,
+      },
+    );
+    result.value = {
+      stepNumber: num,
+      kind: 'replay',
+      live: arrayNodes(res?.live),
+      preloaded: arrayNodes(res?.preloaded),
+    };
+    pendingStep.value = null;
+  } catch (err) {
+    requestError.value = detailOf(err);
+  } finally {
+    runningStep.value = null;
+  }
+}
+
+async function loadLastResult(step: ReplayStep): Promise<void> {
+  const sid = props.sessionId;
+  const num = stepNumber(step);
+  if (!sid || lastResultLoading.value !== null) return;
+  lastResultLoading.value = num;
+  requestError.value = null;
+  try {
+    const res = await apiGet<Record<string, unknown>>(
+      `/api/sessions/${encodeURIComponent(sid)}/steps/${num}/replay_traces`,
+      { params: { tool_name: selectedTool.value } },
+    );
+    result.value = {
+      stepNumber: num,
+      kind: 'last',
+      live: arrayNodes(res?.live),
+      preloaded: arrayNodes(res?.preloaded),
+    };
+  } catch (err) {
+    requestError.value = detailOf(err);
+  } finally {
+    lastResultLoading.value = null;
+  }
+}
+
+function close(): void {
+  emit('update:visible', false);
+}
+</script>
+
+<template>
+  <a-drawer
+    :visible="visible"
+    :width="520"
+    :title="t('workspace.replay.title')"
+    :footer="false"
+    unmount-on-close
+    @cancel="close"
+  >
+    <div class="replay-body">
+      <a-alert v-if="globalError" type="error" class="replay-alert">
+        {{ t('workspace.replay.loadFail') }}：{{ globalError }}
+      </a-alert>
+      <a-alert v-if="requestError" type="error" class="replay-alert">
+        {{ t('workspace.replay.requestFail', { reason: requestError }) }}
+      </a-alert>
+
+      <!-- 设备 / 工具选择 -->
+      <div class="replay-controls">
+        <div class="control-row">
+          <label class="control-label">{{ t('workspace.replay.deviceLabel') }}</label>
+          <a-select
+            v-model="selectedDevice"
+            :placeholder="t('workspace.replay.devicePlaceholder')"
+            :loading="devicesLoading"
+            allow-clear
+            size="small"
+            class="control-select"
+          >
+            <a-option v-for="(device, i) in devices" :key="deviceLabel(device) || i" :value="String(device?.serial ?? '')">
+              {{ deviceLabel(device) }}
+            </a-option>
+          </a-select>
+          <div v-if="!devicesLoading && devices.length === 0" class="control-hint">
+            {{ t('workspace.replay.deviceEmpty') }}
+          </div>
+        </div>
+        <div class="control-row">
+          <label class="control-label">{{ t('workspace.replay.toolLabel') }}</label>
+          <a-select
+            v-model="selectedTool"
+            :placeholder="t('workspace.replay.toolPlaceholder')"
+            :loading="toolsLoading"
+            size="small"
+            class="control-select"
+          >
+            <a-option v-for="(tool, i) in tools" :key="String(tool?.name ?? i)" :value="String(tool?.name ?? '')">
+              {{ toolLabel(tool) }}
+            </a-option>
+          </a-select>
+        </div>
+        <div v-if="toolConfigLoading" class="control-hint">
+          <icon-loading spin />
+        </div>
+        <div v-else-if="toolConfig && toolConfig.length > 0" class="tool-params">
+          <div class="tool-params-title">{{ t('workspace.replay.paramsTitle') }}</div>
+          <div v-for="(param, i) in toolConfig" :key="String(param?.name ?? i)" class="tool-param-row">
+            <code class="tool-param-name">{{ String(param?.name ?? '') }}</code>
+            <span class="tool-param-type">{{ String(param?.input_type ?? '') }}</span>
+            <span class="tool-param-default">
+              {{ param?.default === '' || param?.default === undefined || param?.default === null
+                ? t('workspace.replay.paramNone')
+                : String(param.default) }}
+            </span>
+          </div>
+        </div>
+      </div>
+
+      <a-divider class="replay-divider" />
+
+      <!-- 可回放步骤列表 -->
+      <a-spin v-if="stepsState === 'loading'" :loading="true" class="steps-loading">
+        <div class="loading-inner">{{ t('workspace.replay.stepsLoading') }}</div>
+      </a-spin>
+      <a-empty v-else-if="stepsState === 'notFound'" :description="t('workspace.replay.stepsEmpty')" />
+      <a-empty
+        v-else-if="stepsState === 'error'"
+        :description="`${t('workspace.replay.loadFail')}：${t('workspace.replay.stepsEmpty')}`"
+      />
+      <a-empty v-else-if="stepsState === 'ready' && steps.length === 0" :description="t('workspace.replay.stepsEmpty')" />
+      <div v-else class="step-list">
+        <div v-for="(step, i) in steps" :key="stepNumber(step) || i" class="replay-step">
+          <div class="step-head">
+            <span class="step-title">
+              {{ t('workspace.replay.stepPrefix') }} {{ stepNumber(step) }}
+            </span>
+            <a-tag v-if="step?.is_replayed === true" size="small" color="green" class="replayed-tag">
+              {{ t('workspace.replay.replayedTag') }}
+            </a-tag>
+            <div class="step-actions">
+              <a-button
+                size="mini"
+                type="primary"
+                :disabled="!canReplay || runningStep === stepNumber(step)"
+                :loading="runningStep === stepNumber(step)"
+                @click="requestReplay(step)"
+              >
+                {{ t('workspace.replay.replayBtn') }}
+              </a-button>
+              <a-button
+                size="mini"
+                :disabled="!selectedTool || lastResultLoading !== null || runningStep !== null"
+                :loading="lastResultLoading === stepNumber(step)"
+                @click="loadLastResult(step)"
+              >
+                {{ t('workspace.replay.lastResultBtn') }}
+              </a-button>
+            </div>
+          </div>
+          <div v-if="stepSummary(step)" class="step-summary">{{ stepSummary(step) }}</div>
+        </div>
+      </div>
+
+      <!-- 结果区（a-collapse + pre 折叠展示轨迹 JSON） -->
+      <div v-if="result" class="replay-result">
+        <div class="result-title">
+          {{ t('workspace.replay.resultStep', { n: result.stepNumber }) }}
+          · {{ result.kind === 'replay' ? t('workspace.replay.kindReplay') : t('workspace.replay.kindLast') }}
+        </div>
+        <a-empty
+          v-if="result.live.length === 0 && result.preloaded.length === 0"
+          :description="t('workspace.replay.resultEmpty')"
+        />
+        <a-collapse v-else :default-active-key="['live']">
+          <a-collapse-item
+            v-if="result.live.length > 0"
+            key="live"
+            :header="t('workspace.replay.liveLabel', { count: result.live.length })"
+          >
+            <pre class="result-json">{{ formatJson(result.live) }}</pre>
+          </a-collapse-item>
+          <a-collapse-item
+            v-if="result.preloaded.length > 0"
+            key="preloaded"
+            :header="t('workspace.replay.preloadedLabel', { count: result.preloaded.length })"
+          >
+            <pre class="result-json">{{ formatJson(result.preloaded) }}</pre>
+          </a-collapse-item>
+        </a-collapse>
+      </div>
+    </div>
+
+    <!-- 二次确认：真实沙箱执行，期间占用设备 -->
+    <a-modal
+      :visible="pendingStep !== null"
+      :title="t('workspace.replay.confirmTitle')"
+      :ok-text="t('workspace.replay.confirmOk')"
+      :cancel-text="t('workspace.replay.cancel')"
+      :ok-loading="runningStep !== null"
+      :mask-closable="false"
+      @ok="confirmReplay"
+      @cancel="cancelReplay"
+    >
+      <div class="confirm-body">
+        {{
+          t('workspace.replay.confirmBody', {
+            device: selectedDevice,
+            step: pendingStep ? stepNumber(pendingStep) : '',
+          })
+        }}
+      </div>
+    </a-modal>
+  </a-drawer>
+</template>
+
+<style scoped>
+.replay-body {
+  display: flex;
+  flex-direction: column;
+  gap: 12px;
+}
+
+.replay-alert {
+  margin-bottom: 0;
+}
+
+.replay-controls {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.control-row {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.control-label {
+  font-size: 12.5px;
+  color: var(--color-text-2);
+}
+
+.control-select {
+  width: 100%;
+}
+
+.control-hint {
+  font-size: 12px;
+  color: var(--color-text-3);
+}
+
+.tool-params {
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--border-radius-small);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+
+.tool-params-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.tool-param-row {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  font-size: 12px;
+  flex-wrap: wrap;
+}
+
+.tool-param-name {
+  color: var(--color-text-1);
+}
+
+.tool-param-type {
+  color: var(--color-text-3);
+}
+
+.tool-param-default {
+  color: var(--color-text-2);
+  overflow-wrap: anywhere;
+}
+
+.replay-divider {
+  margin: 2px 0;
+}
+
+.steps-loading {
+  display: block;
+  width: 100%;
+  padding: 24px 0;
+}
+
+.loading-inner {
+  padding: 12px;
+  color: var(--color-text-3);
+  font-size: 13px;
+}
+
+.step-list {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+.replay-step {
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--border-radius-medium);
+  padding: 8px 10px;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.step-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.step-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.replayed-tag {
+  flex-shrink: 0;
+}
+
+.step-actions {
+  margin-left: auto;
+  display: flex;
+  gap: 6px;
+  flex-shrink: 0;
+}
+
+.step-summary {
+  font-size: 12.5px;
+  color: var(--color-text-2);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+
+.replay-result {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.result-title {
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.result-json {
+  margin: 0;
+  max-height: 320px;
+  overflow: auto;
+  font-size: 11.5px;
+  line-height: 1.5;
+  color: var(--color-text-2);
+}
+
+.confirm-body {
+  font-size: 13px;
+  line-height: 1.6;
+}
+</style>

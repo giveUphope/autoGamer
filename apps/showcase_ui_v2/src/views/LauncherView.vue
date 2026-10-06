@@ -13,6 +13,7 @@ import {
 import AppNav from '@/components/AppNav.vue';
 import DiagnosticsWizard from '@/components/diagnostics/DiagnosticsWizard.vue';
 import { useSystemContract } from '@/components/diagnostics/contract';
+import TaskPresets from '@/components/session-extras/TaskPresets.vue';
 import { useSessionStore } from '@/stores/session';
 import { ApiError } from '@/services/api';
 
@@ -164,6 +165,9 @@ async function submitTask(): Promise<void> {
             </div>
           </div>
         </a-card>
+
+        <!-- B6 推荐任务 chips：点击填入输入框，不直接提交 -->
+        <TaskPresets @select="goal = $event" />
       </template>
     </main>
   </div>

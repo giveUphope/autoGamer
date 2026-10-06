@@ -18,6 +18,7 @@
  * 仅 import 路径调整）。工具行/工具卡片的字段格式化纯函数。
  */
 import type { ActionParam } from '@/types/stream.model';
+import { tUtil } from './i18n';
 import { extractNumbersFromCoordinateValue, isPureDirectionString, parseSequenceCoordinates } from './image-coords';
 
 // Tool objects are replaced (not mutated) when a trace is updated, so a
@@ -141,7 +142,7 @@ function parseVideoResultText(text: string): Partial<VideoAnalysisView> {
     return { outcome: 'failed', summary: value };
   }
   if (value.includes('Analysis is already in progress in another video agent')) {
-    return { outcome: 'waiting', summary: 'Another video agent is already analyzing this evidence.' };
+    return { outcome: 'waiting', summary: tUtil('tools.video.waitingSummary') };
   }
   return { outcome: 'complete', summary: value };
 }
@@ -178,14 +179,14 @@ export function getVideoAnalysisView(tool: any): VideoAnalysisView | null {
   const completedCount = Number(structured.completed_count ?? completedRanges.length ?? 0);
   const totalCount = Number(structured.total_count ?? (completedRanges.length + failedRanges.length));
   const titleByOutcome: Record<VideoAnalysisOutcome, string> = {
-    running: 'Analyzing screen recording',
-    recovering: 'Analyzing unfinished recording segment',
-    waiting: 'Waiting for existing video analysis',
+    running: tUtil('tools.video.title.running'),
+    recovering: tUtil('tools.video.title.recovering'),
+    waiting: tUtil('tools.video.title.waiting'),
     complete: structured.reuse === 'full' || parsed.reuse === 'full'
-      ? 'Reused video analysis'
-      : 'Analyzed screen recording',
-    partial: 'Video analysis partially completed',
-    failed: 'Video analysis returned no result'
+      ? tUtil('tools.video.title.reused')
+      : tUtil('tools.video.title.complete'),
+    partial: tUtil('tools.video.title.partial'),
+    failed: tUtil('tools.video.title.failed')
   };
 
   return {
@@ -298,16 +299,16 @@ export function getToolAgentName(tool: any): string | null {
     return null; // Omit self-healing label per user instruction
   }
   if (name.includes('outputter')) {
-    return 'Outputter';
+    return tUtil('tools.agent.outputter');
   }
   if (name.includes('validator')) {
-    return 'Validator';
+    return tUtil('tools.agent.validator');
   }
   if (name.includes('diagnos')) {
-    return 'Diagnoser';
+    return tUtil('tools.agent.diagnoser');
   }
   if (name.includes('explorer')) {
-    return 'Explorer';
+    return tUtil('tools.agent.explorer');
   }
   return null;
 }
@@ -561,153 +562,156 @@ export function getToolDisplayLabel(tool: any, isFirstSaveNote: boolean = false)
     case 'manage_app':
     case 'launch_app': {
       const rawApp = args.app_name || args.package_name || args.app || '';
-      const app = rawApp ? (rawApp.charAt(0).toUpperCase() + rawApp.slice(1)) : 'Application';
+      const app = rawApp ? (rawApp.charAt(0).toUpperCase() + rawApp.slice(1)) : tUtil('tools.manageApp.appFallback');
       const rawAction = args.action ? String(args.action).toLowerCase() : '';
-      const verb = rawAction === 'launch' ? 'Launching' : (rawAction === 'stop' || rawAction === 'close' ? 'Stopping' : 'Managing');
-      return `${verb} "${app}"`;
+      const labelKey = rawAction === 'launch'
+        ? 'tools.manageApp.launching'
+        : (rawAction === 'stop' || rawAction === 'close' ? 'tools.manageApp.stopping' : 'tools.manageApp.managing');
+      return tUtil(labelKey, { app });
     }
 
     case 'wait_for_delay':
     case 'wait_delay':
     case 'wait': {
       const delay = args.delay_seconds || args.seconds || args.delay || args.duration;
-      return delay ? `Waiting for ${delay} second${Number(delay) > 1 ? 's' : ''}...` : 'Waiting for delay...';
+      return delay
+        ? tUtil('tools.wait.seconds', { delay, plural: Number(delay) > 1 ? 's' : '' })
+        : tUtil('tools.wait.default');
     }
     case 'wait_for_text': {
       const text = args.text || args.target_text || '';
-      return text ? `Waiting for text "${text}" to appear on screen` : 'Waiting for text on screen';
+      return text ? tUtil('tools.waitForText.withText', { text }) : tUtil('tools.waitForText.default');
     }
 
     case 'input_text':
     case 'input': {
       const text = args.text || args.input_text || '';
-      return text ? `Entering text "${text}" into field` : 'Entering text into input field';
+      return text ? tUtil('tools.inputText.withText', { text }) : tUtil('tools.inputText.default');
     }
     case 'focus_and_input_text': {
       const text = args.text || args.input_text || '';
-      return text ? `Focusing field and typing "${text}"` : 'Focusing field and entering text';
+      return text ? tUtil('tools.focusInput.withText', { text }) : tUtil('tools.focusInput.default');
     }
     case 'focus_and_clear_text':
-      return 'Focusing and clearing field text';
+      return tUtil('tools.focusClear');
 
     case 'click':
     case 'tap': {
       const target = args.target_text || args.text || args.query || '';
-      return target ? `Tapping on "${target}"` : 'Tapping on screen element';
+      return target ? tUtil('tools.tap.withTarget', { target }) : tUtil('tools.tap.default');
     }
     case 'click_sequence':
-      return 'Executing click sequence';
+      return tUtil('tools.clickSequence');
     case 'long_press': {
       const target = args.target_text || args.text || '';
-      return target ? `Long pressing on "${target}"` : 'Long pressing screen element';
+      return target ? tUtil('tools.longPress.withTarget', { target }) : tUtil('tools.longPress.default');
     }
     case 'swipe': {
       const dir = args.action || args.direction || '';
-      return dir ? `Swiping ${String(dir).toUpperCase()} on screen` : 'Swiping screen';
+      return dir ? tUtil('tools.swipe.direction', { direction: String(dir).toUpperCase() }) : tUtil('tools.swipe.default');
     }
     case 'press_key': {
       const key = args.key || args.keycode || '';
-      return key ? `Pressing key ${String(key).toUpperCase()}` : 'Pressing hardware key';
+      return key ? tUtil('tools.pressKey.withKey', { key: String(key).toUpperCase() }) : tUtil('tools.pressKey.default');
     }
 
     case 'save_note':
-      return isFirstSaveNote ? 'Creating note' : 'Saving note';
+      return isFirstSaveNote ? tUtil('tools.saveNote.create') : tUtil('tools.saveNote.save');
     case 'read_note':
-      return 'Reading note';
+      return tUtil('tools.readNote');
     case 'list_notes':
-      return 'Browsing all saved notes';
+      return tUtil('tools.listNotes');
     case 'update_note':
-      return 'Updating note';
     case 'append_note':
-      return 'Updating note';
+      return tUtil('tools.updateNote');
 
     case 'object_detection': {
       const q = Array.isArray(args.queries) ? args.queries.join(', ') : (args.queries || '');
-      return q ? `Locating on screen: "${q}"` : 'Locating elements on screen';
+      return q ? tUtil('tools.locate.withQuery', { query: q }) : tUtil('tools.locate.default');
     }
     case 'ask_explorer': {
       const query = args.query || args.prompt || '';
-      return query ? `Searching on screen: "${query}"` : 'Searching on screen';
+      return query ? tUtil('tools.searchScreen.withQuery', { query }) : tUtil('tools.searchScreen.default');
     }
     case 'report_failure_analysis': {
       const reason = args.reason || args.analysis || '';
-      return reason ? `Investigating issue: ${reason}` : 'Investigating execution issue';
+      return reason ? tUtil('tools.investigate.withReason', { reason }) : tUtil('tools.investigate.default');
     }
     case 'run_adb_command':
     case 'run_short_adb_command': {
       const cmd = args.command || args.cmd || '';
-      return cmd ? `Running command: ${cmd}` : 'Running system command';
+      return cmd ? tUtil('tools.adb.withCommand', { command: cmd }) : tUtil('tools.adb.default');
     }
     case 'search_logs':
     case 'read_logs': {
       const q = args.query || args.filter || '';
-      return q ? `Searching logs for "${q}"` : 'Analyzing system logs';
+      return q ? tUtil('tools.searchLogs.withQuery', { query: q }) : tUtil('tools.searchLogs.default');
     }
     case 'log_analyzer':
     case 'output_analyzer':
-      return 'Analyzing logs';
+      return tUtil('tools.analyzeLogs');
     case 'diagnoser':
     case 'diagnose':
-      return 'Diagnosing issue';
+      return tUtil('tools.diagnose');
     case 'video_analyzer':
     case 'video_analyzer_pure':
-      return 'Analyzing screen recording';
+      return tUtil('tools.video.analyzing');
     case 'extract_segment_metadata': {
       const start = args.start_time !== undefined ? `${args.start_time}s` : '';
       const end = args.end_time !== undefined ? `${args.end_time}s` : '';
-      const range = (start && end) ? ` (${start} - ${end})` : (start ? ` (from ${start})` : '');
-      return `Cropping screen recording segment${range}`;
+      const range = (start && end) ? tUtil('tools.cropSegment.range', { start, end }) : (start ? tUtil('tools.cropSegment.from', { start }) : '');
+      return tUtil('tools.cropSegment.label') + range;
     }
     case 'spawn_sub_agent': {
       const q = args.specific_query || args.query || args.prompt || '';
-      return q ? `Analyzing recording with sub-agent: "${q}"` : 'Analyzing recording with sub-agent';
+      return q ? tUtil('tools.subAgent.withQuery', { query: q }) : tUtil('tools.subAgent.default');
     }
     case 'analyze_audio_only': {
       const q = args.specific_query || args.query || '';
-      return q ? `Analyzing audio track: "${q}"` : 'Analyzing recording audio track';
+      return q ? tUtil('tools.audio.withQuery', { query: q }) : tUtil('tools.audio.default');
     }
     case 'search_history': {
       const q = args.query || '';
       const range = Array.isArray(args.step_range) && args.step_range.length
-        ? ` in steps ${args.step_range[0]}–${args.step_range[args.step_range.length - 1]}`
+        ? tUtil('tools.searchHistory.range', { from: args.step_range[0], to: args.step_range[args.step_range.length - 1] })
         : '';
-      return q ? `Searching execution history for "${q}"${range}` : `Searching execution history${range}`;
+      return q ? tUtil('tools.searchHistory.withQuery', { query: q }) + range : tUtil('tools.searchHistory.default') + range;
     }
     case 'replay_steps': {
       const n = args.start_step;
       const end = args.end_step;
       if (n !== undefined && n !== '' && end !== undefined && end !== null && end !== '' && String(end) !== String(n)) {
-        return `Reviewing steps ${n}–${end}`;
+        return tUtil('tools.replay.steps', { from: n, to: end });
       }
-      return n !== undefined && n !== '' ? `Reviewing step ${n}` : 'Reviewing step details';
+      return n !== undefined && n !== '' ? tUtil('tools.replay.step', { n }) : tUtil('tools.replay.default');
     }
     case 'get_step_screenshot': {
       const n = args.step_number;
       const variant = String(args.which || '').toLowerCase();
       if (variant === 'overlay') {
-        return n !== undefined && n !== '' ? `Looking at where step ${n}'s action landed` : 'Looking at where an action landed';
+        return n !== undefined && n !== '' ? tUtil('tools.stepShot.landedAt', { n }) : tUtil('tools.stepShot.landedDefault');
       }
-      const which = variant === 'post' ? 'after' : 'before';
-      return n !== undefined && n !== '' ? `Looking at the screen ${which} step ${n}` : 'Looking at a step screenshot';
+      const which = tUtil(variant === 'post' ? 'tools.stepShot.after' : 'tools.stepShot.before');
+      return n !== undefined && n !== '' ? tUtil('tools.stepShot.atStep', { n, which }) : tUtil('tools.stepShot.default');
     }
     case 'probe_device': {
       const kind = args.kind ? String(args.kind).replace(/_/g, ' ') : '';
-      return kind ? `Reading ${kind} from the device` : 'Reading device state';
+      return kind ? tUtil('tools.probe.withKind', { kind }) : tUtil('tools.probe.default');
     }
     case 'outputter':
     case 'output_synthesis':
-      return 'Synthesizing output report';
+      return tUtil('tools.synthesize');
     case 'web_search': {
       const q = args.query || '';
-      return q ? `Searching web for "${q}"` : 'Searching the web';
+      return q ? tUtil('tools.webSearch.withQuery', { query: q }) : tUtil('tools.webSearch.default');
     }
     case 'read_url':
-      return 'Fetching web page';
+      return tUtil('tools.fetchPage');
     case 'compress_history':
       return getCompressionLabel(tool);
 
     default:
-      return `Executing ${cleanName.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ')}`;
+      return tUtil('tools.executing', { name: cleanName.split('_').map((w: string) => w.charAt(0).toUpperCase() + w.slice(1)).join(' ') });
   }
 }
 
@@ -725,49 +729,49 @@ export function getCompressionLabel(tool: any): string {
   const end = Number(args.end_step);
   const hasRange = Number.isFinite(start) && Number.isFinite(end) && start > 0 && end > 0;
   const range = hasRange
-    ? (start === end ? `step ${start}` : `steps ${start}–${end}`)
-    : 'earlier steps';
+    ? (start === end ? tUtil('tools.compress.rangeStep', { n: start }) : tUtil('tools.compress.rangeSteps', { from: start, to: end }))
+    : tUtil('tools.compress.rangeEarlier');
   const rangeCapitalized = range.charAt(0).toUpperCase() + range.slice(1);
   const status = String(tool?.status || '').toLowerCase();
   const phase = getCompressionPhase(tool);
 
   if (status === 'failed' || phase === 'failed') {
-    return `Couldn't condense ${range} yet; keeping the full record and retrying later`;
+    return tUtil('tools.compress.failed', { range });
   }
   if (status !== 'success') {
     const note = String(args.note || '').toLowerCase();
-    if (note === 'retrying') return `Retrying the memory summary for ${range}…`;
+    if (note === 'retrying') return tUtil('tools.compress.retrying', { range });
     if (note === 'held' || phase === 'ready') {
       const swapAt = Number(args.swap_at_tokens);
       const heldContext = Number(args.context_tokens);
-      const heldParts = [`Short memory for ${range} is ready; keeping the full record until working memory fills up`];
+      const heldParts = [tUtil('tools.compress.held', { range })];
       if (heldContext > 0 && swapAt > 0) {
-        heldParts.push(`≈ ${formatTokenFigure(heldContext)} of ${formatTokenFigure(swapAt)} tokens`);
+        heldParts.push(tUtil('tools.compress.heldTokens', { context: formatTokenFigure(heldContext), budget: formatTokenFigure(swapAt) }));
       }
       return heldParts.join(' · ');
     }
-    return `Condensing ${range} into a short memory to free up room…`;
+    return tUtil('tools.compress.condensing', { range });
   }
 
   const parts: string[] = [];
   const source = Number(args.source_tokens);
   const summary = Number(args.summary_tokens);
   if (args.forced) {
-    parts.push(`${rangeCapitalized} condensed into a recap to free up memory`);
+    parts.push(tUtil('tools.compress.forcedDone', { range: rangeCapitalized }));
   } else {
-    parts.push(`${rangeCapitalized} condensed into a short memory`);
+    parts.push(tUtil('tools.compress.done', { range: rangeCapitalized }));
     if (source > 0 && summary > 0) {
       const factor = source / summary;
-      const factorText = factor >= 2 ? ` (${Math.round(factor)}× smaller)` : '';
-      parts.push(`${formatTokenFigure(source)} → ${formatTokenFigure(summary)} tokens${factorText}`);
+      const factorText = factor >= 2 ? tUtil('tools.compress.smaller', { n: Math.round(factor) }) : '';
+      parts.push(tUtil('tools.compress.tokenStats', { source: formatTokenFigure(source), summary: formatTokenFigure(summary) }) + factorText);
     }
   }
   const context = Number(args.context_tokens);
   const budget = Number(args.context_budget);
   if (context > 0) {
     parts.push(budget > 0
-      ? `working memory ≈ ${formatTokenFigure(context)} of ${formatTokenFigure(budget)} tokens`
-      : `working memory ≈ ${formatTokenFigure(context)} tokens`);
+      ? tUtil('tools.compress.workingMemoryOf', { context: formatTokenFigure(context), budget: formatTokenFigure(budget) })
+      : tUtil('tools.compress.workingMemory', { context: formatTokenFigure(context) }));
   }
   return parts.join(' · ');
 }
@@ -805,13 +809,13 @@ export function getCompressionPhase(tool: any): CompressionPhase {
 export function getCompressionPhaseLabel(tool: any): string {
   switch (getCompressionPhase(tool)) {
     case 'ready':
-      return 'Summary ready; kept in reserve until the context fills up';
+      return tUtil('tools.compress.phase.ready');
     case 'applied':
-      return 'Replaced this stretch with its summary';
+      return tUtil('tools.compress.phase.applied');
     case 'failed':
-      return 'Summary failed; full record kept';
+      return tUtil('tools.compress.phase.failed');
     default:
-      return 'Summarizing this stretch';
+      return tUtil('tools.compress.phase.summarizing');
   }
 }
 
@@ -901,76 +905,76 @@ export function getToolIcon(tool: any): string {
  * Get formatted title for a tool call card
  */
 export function getToolTitle(tool: any): string {
-  if (!tool || !tool.name) return 'Tool Call';
+  if (!tool || !tool.name) return tUtil('tools.title.toolCall');
   const cleanName = tool.name.replace(/^(_)?exec_/, '');
   const name = cleanName.toLowerCase();
   switch (name) {
     case 'click':
     case 'tap':
-      return 'Tapping Element';
+      return tUtil('tools.title.tap');
     case 'click_sequence':
-      return 'Executing Click Sequence';
+      return tUtil('tools.title.clickSequence');
     case 'long_press':
-      return 'Long Pressing Element';
+      return tUtil('tools.title.longPress');
     case 'input_text':
     case 'input':
-      return 'Entering Text';
+      return tUtil('tools.title.input');
     case 'swipe':
     case 'scroll': {
       const args = getToolArgs(tool);
       const dir = args.direction || args.gesture || (typeof args.action === 'string' ? args.action : '');
-      if (dir && isPureDirectionString(dir)) return `Swiping Screen (${String(dir).toUpperCase()})`;
-      return 'Swiping Screen';
+      if (dir && isPureDirectionString(dir)) return tUtil('tools.title.swipeWithDir', { direction: String(dir).toUpperCase() });
+      return tUtil('tools.title.swipe');
     }
     case 'drag':
     case 'drag_and_drop':
-      return 'Dragging Screen';
+      return tUtil('tools.title.drag');
     case 'press_key':
-      return 'Pressing Hardware Key';
+      return tUtil('tools.title.pressKey');
     case 'manage_app':
     case 'launch_app': {
       const args = getToolArgs(tool);
       const rawAction = args.action ? String(args.action).toLowerCase() : '';
-      if (rawAction === 'launch') return 'Launching Application';
-      if (rawAction === 'stop' || rawAction === 'close') return 'Stopping Application';
-      return 'Managing Application';
+      if (rawAction === 'launch') return tUtil('tools.title.launchApp');
+      if (rawAction === 'stop' || rawAction === 'close') return tUtil('tools.title.stopApp');
+      return tUtil('tools.title.manageApp');
     }
     case 'wait_for_delay':
     case 'wait_delay':
-      return 'Waiting for Delay';
+      return tUtil('tools.title.wait');
     case 'wait_for_text':
-      return 'Waiting for Text';
+      return tUtil('tools.title.waitForText');
     case 'object_detection':
-      return 'Locating Elements';
+      return tUtil('tools.title.locate');
     case 'ask_explorer':
-      return 'Searching on Screen';
+      return tUtil('tools.title.searchScreen');
     case 'report_failure_analysis':
-      return 'Investigating Issue';
+      return tUtil('tools.title.investigate');
     case 'run_adb_command':
     case 'run_short_adb_command':
-      return 'Running System Command';
+      return tUtil('tools.title.adb');
     case 'web_search':
-      return 'Web Search';
+      return tUtil('tools.title.webSearch');
     case 'read_url':
-      return 'Fetching Web Page';
+      return tUtil('tools.title.fetchPage');
     case 'search_logs':
     case 'read_logs':
-      return 'Searching Logs';
+      return tUtil('tools.title.searchLogs');
     case 'log_analyzer':
     case 'output_analyzer':
-      return 'Analyzing Logs';
+      return tUtil('tools.title.analyzeLogs');
     case 'diagnoser':
     case 'diagnose':
-      return 'Diagnosing Issue';
+      return tUtil('tools.title.diagnose');
     case 'video_analyzer':
     case 'video_analyzer_pure':
-      return 'Analyzing Screen Recording';
+      return tUtil('tools.title.video');
     case 'extract_segment_metadata':
-      return 'Cropping Screen Recording';
+      return tUtil('tools.title.crop');
     case 'spawn_sub_agent':
-      return 'Delegating Video Analysis';
+      return tUtil('tools.title.subAgent');
     case 'analyze_audio_only':
-      return 'Analyzing Audio Track';
+      return tUtil('tools.title.audio');
     default:
       return cleanName.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
   }
@@ -1037,10 +1041,10 @@ export function getToolTargetText(tool: any): string {
     return args.target;
   }
   if (args.target && typeof args.target === 'number') {
-    return `Element #${args.target}`;
+    return tUtil('tools.elementNo', { n: args.target });
   }
   if (args.index !== undefined) {
-    return `Element #${args.index}`;
+    return tUtil('tools.elementNo', { n: args.index });
   }
   return args.target_text || args.target_description || args.target_class || args.element || args.element_text || (name !== 'input_text' ? args.text : '') || '';
 }
@@ -1049,26 +1053,26 @@ export function getToolTargetText(tool: any): string {
  * Get input label for tools
  */
 export function getToolInputLabel(tool: any): string {
-  if (!tool || !tool.name) return 'Input';
+  if (!tool || !tool.name) return tUtil('tools.inputLabel.input');
   const name = tool.name.toLowerCase().replace(/^(_)?exec_/, '');
   if (name === 'wait_for_delay' || name === 'wait_delay' || name === 'delay' || name === 'wait') {
-    return 'Duration';
+    return tUtil('tools.inputLabel.duration');
   }
   if (name === 'swipe' || name === 'scroll' || name === 'drag' || name === 'drag_and_drop') {
     const args = getToolArgs(tool);
     const dir = args.direction || args.gesture || (typeof args.action === 'string' ? args.action : '');
     if (dir && isPureDirectionString(dir)) {
-      return 'Direction';
+      return tUtil('tools.inputLabel.direction');
     }
-    return 'Input';
+    return tUtil('tools.inputLabel.input');
   }
   if (name === 'press_key' || name === 'press_home' || name === 'press_back') {
-    return 'Key';
+    return tUtil('tools.inputLabel.key');
   }
   if (name === 'input_text' || name === 'input') {
-    return 'Input Text';
+    return tUtil('tools.inputLabel.inputText');
   }
-  return 'Input';
+  return tUtil('tools.inputLabel.input');
 }
 
 /**
@@ -1092,7 +1096,7 @@ export function getToolInputText(tool: any): string {
     return args.time_in_ms ? `${args.time_in_ms}ms` : (args.delay_ms ? `${args.delay_ms}ms` : (args.time ? `${args.time}` : ''));
   }
   if (name === 'long_press' && args.duration) {
-    return `Duration: ${args.duration}ms`;
+    return tUtil('tools.durationValue', { value: args.duration });
   }
   if (name === 'input_text' || name === 'input') {
     return args.text || args.input_text || '';
@@ -1223,14 +1227,14 @@ export function isToolFailed(tool: any): boolean {
  * Get error message for a failed tool
  */
 export function getToolErrorMessage(tool: any): string {
-  if (!tool) return 'Tool Failed';
+  if (!tool) return tUtil('tools.error.toolFailed');
   const args = getToolArgs(tool);
-  if (args.status === 'cannot_fix') return 'Status: cannot_fix';
+  if (args.status === 'cannot_fix') return tUtil('tools.error.cannotFix');
   if (args.error || args.message || args.failure_reason) {
     return args.error || args.message || args.failure_reason;
   }
   if (tool.error || tool.message) return tool.error || tool.message;
-  return 'Action Failed';
+  return tUtil('tools.error.actionFailed');
 }
 
 /**
@@ -1366,7 +1370,7 @@ export function cleanErrorMessage(rawError: any): string {
   }
 
   const errorStr = String(rawError).trim();
-  if (!errorStr) return 'Unknown error';
+  if (!errorStr) return tUtil('tools.error.unknown');
 
   // 1. Try regex extraction for "message": "..."
   const doubleQuoteMsgMatch = errorStr.match(/"message"\s*:\s*"((?:[^"\\]|\\.)*)"/i);
@@ -1418,5 +1422,5 @@ export function cleanErrorMessage(rawError: any): string {
     .replace(/^(?:LLM\s+(?:Request\s+)?Error\s*:\s*)+/i, '')
     .trim();
 
-  return fallback || 'Unknown error';
+  return fallback || tUtil('tools.error.unknown');
 }

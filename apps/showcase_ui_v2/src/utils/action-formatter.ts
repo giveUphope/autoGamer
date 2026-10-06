@@ -18,6 +18,7 @@
  * 仅 import 路径调整；`extractStepReplayFrames` 一并平移供 M4 播放器复用）。
  */
 import type { ActionParam, StepReplayFrame } from '@/types/stream.model';
+import { tUtil } from './i18n';
 import { extractNumbersFromCoordinateValue, isPureDirectionString, parseSequenceCoordinates, unwrapTraceAction } from './image-coords';
 import { cleanErrorMessage, joinTargetDescriptions } from './tool-formatter';
 
@@ -168,60 +169,60 @@ export function getActionIcon(action: any): string {
  */
 export function getActionTitle(action: any): string {
   const act = getActionObject(action);
-  if (!act) return 'Action';
+  if (!act) return tUtil('actions.fallback');
   const name = (act.name || act.action || '').toLowerCase();
   switch (name) {
     case 'tap':
     case 'click':
     case 'tap_element':
     case 'click_element':
-      return 'Tapping Element';
+      return tUtil('actions.title.tap');
     case 'input':
     case 'input_text':
     case 'focus_and_input_text':
-      return 'Entering Text';
+      return tUtil('actions.title.input');
     case 'focus_and_clear_text':
     case 'clear_text':
-      return 'Clearing Text';
+      return tUtil('actions.title.clearText');
     case 'swipe':
     case 'scroll': {
       const actObj = getActionObject(action);
       const args = actObj?.args && typeof actObj.args === 'object' ? actObj.args : {};
       const dir = actObj?.direction || actObj?.gesture || args.direction || args.gesture || (typeof args.action === 'string' ? args.action : '') || (typeof actObj?.action === 'string' && actObj.action !== name ? actObj.action : '');
       if (dir && isPureDirectionString(dir)) {
-        return `Swiping Screen (${String(dir).toUpperCase()})`;
+        return tUtil('actions.title.swipeWithDir', { direction: String(dir).toUpperCase() });
       }
-      return 'Swiping Screen';
+      return tUtil('actions.title.swipe');
     }
     case 'drag':
     case 'drag_and_drop':
-      return 'Dragging Screen';
+      return tUtil('actions.title.drag');
     case 'press_key':
     case 'press_home':
     case 'press_back':
-      return 'Pressing Hardware Key';
+      return tUtil('actions.title.pressKey');
     case 'launch_app':
     case 'open_app':
-      return 'Launching Application';
+      return tUtil('actions.title.launchApp');
     case 'stop_app':
     case 'close_app':
-      return 'Stopping Application';
+      return tUtil('actions.title.stopApp');
     case 'manage_app': {
       const actObj = getActionObject(action);
       const actStr = (actObj?.action || actObj?.args?.action || '').toLowerCase();
-      if (actStr === 'launch') return 'Launching Application';
-      if (actStr === 'stop' || actStr === 'close') return 'Stopping Application';
-      return 'Managing Application';
+      if (actStr === 'launch') return tUtil('actions.title.launchApp');
+      if (actStr === 'stop' || actStr === 'close') return tUtil('actions.title.stopApp');
+      return tUtil('actions.title.manageApp');
     }
     case 'wait_for_delay':
     case 'delay':
     case 'wait':
-      return 'Waiting for Delay';
+      return tUtil('actions.title.wait');
     case 'long_press':
     case 'long_press_on':
-      return 'Long Pressing Element';
+      return tUtil('actions.title.longPress');
     case 'click_sequence':
-      return 'Clicking Sequence';
+      return tUtil('actions.title.clickSequence');
     default:
       return name.replace(/_/g, ' ').replace(/\b\w/g, (c: string) => c.toUpperCase());
   }
@@ -267,27 +268,27 @@ export function getActionTargetText(action: any): string {
  */
 export function getActionInputLabel(action: any): string {
   const act = getActionObject(action);
-  if (!act) return 'Input';
+  if (!act) return tUtil('actions.inputLabel.input');
   const name = (act.name || act.action || '').toLowerCase();
   if (name.includes('delay') || name.includes('wait')) {
-    return 'Duration';
+    return tUtil('actions.inputLabel.duration');
   }
   if (name === 'swipe' || name === 'scroll' || name === 'drag' || name === 'drag_and_drop') {
     const actObj = getActionObject(action);
     const args = actObj?.args && typeof actObj.args === 'object' ? actObj.args : {};
     const dir = actObj?.direction || actObj?.gesture || args.direction || args.gesture || (typeof args.action === 'string' ? args.action : '') || (typeof actObj?.action === 'string' && actObj.action !== name ? actObj.action : '');
     if (dir && isPureDirectionString(dir)) {
-      return 'Direction';
+      return tUtil('actions.inputLabel.direction');
     }
-    return 'Input';
+    return tUtil('actions.inputLabel.input');
   }
   if (name === 'press_key' || name.includes('key')) {
-    return 'Key';
+    return tUtil('actions.inputLabel.key');
   }
   if (name === 'input_text' || name.includes('input')) {
-    return 'Input Text';
+    return tUtil('actions.inputLabel.inputText');
   }
-  return 'Input';
+  return tUtil('actions.inputLabel.input');
 }
 
 /**
@@ -453,7 +454,7 @@ export function getActionErrorMessage(action: any, stepData?: any): string {
       }
     }
   }
-  return 'Action Failed';
+  return tUtil('actions.error.actionFailed');
 }
 
 /**
@@ -534,7 +535,7 @@ export function extractActionExtraParams(action: any, cache?: WeakMap<any, Actio
   // Explicitly check duration if available and not already formatted
   const dur = mergedObj.duration || mergedObj.duration_ms;
   if (dur !== undefined && dur !== null && dur !== '') {
-    result.push({ key: 'Duration', value: typeof dur === 'number' ? `${dur}ms` : String(dur) });
+    result.push({ key: tUtil('actions.duration'), value: typeof dur === 'number' ? `${dur}ms` : String(dur) });
   }
 
   for (const [k, v] of Object.entries(mergedObj)) {
@@ -984,7 +985,7 @@ export function extractStepReplayFrames(logsOrSteps: any[]): StepReplayFrame[] {
   for (let i = 0; i < visualCandidates.length; i++) {
     const { stepData, act, preUrl, postUrl, primaryImg } = visualCandidates[i];
     const stepNum = i + 1; // 1-indexed sequential frame number (1, 2, 3...)
-    const title = act ? (getActionTitle(act) || 'Action') : `Step ${stepNum}`;
+    const title = act ? (getActionTitle(act) || tUtil('actions.fallback')) : tUtil('actions.stepTitle', { n: stepNum });
     const coords = act ? getActionCoords(act) : '';
     const targetText = act ? getActionTargetText(act) : '';
     const actionDesc = coords ? `${title} (${coords})` : (targetText ? `${title} (${targetText})` : title);
@@ -998,7 +999,7 @@ export function extractStepReplayFrames(logsOrSteps: any[]): StepReplayFrame[] {
       stepNumber: stepNum,
       rawStepNumber: rawStepNum,
       stepId: String(stepData.step_id || `step-${stepNum}`),
-      title: `Step ${stepNum}: ${title}`,
+      title: tUtil('actions.frameTitle', { n: stepNum, title }),
       actionText: actionDesc,
       action: act,
       actionType: act?.action || act?.name || 'action',
