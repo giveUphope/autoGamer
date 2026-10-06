@@ -6,6 +6,7 @@ import arcoEnUS from '@arco-design/web-vue/es/locale/lang/en-us';
 import arcoZhCN from '@arco-design/web-vue/es/locale/lang/zh-cn';
 
 import { useSessionStore } from '@/stores/session';
+import { useStreamStore } from '@/stores/stream';
 import { useSystemStore } from '@/stores/system';
 
 /**
@@ -24,11 +25,15 @@ const arcoLocale = computed(() => (locale.value === 'en-US' ? arcoEnUS : arcoZhC
 
 const sessionStore = useSessionStore();
 const systemStore = useSystemStore();
+// M3：SSE 实时流单通道连接也随应用根启动。
+const streamStore = useStreamStore();
 sessionStore.start();
 systemStore.start();
+streamStore.start();
 onBeforeUnmount(() => {
   sessionStore.stop();
   systemStore.stop();
+  streamStore.stop();
 });
 </script>
 

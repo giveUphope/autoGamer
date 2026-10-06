@@ -7,7 +7,9 @@
  * - localStorage 会话缓存（restore / persist，key 与 Angular 版一致）
  * - 页面隐藏时暂停轮询、visibilitychange 恢复时立即刷新（§3.3 条款 6）
  *
- * 未平移部分（后续里程碑）：SSE 流与 sessionLogs（M3）、视频状态机（M4）。
+ * 未平移部分（后续里程碑）：SSE 流与 sessionLogs 已由 M3 `stores/stream.ts` 承接；
+ * 视频状态机已由 M4 `stores/player.ts` 承接（本 store 在 finalization / 删除 /
+ * 切换会话时回调 player）。
  * steps/notes/checks/usage 回填自 M2 起由 `stores/timeline.ts` 承接（跟随本 store
  * 的 currentSessionId 联动）。
  *
@@ -18,6 +20,8 @@ import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 
 import { apiGet, apiPost } from '@/services/api';
+import { usePlayerStore } from '@/stores/player';
+import { useStreamStore } from '@/stores/stream';
 import type { ModelInfo, Session, TaskQueueItem } from '@/types/session.model';
 import {
   mapPendingQueue,
@@ -209,9 +213,14 @@ export const useSessionStore = defineStore('session', () => {
         if (data.status === 'paused') {
           const pauseError = data.paused_error || pausedError.value || DEFAULT_PAUSE_ERROR;
           pausedError.value = pauseError;
-          // M3：暂停错误卡片追加到 sessionLogs（appendPausedErrorCard）随流状态接入。
+          // 轮询兜底：与当前查看会话一致时补暂停错误卡（平移自 Angular L1527-1529）。
+          if (data.session_id && currentSessionId.value === data.session_id) {
+            useStreamStore().appendPausedErrorCard(pauseError, data.session_id);
+          }
         } else {
           pausedError.value = null;
+          // 非暂停态清掉暂停卡去重键，允许后续新错误再次成卡（Angular L1532）。
+          useStreamStore().clearPauseCard();
         }
 
         // payload 未变化时跳过赋值：每 2s 生成新数组引用会迫使整条 sessions
@@ -231,7 +240,19 @@ export const useSessionStore = defineStore('session', () => {
           void fetchSessions();
         }
 
-        // M4：运行器由 active 转 idle 时的录像 finalization 联动随播放器状态机接入。
+        // M4：运行器由 active 转 idle（或 paused→非 active）且正以 live 投屏查看
+        // 该会话时，立即转入录像 finalization 轮询（平移自 Angular L1571-1580）。
+        const playerStore = usePlayerStore();
+        if (
+          !isActive
+          && (oldStatus === 'running' || oldStatus === 'paused')
+          && oldRunningSessionId
+          && playerStore.isVideoWindowOpen
+          && playerStore.isVideoSession(oldRunningSessionId)
+          && playerStore.recordingPlaybackStatus === 'live'
+        ) {
+          playerStore.beginRecordingFinalization(oldRunningSessionId);
+        }
 
         // 用户未显式 pin 历史会话时，自动选中运行中的会话
         if (isActive && data.session_id) {
@@ -367,7 +388,13 @@ export const useSessionStore = defineStore('session', () => {
       pendingQueue.value = [];
     }
 
-    // M3：标记目标会话未完成的 llm_stream 为已结束（flushStreamChunks）随流状态接入。
+    // M3：复位重试状态（平移自 Angular stopTask L529 的 isRetrying.set(false)）。
+    useStreamStore().resetRetryState();
+    // 查看目标会话（或未指定目标）时：flush 缓冲并把未完成的 llm_stream 全部
+    // 标记为已结束（平移自 Angular stopTask L536-549）。
+    if (!targetSessionId || currentSessionId.value === targetSessionId) {
+      useStreamStore().markStoppedSessionStreamsCompleted();
+    }
 
     // 乐观地从 activeTasks 移除
     if (targetSessionId) {
@@ -427,7 +454,11 @@ export const useSessionStore = defineStore('session', () => {
 
     if (currentSessionId.value === sessionId) {
       selectSession('', false);
-      // M4：关闭打开中的视频窗口随播放器状态机接入。
+      // M4：被删会话正打开视频窗口时关闭播放器（平移自 Angular L639-641）。
+      const playerStore = usePlayerStore();
+      if (playerStore.isVideoWindowOpen) {
+        playerStore.closeVideoPlayer();
+      }
       const runningId = runningSessionId.value;
       if (runningId && agentStatus.value === 'running') {
         selectSession(runningId, false);
@@ -502,6 +533,14 @@ export const useSessionStore = defineStore('session', () => {
       return;
     }
     currentSessionId.value = sessionId;
+    // 切会话重置暂停状态（平移自 Angular selectSession L742-743）。
+    isPaused.value = false;
+    pausedError.value = null;
+    // M4：视频窗口打开时随切换刷新为新会话的录像 / 投屏（平移自 Angular L747-750）。
+    const playerStore = usePlayerStore();
+    if (playerStore.isVideoWindowOpen) {
+      playerStore.openVideoPlayer(sessionId);
+    }
     // notes/checks/steps 快照拉取由 stores/timeline.ts 监听 currentSessionId 触发（M2）。
   }
 
@@ -595,5 +634,8 @@ export const useSessionStore = defineStore('session', () => {
     clearAllHistory,
     selectSession,
     clearUserPinnedSession,
+    // 供 stores/stream.ts（M3）延迟调用的内部方法
+    setSessionStatus,
+    invalidateStatusSignatures,
   };
 });

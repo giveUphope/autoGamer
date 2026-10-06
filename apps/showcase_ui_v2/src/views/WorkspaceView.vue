@@ -3,6 +3,7 @@ import { onBeforeUnmount, ref } from 'vue';
 
 import AppNav from '@/components/AppNav.vue';
 import CommandDock from '@/components/CommandDock.vue';
+import FloatingPlayer from '@/components/FloatingPlayer.vue';
 import AgentTimeline from '@/components/timeline/AgentTimeline.vue';
 import TaskQueuePanel from '@/components/TaskQueuePanel.vue';
 
@@ -81,6 +82,8 @@ onBeforeUnmount(detachDragListeners);
       </aside>
     </a-layout>
     <CommandDock />
+    <!-- M4 浮动播放器：开合由 player store 的 isVideoWindowOpen 驱动（组件内部 v-if 控制） -->
+    <FloatingPlayer />
   </a-layout>
 </template>
 

@@ -2,17 +2,33 @@ import { mount } from '@vue/test-utils';
 import ArcoVue from '@arco-design/web-vue';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
+import { reactive } from 'vue';
 import { createI18n } from 'vue-i18n';
 
 import zhCN from '../../locales/zh-CN';
 import { useSessionStore } from '../../stores/session';
+import { useTimelineStore } from '../../stores/timeline';
+import type { LLMStreamResetEventData } from '../../types/stream.model';
 import AgentTimeline from './AgentTimeline.vue';
 
 /**
- * 组件冒烟：AgentTimeline（M2）挂载渲染——空态、步骤时间线、checker 面板、
- * 笔记 tab 与任务报告卡。api mock 与 store 层一致，聚焦渲染路径无运行时错误。
+ * 组件冒烟：AgentTimeline（M2/M3）挂载渲染——空态、步骤时间线、checker 面板、
+ * 笔记 tab 与任务报告卡；M3 追加实时流状态（planning loader、LLM 重试警示条、
+ * 任务暂停卡、断流重置提示）。api mock 与 store 层一致，聚焦渲染路径无运行时错误。
  */
 vi.mock('@/services/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+
+// stream store 由 M3 数据层并行开发：按导出契约 mock（isRetrying / retryInfo /
+// streamResetEvent），测试只消费契约不依赖其实现细节。
+const mockStreamState = reactive({
+  isRetrying: false,
+  retryInfo: null as { attempt: number; max_retries: number; delay: number } | null,
+  streamResetEvent: null as LLMStreamResetEventData | null,
+});
+
+vi.mock('@/stores/stream', () => ({
+  useStreamStore: () => mockStreamState,
+}));
 
 import { apiGet } from '@/services/api';
 
@@ -170,5 +186,117 @@ describe('AgentTimeline (M2)', () => {
     await wrapper.find('.notes-btn').trigger('click');
     await vi.waitFor(() => expect(document.body.textContent || '').toContain('battery level visible'));
     expect(document.body.textContent || '').toContain('Plan');
+  });
+});
+
+describe('AgentTimeline (M3 实时流)', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    apiGetMock.mockReset();
+    // 空后端：任意会话的 steps/checks/notes/startup_progress 均为空
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/api/sessions') return Promise.resolve([]);
+      if (url.startsWith('/api/sessions/')) return Promise.resolve([]);
+      return Promise.resolve({});
+    });
+    mockStreamState.isRetrying = false;
+    mockStreamState.retryInfo = null;
+    mockStreamState.streamResetEvent = null;
+  });
+
+  /** 挂载并选中运行中的空会话（无任何日志）。 */
+  async function mountRunningEmptySession() {
+    const wrapper = mountTimeline();
+    const sessionStore = useSessionStore();
+    sessionStore.agentStatus = 'running';
+    sessionStore.runningSessionId = 'sess-empty';
+    sessionStore.selectSession('sess-empty', false);
+    return wrapper;
+  }
+
+  it('shows the planning loader while running with no logs', async () => {
+    const wrapper = await mountRunningEmptySession();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('正在规划下一步…'));
+  });
+
+  it('hides the planning loader while an llm_stream chunk is incomplete', async () => {
+    const wrapper = await mountRunningEmptySession();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('正在规划下一步…'));
+    const timelineStore = useTimelineStore();
+    timelineStore.sessionLogs.push({
+      type: 'llm_stream',
+      timestamp: new Date().toISOString(),
+      session_id: 'sess-empty',
+      data: { execution_id: 'e1', text: 'partial answer', stream_type: 'text', isCompleted: false },
+    });
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('正在规划下一步…'));
+  });
+
+  it('hides the planning loader after session_ended', async () => {
+    const wrapper = await mountRunningEmptySession();
+    await vi.waitFor(() => expect(wrapper.text()).toContain('正在规划下一步…'));
+    const timelineStore = useTimelineStore();
+    timelineStore.sessionLogs.push({
+      type: 'session_ended',
+      timestamp: new Date().toISOString(),
+      session_id: 'sess-empty',
+      data: {},
+    });
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('正在规划下一步…'));
+  });
+
+  it('shows the paused card with resume action while viewing the paused task', async () => {
+    const wrapper = await mountRunningEmptySession();
+    const sessionStore = useSessionStore();
+    sessionStore.agentStatus = 'paused';
+    sessionStore.isPaused = true;
+    sessionStore.pausedError = 'AI model request failed. The task is paused.';
+    await vi.waitFor(() => expect(wrapper.text()).toContain('任务已暂停'));
+    expect(wrapper.text()).toContain('AI model request failed. The task is paused.');
+    expect(wrapper.text()).toContain('继续任务');
+    expect(wrapper.text()).toContain('任务已暂停 · 没有正在执行的步骤');
+
+    // 查看非当前运行会话时恢复卡不显示（isViewingPausedTask 条件）
+    sessionStore.selectSession('sess-other', false);
+    await vi.waitFor(() => expect(wrapper.text()).not.toContain('继续任务'));
+  });
+
+  it('renders the retrying banner assembled from retryInfo', async () => {
+    const wrapper = mountTimeline();
+    mockStreamState.isRetrying = true;
+    mockStreamState.retryInfo = { attempt: 2, max_retries: 5, delay: 2.5 };
+    await vi.waitFor(() => expect(wrapper.text()).toContain('AI 服务暂时繁忙'));
+    expect(wrapper.text()).toContain('（第 2/5 次尝试）');
+    expect(wrapper.text()).toContain('将在 2.5s 后重试');
+
+    // 整数延迟不带 .0
+    mockStreamState.retryInfo = { attempt: 1, max_retries: 3, delay: 2 };
+    await vi.waitFor(() => expect(wrapper.text()).toContain('将在 2s 后重试'));
+  });
+
+  it('renders the stream reset notice on a reset llm_stream block', async () => {
+    const wrapper = mountTimeline();
+    const sessionStore = useSessionStore();
+    sessionStore.selectSession('sess-empty', false);
+    // 等待会话装载完成（adoptSession 为异步 watch，先等空态稳定再注入 live 日志）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('未选择会话活动'));
+    const timelineStore = useTimelineStore();
+    timelineStore.sessionLogs.push({
+      type: 'llm_stream',
+      timestamp: new Date().toISOString(),
+      session_id: 'sess-empty',
+      data: {
+        execution_id: 'e1',
+        text: 'The model was interrupted mid answer',
+        stream_type: 'text',
+        isCompleted: false,
+        isReset: true,
+      },
+    });
+    // resetMessage 缺省时回退 DEFAULT_STREAM_RESET_MESSAGE（后端语义文案，不做 i18n）
+    await vi.waitFor(() =>
+      expect(wrapper.text()).toContain('A request error occurred during output generation'),
+    );
   });
 });

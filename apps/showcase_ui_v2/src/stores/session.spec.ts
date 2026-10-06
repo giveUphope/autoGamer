@@ -103,6 +103,9 @@ describe('session store — 停止 / 恢复 / 提交（用例平移自 agent.ser
       rawSessions: [{ session_id: 'session-1', status: 'paused', initial_goal: '', start_time: 1 }],
       agentStatus: 'paused',
       runningSessionId: 'session-1',
+      // Angular 对应用例（agent.service.spec.ts L192）桩掉了 fetchStatus；
+      // 这里放行真实回查，需选中该会话避免自动跟随触发切换（M3 起切会话会重置暂停态）。
+      currentSessionId: 'session-1',
       isPaused: true,
       pausedError: '503 unavailable',
     });

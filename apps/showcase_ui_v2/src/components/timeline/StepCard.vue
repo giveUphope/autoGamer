@@ -2,6 +2,7 @@
 import { computed, reactive } from 'vue';
 import { useI18n } from 'vue-i18n';
 import {
+  IconCamera,
   IconCheckCircle,
   IconCloseCircle,
   IconDown,
@@ -10,8 +11,10 @@ import {
   IconPlayArrow,
 } from '@arco-design/web-vue/es/icon';
 
+import { usePlayerStore } from '@/stores/player';
 import { useSessionStore } from '@/stores/session';
 import { useTimelineStore } from '@/stores/timeline';
+import { DEFAULT_STREAM_RESET_MESSAGE } from '@/types/stream.model';
 import type { StepBlock, StepEvent, ActionParam } from '@/types/stream.model';
 import {
   extractActionExtraParams,
@@ -35,6 +38,7 @@ import {
 import {
   cleanErrorMessage,
   extractToolExtraParams,
+  formatVideoTime,
   getAdbCommandLine,
   getAdbCwd,
   getAdbTerminalId,
@@ -51,12 +55,14 @@ import {
   getToolKey,
   getToolTargetText,
   getToolTitle,
+  getVideoAnalysisView,
   isAdbCommandTool,
   isCompressionTool,
   isDeviceActionTool,
   isHumanThinking,
   isNoteTool,
   isToolFailed,
+  isVideoTool,
   shouldShowTool,
   getUniqueGenericTools,
 } from '@/utils/tool-formatter';
@@ -81,6 +87,7 @@ const emit = defineEmits<{ (e: 'open-note', key: string): void }>();
 
 const sessionStore = useSessionStore();
 const timelineStore = useTimelineStore();
+const playerStore = usePlayerStore();
 
 // ---- 折叠状态（Angular 的 expandedActionCards / collapsedStreams 的组件内等价物） ----
 const expandedCards = reactive(new Set<string>());
@@ -142,6 +149,15 @@ const nativeThinking = computed<string | null>(() => {
 const rawThinking = computed<string | null>(() => {
   const text = props.block.data?.operator_raw_thinking;
   return typeof text === 'string' && text.trim() && isHumanThinking(text) ? text : null;
+});
+
+// ---- 断流重置提示（M3：llm_stream 块被服务端重置时，聚合器把 isReset / resetMessage
+// 透传到 block.data；文案优先后端 resetMessage，缺省 DEFAULT_STREAM_RESET_MESSAGE） ----
+const streamResetNotice = computed<string | null>(() => {
+  const data = props.block.data;
+  if (!data?.isReset) return null;
+  const message = data.resetMessage || DEFAULT_STREAM_RESET_MESSAGE;
+  return typeof message === 'string' && message.trim() ? message : DEFAULT_STREAM_RESET_MESSAGE;
 });
 
 // ---- 工具行辅助 ----
@@ -276,6 +292,39 @@ function hasToolDetails(item: StepEvent): boolean {
   );
 }
 
+// ---- M4：video_analysis 工具行 → 打开录像回放（平移自 Angular onVideoToolClick L1547-1553） ----
+
+/** 视频分析请求区间标签（平移自 getVideoAnalysisRangeLabel；无区间时回退「屏幕录像」）。 */
+function videoRangeLabel(tool: any): string {
+  const range = getVideoAnalysisView(tool)?.requestedRange;
+  if (!range) return t('workspace.player.screenRecording');
+  return `${formatVideoTime(range.start)}–${formatVideoTime(range.end)}`;
+}
+
+function videoPillTitle(tool: any): string {
+  return t('workspace.player.openAtRange', { range: videoRangeLabel(tool) });
+}
+
+/** 分段保存进度（平移自 getVideoAnalysisDetail 的 partial/running 文案）。 */
+function videoDetailText(tool: any): string {
+  const view = getVideoAnalysisView(tool);
+  if (!view || view.totalCount <= 1) return '';
+  if (view.outcome === 'running' || view.outcome === 'recovering' || view.outcome === 'partial') {
+    return view.completedCount > 0
+      ? t('workspace.player.segmentsSaved', { completed: view.completedCount, total: view.totalCount })
+      : '';
+  }
+  return '';
+}
+
+function onVideoToolClick(tool: any): void {
+  const curSessionId = sessionStore.currentSessionId;
+  if (curSessionId) {
+    const start = getVideoAnalysisView(tool)?.requestedRange?.start;
+    playerStore.openVideoPlayer(curSessionId, undefined, undefined, start);
+  }
+}
+
 function resumePausedTask(): void {
   void sessionStore.resumeTask();
 }
@@ -289,6 +338,12 @@ function resumePausedTask(): void {
       </a-tag>
       <span v-if="durationSeconds" class="meta-item">{{ t('workspace.timeline.workedFor', { seconds: durationSeconds }) }}</span>
       <span v-if="tokenCount" class="meta-item" :title="formatTokenCount(tokenCount)">{{ formatTokenCount(tokenCount) }}</span>
+    </div>
+
+    <!-- 断流重置提示（M3：isReset 透传自 llm_stream 聚合块，后端语义文案不 i18n） -->
+    <div v-if="streamResetNotice" class="reset-row" role="alert">
+      <icon-exclamation-circle />
+      <span>{{ streamResetNotice }}</span>
     </div>
 
     <!-- Thought（原生思考流） -->
@@ -563,6 +618,17 @@ function resumePausedTask(): void {
                   <icon-file />
                   {{ getToolKey(item.data) }}
                 </a>
+                <!-- 视频分析区间 pill：点击打开录像回放并定位到请求区间（M4） -->
+                <a
+                  v-if="isVideoTool(item.data)"
+                  class="tool-key-pill video-pill"
+                  :title="videoPillTitle(item.data)"
+                  @click.stop="onVideoToolClick(item.data)"
+                >
+                  <icon-camera />
+                  {{ videoRangeLabel(item.data) }}
+                </a>
+                <span v-if="videoDetailText(item.data)" class="video-detail">· {{ videoDetailText(item.data) }}</span>
                 <span v-if="getToolAgentName(item.data)" class="tool-agent">· {{ getToolAgentName(item.data) }}</span>
               </span>
             </div>
@@ -592,11 +658,11 @@ function resumePausedTask(): void {
                     <span class="detail-value command-value"><code>{{ adbCommandValue(item.data) }}</code></span>
                   </div>
                   <div v-if="getAdbCwd(item.data)" class="detail-row">
-                    <span class="detail-label">Cwd:</span>
+                    <span class="detail-label">{{ t('workspace.timeline.workingDir') }}:</span>
                     <span class="detail-value">"{{ getAdbCwd(item.data) }}"</span>
                   </div>
                   <div v-if="getAdbTerminalId(item.data)" class="detail-row">
-                    <span class="detail-label">Terminal ID:</span>
+                    <span class="detail-label">{{ t('workspace.timeline.terminalId') }}:</span>
                     <span class="detail-value">"{{ getAdbTerminalId(item.data) }}"</span>
                   </div>
                 </template>
@@ -635,7 +701,7 @@ function resumePausedTask(): void {
                       <span class="grid-value">"{{ getAdbCwd(item.data) }}"</span>
                     </div>
                     <div v-if="getAdbTerminalId(item.data)" class="grid-item">
-                      <span class="grid-label">Terminal ID</span>
+                      <span class="grid-label">{{ t('workspace.timeline.terminalId') }}</span>
                       <span class="grid-value code-pill">{{ getAdbTerminalId(item.data) }}</span>
                     </div>
                   </template>
@@ -847,6 +913,15 @@ function resumePausedTask(): void {
   font-size: 11px;
 }
 
+.video-pill {
+  color: rgb(var(--arcoblue-6));
+}
+
+.video-detail {
+  color: var(--color-text-3);
+  font-size: 11px;
+}
+
 .action-card {
   border: 1px solid var(--color-border-2);
   border-radius: var(--border-radius-medium);
@@ -996,6 +1071,17 @@ function resumePausedTask(): void {
   border-radius: var(--border-radius-small);
   background-color: rgb(var(--red-1) / 60%);
   color: rgb(var(--red-6));
+  font-size: 12.5px;
+}
+
+.reset-row {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  padding: 6px 8px;
+  border-radius: var(--border-radius-small);
+  background-color: rgb(var(--orange-1) / 60%);
+  color: rgb(var(--orange-6));
   font-size: 12.5px;
 }
 

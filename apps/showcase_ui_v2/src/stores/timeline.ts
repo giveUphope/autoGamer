@@ -13,7 +13,9 @@
  * - 会话切换的世代守卫（loadGeneration / snapshotRequestId / pendingSnapshotRequests），
  *   过期的快照响应不落库——平移自 Angular selectSession / backfillSessionSteps。
  *
- * 未平移部分（M3）：SSE 连接与 llm_stream 合批、暂停/重试卡片、session_ended 联动。
+ * SSE 连接、llm_stream 合批、暂停/重试卡片与 session_ended 联动已由
+ * `stores/stream.ts`（M3）承接：其直接读写本 store 导出的 sessionLogs ref 作为
+ * 日志写入口；实时 startup_progress 事件经 appendStartupEvent 幂等合入。
  */
 
 import { computed, ref, watch } from 'vue';
@@ -211,6 +213,14 @@ export const useTimelineStore = defineStore('timeline', () => {
       }
     }
     return merged;
+  }
+
+  /** SSE 实时 startup_progress 事件按 stage 幂等合入对应会话桶（M3，stores/stream.ts 调用）。 */
+  function appendStartupEvent(event: StartupProgressEvent, sessionId: string): void {
+    startupProgressBySession.value = {
+      ...startupProgressBySession.value,
+      [sessionId]: mergeStartupEvents(startupProgressBySession.value[sessionId] || [], [event]),
+    };
   }
 
   // ---- checker 账本回填（§3.3 条款 2：checks_snapshot 幂等）----
@@ -426,6 +436,7 @@ export const useTimelineStore = defineStore('timeline', () => {
     fetchChecks,
     fetchNotes,
     fetchStartupProgress,
+    appendStartupEvent,
     loadRunUsage,
     selectNoteKey,
     buildCheckerSnapshotLogs,

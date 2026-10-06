@@ -46,6 +46,39 @@ export interface Session {
   device_info?: any;
 }
 
+/** 单段屏幕录像：scrcpy 重启（转屏 / 崩溃恢复）时录像切分为多段（M4，平移自 agent.service.ts L30-40）。 */
+export interface VideoSegment {
+  url: string;
+  /** Back-to-back playlist timeline start (seconds); gaps between segments are not represented. */
+  start: number;
+  duration: number;
+  width: number;
+  height: number;
+  /** Session-relative first-frame offset in milliseconds (manifest v2). */
+  offset_ms?: number;
+  duration_ms?: number;
+}
+
+/** 视频播放器回放状态（M4，平移自 agent.service.ts L42-48 的 RecordingPlaybackStatus）。 */
+export type RecordingPlaybackStatus =
+  | 'idle'
+  | 'live'
+  | 'processing'
+  | 'ready'
+  | 'failed'
+  | 'unavailable';
+
+/** `GET /api/sessions/{id}/video` 的响应契约（后端 apps/admin_console/routers/media.py L110-176）。 */
+export interface SessionVideoResponse {
+  session_id: string;
+  status?: 'processing' | 'ready' | 'failed' | 'unavailable';
+  has_video: boolean;
+  video_url: string | null;
+  video_segments?: VideoSegment[];
+  retry_after_ms?: number;
+  message?: string;
+}
+
 export interface AgentStatusResponse {
   status: 'idle' | 'running' | 'paused' | 'completed' | 'offline';
   session_id?: string | null;

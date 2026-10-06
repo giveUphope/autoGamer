@@ -1,8 +1,8 @@
 # ARTEMIS Showcase UI v2（Vue 3 + Arco Design Vue）
 
 ARTEMIS Web 前端从 Angular 22 向 **Vue 3 + Arco Design Vue** 重构的新工程。
-当前状态为 **M2 详情/轨迹**：Angular 版（`apps/showcase_ui`）仍在主路径服务，
-新旧切换发生在 **M6**。迁移方案与决策见
+当前状态为 **M6 收尾完成（迁移完成）**，M0–M6 里程碑全部交付。
+迁移方案与决策见
 [`docs/research/vue3-arco-migration-research.md`](../../../docs/research/vue3-arco-migration-research.md)。
 
 ## 技术栈（决策 D4 / 报告 §3.1）
@@ -21,13 +21,14 @@ ARTEMIS Web 前端从 Angular 22 向 **Vue 3 + Arco Design Vue** 重构的新工
 ## 常用命令
 
 ```bash
-npm install        # 安装依赖
-npm run dev        # 开发服务器（http://localhost:5173，API 代理到 127.0.0.1:8000）
-npm run build      # 类型检查 + 产物构建，输出到 dist/browser/
-npm run preview    # 本地预览构建产物
-npm run test       # Vitest 单次运行
-npm run test:watch # Vitest watch 模式
-npm run typecheck  # 仅 vue-tsc 类型检查
+npm install          # 安装依赖
+npm run dev          # 开发服务器（http://localhost:5173，API 代理到 127.0.0.1:8000）
+npm run build        # 类型检查 + 产物构建，输出到 dist/browser/
+npm run sync:resources # 把 dist/browser/ 同步到 wheel 回退目录 artemis/resources/showcase_ui（发布动作，手动执行）
+npm run preview      # 本地预览构建产物
+npm run test         # Vitest 单次运行
+npm run test:watch   # Vitest watch 模式
+npm run typecheck    # 仅 vue-tsc 类型检查
 ```
 
 ## 与 FastAPI 的集成
@@ -42,7 +43,8 @@ npm run typecheck  # 仅 vue-tsc 类型检查
   `dist/browser`，SPA history 回退由 catch-all 路由 `serve_showcase_spa`
   的 index.html 兜底天然支持，**后端零改动**（报告 §4.1）。
 - **wheel 回退产物**：`artemis/resources/showcase_ui` 是 wheel 安装态的
-  回退目录，切换上线时需将 Vue 产物同步进去（M6 checklist，报告 §4.2）。
+  回退目录，已随 M6 用 `npm run sync:resources` 同步为 Vue 产物（脚本机制与
+  回退手段见下文「M6 完成范围」，报告 §4.2）。
 
 ## 路由
 
@@ -53,25 +55,34 @@ npm run typecheck  # 仅 vue-tsc 类型检查
 | `/check` | 重定向到 `/workspace` | 旧版流视图，已淘汰 |
 | 其余 | 重定向到 `/` | catch-all |
 
-## 目录结构（M0）
+## 目录结构（M6 终态）
 
 ```
 src/
-  main.ts          入口：Pinia / Router / i18n / Arco 注册，body 暗色属性
-  App.vue          a-config-provider（Arco zh-CN locale + theme="dark"）+ router-view
-  router/          路由表
-  stores/          Pinia 实例注册（M1 起按 session/stream/player/system 拆分）
-  locales/         vue-i18n（zh-CN 默认，en-US 键集由测试锁定）
-  styles/          全局样式入口（Arco 暗色基调）
-  types/           从 Angular core/models 原样平移的 5 个类型契约文件
-  views/           LauncherView / WorkspaceView（M0 占位）
-  test/            Vitest 环境垫片
+  main.ts               入口：Pinia / Router / i18n / Arco 注册，body 暗色属性
+  App.vue               a-config-provider（Arco locale 随 vue-i18n 切换）+ router-view
+  router/               路由表
+  stores/               session / stream / player / system / timeline
+  services/             api.ts（fetch 封装）
+  utils/                会话合并 / 流聚合 / markdown / 录像时间轴 / 坐标叠加等纯函数
+  locales/              vue-i18n（zh-CN 默认，en-US 键集由测试锁定）
+  styles/               全局样式入口（Arco 暗色基调）
+  types/                自 Angular core/models 原样平移的类型契约文件
+  components/           AppNav / TaskQueuePanel / CommandDock / FloatingPlayer
+    timeline/           AgentTimeline / StepCard / CheckerPanel / NotesPanel 等
+    diagnostics/        DiagnosticsWizard 三步向导（环境 / 凭据 / 设备）
+  views/                LauncherView / WorkspaceView
+  test/                 Vitest 环境垫片
+scripts/
+  sync-wheel-resources.mjs       dist/browser → wheel 回退目录同步脚本（Node ESM，零依赖）
+  sync-wheel-resources.spec.mjs  脚本 CLI 行为测试（--src/--dest 注入临时目录）
+public/                 favicon.ico / logo.png / logo.svg（构建时拷入 dist/browser/）
 ```
 
 ## 里程碑
 
-M0 脚手架 → M1 会话列表/队列 → M2 详情/轨迹（当前）→ M3 SSE 实时流 →
-M4 回放/投屏 → M5 系统诊断 → M6 i18n/主题/打包收尾与切换。
+M0 脚手架 → M1 会话列表/队列 → M2 详情/轨迹 → M3 SSE 实时流 →
+M4 回放/投屏 → M5 系统诊断 → **M6 i18n/主题/打包收尾与切换（全部完成）**。
 
 ## M1 完成范围（骨架 + 会话列表/队列/任务提交）
 
@@ -161,8 +172,199 @@ src/
 
 ### 已知边界（M3/M4 接入）
 
-- 无实时流（SSE/打字机/暂停重试卡片/planning loader）——`stores/timeline.ts` 的日志
-  合并规则已按 live 到达的形态实现，M3 接入 `llm_stream` 时复用。
+- ~~无实时流（SSE/打字机/暂停重试卡片/planning loader）~~ —— SSE/暂停重试卡片/planning loader
+  已随 **M3** 接入（见下节）；逐字符打字机动画见 M3 已知边界。
 - 录像按钮 / step 帧回放 / canvas 坐标叠加在 M4（`extractStepReplayFrames` 等纯函数已平移）。
-- 工具行 / 动作卡内由 util 生成的描述文案（如 "Tapping Element"）暂保持英文，
-  深度 i18n 随 M6 收尾统一处理；组件级界面文案已全部走 i18n（zh-CN/en-US 键集一致）。
+- 工具行 / 动作卡内由 util 生成的描述文案（如 "Tapping Element"）保持英文——
+  M6 终审确认其为长期边界（见下文 M6 已知边界）；组件级界面文案已全部走 i18n
+  （zh-CN/en-US 键集一致）。
+
+## M3 完成范围（SSE 实时流）
+
+> 对应调研报告 §5.3 的 M3 行与 §3.3 运行时语义条款 1 / 2 / 5。
+> 验收标准：实时流逐事件对照无缺帧；停止/暂停恢复/`llm_retrying` 卡片正确；
+> 断线重连后快照 + live 合并无重复。
+
+### 交付内容
+
+| 模块 | 文件 | 说明 |
+| --- | --- | --- |
+| SSE store | `src/stores/stream.ts` | 单通道 `EventSource('/api/stream')`（幂等 `start()` / `stop()`；断线依赖浏览器原生重连）；**17 种事件逐条平移**（自 Angular `agent.service.ts` L762-1436）：`llm_stream` 合批（可见 80ms / 页面隐藏 500ms，按 `execution_id|stream_type` 键）、**非流事件先 flush 再落库**（§3.3 条款 1）、新 execution 关闭同泳道（stream_type + parent_trace_id）未完成流、`trace_recorded` 按 trace_id 就地去重、note 工具 trace 触发 `fetchNotes`、`llm_stream_reset` 丢弃缓冲并标记 `isReset/resetMessage`、`llm_retrying` 合成重试 trace（request_id + scheduled_at 去重）、`task_paused/task_resumed` 状态机与暂停卡合成（session+error 去重）、`session_ended` 终态映射（cancelled/failed/completed）与全局状态推导、`session_started` / `startup_progress` **自动跟随（pin 语义）**、`info` 事件触发当前会话快照对账（断线重连后 §3.3 条款 2 幂等回填）、其余事件按 session_id（trim+lowercase）过滤 |
+| store 接线 | `src/stores/session.ts`、`src/stores/timeline.ts` | session 导出 `setSessionStatus` / `invalidateStatusSignatures`；`fetchStatus` paused 分支接暂停卡兜底（轮询补偿）、非 paused 清卡片键；`stopTask` 接 `resetRetryState` + `markStoppedSessionStreamsCompleted`（平移自 Angular stopTask L529-549）；`selectSession` 切换时重置暂停态；timeline 新增 `appendStartupEvent`（按 stage 幂等合入会话桶） |
+| 时间线 UI | `src/components/timeline/AgentTimeline.vue` | planning loader（`checkPlanningLoader` 三态，运行中等待下一步时显示）、LLM 重试警示条（由 `retryInfo` 经 i18n 组装，attempt/max 为 0 时省略）、任务暂停卡（`isViewingPausedTask` 条件 + pausedError 文本 + 恢复按钮 `resumeTask()`）、自动滚动（150px 接近底部阈值 + 50ms 合批，流文本盒钉底） |
+| 断流提示 | `src/components/timeline/StepCard.vue` | 流文本块 `data.isReset` 时显示 `resetMessage`（缺省 `DEFAULT_STREAM_RESET_MESSAGE`） |
+| i18n | `src/locales/{zh-CN,en-US}.ts` | 新增 `workspace.timeline.planning / retrying / retryAttempt / retryDelay / pausedTitle`（键集一致性由 `locales.spec.ts` 锁定） |
+| App 启动 | `src/App.vue` | `streamStore.start()` / `stop()` 随根组件生命周期启停 |
+
+### 端点契约（与 Angular `agent.service.ts` 实际行为一致）
+
+- `GET /api/stream`（SSE 单通道；订阅 all/active 时服务端重放 `session_started` +
+  `startup_progress` + 已落库 `step_recorded`；5s keep-alive 心跳；浏览器 EventSource 原生重连，
+  重连成功后的 `info` 事件触发 `backfillSessionSteps` 快照对账）
+
+### 测试
+
+- `src/stores/stream.spec.ts`（新增 22 用例）：合批与 hidden 500ms、泳道关闭、
+  flush-before-append 顺序、reset 语义、重试 trace 去重、暂停卡去重、
+  session_started/ended 状态机与自动跟随（pin 生效时不跟随）、会话过滤、
+  trace_recorded 去重、startup_progress 幂等合并、stop 收尾。
+- `src/components/timeline/AgentTimeline.spec.ts`：追加 planning loader 三态、
+  暂停可见条件、重试文案组装、断流提示渲染 6 用例。
+- `src/stores/session.spec.ts`：适配 stream store 接线（夹具补选中会话）。
+
+### 已知边界（M4/M6 接入）
+
+- ~~`recording_ready` / `recording_failed` 事件分支已预留~~ —— 播放器联动已随 **M4** 接入（见下节）。
+- 逐字符打字机动画与流重置 rewind（Angular typedTexts/rewind 系统）未做：流文本随
+  80ms 合批 flush 增长，M6 打磨期再评估。
+- 重试延时文案保留 1 位小数（Angular 为 2 位）；planning loader 未平移 Angular 的轮换短语。
+
+## M4 完成范围（回放 / 投屏）
+
+> 对应调研报告 §5.3 的 M4 行与 §3.3 运行时语义条款 5。
+> 验收标准：从 step 卡片/工具行点击打开回放并定位到对应帧/时刻；分段录像跨
+> scrcpy 重启无缝播放；live 模式投屏可用。
+
+### 交付内容
+
+| 模块 | 文件 | 说明 |
+| --- | --- | --- |
+| 播放器状态机 | `src/stores/player.ts` | 自 Angular `agent.service.ts` L236-278 / L1776-2011 平移：`openVideoPlayer`（running/paused 会话直接 live 态；seek/stepIndex 预置）、`requestSessionVideo` 四态轮询（generation 守卫 + `retry_after_ms` 500~3000ms 钳制退避 + 120s 超时，§3.3 条款 5）、`beginRecordingFinalization` / `refreshActiveRecording` / `retryVideoRecording`、`videoSeekRequest` / `stepSeekRequest`（requestId 递增）、`consumeVideoAutoplay`、ready 时回写 `rawSessions.video_url/recording_status`；`currentSessionStepFrames` 保留 Angular `stepLogsForReplay` 引用稳定语义（llm_stream 更新不触发帧重提取） |
+| 双时间轴 util | `src/utils/recording-timeline.ts` | 自 Angular `recording-timeline.util.ts` 全文平移：`hasSessionOffsets` / `locateTimelineTime` / `locateSessionTime` / `sessionTimeToTimelineTime`（跨 scrcpy 重启分段的时间换算）；spec 全部用例平移 |
+| 坐标叠加 util | `src/utils/image-overlay.ts` | 自 Angular `image-overlay.util.ts` 平移绘制部分：`drawActionCoordinatesOnOverlay`（非触控动作过滤、sequence 多点连线）+ DOM/SVG marker（`createPointMarker` / `createSequenceConnector` / `createLineMarker`；与 Angular 母本同为 DOM marker 机制，非 canvas 2D） |
+| 类型契约 | `src/types/session.model.ts` | 补 `VideoSegment` / `SessionVideoResponse` / `RecordingPlaybackStatus` |
+| 浮动播放器 | `src/components/FloatingPlayer.vue` | 自 Angular `FloatingVideoPlayerComponent` 平移交互语义、视觉按 Arco token 重做：可拖拽浮窗（最小化/还原/关闭）；**video 模式**分段 `<video>` 顺序无缝续播 + 段内/整场双时间轴 seek + `videoSeekRequest` 消费；**steps 模式**帧回放（pre/post 切换、帧导航、幻灯片播放、`stepSeekRequest` 跳帧、hover/pin 详情卡、图 onload 后坐标叠加）；**live 模式** MJPEG 投屏（`/api/stream/device-live` 时间戳破缓存 + LIVE 徽标）；processing/failed/unavailable 状态条（后端透传 message 优先，固定文案 i18n）+ 重试按钮 |
+| 入口接线 | `src/views/WorkspaceView.vue`、`src/components/timeline/AgentTimeline.vue`、`src/components/timeline/StepCard.vue` | 工作台挂载播放器；时间线工具条"屏幕录像"开关（title 按运行中/准备中/可播放/帧回放四态 i18n）；video_analysis 工具行区间 pill 点击 → `openVideoPlayer(session, undefined, undefined, requestedRange.start)`（平移自 `onVideoToolClick`） |
+| SSE / 会话联动 | `src/stores/stream.ts`、`src/stores/session.ts` | `recording_ready` → `refreshActiveRecording(true)`、`recording_failed` → `notifyRecordingFailed`（会话过滤之前）；`session_ended` 与 fetchStatus active→idle 时 live → `beginRecordingFinalization`；deleteSession 关闭播放器；selectSession 时视频窗口随切换刷新 |
+| i18n | `src/locales/{zh-CN,en-US}.ts` | 新增 `workspace.player.*` 59 键（键集一致性由 `locales.spec.ts` 锁定） |
+
+### 端点契约（与 Angular `agent.service.ts` 实际行为一致）
+
+- `GET /api/sessions/{id}/video` → `{status, has_video, video_url, video_segments, retry_after_ms?, message?}`
+  （processing 时按 `retry_after_ms` 退避轮询，500ms~3s 钳制，120s 超时）
+- `GET /api/stream/device-live`（MJPEG `multipart/x-mixed-replace` 实时投屏）
+- `/videos/{path}` / `/images/{name}`（分段录像与 step 前后截图）
+
+### 测试
+
+- `src/stores/player.spec.ts`（14 用例）：live 分支不请求、四态轮询与退避钳制边界、
+  120s 超时、两代 generation 守卫、finalization 非 active 直接 return、autoplay 消费、
+  帧提取引用稳定。
+- `src/utils/recording-timeline.spec.ts`（9 例，Angular spec 全量平移）、
+  `src/utils/image-overlay.spec.ts`（5 例）。
+- `src/components/FloatingPlayer.spec.ts`（10 例）：live/processing/failed 渲染、
+  后端文案透传优先、帧导航与 stepSeekRequest/videoSeekRequest 消费、跨段续播、
+  StepCard pill 点击 → `openVideoPlayer(..., 12)`。
+- 既有 session / stream / timeline spec 无回归。
+
+### 已知边界（M5/M6 接入）
+
+- `recordingPlaybackMessage` 仅存后端透传文案；Loading/Finalizing/超时等固定文案由 UI
+  按 status 走 i18n（Angular 为 service 内英文硬编码）——与 Angular 的有意偏差。
+- 双时间轴的模式切换在 unavailable 有帧时也引导切 steps（任务要求的新增，Angular 无）；
+  steps 模式的幻灯片播放/倍速为平移范围内的增强。
+- ~~诊断向导（readiness 三步引导 / ADB 管理 / emulator / 凭据）随 M5 接入~~ —— 已随
+  **M5** 交付（见下节）。
+
+## M5 完成范围（系统 / 诊断）
+
+> 对应调研报告 §5.3 的 M5 行与 §3.2 的 SystemService / HomeComponent 映射。
+> 验收标准：空环境跑通引导到就绪；远程 ADB / emulator launch 的 1s 轮询进度正确。
+
+### 交付内容
+
+| 模块 | 文件 | 说明 |
+| --- | --- | --- |
+| 系统 store | `src/stores/system.ts` | 自 Angular `SystemService`（610 行）完整平移：`fetchReadiness`（silent/force 两参、**共享 in-flight 请求**防慢探针排队、**timestamp 单调守卫** + **内容签名去重**——3s 轮询零响应式抖动）、3s 自动轮询（页面隐藏暂停 + visibilitychange 静默刷新）；emulator 生命周期（`launchEmulator` 乐观初始态、**1s 状态轮询**、ready/failed/stopped/idle 停轮询并联动 readiness 刷新、失败合成态）；ADB 管理（`restartAdb` / Wi-Fi `connectWirelessAdb` / 远程 server `fetchAdbServerStatus`·`probeAdbServer`·`connectAdbServer`·`useLocalAdbServer` / `selectDevice`，返回 report 幂等应用）；凭据（`testApiKey` 不落库验证、`updateApiKey` 应用 report 并刷新 model-config-env、`skipCredentialsCheck` 旁路）；三步引导 computed（`isEnvironmentReady` 四条件、`isCredentialsReady`、`isDeviceReady`、`passedStepCount` 等）与 probe lookups（llm/ocr 双 id 兼容）；M1 的 `online` 连通性行为兼容保留并与 readiness 联动 |
+| 类型契约 | `src/types/system.model.ts` | 补 `ModelConfigEnvResponse`（自 Angular `system.service.ts` L581-609） |
+| 诊断向导 | `src/components/diagnostics/` | `DiagnosticsWizard.vue` 容器（三步完成度 + 手动重新检测 + 跳过凭据 + 就绪横幅；模拟器启动期 watch 驱动 1s 状态轮询）；`EnvironmentStep.vue`（python/adb/config/toolchain 四探针卡 + `probe.actions` 三类动作 + 一键安装条 + 设备列表）；`CredentialsStep.vue`（Gemini/自定义二选一、key 显隐/复制/测试/保存、OCR 增强卡、模型摘要 + presets + JSONC 折叠查看器 + .env keys 表格）；`DeviceStep.vue`（四态互斥：就绪+多设备切换 / 启动中进度跟踪（35%/65% 阈值 + 日志流 + 停止）/ 失败诊断卡（重试[远程 ADB 禁用]+重启 ADB+关闭）/ 连接引导（Emulator AVD 列表 · USB · Wi-Fi 表单 · 远程 ADB Server 面板））；`useCopy.ts` / `errors.ts` 辅助 |
+| 契约视图 | `src/components/diagnostics/contract.ts` | 组件侧窄契约 `SystemStoreContract` + **编译期结构断言**（真实 store 必须逐字段兼容，数据层漂移即编译报错） |
+| 启动器集成 | `src/views/LauncherView.vue` | 顶部 diagnostics/launcher 双 tab 切换（就绪时 diagnostics tab 打勾，对齐 Angular 首页）；launcher tab 保留 M1 任务提交与摘要 |
+| i18n | `src/locales/{zh-CN,en-US}.ts` | 新增 `launcher.tabs.*` / `launcher.diagnostics.*` 约 130 键（键集一致性由 `locales.spec.ts` 锁定）；probe 的 title/summary 等后端字段原样透传不 i18n |
+
+### 端点契约（与 Angular `system.service.ts` 实际调用一致）
+
+- `GET /api/system/readiness?force=`（3s 静默轮询 + 手动强制刷新）
+- `GET/POST /api/system/adb/server`、`POST /adb/server/probe|connect|local`、`POST /adb/restart`、`POST /adb/connect`、`POST /devices/select`
+- `GET /api/system/emulator/status`（1s 轮询）、`POST /emulator/launch|stop|dismiss`
+- `POST /api/system/credentials/test`、`POST /api/system/credentials`（provider 沿用母本 `'google'` / `'ocr'`）
+- `GET /api/system/model-config-env`
+
+### 测试
+
+- `src/stores/system.spec.ts`（扩至 27 用例）：silent/force、共享 in-flight、单调守卫、
+  签名去重（引用稳定断言）、3s 轮询 + hidden 跳过 + visibilitychange、emulator 乐观态/
+  1s 轮询四态/失败合成、ADB connect 失败不更新/local query persist/probe 无副作用、
+  凭据 report+modelConfigEnv 刷新/skip 旁路、三步 computed 四条件、stop 清全部定时器。
+- `src/components/diagnostics/DiagnosticsWizard.spec.ts`（11 用例）：三步完成度、
+  emulator 进度阈值与停止、远程 ADB 禁用重试、Wi-Fi 提交、凭据测试/保存、
+  多设备切换、JSONC/env 表格渲染。
+- `src/views/LauncherView.spec.ts`：补双 tab 用例。
+
+### 与 Angular 的偏差
+
+- 环境安装命令改为后端 `probe.actions` 驱动（移除 OS 选择 pills）；多设备切换用
+  `a-select` 替代手写 chips；空 AVD 教程压缩为一条引导提示；window focus 重检与
+  CLI/Android Studio 图文教程未平移。
+- `useLocalAdbServer` 的 `persist` 经 URL query 传递（v2 `apiPost` 无 params 支持，
+  与 `/api/stop?all=` 惯例一致）。
+- `fetchReadiness` 成功/失败顺带联动 M1 的 `online` 连通性小圆点（增强）。
+- 收尾集成：并行开发的桥接层已由 cast 改为编译期结构断言，镜像类型收敛到真实契约。
+
+## M6 完成范围（i18n/主题终审 + wheel 产物同步 + 托管切换收尾）
+
+> 对应调研报告 §5.3 的 M6 行与 §4.2 的"容易遗漏的一步"。迁移至此完成。
+
+### wheel 内置产物同步（脚本机制）
+
+- 脚本：`scripts/sync-wheel-resources.mjs`（Node ESM，零依赖，仅 `node:fs`/`node:path`；
+  CLI 行为由 `scripts/sync-wheel-resources.spec.mjs` 覆盖，支持 `--src <dir>` /
+  `--dest <dir>` 注入路径参数便于测试）。
+- 行为：校验 `dist/browser/index.html` 存在（缺失时报错退出并提示先 `npm run build`）→
+  **清空**目标目录 `artemis/resources/showcase_ui` 全部内容（移除旧 Angular 平铺产物
+  `main-*.js` / `polyfills-*.js` / `styles-*.css`）→ 复制 `dist/browser` 全部内容
+  （含 `assets/` 子目录与 `public/` 拷入的 favicon/logo）→ 打印同步文件清单摘要。
+- 用法：发布流程为 `npm run build && npm run sync:resources`。`sync:resources`
+  是**发布动作，手动执行**，有意不挂进 `build`（避免日常构建误改 wheel 回退目录）。
+- 目标目录判定：`artemis/resources/showcase_ui` 是 wheel 安装态的回退产物
+  （`artemis/resources/__init__.py::get_bundled_showcase_dist` 以 `index.html`
+  存在为准）。同步后旧 Angular 平铺文件在 git 状态中显示为 deleted，属预期变更。
+
+### 托管切换（决策 D2：一次性替换）
+
+- 切换后：FastAPI `server.py:_get_showcase_dist()` 的探测候选已指向本工程
+  `dist/browser`（源码树托管），SPA history 回退由 catch-all 路由的 index.html
+  兜底天然支持；wheel 安装态经 `sync:resources` 同步后由 `artemis/resources/showcase_ui`
+  提供同一份 Vue 产物。开发期仍用 `npm run dev` + 代理（报告 §4.3）。
+- **回退手段**：从 git 历史恢复旧 Angular dist 并重挂——
+  `git checkout <切换前提交> -- apps/showcase_ui/dist artemis/resources/showcase_ui`
+  （或直接恢复 `apps/showcase_ui` 工程 `npm run build` 后重挂托管候选）。
+  切换是一次性替换，无 /v2 并行子路径（决策 D2）。
+
+### i18n / 主题终审结论
+
+- **i18n**：grep 审计 `src/components/**`、`src/views/**`、`src/App.vue` 的模板
+  属性（`title=` / `placeholder=` / `aria-label=`）与裸文本节点，发现并修复
+  `StepCard.vue` 中 3 处硬编码英文（ADB 动作卡的 `Cwd:`、`Terminal ID:` ×2）
+  → 统一走 `workspace.timeline.workingDir`（既有键）与新增键
+  `workspace.timeline.terminalId`；键集一致性仍由 `locales.spec.ts` 锁定。
+  其余保留项均为专有名词 / 协议标识：`ARTEMIS` 品牌名、`Ctrl + K` 快捷键、
+  `Flash`/`Pro` profile 标识、`verify`/`@end` 笔记协议关键词、`Android` 系统名、
+  probe/model 等后端字段透传值。
+- **主题**：组件样式全部走 Arco token（`var(--color-*)` / `rgb(var(--*-N))`）。
+  白名单保留：`FloatingPlayer.vue` 中视频视口纯黑底（`#000`）与红底白字 LIVE
+  徽标（`#fff`）、纯黑遮罩/阴影（`rgb(0 0 0 / x%)`）——与主题无关的视觉常量；
+  `utils/image-overlay.ts` 截图坐标叠加的红/白标记色（平移自 Angular，绘制在
+  截图像素之上，需对任意截图保持可读，不做主题化）。
+  `main.ts` 的 `body[arco-theme='dark']` 暗色机制与 `src/styles/index.css`
+  token 覆盖核对无缺失。
+
+### 已知边界（长期）
+
+- `src/utils/**` 生成的语义文案（如动作描述 "Tapping Element"、probe 的
+  title/summary 等后端字段）保持原样不 i18n——自 M2 起明确的边界：它们是
+  面向协议/调试的语义标签而非界面文案，深度 i18n 不做。
+- 逐字符打字机动画与流重置 rewind（Angular typedTexts/rewind 系统）未平移
+  （M3 已知边界，流文本以 80ms 合批增长替代）。
+- 主 bundle 超过 Vite 500 kB 分包提示（Arco 全量注册所致），gzip 后约 327 kB，
+  保持全量引入以对齐 Angular 版能力，不做按需拆分优化。

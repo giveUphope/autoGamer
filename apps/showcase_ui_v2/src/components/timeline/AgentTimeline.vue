@@ -1,12 +1,24 @@
 <script setup lang="ts">
-import { computed, nextTick, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconCheckCircle, IconEye, IconFile } from '@arco-design/web-vue/es/icon';
+import {
+  IconCamera,
+  IconCheckCircle,
+  IconEye,
+  IconFile,
+  IconImage,
+  IconLiveBroadcast,
+  IconPauseCircle,
+  IconPlayArrow,
+  IconSync,
+} from '@arco-design/web-vue/es/icon';
 
+import { usePlayerStore } from '@/stores/player';
 import { useSessionStore } from '@/stores/session';
+import { useStreamStore } from '@/stores/stream';
 import { useTimelineStore } from '@/stores/timeline';
 import { buildStartupWorkItems } from '@/utils/startup-progress';
-import { formatTokenCount } from '@/utils/stream-aggregator';
+import { checkPlanningLoader, formatTokenCount } from '@/utils/stream-aggregator';
 import { isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
 import { parseNote } from '@/utils/markdown';
 import type { PhaseBlock, StepBlock } from '@/types/stream.model';
@@ -17,17 +29,20 @@ import RunInfoPopover from './RunInfoPopover.vue';
 import StepCard from './StepCard.vue';
 
 /**
- * 会话时间线容器（对应 Angular AgentStreamComponent 的 M2 子集）：
+ * 会话时间线容器（对应 Angular AgentStreamComponent 的 M2/M3 子集）：
  * - 选中会话变化时由 timeline store 重新拉取 steps/notes/checks 快照并渲染
  *   （快照回填语义见 stores/timeline.ts，§3.3 条款 2）；
  * - 阶段分组（Worked for Xs · tokens）+ StepCard / CheckerPanel 路由；
  * - 启动准备块（startup_progress）与任务报告卡（output.md）；
- * - 顶部工具条：架构 chip（RunInfoPopover）+ 笔记与计划（NotesPanel）。
- * M3 在此容器接入实时流（打字机 / 暂停 / 重试卡片）；M4 接入录像按钮。
+ * - 顶部工具条：架构 chip（RunInfoPopover）+ 笔记与计划（NotesPanel）；
+ * - M3 实时流：planning loader、LLM 重试警示条、任务暂停卡 + 恢复、
+ *   自动滚动（接近底部才跟随，平移自 Angular scheduleAutoScroll）。
  */
 const { t } = useI18n();
 const sessionStore = useSessionStore();
+const streamStore = useStreamStore();
 const timelineStore = useTimelineStore();
+const playerStore = usePlayerStore();
 
 timelineStore.start();
 
@@ -84,6 +99,126 @@ const anyContent = computed(
   () => visiblePhases.value.length > 0 || startupWorkItems.value.length > 0,
 );
 
+// ---- M3 实时流状态（平移自 Angular AgentStreamComponent L444-461 / L573-587）----
+
+/** planning loader（平移自 showPlanningLoader：运行中、无活动流、且查看的是运行会话）。 */
+const showPlanningLoader = computed(() =>
+  checkPlanningLoader(
+    timelineStore.filteredLogs,
+    sessionStore.agentStatus === 'running',
+    !sessionStore.currentSessionId || sessionStore.currentSessionId === sessionStore.runningSessionId,
+  ),
+);
+
+const startupPreparationIsComplete = computed(() => {
+  const items = startupWorkItems.value;
+  return items.length > 0 && !items.some((item) => item.isActive);
+});
+
+/** 加载条展示条件（平移自 Angular html L1410：不在启动准备进行中时才显示）。 */
+const showPlanningRow = computed(() =>
+  showPlanningLoader.value
+  && (startupWorkItems.value.length === 0
+    || startupPreparationIsComplete.value
+    || timelineStore.consolidatedBlocks.length > 0),
+);
+
+/** LLM 重试警示文案（组装自 stream store 的 retryInfo，语义对齐 Angular agent.service L932-933）。 */
+const retryMessage = computed<string | null>(() => {
+  if (!streamStore.isRetrying) return null;
+  const info = streamStore.retryInfo;
+  let text = t('workspace.timeline.retrying');
+  if (info) {
+    const attempt = Number(info.attempt) || 0;
+    const maxRetries = Number(info.max_retries) || 0;
+    const delay = Number(info.delay) || 0;
+    if (attempt > 0 && maxRetries > 0) {
+      text += t('workspace.timeline.retryAttempt', { attempt, max: maxRetries });
+    }
+    if (delay > 0) {
+      text += t('workspace.timeline.retryDelay', { delay: formatRetryDelay(delay) });
+    }
+  }
+  return `${text}…`;
+});
+
+/** 重试延迟展示：保留 1 位小数，整数不带 .0（如 2 → "2"、2.5 → "2.5"）。 */
+function formatRetryDelay(delay: number): string {
+  return delay.toFixed(1).replace(/\.0$/, '');
+}
+
+/** 查看中的会话是否为已暂停的当前任务（平移自 isViewingPausedTask：live 事件与轮询状态须一致）。 */
+const isViewingPausedTask = computed(() => {
+  if (!sessionStore.isPaused || sessionStore.agentStatus !== 'paused') return false;
+  const currentSessionId = sessionStore.currentSessionId;
+  return !currentSessionId || currentSessionId === sessionStore.runningSessionId;
+});
+
+/** 主列表可见性：内容之外，实时流状态条（loader / 重试 / 暂停）出现时也展示列表。 */
+const hasListContent = computed(() =>
+  anyContent.value
+  || showPlanningLoader.value
+  || isViewingPausedTask.value
+  || Boolean(retryMessage.value),
+);
+
+// ---- 自动滚动（平移自 Angular scheduleAutoScroll：50ms 合批；仅当用户仍接近底部才跟随主容器）----
+const AUTO_SCROLL_BOTTOM_THRESHOLD = 150;
+const isUserAtBottom = ref(true);
+let autoScrollTimer: ReturnType<typeof setTimeout> | null = null;
+let autoScrollStreamBoxes = false;
+
+function onScrollContainerScroll(): void {
+  const container = scrollContainer.value;
+  if (!container) return;
+  const distanceToBottom = container.scrollHeight - container.scrollTop - container.clientHeight;
+  isUserAtBottom.value = distanceToBottom <= AUTO_SCROLL_BOTTOM_THRESHOLD;
+}
+
+function scheduleAutoScroll(includeStreamBoxes: boolean): void {
+  autoScrollStreamBoxes = autoScrollStreamBoxes || includeStreamBoxes;
+  if (autoScrollTimer) return;
+  autoScrollTimer = setTimeout(() => {
+    autoScrollTimer = null;
+    const includeBoxes = autoScrollStreamBoxes;
+    autoScrollStreamBoxes = false;
+    const container = scrollContainer.value;
+    // 流文本盒（StepCard 的 .stream-text）在流式更新期间始终钉在底部；
+    // 主容器仅在用户未向上滚离底部（150px 阈值）时跟随。
+    const boxes = includeBoxes && container
+      ? Array.from(container.querySelectorAll<HTMLElement>('.stream-text'))
+      : [];
+    const boxTargets = boxes.map((el) => el.scrollHeight);
+    const containerTarget = container && isUserAtBottom.value ? container.scrollHeight : null;
+    boxes.forEach((el, i) => { el.scrollTop = boxTargets[i]; });
+    if (container && containerTarget !== null) {
+      container.scrollTop = containerTarget;
+    }
+  }, 50);
+}
+
+// 有未完成 llm_stream 块（流式更新中）或块/文本变化时触发合批滚动
+// （对应 Angular 的两个 effect：activeStream → includeStreamBoxes、blocks 变化 → 主容器）。
+watch(
+  () => timelineStore.consolidatedBlocks,
+  (blocks) => {
+    const hasActiveStream = blocks.some((block) => Boolean(block?.data) && block.data.isCompleted === false);
+    scheduleAutoScroll(hasActiveStream);
+  },
+);
+
+onMounted(() => {
+  scrollContainer.value?.addEventListener('scroll', onScrollContainerScroll, { passive: true });
+});
+
+onBeforeUnmount(() => {
+  if (autoScrollTimer) {
+    clearTimeout(autoScrollTimer);
+    autoScrollTimer = null;
+  }
+  scrollContainer.value?.removeEventListener('scroll', onScrollContainerScroll);
+});
+
 // ---- 任务报告卡（output.md，平移自 outputterReport / parsedOutputReport） ----
 const outputterReport = computed(() => timelineStore.currentNotes['output.md'] || null);
 const parsedOutputReport = computed(() => (outputterReport.value ? parseNote(outputterReport.value) : null));
@@ -91,6 +226,11 @@ const parsedOutputReport = computed(() => (outputterReport.value ? parseNote(out
 function openOutputterNote(): void {
   timelineStore.selectNoteKey('output.md');
   notesPopoverOpen.value = true;
+}
+
+/** 恢复暂停任务（平移自 Angular resumePausedTask）。 */
+function resumePausedTask(): void {
+  void sessionStore.resumeTask();
 }
 
 // ---- 会话切换后滚动到底部（平移自 Angular 的 setTimeout 滚动） ----
@@ -105,6 +245,33 @@ watch(
     });
   },
 );
+
+// ---- M4 屏幕录像开关（平移自 Angular getScreenRecordingButtonTitle L1555-1574 的各态语义） ----
+const recordButtonTitle = computed<string>(() => {
+  if (sessionStore.isCurrentSessionRunning) return t('workspace.player.recordBtnRunning');
+  if (playerStore.currentSessionRecordingStatus === 'processing') return t('workspace.player.recordBtnProcessing');
+  if (playerStore.currentSessionVideoUrl) return t('workspace.player.recordBtnPlay');
+  if (playerStore.hasCurrentSessionStepFrames) {
+    return playerStore.currentSessionRecordingStatus === 'failed'
+      ? t('workspace.player.recordBtnStepsFailed')
+      : t('workspace.player.recordBtnSteps');
+  }
+  if (playerStore.currentSessionRecordingStatus === 'failed') return t('workspace.player.recordBtnFailed');
+  return t('workspace.player.recordBtnDefault');
+});
+
+const recordButtonIcon = computed(() => {
+  if (sessionStore.isCurrentSessionRunning) return IconLiveBroadcast;
+  if (playerStore.currentSessionRecordingStatus === 'processing') return IconSync;
+  if (playerStore.currentSessionVideoUrl) return IconPlayArrow;
+  if (playerStore.hasCurrentSessionStepFrames) return IconImage;
+  return IconCamera;
+});
+
+const isRecordBtnProcessing = computed(
+  () => !sessionStore.isCurrentSessionRunning && playerStore.currentSessionRecordingStatus === 'processing',
+);
+
 </script>
 
 <template>
@@ -124,6 +291,18 @@ watch(
           </div>
         </template>
       </a-popover>
+      <a-button
+        size="small"
+        class="record-btn"
+        :class="{ 'is-processing': isRecordBtnProcessing }"
+        :title="recordButtonTitle"
+        @click="playerStore.toggleVideoPlayer()"
+      >
+        <template #icon>
+          <component :is="recordButtonIcon" :class="{ 'record-spin': isRecordBtnProcessing }" />
+        </template>
+        {{ t('workspace.player.recordBtnDefault') }}
+      </a-button>
     </div>
 
     <main ref="scrollContainer" class="timeline-content">
@@ -131,12 +310,18 @@ watch(
         <div class="loading-inner">{{ t('workspace.timeline.loadingRunHistory') }}</div>
       </a-spin>
 
-      <div v-else-if="!anyContent" class="empty-state">
+      <div v-else-if="!hasListContent" class="empty-state">
         <a-empty :description="t('workspace.timeline.emptyTitle')" />
         <div class="empty-hint">{{ t('workspace.timeline.emptyHint') }}</div>
       </div>
 
       <div v-else class="logs-list">
+        <!-- LLM 重试警示条（M3：stream store isRetrying 驱动，文案由 retryInfo 组装） -->
+        <div v-if="retryMessage" class="retry-banner" role="alert">
+          <icon-sync class="spin-icon" />
+          <span class="retry-text">{{ retryMessage }}</span>
+        </div>
+
         <!-- 启动准备块 -->
         <div v-if="startupWorkItems.length > 0" class="phase-container startup-phase">
           <div class="phase-header">
@@ -183,6 +368,28 @@ watch(
           </div>
         </div>
 
+        <!-- Planning loader（M3：运行中等待下一步，平移自 Angular html L1410 展示条件） -->
+        <div v-if="showPlanningRow" class="planning-loader" aria-live="polite">
+          <icon-sync class="spin-icon" />
+          <span>{{ t('workspace.timeline.planning') }}</span>
+        </div>
+
+        <!-- 任务暂停卡（M3：isViewingPausedTask，恢复按钮走 sessionStore.resumeTask） -->
+        <div v-if="isViewingPausedTask" class="paused-card" role="alert">
+          <div class="paused-header">
+            <icon-pause-circle />
+            <span class="paused-title">{{ t('workspace.timeline.pausedTitle') }}</span>
+          </div>
+          <div v-if="sessionStore.pausedError" class="paused-error">{{ sessionStore.pausedError }}</div>
+          <div class="paused-footer">
+            <a-button size="small" type="primary" @click="resumePausedTask">
+              <template #icon><icon-play-arrow /></template>
+              {{ t('workspace.timeline.continueTask') }}
+            </a-button>
+            <span class="paused-hint">{{ t('workspace.timeline.resumeHint') }}</span>
+          </div>
+        </div>
+
         <!-- 任务报告卡（output.md，渲染一次于时间线末尾） -->
         <div v-if="parsedOutputReport" class="report-card">
           <div class="report-header">
@@ -222,6 +429,14 @@ watch(
 
 .notes-btn {
   font-size: 12px;
+}
+
+.record-btn {
+  font-size: 12px;
+}
+
+.record-spin {
+  animation: timeline-spin 1.2s linear infinite;
 }
 
 .timeline-content {
@@ -373,5 +588,79 @@ watch(
   padding-bottom: 6px;
   border-bottom: 1px solid var(--color-border-2);
   margin-bottom: 8px;
+}
+
+.retry-banner {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgb(var(--orange-6) / 40%);
+  border-radius: var(--border-radius-medium);
+  background-color: rgb(var(--orange-1) / 40%);
+  color: rgb(var(--orange-6));
+  font-size: 12.5px;
+}
+
+.planning-loader {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 8px 12px;
+  border: 1px dashed var(--color-border-2);
+  border-radius: var(--border-radius-medium);
+  background-color: var(--color-bg-2);
+  color: var(--color-text-2);
+  font-size: 12.5px;
+}
+
+.spin-icon {
+  flex-shrink: 0;
+  animation: timeline-spin 1.2s linear infinite;
+}
+
+@keyframes timeline-spin {
+  from {
+    transform: rotate(0deg);
+  }
+  to {
+    transform: rotate(360deg);
+  }
+}
+
+.paused-card {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 10px 12px;
+  border: 1px solid rgb(var(--orange-6) / 45%);
+  border-radius: var(--border-radius-medium);
+  background-color: var(--color-bg-2);
+}
+
+.paused-header {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: rgb(var(--orange-6));
+  font-weight: 600;
+  font-size: 13px;
+}
+
+.paused-error {
+  color: var(--color-text-1);
+  font-size: 12.5px;
+  overflow-wrap: anywhere;
+}
+
+.paused-footer {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.paused-hint {
+  color: var(--color-text-3);
+  font-size: 12px;
 }
 </style>

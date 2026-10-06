@@ -116,3 +116,37 @@ export interface EmulatorLaunchState {
   logs: string[];
   can_retry: boolean;
 }
+
+/**
+ * model-config-env 响应：artemis.jsonc 配置与 .env 凭据状态
+ * （自 Angular system.service.ts L581-609 原样平移）。
+ */
+export interface ModelConfigEnvResponse {
+  config_path: string;
+  config_filename: string;
+  config_content: string;
+  default_model: {
+    provider?: string;
+    model?: string;
+    thinking_level?: string;
+    fallback?: {
+      provider?: string;
+      model?: string;
+      thinking_level?: string;
+    };
+  };
+  presets: Record<string, {
+    provider: string;
+    model: string;
+    fallback?: { provider: string; model: string };
+  }>;
+  env_path: string;
+  env_filename: string;
+  env_vars: Array<{
+    name: string;
+    provider: string;
+    is_set: boolean;
+    preview: string | null;
+    description: string;
+  }>;
+}
