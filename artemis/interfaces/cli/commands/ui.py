@@ -69,12 +69,10 @@ def _resolve_npm_executable(platform_name: str | None = None) -> str | None:
 
 
 def _showcase_build_required(showcase_dir: Path) -> bool:
-    """Return whether the compiled Angular app is missing or older than its inputs."""
+    """Return whether the compiled Vite app is missing or older than its inputs."""
     base_dist = showcase_dir / "dist"
     candidates = [
-        base_dist / "frontend" / "browser" / "index.html",
         base_dist / "browser" / "index.html",
-        base_dist / "frontend" / "index.html",
         base_dist / "index.html",
     ]
     built_indexes = [path for path in candidates if path.exists()]
@@ -82,7 +80,11 @@ def _showcase_build_required(showcase_dir: Path) -> bool:
         return True
 
     build_time = max(path.stat().st_mtime for path in built_indexes)
-    input_paths = [showcase_dir / "package.json", showcase_dir / "angular.json"]
+    input_paths = [
+        showcase_dir / "package.json",
+        showcase_dir / "vite.config.ts",
+        showcase_dir / "tsconfig.json",
+    ]
     source_dir = showcase_dir / "src"
     if source_dir.exists():
         input_paths.extend(path for path in source_dir.rglob("*") if path.is_file())
@@ -119,7 +121,7 @@ def _run_build_step(console: Console, label: str, cmd: list[str], cwd: Path) -> 
     """Run one build step, relaying its output live and raising on failure.
 
     The child's stdout/stderr are forwarded line by line (ANSI stripped,
-    indented, dimmed) so npm summaries, ``ng build`` progress and any error
+    indented, dimmed) so npm summaries, ``vite build`` progress and any error
     reach the terminal as they happen. On an interactive terminal a spinner
     with the elapsed time keeps ticking through the long silent phases
     (downloads, bundling); without a TTY a plain heartbeat line is printed
@@ -190,11 +192,11 @@ def _run_build_step(console: Console, label: str, cmd: list[str], cwd: Path) -> 
 
 
 def ensure_showcase_built(console: Console) -> None:
-    """Rebuild the Angular Showcase UI when its sources are newer than the dist build."""
+    """Rebuild the Showcase UI when its sources are newer than the dist build."""
     from artemis.config.paths import ROOT_DIR
     from artemis.resources import get_bundled_showcase_dist
 
-    showcase_dir = ROOT_DIR / "apps" / "showcase_ui"
+    showcase_dir = ROOT_DIR / "apps" / "showcase_ui_v2"
     # An installed wheel has no frontend source tree; its immutable build is
     # prepared during packaging and must never trigger npm at runtime.
     if not showcase_dir.is_dir() and get_bundled_showcase_dist() is not None:
@@ -205,7 +207,7 @@ def ensure_showcase_built(console: Console) -> None:
     if not npm_executable:
         return
     console.print(
-        "   [yellow]🎨 Showcase UI sources changed. Compiling Angular Showcase UI...[/yellow]"
+        "   [yellow]🎨 Showcase UI sources changed. Compiling Showcase UI (vite build)...[/yellow]"
     )
     started = time.monotonic()
     try:
@@ -216,7 +218,7 @@ def ensure_showcase_built(console: Console) -> None:
                 [npm_executable, "install", "--no-audit", "--no-fund", "--loglevel=warn"],
                 showcase_dir,
             )
-        _run_build_step(console, "② ng build", [npm_executable, "run", "build"], showcase_dir)
+        _run_build_step(console, "② vite build", [npm_executable, "run", "build"], showcase_dir)
         console.print(
             f"   [green]✓ Showcase UI built in {_format_elapsed(time.monotonic() - started)}."
             "[/green]\n"
@@ -224,7 +226,7 @@ def ensure_showcase_built(console: Console) -> None:
     except Exception as e:
         console.print(
             f"   [red]⚠ Failed to auto-build Showcase UI: {e}[/red]\n"
-            "     [dim]Build it by hand with: cd apps/showcase_ui && npm install && "
+            "     [dim]Build it by hand with: cd apps/showcase_ui_v2 && npm install && "
             "npm run build[/dim]\n"
         )
 

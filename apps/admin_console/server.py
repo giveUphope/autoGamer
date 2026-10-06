@@ -240,15 +240,13 @@ except ImportError:
 
 
 # ------------------------------------------------------------------------------
-# Showcase UI (Angular 19) Unified Single-Port SPA Static Hosting
+# Showcase UI (Vue 3 + Vite) Unified Single-Port SPA Static Hosting
 # ------------------------------------------------------------------------------
 def _get_showcase_dist() -> Path:
     """Return the source build, or the immutable build bundled in a wheel."""
-    base_dist = _workspace_root / "apps" / "showcase_ui" / "dist"
+    base_dist = _workspace_root / "apps" / "showcase_ui_v2" / "dist"
     candidates = [
-        base_dist / "frontend" / "browser",
         base_dist / "browser",
-        base_dist / "frontend",
         base_dist,
     ]
     for candidate in candidates:
@@ -257,7 +255,7 @@ def _get_showcase_dist() -> Path:
     bundled_dist = get_bundled_showcase_dist()
     if bundled_dist is not None:
         return bundled_dist
-    return base_dist / "frontend" / "browser"
+    return base_dist / "browser"
 
 
 def _resolve_static_file(root: Path, relative_path: str) -> Path | None:
@@ -316,13 +314,7 @@ async def serve_showcase_spa(full_path: str):
         if target_file is not None:
             return FileResponse(target_file)
 
-        # Fallback for icons/logos if showcase UI hasn't been built yet
-        public_root = _workspace_root / "apps" / "showcase_ui" / "public"
-        public_file = _resolve_static_file(public_root, clean_path)
-        if public_file is not None:
-            return FileResponse(public_file)
-
-    # Serve Showcase UI Angular SPA index.html
+    # Serve Showcase UI SPA index.html
     index_file = showcase_dist / "index.html"
     if index_file.exists():
         return HTMLResponse(index_file.read_text(encoding="utf-8"))
@@ -379,9 +371,9 @@ async def serve_showcase_spa(full_path: str):
 <body>
     <div class="card">
         <h1>✨ Artemis Showcase UI</h1>
-        <p>The Showcase UI (Angular frontend) has not been built yet.</p>
+        <p>The Showcase UI (Vue 3 frontend) has not been built yet.</p>
         <p>To compile the Showcase UI, run:</p>
-        <p><code>cd apps/showcase_ui && npm install && npm run build</code></p>
+        <p><code>cd apps/showcase_ui_v2 && npm install && npm run build</code></p>
         <p>Or launch using <code>./start.sh</code> or <code>artemis ui</code> to build automatically.</p>
         <a class="btn" href="/admin">Go to Admin Debug Console →</a>
     </div>

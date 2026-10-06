@@ -95,7 +95,7 @@ request_sudo() {
     return 1
 }
 
-# Helper to check if Node.js & npm meet Angular CLI 22 requirement (>= 22.22.0, >= 24.15.0, or >= 26.0.0)
+# Helper to check if Node.js & npm meet the Vite 7 requirement (^20.19.0 || >= 22.12.0)
 is_node_compatible() {
     if ! command -v node >/dev/null 2>&1 || ! command -v npm >/dev/null 2>&1; then
         return 1
@@ -106,12 +106,12 @@ is_node_compatible() {
     local major minor
     major="$(echo "${node_ver}" | cut -d. -f1)"
     minor="$(echo "${node_ver}" | cut -d. -f2)"
-    if [ "${major}" -ge 26 ] 2>/dev/null; then
+    if [ "${major}" -ge 23 ] 2>/dev/null; then
         return 0
-    elif [ "${major}" -ge 24 ] 2>/dev/null; then
-        [ "${minor}" -ge 15 ] 2>/dev/null && return 0
-    elif [ "${major}" -ge 22 ] 2>/dev/null; then
-        [ "${minor}" -ge 22 ] 2>/dev/null && return 0
+    elif [ "${major}" -eq 22 ] 2>/dev/null; then
+        [ "${minor}" -ge 12 ] 2>/dev/null && return 0
+    elif [ "${major}" -eq 20 ] 2>/dev/null; then
+        [ "${minor}" -ge 19 ] 2>/dev/null && return 0
     fi
     return 1
 }
@@ -261,10 +261,9 @@ echo -e "   ${BLUE}📦 Synchronizing Python runtime and project dependencies...
 uv sync --quiet
 
 # 6. Check and build Showcase UI if not already compiled
-SHOWCASE_INDEX="${SCRIPT_DIR}/apps/showcase_ui/dist/frontend/browser/index.html"
-SHOWCASE_INDEX_ALT1="${SCRIPT_DIR}/apps/showcase_ui/dist/browser/index.html"
-SHOWCASE_INDEX_ALT2="${SCRIPT_DIR}/apps/showcase_ui/dist/index.html"
-if [ ! -f "${SHOWCASE_INDEX}" ] && [ ! -f "${SHOWCASE_INDEX_ALT1}" ] && [ ! -f "${SHOWCASE_INDEX_ALT2}" ]; then
+SHOWCASE_INDEX="${SCRIPT_DIR}/apps/showcase_ui_v2/dist/browser/index.html"
+SHOWCASE_INDEX_ALT1="${SCRIPT_DIR}/apps/showcase_ui_v2/dist/index.html"
+if [ ! -f "${SHOWCASE_INDEX}" ] && [ ! -f "${SHOWCASE_INDEX_ALT1}" ]; then
     # First: Try loading existing nvm or user-installed node in environment
     export NVM_DIR="${HOME}/.nvm"
     if [ -s "${NVM_DIR}/nvm.sh" ]; then
@@ -283,7 +282,7 @@ if [ ! -f "${SHOWCASE_INDEX}" ] && [ ! -f "${SHOWCASE_INDEX_ALT1}" ] && [ ! -f "
     if ! is_node_compatible; then
         OS_NAME="$(uname -s)"
         if command -v node >/dev/null 2>&1; then
-            echo -e "   ${YELLOW}⚡ Detected Node.js $(node -v 2>/dev/null), but Angular CLI requires Node.js >= v22.22.0. Upgrading Node.js...${NC}"
+            echo -e "   ${YELLOW}⚡ Detected Node.js $(node -v 2>/dev/null), but Vite requires Node.js ^20.19.0 || >= v22.12.0. Upgrading Node.js...${NC}"
         else
             echo -e "   ${YELLOW}⚡ Node.js/npm not found. Auto-installing Node.js 22 LTS for Showcase UI compilation...${NC}"
         fi
@@ -302,7 +301,7 @@ if [ ! -f "${SHOWCASE_INDEX}" ] && [ ! -f "${SHOWCASE_INDEX_ALT1}" ] && [ ! -f "
 
         # 3. Try Linux package managers with sudo / root
         if ! is_node_compatible && [ "${OS_NAME}" = "Linux" ]; then
-            if request_sudo "install or upgrade Node.js to >= 22.22.0"; then
+            if request_sudo "install or upgrade Node.js to >= 22.12.0"; then
                 SUDO_PREFIX=""
                 if [ "$(id -u)" -ne 0 ]; then SUDO_PREFIX="sudo"; fi
                 if command -v apt-get >/dev/null 2>&1; then
@@ -347,23 +346,14 @@ if [ ! -f "${SHOWCASE_INDEX}" ] && [ ! -f "${SHOWCASE_INDEX_ALT1}" ] && [ ! -f "
 
     if is_node_compatible; then
         echo -e "   ${GREEN}✓ Node.js $(node -v 2>/dev/null) and npm $(npm -v 2>/dev/null) ready.${NC}"
-        echo -e "   ${YELLOW}🎨 Showcase UI build not found. Compiling Angular Showcase UI...${NC}"
+        echo -e "   ${YELLOW}🎨 Showcase UI build not found. Compiling Showcase UI (vite build)...${NC}"
         (
-            cd "${SCRIPT_DIR}/apps/showcase_ui"
+            cd "${SCRIPT_DIR}/apps/showcase_ui_v2"
             npm install --silent
-            # Auto-patch Angular CLI node version constraint if running on Node 22.22.x (e.g. Cloudtop / Debian)
-            CLI_NODE_VERSION="${SCRIPT_DIR}/apps/showcase_ui/node_modules/@angular/cli/src/utilities/node-version.js"
-            if [ -f "${CLI_NODE_VERSION}" ]; then
-                if [ "$(uname -s)" = "Darwin" ]; then
-                    sed -i '' 's/22\.22\.3/22.22.0/g' "${CLI_NODE_VERSION}" 2>/dev/null || true
-                else
-                    sed -i 's/22\.22\.3/22.22.0/g' "${CLI_NODE_VERSION}" 2>/dev/null || true
-                fi
-            fi
             npm run build
         )
     else
-        echo -e "   ${YELLOW}⚠ Could not configure compatible Node.js (>= 22.22.0). Showcase UI will serve fallback build notice.${NC}"
+        echo -e "   ${YELLOW}⚠ Could not configure compatible Node.js (^20.19.0 || >= 22.12.0). Showcase UI will serve fallback build notice.${NC}"
     fi
 fi
 

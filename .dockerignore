@@ -5,9 +5,8 @@
 .ruff_cache
 **/__pycache__
 **/*.pyc
-apps/showcase_ui/.angular
-apps/showcase_ui/dist
-apps/showcase_ui/node_modules
+apps/showcase_ui_v2/dist
+apps/showcase_ui_v2/node_modules
 build
 dist
 traces

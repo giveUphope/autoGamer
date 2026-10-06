@@ -24,12 +24,10 @@ USE_CYTHON = os.environ.get("USE_CYTHON", "0") == "1"
 
 
 def _showcase_dist(source_root: Path) -> Path | None:
-    """Locate a complete Angular browser build in a source or sdist tree."""
-    base_dist = source_root / "apps" / "showcase_ui" / "dist"
+    """Locate a complete Vite browser build in a source or sdist tree."""
+    base_dist = source_root / "apps" / "showcase_ui_v2" / "dist"
     candidates = (
-        base_dist / "frontend" / "browser",
         base_dist / "browser",
-        base_dist / "frontend",
         base_dist,
         source_root / "artemis" / "resources" / "showcase_ui",
     )
@@ -50,8 +48,8 @@ def _copy_release_resources(source_root: Path, resource_root: Path) -> None:
     if showcase_source is None:
         raise RuntimeError(
             "Cannot build an Artemis distribution without the Showcase UI. "
-            "Run `npm ci --prefix apps/showcase_ui` and "
-            "`npm run build --prefix apps/showcase_ui` first."
+            "Run `npm ci --prefix apps/showcase_ui_v2` and "
+            "`npm run build --prefix apps/showcase_ui_v2` first."
         )
     config_target = resource_root / "config"
     config_target.mkdir(parents=True, exist_ok=True)
@@ -72,7 +70,7 @@ class build_py(_build_py):
         if self.editable_mode:
             return
         # Older builds may have copied frontend sources and node_modules here.
-        excluded_showcase = Path(self.build_lib) / "apps" / "showcase_ui"
+        excluded_showcase = Path(self.build_lib) / "apps" / "showcase_ui_v2"
         if excluded_showcase.exists():
             shutil.rmtree(excluded_showcase)
         _copy_release_resources(
@@ -86,15 +84,19 @@ class sdist(_sdist):
 
     def make_release_tree(self, base_dir: str, files: list[str]) -> None:
         # Old egg-info manifests may include Python packages from node_modules.
+        frontend_prefixes = ("apps/showcase_ui/", "apps/showcase_ui_v2/")
         filtered_files = [
-            path for path in files if not Path(path).as_posix().startswith("apps/showcase_ui/")
+            path
+            for path in files
+            if not Path(path).as_posix().startswith(frontend_prefixes)
         ]
         super().make_release_tree(base_dir, filtered_files)
         # Protect local rebuilds from stale egg-info/SOURCES.txt manifests
         # generated before package discovery was narrowed.
-        excluded_showcase = Path(base_dir) / "apps" / "showcase_ui"
-        if excluded_showcase.exists():
-            shutil.rmtree(excluded_showcase)
+        for excluded_name in ("showcase_ui", "showcase_ui_v2"):
+            excluded_showcase = Path(base_dir) / "apps" / excluded_name
+            if excluded_showcase.exists():
+                shutil.rmtree(excluded_showcase)
         _copy_release_resources(
             Path.cwd(),
             Path(base_dir) / "artemis" / "resources",

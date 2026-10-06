@@ -224,9 +224,10 @@ function Test-NodeCompatible {
         if ($parts.Count -ge 2) {
             $major = [int]$parts[0]
             $minor = [int]$parts[1]
-            if ($major -ge 26) { return $true }
-            if ($major -eq 24 -and $minor -ge 15) { return $true }
-            if ($major -eq 22 -and $minor -ge 22) { return $true }
+            # Vite 7 requires Node.js ^20.19.0 || >= 22.12.0
+            if ($major -ge 23) { return $true }
+            if ($major -eq 22 -and $minor -ge 12) { return $true }
+            if ($major -eq 20 -and $minor -ge 19) { return $true }
         }
     } catch {
         return $false
@@ -370,14 +371,13 @@ Write-Host "   [INFO] Synchronizing Python runtime and project dependencies..." 
 uv sync --quiet
 
 # 6. Check and build Showcase UI if not already compiled
-$ShowcaseIndex = "$RootDir\apps\showcase_ui\dist\frontend\browser\index.html"
-$ShowcaseIndexAlt1 = "$RootDir\apps\showcase_ui\dist\browser\index.html"
-$ShowcaseIndexAlt2 = "$RootDir\apps\showcase_ui\dist\index.html"
-if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1)) -and (-not (Test-Path $ShowcaseIndexAlt2))) {
+$ShowcaseIndex = "$RootDir\apps\showcase_ui_v2\dist\browser\index.html"
+$ShowcaseIndexAlt1 = "$RootDir\apps\showcase_ui_v2\dist\index.html"
+if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1))) {
     if (-not (Test-NodeCompatible)) {
         if (Test-CommandExists "node") {
             $curVer = (& node -v 2>$null)
-            Write-Host "   [INFO] Detected Node.js $curVer, but Angular CLI requires Node.js >= v22.22.0." -ForegroundColor Yellow
+            Write-Host "   [INFO] Detected Node.js $curVer, but Vite requires Node.js ^20.19.0 || >= v22.12.0." -ForegroundColor Yellow
         } else {
             Write-Host "   [INFO] Node.js/npm not found (required for Showcase UI)." -ForegroundColor Cyan
         }
@@ -395,7 +395,7 @@ if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1))
             $useWinGetNode = $false
             if (Test-CommandExists "winget") {
                 if ([Console]::IsInputRedirected -eq $false) {
-                    Write-Host "   [INFO] Node.js >= v22.22.0 required for Showcase UI." -ForegroundColor Cyan
+                    Write-Host "   [INFO] Node.js ^20.19.0 || >= v22.12.0 required for Showcase UI." -ForegroundColor Cyan
                     $ans = Read-Host "      Install/Upgrade Node.js via WinGet (may require Administrator)? [Y/n]"
                     if ($ans -eq "" -or $ans -match "^[Yy]") {
                         $useWinGetNode = $true
@@ -421,8 +421,8 @@ if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1))
     if (Test-NodeCompatible) {
         $nodeVer = (& node -v 2>$null)
         Write-Host "   [OK] Node.js $nodeVer is ready." -ForegroundColor Green
-        Write-Host "   [INFO] Showcase UI build not found. Compiling Angular Showcase UI..." -ForegroundColor Yellow
-        Push-Location "$RootDir\apps\showcase_ui"
+        Write-Host "   [INFO] Showcase UI build not found. Compiling Showcase UI (vite build)..." -ForegroundColor Yellow
+        Push-Location "$RootDir\apps\showcase_ui_v2"
         try {
             $npmExec = if (Test-CommandExists "npm.cmd") { "npm.cmd" } else { "npm" }
             Write-Host "   [INFO] Installing frontend npm dependencies..." -ForegroundColor Cyan
@@ -431,11 +431,7 @@ if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1))
                 Write-Host "   [WARN] npm install returned exit code $LASTEXITCODE. Trying silent install..." -ForegroundColor DarkYellow
                 & $npmExec install --silent
             }
-            $cliNodeVersion = "$RootDir\apps\showcase_ui\node_modules\@angular\cli\src\utilities\node-version.js"
-            if (Test-Path $cliNodeVersion) {
-                (Get-Content $cliNodeVersion) -replace '22\.22\.3', '22.22.0' | Set-Content $cliNodeVersion
-            }
-            Write-Host "   [INFO] Building Angular frontend application..." -ForegroundColor Cyan
+            Write-Host "   [INFO] Building frontend application (vite build)..." -ForegroundColor Cyan
             & $npmExec run build
             if (Test-Path $ShowcaseIndex) {
                 Write-Host "   [OK] Showcase UI compiled successfully." -ForegroundColor Green
@@ -450,7 +446,7 @@ if ((-not (Test-Path $ShowcaseIndex)) -and (-not (Test-Path $ShowcaseIndexAlt1))
             Pop-Location
         }
     } else {
-        Write-Host "   [WARN] Node.js >= v22.22.0 not found. Showcase UI will show fallback notice on launch." -ForegroundColor DarkYellow
+        Write-Host "   [WARN] Node.js ^20.19.0 || >= v22.12.0 not found. Showcase UI will show fallback notice on launch." -ForegroundColor DarkYellow
     }
 }
 

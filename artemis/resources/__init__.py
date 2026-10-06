@@ -17,7 +17,7 @@
 Python wheels are installed as ordinary directories by pip, so callers that
 need to hand a path to another library (for example FastAPI's ``FileResponse``)
 can safely use the paths returned here. Source checkouts continue to prefer
-their editable ``config`` and ``apps/showcase_ui/dist`` trees; these resources
+their editable ``config`` and ``apps/showcase_ui_v2/dist`` trees; these resources
 are the installation fallback.
 """
 
@@ -38,7 +38,7 @@ def get_bundled_config_path(filename: str) -> Path | None:
 
 
 def get_bundled_showcase_dist() -> Path | None:
-    """Return the bundled Angular browser build when it is complete."""
+    """Return the bundled browser build when it is complete."""
     candidate = _resource_path("showcase_ui")
     return candidate if (candidate / "index.html").is_file() else None
 

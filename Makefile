@@ -35,9 +35,9 @@ stop: ## Stop running Artemis Web UI & server
 status: ## Display Artemis Web UI & server status
 	@uv run artemis status
 
-build-ui: ## Build the Showcase UI Angular frontend
+build-ui: ## Build the Showcase UI (Vue 3 + Vite) frontend
 	@echo "🎨 Building Showcase UI..."
-	@cd apps/showcase_ui && npm install && npm run build
+	@cd apps/showcase_ui_v2 && npm install && npm run build
 
 doctor: ## Run system, device, and toolchain diagnostics
 	@uv run artemis doctor
@@ -106,7 +106,7 @@ precommit: ## Run pre-commit hooks manually on all files
 
 clean: ## Clean up generated files, caches, and traces
 	@echo "🧹 Cleaning up caches and temporary files..."
-	@rm -rf .pytest_cache .ruff_cache .artemis_paused traces scratch .venv apps/showcase_ui/.angular build dist
+	@rm -rf .pytest_cache .ruff_cache .artemis_paused traces scratch .venv apps/showcase_ui_v2/node_modules/.vite build dist
 	@find . -type d -name "outputs" -exec rm -rf {} + 2>/dev/null || true
 	@find . -type f -name ".artemis_paused" -delete 2>/dev/null || true
 	@find . -type d -name "__pycache__" -exec rm -rf {} + 2>/dev/null || true

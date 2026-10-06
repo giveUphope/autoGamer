@@ -164,11 +164,9 @@ def _npm_row() -> ExtraRow:
 def _showcase_row() -> ExtraRow:
     from artemis.resources import get_bundled_showcase_dist
 
-    base_dist = ROOT_DIR / "apps" / "showcase_ui" / "dist"
+    base_dist = ROOT_DIR / "apps" / "showcase_ui_v2" / "dist"
     candidates = [
-        base_dist / "frontend" / "browser" / "index.html",
         base_dist / "browser" / "index.html",
-        base_dist / "frontend" / "index.html",
         base_dist / "index.html",
     ]
     found_showcase = next((p for p in candidates if p.exists()), None)
@@ -183,7 +181,7 @@ def _showcase_row() -> ExtraRow:
             status="pass",
             status_markup="[bold green]✔ Compiled[/bold green]",
             summary="Compiled",
-            detail=f"{found_showcase.parent} (Angular ready)",
+            detail=f"{found_showcase.parent} (ready)",
         )
     return ExtraRow(
         key="showcase_ui",

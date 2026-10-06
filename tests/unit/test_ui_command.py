@@ -46,9 +46,9 @@ def test_resolve_npm_executable_uses_npm_on_posix(monkeypatch):
 
 
 def test_showcase_build_required_when_source_is_newer(tmp_path):
-    showcase_dir = tmp_path / "showcase_ui"
-    source_file = showcase_dir / "src" / "app" / "agent.service.ts"
-    built_index = showcase_dir / "dist" / "frontend" / "browser" / "index.html"
+    showcase_dir = tmp_path / "showcase_ui_v2"
+    source_file = showcase_dir / "src" / "stores" / "system.ts"
+    built_index = showcase_dir / "dist" / "browser" / "index.html"
     source_file.parent.mkdir(parents=True)
     built_index.parent.mkdir(parents=True)
     source_file.write_text("source", encoding="utf-8")
@@ -61,9 +61,9 @@ def test_showcase_build_required_when_source_is_newer(tmp_path):
 
 
 def test_showcase_build_not_required_when_build_is_current(tmp_path):
-    showcase_dir = tmp_path / "showcase_ui"
-    source_file = showcase_dir / "src" / "app" / "agent.service.ts"
-    built_index = showcase_dir / "dist" / "frontend" / "browser" / "index.html"
+    showcase_dir = tmp_path / "showcase_ui_v2"
+    source_file = showcase_dir / "src" / "stores" / "system.ts"
+    built_index = showcase_dir / "dist" / "browser" / "index.html"
     source_file.parent.mkdir(parents=True)
     built_index.parent.mkdir(parents=True)
     source_file.write_text("source", encoding="utf-8")
@@ -73,6 +73,24 @@ def test_showcase_build_not_required_when_build_is_current(tmp_path):
     os.utime(built_index, (200, 200))
 
     assert _showcase_build_required(showcase_dir) is False
+
+
+def test_showcase_build_required_when_vite_config_is_newer(tmp_path):
+    showcase_dir = tmp_path / "showcase_ui_v2"
+    source_file = showcase_dir / "src" / "main.ts"
+    vite_config = showcase_dir / "vite.config.ts"
+    built_index = showcase_dir / "dist" / "browser" / "index.html"
+    source_file.parent.mkdir(parents=True)
+    built_index.parent.mkdir(parents=True)
+    source_file.write_text("source", encoding="utf-8")
+    vite_config.write_text("export default {}", encoding="utf-8")
+    built_index.write_text("build", encoding="utf-8")
+
+    os.utime(source_file, (100, 100))
+    os.utime(built_index, (200, 200))
+    os.utime(vite_config, (300, 300))
+
+    assert _showcase_build_required(showcase_dir) is True
 
 
 def _showcase_with_manifests(tmp_path, *, stamp_mtime=None):
@@ -121,7 +139,7 @@ def test_ensure_showcase_built_skips_install_when_deps_current(monkeypatch):
 
     ensure_showcase_built(console)
 
-    assert [label for label, _ in steps] == ["② ng build"]
+    assert [label for label, _ in steps] == ["② vite build"]
     assert steps[0][1] == ["npm", "run", "build"]
     assert "Showcase UI built in" in console.file.getvalue()
 
@@ -137,7 +155,7 @@ def test_ensure_showcase_built_runs_install_first_when_deps_changed(monkeypatch)
 
     ensure_showcase_built(_recording_console())
 
-    assert [label for label, _ in steps] == ["① npm install (dependencies changed)", "② ng build"]
+    assert [label for label, _ in steps] == ["① npm install (dependencies changed)", "② vite build"]
     assert steps[0][1] == ["npm", "install", "--no-audit", "--no-fund", "--loglevel=warn"]
 
 
@@ -164,11 +182,11 @@ def test_run_build_step_streams_child_output_and_raises_on_failure(tmp_path):
     cmd = [sys.executable, "-c", "print('hello from child'); import sys; sys.exit(3)"]
 
     with pytest.raises(subprocess.CalledProcessError) as excinfo:
-        _run_build_step(console, "② ng build", cmd, tmp_path)
+        _run_build_step(console, "② vite build", cmd, tmp_path)
 
     assert excinfo.value.returncode == 3
     output = console.file.getvalue()
-    assert "② ng build" in output
+    assert "② vite build" in output
     assert "hello from child" in output
 
 

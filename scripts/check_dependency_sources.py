@@ -52,7 +52,7 @@ def main() -> int:
         for artifact in artifacts:
             check_url(f"{label}: artifact", artifact.get("url", ""), "files.pythonhosted.org")
 
-    npm_lock = json.loads((ROOT / "apps/showcase_ui/package-lock.json").read_text(encoding="utf-8"))
+    npm_lock = json.loads((ROOT / "apps/showcase_ui_v2/package-lock.json").read_text(encoding="utf-8"))
     for name, package in npm_lock["packages"].items():
         if "resolved" in package:
             check_url(f"package-lock.json: {name}", package["resolved"], "registry.npmjs.org")

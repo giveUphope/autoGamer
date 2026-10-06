@@ -14,12 +14,11 @@
 
 FROM node:22-bookworm-slim AS frontend-builder
 
-WORKDIR /build/apps/showcase_ui
-COPY apps/showcase_ui/package.json apps/showcase_ui/package-lock.json ./
+WORKDIR /build/apps/showcase_ui_v2
+COPY apps/showcase_ui_v2/package.json apps/showcase_ui_v2/package-lock.json ./
 RUN npm ci
-COPY apps/showcase_ui/angular.json apps/showcase_ui/tsconfig*.json ./
-COPY apps/showcase_ui/public/ ./public/
-COPY apps/showcase_ui/src/ ./src/
+COPY apps/showcase_ui_v2/index.html apps/showcase_ui_v2/vite.config.ts apps/showcase_ui_v2/tsconfig*.json ./
+COPY apps/showcase_ui_v2/src/ ./src/
 RUN npm run build
 
 
@@ -33,7 +32,7 @@ COPY third_party/ ./third_party/
 COPY packages/artemis-client/ ./packages/artemis-client/
 COPY config/ ./config/
 COPY pyproject.toml setup.py README.md LICENSE ./
-COPY --from=frontend-builder /build/apps/showcase_ui/dist/ ./apps/showcase_ui/dist/
+COPY --from=frontend-builder /build/apps/showcase_ui_v2/dist/ ./apps/showcase_ui_v2/dist/
 
 # Build wheels for the runtime image.
 RUN python -m pip wheel --no-cache-dir --no-deps --wheel-dir /wheels ./packages/artemis-client \
