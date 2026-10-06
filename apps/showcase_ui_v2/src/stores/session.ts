@@ -7,8 +7,9 @@
  * - localStorage 会话缓存（restore / persist，key 与 Angular 版一致）
  * - 页面隐藏时暂停轮询、visibilitychange 恢复时立即刷新（§3.3 条款 6）
  *
- * 未平移部分（后续里程碑）：SSE 流与 sessionLogs（M3）、steps/notes/checks 回填（M2）、
- * 视频状态机（M4）。对应位置均有注释标注。
+ * 未平移部分（后续里程碑）：SSE 流与 sessionLogs（M3）、视频状态机（M4）。
+ * steps/notes/checks/usage 回填自 M2 起由 `stores/timeline.ts` 承接（跟随本 store
+ * 的 currentSessionId 联动）。
  *
  * M1 之外刻意保留的 Angular 语义：startup progress 追踪在 M2 随快照回填一起接入。
  */
@@ -493,7 +494,7 @@ export const useSessionStore = defineStore('session', () => {
 
     if (!sessionId) {
       currentSessionId.value = null;
-      // M3：清空 sessionLogs / 快照请求随流状态接入。
+      // timeline store 通过 watch(currentSessionId) 清空 sessionLogs / 快照状态。
       return;
     }
 
@@ -501,7 +502,7 @@ export const useSessionStore = defineStore('session', () => {
       return;
     }
     currentSessionId.value = sessionId;
-    // M2/M3：notes/checks 拉取与 steps 快照回填在后续里程碑接入。
+    // notes/checks/steps 快照拉取由 stores/timeline.ts 监听 currentSessionId 触发（M2）。
   }
 
   /** 清除用户的 pin，后续运行恢复自动跟随。 */

@@ -1,19 +1,20 @@
 <script setup lang="ts">
 import { onBeforeUnmount, ref } from 'vue';
-import { useI18n } from 'vue-i18n';
 
 import AppNav from '@/components/AppNav.vue';
 import CommandDock from '@/components/CommandDock.vue';
+import AgentTimeline from '@/components/timeline/AgentTimeline.vue';
 import TaskQueuePanel from '@/components/TaskQueuePanel.vue';
 
 /**
- * 工作台（对应 Angular WorkspaceComponent 的 M1 子集）：
- * a-layout 布局 + 可拖拽分栏（左：M2 时间线占位 / 右：任务队列面板）+ 浮动命令条。
- * 拖拽逻辑平移自 Angular 版：mousemove 监听仅在拖拽期间挂载，宽度更新经
- * requestAnimationFrame 合帧。
+ * 工作台（对应 Angular WorkspaceComponent）：
+ * a-layout 布局 + 可拖拽分栏（左：M2 会话时间线 AgentTimeline / 右：任务队列面板）
+ * + 浮动命令条。拖拽逻辑平移自 Angular 版：mousemove 监听仅在拖拽期间挂载，
+ * 宽度更新经 requestAnimationFrame 合帧。
+ *
+ * 点击右侧历史条目 → session store 选中会话（pin 语义）→ timeline store
+ * 按选中会话拉取 steps/notes/checks/usage 并渲染时间线。
  */
-const { t } = useI18n();
-
 // 右栏默认宽度：屏幕的 1/3（与 Angular 版一致）
 const rightPanelWidth = ref<number>(
   typeof window !== 'undefined' ? Math.round(window.innerWidth / 3) : 450,
@@ -72,8 +73,7 @@ onBeforeUnmount(detachDragListeners);
     </a-layout-header>
     <a-layout class="workspace-body">
       <div class="workspace-main">
-        <p class="workspace-desc">{{ t('workspace.description') }}</p>
-        <a-empty :description="t('workspace.timelinePlaceholder')" />
+        <AgentTimeline />
       </div>
       <div class="workspace-divider" :class="{ dragging: isDragging }" @mousedown="onDragStart" />
       <aside class="workspace-side" :style="{ width: `${rightPanelWidth}px` }">
@@ -107,18 +107,10 @@ onBeforeUnmount(detachDragListeners);
 .workspace-main {
   flex: 1;
   min-width: 0;
-  padding: 24px;
+  padding: 12px 16px;
   display: flex;
   flex-direction: column;
-  align-items: center;
-  justify-content: center;
-  gap: 16px;
-}
-
-.workspace-desc {
-  margin: 0;
-  font-size: 13px;
-  color: var(--color-text-3);
+  overflow: hidden;
 }
 
 .workspace-divider {

@@ -126,6 +126,8 @@ export interface CheckerVerdict {
   status: 'passed' | 'failed' | 'inconclusive' | 'superseded' | 'unchecked' | string;
   evidence: string;
   suggestion?: string;
+  /** 由 checks 回填在运行时附加（`at_end` 等）；Angular 版以 any 承载，这里补进类型契约。 */
+  when?: string;
 }
 
 export interface CheckerCheckItem {
