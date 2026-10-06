@@ -18,14 +18,19 @@
 import { computed, ref } from 'vue';
 import { defineStore } from 'pinia';
 
-import { apiGet, apiPost } from '@/services/api';
+import { apiDelete, apiGet, apiPost } from '@/services/api';
 import type { ApiError } from '@/services/api';
 import type {
   AdbServerConnectionResponse,
   AdbServerStatus,
+  CredentialEntriesResponse,
+  CredentialEntry,
+  CredentialEntryPayload,
   DeviceInfo,
   EmulatorLaunchState,
   ModelConfigEnvResponse,
+  ModelConfigUpdatePayload,
+  ModelConfigUpdateResult,
   SystemReadinessReport,
 } from '@/types/system.model';
 
@@ -69,6 +74,7 @@ export const useSystemStore = defineStore('system', () => {
   const lastCheckedTime = ref<Date | null>(null);
   const isSkipCredentialsCheck = ref<boolean>(false);
   const modelConfigEnv = ref<ModelConfigEnvResponse | null>(null);
+  const credentialEntries = ref<CredentialEntry[]>([]);
 
   // 非响应式定时器与 in-flight 缓存（母本 L52/L151-152/L154）
   let connectivityTimer: ReturnType<typeof setInterval> | null = null;
@@ -528,6 +534,71 @@ export const useSystemStore = defineStore('system', () => {
     }
   }
 
+  /**
+   * 保存默认模型端点配置（provider/model/api_base/可选 api_key）：
+   * 后端写入 artemis.jsonc default 块与 .env，成功后刷新 modelConfigEnv。
+   */
+  async function saveModelConfig(
+    payload: ModelConfigUpdatePayload,
+  ): Promise<ModelConfigUpdateResult | null> {
+    try {
+      const res = await apiPost<ModelConfigUpdateResult>('/api/system/model-config', payload);
+      void fetchModelConfigEnv().catch(() => {}); // 刷新 model config & env
+      return res;
+    } catch (err) {
+      console.error('Failed to save model config:', err);
+      throw err;
+    }
+  }
+
+  // ---------------------------------------------------------------------------
+  // 统一凭据条目（自定义变量名 → 提供商）
+  // ---------------------------------------------------------------------------
+  /** 拉取用户自定义凭据条目列表（值仅掩码回显）。 */
+  async function fetchCredentialEntries(): Promise<CredentialEntriesResponse> {
+    try {
+      const data = await apiGet<CredentialEntriesResponse>('/api/system/credentials/entries');
+      credentialEntries.value = data.entries;
+      return data;
+    } catch (err) {
+      console.error('Failed to fetch credential entries:', err);
+      throw err;
+    }
+  }
+
+  /** 新增/更新凭据条目：值写入 .env，name→provider 绑定持久化并在启动时回放。 */
+  async function saveCredentialEntry(
+    payload: CredentialEntryPayload,
+  ): Promise<{ status?: string; message?: string } | null> {
+    try {
+      const res = await apiPost<{ status?: string; message?: string }>(
+        '/api/system/credentials/entries',
+        payload,
+      );
+      void fetchCredentialEntries().catch(() => {});
+      return res;
+    } catch (err) {
+      console.error(`Failed to save credential entry ${payload.name}:`, err);
+      throw err;
+    }
+  }
+
+  /** 删除凭据条目：同时从 .env 与绑定文件中移除。 */
+  async function deleteCredentialEntry(
+    name: string,
+  ): Promise<{ status?: string; message?: string } | null> {
+    try {
+      const res = await apiDelete<{ status?: string; message?: string }>(
+        `/api/system/credentials/entries/${encodeURIComponent(name)}`,
+      );
+      void fetchCredentialEntries().catch(() => {});
+      return res;
+    } catch (err) {
+      console.error(`Failed to delete credential entry ${name}:`, err);
+      throw err;
+    }
+  }
+
   // ---------------------------------------------------------------------------
   // 生命周期（M1 兼容 + M5 readiness 轮询；母本 L155-206）
   // ---------------------------------------------------------------------------
@@ -637,5 +708,10 @@ export const useSystemStore = defineStore('system', () => {
     fetchModelConfigEnv,
     testApiKey,
     updateApiKey,
+    saveModelConfig,
+    credentialEntries,
+    fetchCredentialEntries,
+    saveCredentialEntry,
+    deleteCredentialEntry,
   };
 });

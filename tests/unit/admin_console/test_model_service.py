@@ -22,19 +22,25 @@ from apps.admin_console.services.model_service import ModelService
 
 def test_get_active_model_info_pro_architecture():
     """Verify that pro profile returns Pro architecture while keeping real LLM model."""
-    info = ModelService.get_active_model_info("pro")
+    with patch.object(
+        ModelService, "_get_llm_provider_and_model", return_value=("openai", "qwen3.6-35b-a3b-mtp")
+    ):
+        info = ModelService.get_active_model_info("pro")
     assert info["name"] == "Pro"
     assert info["architecture"] == "ARTEMIS Pro"
-    assert info["provider"] == "google"
-    assert "id" in info
+    assert info["provider"] == "openai"
+    assert info["id"] == "qwen3.6-35b-a3b-mtp"
 
 
 def test_get_active_model_info_flash_architecture():
     """Verify that flash profile returns Flash architecture."""
-    info = ModelService.get_active_model_info("flash")
+    with patch.object(
+        ModelService, "_get_llm_provider_and_model", return_value=("openai", "qwen3.6-35b-a3b-mtp")
+    ):
+        info = ModelService.get_active_model_info("flash")
     assert info["name"] == "Flash"
     assert info["architecture"] == "ARTEMIS Flash"
-    assert info["provider"] == "google"
+    assert info["provider"] == "openai"
 
 
 def test_resolve_session_profile_from_device_info():

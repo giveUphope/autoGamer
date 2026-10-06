@@ -55,7 +55,7 @@ async function parseBody(res: Response): Promise<unknown> {
 }
 
 async function request<T>(
-  method: 'GET' | 'POST',
+  method: 'GET' | 'POST' | 'DELETE',
   url: string,
   body?: unknown,
   params?: ApiQueryParams,
@@ -89,4 +89,9 @@ export function apiGet<T>(
 /** POST JSON（body 缺省发 `{}`，与 Angular `http.post(url, {})` 对齐）。 */
 export function apiPost<T>(url: string, body: unknown = {}): Promise<T> {
   return request<T>('POST', url, body);
+}
+
+/** DELETE 请求；非 2xx 抛 ApiError（同 apiGet 语义）。 */
+export function apiDelete<T>(url: string): Promise<T> {
+  return request<T>('DELETE', url);
 }

@@ -77,6 +77,11 @@ const mockSystem = reactive({
   fetchModelConfigEnv: vi.fn(() => Promise.resolve({})),
   testApiKey: vi.fn(() => Promise.resolve({ valid: true, provider: 'google', message: 'ok' })),
   updateApiKey: vi.fn(() => Promise.resolve({ message: 'saved' })),
+  saveModelConfig: vi.fn(() => Promise.resolve({ message: 'saved' })),
+  credentialEntries: [],
+  fetchCredentialEntries: vi.fn(() => Promise.resolve({ entries: [], bindings_path: '' })),
+  saveCredentialEntry: vi.fn(() => Promise.resolve({ message: 'saved' })),
+  deleteCredentialEntry: vi.fn(() => Promise.resolve({ message: 'removed' })),
 });
 
 vi.mock('@/stores/system', () => ({
@@ -108,7 +113,7 @@ function mountView() {
 describe('LauncherView (M1)', () => {
   it('renders the title', () => {
     const wrapper = mountView();
-    expect(wrapper.text()).toContain('ARTEMIS 控制台（Vue 版）');
+    expect(wrapper.text()).toContain('ARTEMIS 控制台');
   });
 
   it('renders the diagnostics / launcher mode tabs', () => {

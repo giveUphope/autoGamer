@@ -34,11 +34,13 @@ from artemis.config.constants import (
     ENV_OCR_API_KEY,
     ENV_OPEN_ROUTER_API_KEY,
     ENV_OPENAI_API_KEY,
+    ENV_OPENAI_BASE_URL,
     ENV_VISION_API_KEY,
     ENV_XAI_API_KEY,
 )
 from artemis.config.paths import (
     GLOBAL_APP_DIR,
+    get_credentials_bindings_file,
     get_data_engine_db_path,
     get_default_traces_path,
     get_env_file,
@@ -259,52 +261,136 @@ class Settings(BaseSettings):
             os.environ[ENV_VISION_API_KEY] = key
 
         if persist_to_env and env_key_name:
-            target_env_files = [get_env_file()]
-            seen_paths = set()
-            for env_file in target_env_files:
-                try:
-                    env_file.parent.mkdir(parents=True, exist_ok=True)
-                    resolved = env_file.resolve()
-                    if resolved in seen_paths:
-                        continue
-                    seen_paths.add(resolved)
+            keys_to_update = [env_key_name]
+            if is_google_family_provider(provider_lower):
+                keys_to_update = [ENV_GEMINI_API_KEY, ENV_GOOGLE_API_KEY, ENV_GCP_API_KEY]
+            elif provider_lower in ("ocr", "vision", "google_vision"):
+                keys_to_update = [ENV_OCR_API_KEY, ENV_VISION_API_KEY]
+            self.persist_env_values({k: key for k in keys_to_update})
 
-                    lines = []
-                    if env_file.exists():
-                        lines = env_file.read_text(encoding="utf-8").splitlines()
+    def persist_env_values(self, keys_to_values: dict[str, str]) -> None:
+        """Upsert ``KEY=value`` pairs into the app directory's .env file.
 
-                    # Determine keys to update
-                    keys_to_update = [env_key_name]
-                    if is_google_family_provider(provider_lower):
-                        keys_to_update = [ENV_GEMINI_API_KEY, ENV_GOOGLE_API_KEY, ENV_GCP_API_KEY]
-                    elif provider_lower in ("ocr", "vision", "google_vision"):
-                        keys_to_update = [ENV_OCR_API_KEY, ENV_VISION_API_KEY]
+        Existing (or commented-out) lines for a key are replaced in place and
+        missing keys are appended, so repeated saves never duplicate entries.
+        """
+        target_env_files = [get_env_file()]
+        seen_paths = set()
+        for env_file in target_env_files:
+            try:
+                env_file.parent.mkdir(parents=True, exist_ok=True)
+                resolved = env_file.resolve()
+                if resolved in seen_paths:
+                    continue
+                seen_paths.add(resolved)
 
-                    new_lines = []
-                    updated_set = set()
-                    for line in lines:
-                        replaced = False
-                        for k in keys_to_update:
-                            if (
-                                line.startswith(f"{k}=")
-                                or line.startswith(f"#{k}=")
-                                or line.startswith(f"# {k}=")
-                            ):
-                                new_lines.append(f"{k}={key}")
-                                updated_set.add(k)
-                                replaced = True
-                                break
-                        if not replaced:
-                            new_lines.append(line)
+                lines = []
+                if env_file.exists():
+                    lines = env_file.read_text(encoding="utf-8").splitlines()
 
-                    # Ensure the primary key is present if not replaced
-                    primary_key = keys_to_update[0]
-                    if primary_key not in updated_set:
-                        new_lines.append(f"{primary_key}={key}")
+                new_lines = []
+                updated_set = set()
+                for line in lines:
+                    replaced = False
+                    for k in keys_to_values:
+                        if (
+                            line.startswith(f"{k}=")
+                            or line.startswith(f"#{k}=")
+                            or line.startswith(f"# {k}=")
+                        ):
+                            new_lines.append(f"{k}={keys_to_values[k]}")
+                            updated_set.add(k)
+                            replaced = True
+                            break
+                    if not replaced:
+                        new_lines.append(line)
 
-                    env_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
-                except Exception as e:
-                    logger.warning(f"Could not persist {env_key_name} to {env_file}: {e}")
+                # Ensure the primary key is present if not replaced
+                primary_key = next(iter(keys_to_values))
+                if primary_key not in updated_set:
+                    new_lines.append(f"{primary_key}={keys_to_values[primary_key]}")
+
+                env_file.write_text("\n".join(new_lines) + "\n", encoding="utf-8")
+            except Exception as e:
+                logger.warning(f"Could not persist {list(keys_to_values)} to {env_file}: {e}")
+
+    def set_openai_base_url(self, base_url: str | None, persist_to_env: bool = True) -> None:
+        """Point the OpenAI-compatible routing at a custom endpoint at runtime.
+
+        Mirrors set_api_key: the settings object and process env are updated
+        immediately, and persist_to_env writes OPENAI_BASE_URL to the app
+        directory's .env file so the endpoint survives restarts. An empty or
+        None value clears the override.
+        """
+        normalized = base_url.strip() if base_url else ""
+        if normalized:
+            self.OPENAI_BASE_URL = normalized
+            os.environ[ENV_OPENAI_BASE_URL] = normalized
+        else:
+            self.OPENAI_BASE_URL = None
+            os.environ.pop(ENV_OPENAI_BASE_URL, None)
+        if persist_to_env:
+            self.persist_env_values({ENV_OPENAI_BASE_URL: normalized})
+
+    def remove_env_values(self, keys: list[str]) -> None:
+        """Delete ``KEY=...`` lines for the given keys from the app .env file.
+
+        Commented-out lines are removed as well, and the variables are dropped
+        from the process environment so removal takes effect immediately.
+        """
+        env_file = get_env_file()
+        try:
+            if env_file.exists():
+                keys_set = set(keys)
+                lines = env_file.read_text(encoding="utf-8").splitlines()
+                kept = [
+                    line
+                    for line in lines
+                    if not any(
+                        line.startswith(f"{k}=")
+                        or line.startswith(f"#{k}=")
+                        or line.startswith(f"# {k}=")
+                        for k in keys_set
+                    )
+                ]
+                env_file.write_text("\n".join(kept) + "\n", encoding="utf-8")
+            for k in keys:
+                os.environ.pop(k, None)
+        except Exception as e:
+            logger.warning(f"Could not remove {keys} from {env_file}: {e}")
+
+    def apply_custom_credential_bindings(self) -> int:
+        """Feed user-defined env var names into the provider credential store.
+
+        Reads ``credential_bindings.json`` (custom variable name → provider,
+        managed from the setup UI) and applies every binding whose value is
+        present in the process environment — dotenv has already been loaded by
+        the time this runs, so custom names survive restarts. Known providers
+        are updated in memory only; the .env file is left untouched. Returns
+        the number of bindings applied.
+        """
+        import json
+
+        bindings_file = get_credentials_bindings_file()
+        applied = 0
+        try:
+            if not bindings_file.exists():
+                return 0
+            data = json.loads(bindings_file.read_text(encoding="utf-8"))
+            entries = data.get("entries", []) if isinstance(data, dict) else []
+            for entry in entries:
+                if not isinstance(entry, dict):
+                    continue
+                name = str(entry.get("name") or "").strip()
+                provider = str(entry.get("provider") or "").strip()
+                value = os.environ.get(name, "").strip()
+                if not name or not provider or not value or is_placeholder_key(value):
+                    continue
+                self.set_api_key(provider, value, persist_to_env=False)
+                applied += 1
+        except Exception as e:
+            logger.warning(f"Could not apply custom credential bindings from {bindings_file}: {e}")
+        return applied
 
 
 # Singleton instance
@@ -313,3 +399,7 @@ settings = Settings()
 # Synchronize DATA_ENGINE_DB_PATH in environment for external sub-processes/tools
 if settings.DATA_ENGINE_DB_PATH:
     os.environ[ENV_DATA_ENGINE_DB_PATH] = str(settings.DATA_ENGINE_DB_PATH)
+
+# Apply user-defined credential bindings (custom env var names → providers)
+# after dotenv has populated the environment, so custom names survive restarts.
+settings.apply_custom_credential_bindings()

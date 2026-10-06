@@ -10,15 +10,27 @@ import { useSystemStore } from '@/stores/system';
 import type {
   AdbServerConnectionResponse,
   AdbServerStatus,
+  CredentialEntriesResponse,
+  CredentialEntry,
+  CredentialEntryPayload,
   DeviceInfo,
   EmulatorLaunchState,
   ModelConfigEnvResponse,
+  ModelConfigUpdatePayload,
+  ModelConfigUpdateResult,
   ProbeResult,
   SystemReadinessReport,
 } from '@/types/system.model';
 
 /** 数据层已平移至 @/types/system.model；此处 re-export 维持组件侧 import 路径稳定。 */
-export type { ModelConfigEnvResponse };
+export type {
+  CredentialEntriesResponse,
+  CredentialEntry,
+  CredentialEntryPayload,
+  ModelConfigEnvResponse,
+  ModelConfigUpdatePayload,
+  ModelConfigUpdateResult,
+};
 
 /** testApiKey 响应。 */
 export interface ApiKeyTestResult {
@@ -57,6 +69,7 @@ export interface SystemStoreContract {
   lastCheckedTime: Date | null;
   isSkipCredentialsCheck: boolean;
   modelConfigEnv: ModelConfigEnvResponse | null;
+  credentialEntries: CredentialEntry[];
 
   // ---- computed ----
   readonly hasReadinessReport: boolean;
@@ -106,6 +119,10 @@ export interface SystemStoreContract {
   fetchModelConfigEnv(): Promise<ModelConfigEnvResponse>;
   testApiKey(provider: string, apiKey: string, baseUrl?: string): Promise<ApiKeyTestResult>;
   updateApiKey(provider: string, apiKey: string, persistToEnv?: boolean): Promise<ApiKeyUpdateResult | null>;
+  saveModelConfig(payload: ModelConfigUpdatePayload): Promise<ModelConfigUpdateResult | null>;
+  fetchCredentialEntries(): Promise<CredentialEntriesResponse>;
+  saveCredentialEntry(payload: CredentialEntryPayload): Promise<{ status?: string; message?: string } | null>;
+  deleteCredentialEntry(name: string): Promise<{ status?: string; message?: string } | null>;
 }
 
 /** 按契约消费 system store（编译期结构断言：真实 store 必须与契约逐字段兼容）。 */

@@ -103,6 +103,7 @@ live_screenshot*.png
 .env
 .env.*
 !.env.example
+credential_bindings.json
 *.pem
 *.key
 

@@ -128,6 +128,7 @@ export interface ModelConfigEnvResponse {
   default_model: {
     provider?: string;
     model?: string;
+    api_base?: string;
     thinking_level?: string;
     fallback?: {
       provider?: string;
@@ -149,4 +150,42 @@ export interface ModelConfigEnvResponse {
     preview: string | null;
     description: string;
   }>;
+}
+
+/** 端点表单提交负载：仅携带用户填写（非空）的字段，密钥单独传递不落 artemis.jsonc。 */
+export interface ModelConfigUpdatePayload {
+  provider?: string;
+  model?: string;
+  api_base?: string;
+  api_key?: string;
+  thinking_level?: string;
+}
+
+/** POST /api/system/model-config 响应（仅消费 message 与 default_model 摘要）。 */
+export interface ModelConfigUpdateResult {
+  status?: string;
+  message?: string;
+  provider?: string | null;
+  default_model?: ModelConfigEnvResponse['default_model'];
+}
+
+/** 用户自定义凭据条目：环境变量名 → 提供商（值仅回显掩码，原文不出后端）。 */
+export interface CredentialEntry {
+  name: string;
+  provider: string;
+  is_set: boolean;
+  preview: string | null;
+}
+
+/** GET /api/system/credentials/entries 响应。 */
+export interface CredentialEntriesResponse {
+  entries: CredentialEntry[];
+  bindings_path: string;
+}
+
+/** 新增/更新凭据条目负载；value 留空表示仅改绑定、保留现值。 */
+export interface CredentialEntryPayload {
+  name: string;
+  provider: string;
+  value?: string;
 }

@@ -13,7 +13,7 @@ import type {
   ProbeResult,
   SystemReadinessReport,
 } from '../../types/system.model';
-import { type ModelConfigEnvResponse } from './contract';
+import { type CredentialEntry, type ModelConfigEnvResponse } from './contract';
 import DiagnosticsWizard from './DiagnosticsWizard.vue';
 
 /**
@@ -75,6 +75,7 @@ const MOCK_ENV: ModelConfigEnvResponse = {
   default_model: {
     provider: 'google',
     model: 'gemini-flash',
+    api_base: 'http://127.0.0.1:1234/v1',
     thinking_level: 'low',
     fallback: { provider: 'openai', model: 'gpt-4o' },
   },
@@ -155,6 +156,17 @@ const mockSystem = reactive({
   fetchModelConfigEnv: vi.fn(() => Promise.resolve(MOCK_ENV)),
   testApiKey: vi.fn(() => Promise.resolve({ valid: true, provider: 'google', message: 'The API key is valid!' })),
   updateApiKey: vi.fn(() => Promise.resolve({ message: 'API key saved.' })),
+  saveModelConfig: vi.fn(() =>
+    Promise.resolve({ status: 'success', message: 'Model endpoint configuration saved and applied.' }),
+  ),
+  credentialEntries: [] as CredentialEntry[],
+  fetchCredentialEntries: vi.fn(() => Promise.resolve({ entries: [], bindings_path: 'credential_bindings.json' })),
+  saveCredentialEntry: vi.fn(() =>
+    Promise.resolve({ status: 'success', message: "Credential 'MY_KEY' saved." }),
+  ),
+  deleteCredentialEntry: vi.fn(() =>
+    Promise.resolve({ status: 'success', message: "Credential 'MY_KEY' removed." }),
+  ),
 });
 
 vi.mock('@/stores/system', () => ({
@@ -403,19 +415,23 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(wrapper.text()).toContain('已连接到 192.168.1.50:5555！');
   });
 
-  it('tests and saves the gemini api key', async () => {
+  it('renders only the custom path without mode cards or presets', async () => {
+    mockSystem.modelConfigEnv = MOCK_ENV;
     const wrapper = mountWizard();
-    await wrapper.find('.key-input input').setValue('AIzaTest123');
-
-    await wrapper.find('.cred-test-btn').trigger('click');
     await flushPromises();
-    expect(mockSystem.testApiKey).toHaveBeenCalledWith('google', 'AIzaTest123');
-    expect(wrapper.text()).toContain('The API key is valid!');
 
-    await wrapper.find('.cred-save-btn').trigger('click');
-    await flushPromises();
-    expect(mockSystem.updateApiKey).toHaveBeenCalledWith('google', 'AIzaTest123', true);
-    expect(wrapper.text()).toContain('API key saved.');
+    // 挂载即跳过凭据检查（无模式二选一）
+    expect(mockSystem.setSkipCredentialsCheck).toHaveBeenCalledWith(true);
+    expect(mockSystem.fetchModelConfigEnv).toHaveBeenCalled();
+
+    // 模式选择卡与预设列表均已移除
+    expect(wrapper.findAll('.mode-card').length).toBe(0);
+    expect(wrapper.text()).not.toContain('可用预设');
+    expect(wrapper.text()).not.toContain('Google Gemini');
+
+    // 端点表单与只读配置卡仍在
+    expect(wrapper.find('.endpoint-card').exists()).toBe(true);
+    expect(wrapper.text()).toContain('google / gemini-flash');
   });
 
   it('switches active device through the select', async () => {
@@ -424,22 +440,21 @@ describe('DiagnosticsWizard (M5)', () => {
     setDeviceReady(true);
 
     const wrapper = mountWizard();
-    const select = wrapper.findComponent({ name: 'Select' });
+    // 自定义模式默认展示的端点表单里也有 Select，需在设备步骤内定位设备选择器
+    const deviceStep = wrapper.findComponent({ name: 'DeviceStep' });
+    expect(deviceStep.exists()).toBe(true);
+    const select = deviceStep.findComponent({ name: 'Select' });
     expect(select.exists()).toBe(true);
     select.vm.$emit('change', DEVICE_B.serial);
     await flushPromises();
     expect(mockSystem.selectDevice).toHaveBeenCalledWith(DEVICE_B.serial);
   });
 
-  it('renders model config jsonc and env table in custom mode and skips credentials', async () => {
+  it('shows the jsonc viewer and hides the fixed env table in the default custom mode', async () => {
     mockSystem.modelConfigEnv = MOCK_ENV;
     const wrapper = mountWizard();
 
-    const customCard = wrapper.findAll('.mode-card').find((c) => c.text().includes('自定义配置'));
-    expect(customCard).toBeTruthy();
-    await customCard!.trigger('click');
-
-    // 切自定义模式 → 跳过凭据检查 + 拉取 model-config-env
+    // 默认即自定义模式：跳过凭据检查 + 拉取 model-config-env
     expect(mockSystem.setSkipCredentialsCheck).toHaveBeenCalledWith(true);
     expect(mockSystem.fetchModelConfigEnv).toHaveBeenCalled();
 
@@ -452,10 +467,61 @@ describe('DiagnosticsWizard (M5)', () => {
     await wrapper.find('.jsonc-collapse .arco-collapse-item-header').trigger('click');
     expect(wrapper.text()).toContain('default_model');
 
-    // .env keys 表格：is_set 徽标 + preview
-    expect(wrapper.text()).toContain('GEMINI_API_KEY');
-    expect(wrapper.text()).toContain('已配置');
-    expect(wrapper.text()).toContain('未设置');
-    expect(wrapper.text()).toContain('AIza***');
+    // 固定变量名的 .env 表格已被统一凭据管理取代
+    expect(wrapper.find('.env-table').exists()).toBe(false);
+  });
+
+  it('fills and saves endpoint details in the default custom mode', async () => {
+    mockSystem.modelConfigEnv = MOCK_ENV;
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    // 自定义为默认模式：端点表单直接可见，并用 modelConfigEnv 预填
+    expect(wrapper.find('.endpoint-base-input').exists()).toBe(true);
+    expect((wrapper.find('.endpoint-base-input input').element as HTMLInputElement).value).toBe(
+      'http://127.0.0.1:1234/v1',
+    );
+    expect((wrapper.find('.endpoint-model-input input').element as HTMLInputElement).value).toBe('gemini-flash');
+
+    await wrapper.find('.endpoint-key-input input').setValue('sk-test-123');
+    await wrapper.find('.endpoint-save-btn').trigger('click');
+    await flushPromises();
+
+    expect(mockSystem.saveModelConfig).toHaveBeenCalledWith(
+      expect.objectContaining({
+        provider: 'google',
+        model: 'gemini-flash',
+        api_base: 'http://127.0.0.1:1234/v1',
+        api_key: 'sk-test-123',
+      }),
+    );
+    expect(wrapper.text()).toContain('Model endpoint configuration saved and applied.');
+  });
+
+  it('manages user-defined credential entries in the unified list', async () => {
+    mockSystem.credentialEntries = [
+      { name: 'MY_LLM_KEY', provider: 'openai', is_set: true, preview: '****1234' },
+    ];
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    // 已配置项回显：变量名 / 提供商 / 掩码预览
+    expect(wrapper.find('.creds-list').exists()).toBe(true);
+    expect(wrapper.text()).toContain('MY_LLM_KEY');
+    expect(wrapper.text()).toContain('****1234');
+
+    // 新增一条：变量名 + 提供商 + 值 完全由用户定义
+    await wrapper.find('.creds-name-input input').setValue('SECOND_KEY');
+    await wrapper.find('.creds-provider-input input').setValue('my-provider');
+    await wrapper.find('.creds-value-input input').setValue('secret-2');
+    await wrapper.find('.creds-add-btn').trigger('click');
+    await flushPromises();
+
+    expect(mockSystem.saveCredentialEntry).toHaveBeenCalledWith({
+      name: 'SECOND_KEY',
+      provider: 'my-provider',
+      value: 'secret-2',
+    });
+    expect(wrapper.text()).toContain("Credential 'MY_KEY' saved.");
   });
 });

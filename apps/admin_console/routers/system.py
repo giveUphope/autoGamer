@@ -15,8 +15,12 @@
 """System Readiness & Diagnostics Router for Artemis Admin Console."""
 
 import ipaddress
+import io
+import json
 import os
+import re
 import secrets
+from pathlib import Path
 from urllib.parse import urlsplit
 
 from fastapi import APIRouter, HTTPException, Request
@@ -284,6 +288,65 @@ class ValidateCredentialsRequest(BaseModel):
     base_url: str | None = Field(default=None, description="Optional custom base URL")
 
 
+class UpdateModelConfigRequest(BaseModel):
+    """Payload to persist default-model endpoint settings from the setup UI.
+
+    All fields are optional; only supplied (non-blank) values are written. The
+    API key is handled separately so it never lands in artemis.jsonc.
+    """
+
+    provider: str | None = Field(
+        default=None,
+        description="Provider identifier (openai, openrouter, anthropic, xai, google)",
+    )
+    model: str | None = Field(default=None, description="Model name for the default entry")
+    api_base: str | None = Field(
+        default=None,
+        description="OpenAI-compatible API base URL (LM Studio, vLLM, DeepSeek, proxies)",
+    )
+    api_key: str | None = Field(
+        default=None,
+        description="Optional API key; blank leaves the currently configured key untouched",
+    )
+    thinking_level: str | None = Field(
+        default=None, description="Optional thinking level (e.g. low, medium, high)"
+    )
+
+
+class CredentialEntryRequest(BaseModel):
+    """Payload to upsert a user-defined credential binding.
+
+    Entries pair a freely chosen environment variable name with a provider so
+    credentials are managed from the UI instead of hand-editing .env.
+    """
+
+    name: str = Field(description="User-defined environment variable name (e.g. MY_LLM_KEY)")
+    provider: str = Field(
+        description="Provider the variable binds to (e.g. openai, google, my-provider)"
+    )
+    value: str | None = Field(
+        default=None,
+        description="Secret value; blank keeps the current value and only updates the binding",
+    )
+
+
+# User-defined credential variables must be syntactically valid env names and
+# must not clobber variables the runtime or OS depends on.
+_ENV_NAME_PATTERN = re.compile(r"^[A-Za-z_][A-Za-z0-9_]*$")
+_RESERVED_ENV_NAMES = {
+    "PATH",
+    "PYTHONPATH",
+    "PYTHONHOME",
+    "HOME",
+    "TEMP",
+    "TMP",
+    "SYSTEMROOT",
+    "WINDIR",
+    "COMSPEC",
+    "SHELL",
+}
+
+
 @router.get("/credentials")
 async def get_credentials():
     """Report which providers have an API key configured.
@@ -491,6 +554,261 @@ async def get_model_config_and_env():
         "env_filename": ".env",
         "env_vars": env_vars,
     }
+
+
+def _update_jsonc_default_block(config_path: Path, updates: dict[str, str]) -> dict:
+    """Surgically update keys inside the top-level ``"default"`` object of a JSONC file.
+
+    Comment-preserving by design: only matched ``"key": value`` spans are
+    rewritten, so comments and formatting elsewhere survive the edit; missing
+    keys are inserted at the top of the block. Returns the reparsed
+    ``default`` object and raises ``ValueError`` when the file has no
+    ``default`` object or the edit would produce invalid JSONC (the file is
+    left untouched in that case).
+    """
+    from third_party.mobile_use.utils.file import load_jsonc
+
+    original = config_path.read_text(encoding="utf-8")
+    match = re.search(r'"default"\s*:\s*\{', original)
+    if not match:
+        raise ValueError(f'No "default" object found in {config_path}')
+
+    # Brace-match the "default" object, honouring string literals so braces in
+    # comments or values cannot derail the scan.
+    depth = 1
+    in_string = False
+    escaped = False
+    cursor = match.end()
+    while cursor < len(original) and depth > 0:
+        ch = original[cursor]
+        if in_string:
+            if escaped:
+                escaped = False
+            elif ch == "\\":
+                escaped = True
+            elif ch == '"':
+                in_string = False
+        elif ch == '"':
+            in_string = True
+        elif ch == "{":
+            depth += 1
+        elif ch == "}":
+            depth -= 1
+        cursor += 1
+    if depth != 0:
+        raise ValueError(f'Unbalanced braces in the "default" object of {config_path}')
+
+    block_start, block_end = match.end(), cursor - 1
+    block = original[block_start:block_end]
+
+    for key, value in updates.items():
+        encoded = json.dumps(value)
+        pattern = re.compile(rf'("{re.escape(key)}"\s*:\s*)("[^"]*"|[^,}}]+)')
+        if pattern.search(block):
+            block = pattern.sub(lambda m: f"{m.group(1)}{encoded}", block, count=1)
+        elif block.strip():
+            # Insert after the opening brace, ahead of the existing keys.
+            block = f'\n    "{key}": {encoded},' + block
+        else:
+            block = f'\n    "{key}": {encoded}\n  '
+
+    candidate = original[:block_start] + block + original[block_end:]
+    try:
+        parsed = load_jsonc(io.StringIO(candidate))
+    except Exception as exc:
+        raise ValueError(f"Editing the default block produced invalid JSONC: {exc}") from exc
+    config_path.write_text(candidate, encoding="utf-8")
+    return parsed.get("default", {})
+
+
+def _read_jsonc_default(config_path: Path) -> dict:
+    """Best-effort reparse of artemis.jsonc to echo the current default model."""
+    from third_party.mobile_use.utils.file import load_jsonc
+
+    try:
+        with open(config_path, encoding="utf-8") as f:
+            return load_jsonc(f).get("default", {})
+    except Exception:  # pylint: disable=broad-exception-caught
+        return {}
+
+
+@router.post("/model-config")
+async def update_model_config(request: UpdateModelConfigRequest):
+    """Persist default-model endpoint settings so users never edit config files by hand.
+
+    Writes go to the two places the runtime actually reads: the ``"default"``
+    block of artemis.jsonc (its api_base takes precedence over OPENAI_BASE_URL
+    at routing time) and, when an api_key is supplied, the provider credential
+    store with .env persistence. Unlike POST /credentials this never hard-fails
+    on key verification — custom endpoints (LM Studio, vLLM, proxies) cannot be
+    validated against a cloud vendor — so callers use POST /credentials/test
+    for explicit checks.
+    """
+    from artemis.config import settings
+    from artemis.config.paths import get_config_path
+
+    updates: dict[str, str] = {}
+    for field in ("provider", "model", "api_base", "thinking_level"):
+        value = getattr(request, field)
+        if value and value.strip():
+            updates[field] = value.strip()
+    api_key = (request.api_key or "").strip()
+
+    if not updates and not api_key:
+        raise HTTPException(status_code=400, detail="No model configuration changes supplied.")
+
+    api_base = updates.get("api_base")
+    if api_base and not api_base.startswith(("http://", "https://")):
+        raise HTTPException(status_code=400, detail="api_base must start with http:// or https://")
+
+    try:
+        config_path = get_config_path("artemis.jsonc")
+        if updates:
+            _update_jsonc_default_block(config_path, updates)
+        if api_key:
+            settings.set_api_key(updates.get("provider") or "openai", api_key, persist_to_env=True)
+        if api_base:
+            settings.set_openai_base_url(api_base, persist_to_env=True)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to update model config: {exc}")
+
+    readiness_engine.invalidate_cache()
+    return {
+        "status": "success",
+        "message": "Model endpoint configuration saved and applied.",
+        "provider": updates.get("provider"),
+        "default_model": _read_jsonc_default(config_path),
+    }
+
+
+def _mask_secret(k: str | None) -> str | None:
+    """Expose only enough of a secret to recognize it, never a usable fragment."""
+    if not k:
+        return None
+    if len(k) <= 8:
+        return "****"
+    return f"****{k[-4:]}"
+
+
+def _read_credential_bindings() -> list[dict]:
+    """Load the user-defined name→provider bindings; missing file means empty."""
+    from artemis.config.paths import get_credentials_bindings_file
+
+    try:
+        with open(get_credentials_bindings_file(), encoding="utf-8") as f:
+            data = json.load(f)
+        entries = data.get("entries", []) if isinstance(data, dict) else []
+        return [e for e in entries if isinstance(e, dict)]
+    except FileNotFoundError:
+        return []
+    except Exception:  # pylint: disable=broad-exception-caught
+        return []
+
+
+def _write_credential_bindings(entries: list[dict]) -> None:
+    from artemis.config.paths import get_credentials_bindings_file
+
+    path = get_credentials_bindings_file()
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps({"entries": entries}, indent=2, ensure_ascii=False) + "\n",
+        encoding="utf-8",
+    )
+
+
+@router.get("/credentials/entries")
+async def list_credential_entries():
+    """List user-defined credential bindings with masked value previews."""
+    from artemis.config.paths import get_credentials_bindings_file
+    from artemis.config.settings import is_placeholder_key
+
+    entries = []
+    for entry in _read_credential_bindings():
+        name = str(entry.get("name") or "").strip()
+        provider = str(entry.get("provider") or "").strip()
+        if not name:
+            continue
+        raw = os.environ.get(name)
+        if raw and is_placeholder_key(raw):
+            raw = None
+        entries.append(
+            {
+                "name": name,
+                "provider": provider,
+                "is_set": bool(raw),
+                "preview": _mask_secret(raw),
+            }
+        )
+    return {"entries": entries, "bindings_path": str(get_credentials_bindings_file())}
+
+
+@router.post("/credentials/entries")
+async def upsert_credential_entry(request: CredentialEntryRequest):
+    """Create or update a user-defined credential binding.
+
+    The secret is written to .env under the user-chosen variable name and the
+    name→provider mapping is recorded in credential_bindings.json, which is
+    replayed at startup so custom names feed the runtime credential store.
+    Known providers additionally take effect immediately in this session.
+    """
+    from artemis.config import settings
+
+    name = request.name.strip()
+    provider = request.provider.strip()
+    value = (request.value or "").strip()
+
+    if not _ENV_NAME_PATTERN.match(name):
+        raise HTTPException(
+            status_code=400,
+            detail="Invalid variable name: use letters, digits and underscores, starting with a letter or underscore.",
+        )
+    if name.upper() in _RESERVED_ENV_NAMES or name.upper().startswith("ARTEMIS_"):
+        raise HTTPException(status_code=400, detail=f"'{name}' is a reserved variable name.")
+    if not provider:
+        raise HTTPException(status_code=400, detail="Provider is required.")
+
+    try:
+        if value:
+            settings.persist_env_values({name: value})
+            os.environ[name] = value
+            # Known providers take effect in this session immediately; custom
+            # names keep working across restarts via the bindings file.
+            settings.set_api_key(provider, value, persist_to_env=False)
+
+        entries = [e for e in _read_credential_bindings() if str(e.get("name")) != name]
+        entries.append({"name": name, "provider": provider})
+        _write_credential_bindings(entries)
+    except HTTPException:
+        raise
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to save credential entry: {exc}")
+
+    readiness_engine.invalidate_cache()
+    return {
+        "status": "success",
+        "message": f"Credential '{name}' saved.",
+        "name": name,
+        "provider": provider,
+    }
+
+
+@router.delete("/credentials/entries/{name}")
+async def delete_credential_entry(name: str):
+    """Remove a user-defined credential binding from .env and the bindings file."""
+    from artemis.config import settings
+
+    trimmed = name.strip()
+    try:
+        settings.remove_env_values([trimmed])
+        entries = [e for e in _read_credential_bindings() if str(e.get("name")) != trimmed]
+        _write_credential_bindings(entries)
+    except Exception as exc:
+        raise HTTPException(status_code=500, detail=f"Failed to delete credential entry: {exc}")
+
+    readiness_engine.invalidate_cache()
+    return {"status": "success", "message": f"Credential '{trimmed}' removed."}
 
 
 @router.get("/server-status")

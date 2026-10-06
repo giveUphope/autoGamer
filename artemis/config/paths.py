@@ -83,6 +83,16 @@ def get_env_file() -> Path:
     return get_app_dir() / ".env" if _use_user_app_dir() else ROOT_DIR / ".env"
 
 
+def get_credentials_bindings_file() -> Path:
+    """Return the JSON file binding user-defined env var names to providers.
+
+    Lives next to the canonical .env so each custom variable and its provider
+    mapping always travel together in both source checkouts and user-dir
+    installations.
+    """
+    return get_env_file().parent / "credential_bindings.json"
+
+
 def get_default_traces_path() -> Path:
     """Returns default traces directory.
 
