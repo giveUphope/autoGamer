@@ -39,6 +39,7 @@ class ModelProvider(StrEnum):
     GEMINI = "google"
     VERTEX_AI = "vertexai"
     OPENAI = "openai"
+    OPENAI_RESPONSES = "openai_responses"
     ANTHROPIC = "anthropic"
     OPENROUTER = "openrouter"
     XAI = "xai"
@@ -67,6 +68,8 @@ class ModelProvider(StrEnum):
             "vertexai": cls.VERTEX_AI,
             "vertex": cls.VERTEX_AI,
             "openai": cls.OPENAI,
+            "openairesponses": cls.OPENAI_RESPONSES,
+            "responses": cls.OPENAI_RESPONSES,
             "anthropic": cls.ANTHROPIC,
             "claude": cls.ANTHROPIC,
             "openrouter": cls.OPENROUTER,
@@ -280,7 +283,7 @@ class ModelFactory:
             }
             return ChatVertexAI(**{k: v for k, v in kwargs.items() if v is not None})
 
-        elif provider == ModelProvider.OPENAI:
+        elif provider in (ModelProvider.OPENAI, ModelProvider.OPENAI_RESPONSES):
             from langchain_openai import ChatOpenAI
 
             api_key = (
@@ -301,6 +304,9 @@ class ModelFactory:
             }
             if endpoint.reasoning_effort:
                 kwargs["reasoning_effort"] = endpoint.reasoning_effort
+            if provider == ModelProvider.OPENAI_RESPONSES:
+                # OpenAI's newer Responses API (langchain-openai >= 1.0).
+                kwargs["use_responses_api"] = True
             return ChatOpenAI(**{k: v for k, v in kwargs.items() if v is not None})
 
         elif provider == ModelProvider.ANTHROPIC:

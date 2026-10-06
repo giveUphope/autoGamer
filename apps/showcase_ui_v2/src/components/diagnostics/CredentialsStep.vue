@@ -7,11 +7,12 @@
  * 当前模型配置卡只读展示 default 摘要与完整 JSONC（预设列表已移除）。
  * 挂载即跳过凭据检查并拉取 modelConfigEnv（对齐 Angular setModelSetupMode 语义）。
  */
-import { computed, onMounted } from 'vue';
+import { computed, nextTick, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconCheck, IconCopy } from '@arco-design/web-vue/es/icon';
 
 import { useSystemContract } from './contract';
+import type { CredentialEndpointRow } from './contract';
 import { useCopy } from './useCopy';
 import CredentialsManager from './CredentialsManager.vue';
 import EndpointConfigForm from './EndpointConfigForm.vue';
@@ -21,6 +22,17 @@ const system = useSystemContract();
 const { copiedId, copy } = useCopy();
 
 const env = computed(() => system.modelConfigEnv);
+
+// 「编辑」：把表格行回填进上方端点信息表单并滚动过去重新编辑
+const editingEndpoint = ref<CredentialEndpointRow | null>(null);
+
+function onEditEndpoint(row: CredentialEndpointRow): void {
+  editingEndpoint.value = { ...row };
+  void nextTick(() => {
+    // 防御式调用：jsdom 等测试环境未实现 scrollIntoView
+    document.querySelector('.endpoint-card')?.scrollIntoView?.({ behavior: 'smooth', block: 'start' });
+  });
+}
 
 onMounted(() => {
   system.setSkipCredentialsCheck(true);
@@ -43,8 +55,8 @@ onMounted(() => {
 
     <div class="diag-step-body">
       <div class="cred-panel">
-        <!-- 端点信息填写：免编辑配置文件 -->
-        <EndpointConfigForm />
+        <!-- 端点信息填写：唯一录入入口；「编辑」时由下方表格回填 -->
+        <EndpointConfigForm :prefill="editingEndpoint" />
 
         <a-alert v-if="!env" type="info">{{ t('launcher.diagnostics.cred.notLoaded') }}</a-alert>
         <div v-else class="inspector-card">
@@ -92,8 +104,8 @@ onMounted(() => {
           </a-collapse>
         </div>
 
-        <!-- 统一凭据管理：自定义变量名 / 提供商，多条增删与回显 -->
-        <CredentialsManager />
+        <!-- 已保存端点记录表格：编辑回填上方表单，删除移除配置 -->
+        <CredentialsManager @edit="onEditEndpoint" />
       </div>
     </div>
   </section>

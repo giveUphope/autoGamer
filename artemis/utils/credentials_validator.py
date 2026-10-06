@@ -123,7 +123,7 @@ async def validate_api_key(
                 err_msg = _extract_error_message(resp)
                 return False, f"Vision OCR API verification failed ({resp.status_code}): {err_msg}"
 
-            elif clean_provider == "openai":
+            elif clean_provider in ("openai", "openai_responses"):
                 endpoint = (
                     f"{base_url.rstrip('/')}/models"
                     if base_url

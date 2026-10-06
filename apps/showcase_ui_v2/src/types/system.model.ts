@@ -127,6 +127,8 @@ export interface ModelConfigEnvResponse {
   config_content: string;
   default_model: {
     provider?: string;
+    /** 提供商显示名（用户自定义），运行时忽略，仅 UI 回显。 */
+    provider_label?: string;
     model?: string;
     api_base?: string;
     thinking_level?: string;
@@ -152,9 +154,10 @@ export interface ModelConfigEnvResponse {
   }>;
 }
 
-/** 端点表单提交负载：仅携带用户填写（非空）的字段，密钥单独传递不落 artemis.jsonc。 */
+/** 端点表单提交负载：provider 为用户自定义显示名，api_format 为协议分派键。 */
 export interface ModelConfigUpdatePayload {
   provider?: string;
+  api_format?: string;
   model?: string;
   api_base?: string;
   api_key?: string;
@@ -169,23 +172,16 @@ export interface ModelConfigUpdateResult {
   default_model?: ModelConfigEnvResponse['default_model'];
 }
 
-/** 用户自定义凭据条目：环境变量名 → 提供商（值仅回显掩码，原文不出后端）。 */
-export interface CredentialEntry {
-  name: string;
-  provider: string;
-  is_set: boolean;
-  preview: string | null;
+/** 已保存端点记录：字段与端点信息表单一一对应（API Key 仅掩码），一行一条。 */
+export interface CredentialEndpointRow {
+  provider: string | null;
+  api_format: string | null;
+  api_base: string | null;
+  model: string | null;
+  api_key: string | null;
 }
 
-/** GET /api/system/credentials/entries 响应。 */
+/** GET /api/system/credentials/entries 响应（只读展示已保存的端点信息）。 */
 export interface CredentialEntriesResponse {
-  entries: CredentialEntry[];
-  bindings_path: string;
-}
-
-/** 新增/更新凭据条目负载；value 留空表示仅改绑定、保留现值。 */
-export interface CredentialEntryPayload {
-  name: string;
-  provider: string;
-  value?: string;
+  rows: CredentialEndpointRow[];
 }

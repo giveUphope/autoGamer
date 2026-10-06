@@ -28,7 +28,7 @@ import type { ProbeResult } from '@/types/system.model';
 import { useSystemContract } from './contract';
 import { useCopy } from './useCopy';
 
-const { t } = useI18n();
+const { t, te } = useI18n();
 const system = useSystemContract();
 const { copiedId, copy } = useCopy();
 
@@ -38,6 +38,45 @@ const probeCards = computed<{ id: string; icon: Component; probe: ProbeResult | 
   { id: 'system_config', icon: IconSettings, probe: system.configProbe },
   { id: 'toolchain', icon: IconVideoCamera, probe: system.toolchainProbe },
 ]);
+
+/**
+ * 后端探针的 title/summary 是英文原样字段；标题按卡片 id 走 i18n，
+ * 摘要按已知文案映射或模板正则翻译，未知内容原样透传。
+ */
+function probeTitle(cardId: string, probe: ProbeResult | null): string {
+  const key = `launcher.diagnostics.env.card.${cardId}`;
+  if (te(key)) return t(key);
+  return probe?.title || t('launcher.diagnostics.env.checking');
+}
+
+const SUMMARY_TEXT_KEYS: Record<string, string> = {
+  'Config Valid': 'configValid',
+  'Config Error': 'configError',
+  'No Device Found': 'noDeviceFound',
+  Connected: 'connected',
+  'ADB Not Found': 'adbNotFound',
+  'ADB Key Corrupted': 'adbKeyCorrupted',
+  'Device Booting': 'deviceBooting',
+  'Device Unauthorized': 'deviceUnauthorized',
+  'Lock State Unknown': 'lockStateUnknown',
+  'Ready (FFmpeg + scrcpy)': 'toolchainReady',
+};
+
+function probeSummary(probe: ProbeResult | null): string {
+  const s = probe?.summary;
+  if (!s) return t('launcher.diagnostics.env.checking');
+  const key = SUMMARY_TEXT_KEYS[s];
+  if (key) return t(`launcher.diagnostics.env.summary.${key}`);
+  let m = s.match(/^Python (.+) Ready$/);
+  if (m) return t('launcher.diagnostics.env.summary.pythonReady', { version: m[1] });
+  m = s.match(/^Python (.+) Unsupported$/);
+  if (m) return t('launcher.diagnostics.env.summary.pythonUnsupported', { version: m[1] });
+  m = s.match(/^Missing (.+)$/);
+  if (m) return t('launcher.diagnostics.env.summary.missing', { tools: m[1] });
+  m = s.match(/^Active \((.+)\)$/);
+  if (m) return t('launcher.diagnostics.env.summary.active', { name: m[1] });
+  return s;
+}
 
 type StatusCls = 'pass' | 'warn' | 'fail' | 'skipped' | 'checking';
 
@@ -139,8 +178,8 @@ const INSTALL_BAR_ID = 'env-install';
           <div class="env-card-head">
             <span class="env-icon"><component :is="card.icon" /></span>
             <div class="env-titles">
-              <div class="env-name">{{ card.probe?.title || t(`launcher.diagnostics.env.card.${card.id}`) }}</div>
-              <div class="env-sub">{{ card.probe?.summary || t('launcher.diagnostics.env.checking') }}</div>
+              <div class="env-name">{{ probeTitle(card.id, card.probe) }}</div>
+              <div class="env-sub">{{ probeSummary(card.probe) }}</div>
             </div>
             <span class="env-status" :class="`st-${statusCls(card.probe)}`">
               <component :is="statusIcon(card.probe)" />
@@ -295,16 +334,21 @@ const INSTALL_BAR_ID = 'env-install';
   border-radius: var(--border-radius-small);
   padding: 6px 10px;
   overflow: hidden;
+  /* env-card-actions 用 align-items: flex-start 排按钮；命令框改为撑满行宽，
+     否则宽度按内容计算，长命令会把盒子顶出卡片 */
+  align-self: stretch;
+  min-width: 0;
 }
 
 .code-text {
   font-family: var(--font-mono, monospace);
   font-size: 12px;
   color: var(--color-text-2);
-  white-space: nowrap;
-  overflow-x: auto;
+  /* 长命令自动换行：横向滚动条已被隐藏，nowrap 会让超出部分不可见 */
+  white-space: pre-wrap;
+  word-break: break-word;
+  min-width: 0;
   flex: 1;
-  scrollbar-width: none;
 }
 
 .copy-btn {

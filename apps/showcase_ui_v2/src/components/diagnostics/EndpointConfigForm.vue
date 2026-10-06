@@ -1,27 +1,40 @@
 <script setup lang="ts">
 /**
- * 自定义模式下的端点信息填写表单：provider / API 端点地址 / 模型名称 / 可选 API Key。
- * 数据经 saveModelConfig 写入 artemis.jsonc default 块与 .env，免去手动编辑配置文件；
- * 「测试连接」走 testApiKey（带 base_url）做不落库校验。预填值来自 modelConfigEnv。
+ * 自定义模式下的端点信息填写表单。
+ * 提供商为自由文本（用户自定义名称，仅作显示标签）；API 格式为独立下拉栏，
+ * 提供主流三种协议（OpenAI 兼容 / Anthropic / Google Gemini）——xAI、
+ * OpenRouter 等网关实际均走 OpenAI 兼容协议，不单列以免混淆。该下拉决定
+ * 运行时的协议分派。数据经 saveModelConfig 写入 artemis.jsonc default 块与
+ * .env，免去手动编辑配置文件；「测试连接」走 testApiKey（带 base_url）做
+ * 不落库校验。预填值来自 modelConfigEnv。
+ * 注意：下拉栏不能包在 <label> 里——label 会把点击转发给隐藏 input，
+ * 导致下拉刚打开就被关闭。
  */
 import { computed, onUnmounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconEye, IconEyeInvisible, IconSave } from '@arco-design/web-vue/es/icon';
 
 import { useSystemContract } from './contract';
+import type { CredentialEndpointRow } from './contract';
 import { errText } from './errors';
+
+const props = defineProps<{
+  /** 来自已保存端点表格的「编辑」回填；掩码 Key 不回填（留空即沿用现值）。 */
+  prefill: CredentialEndpointRow | null;
+}>();
 
 const { t } = useI18n();
 const system = useSystemContract();
 
-const PROVIDER_OPTIONS = [
-  { value: 'openai', label: 'OpenAI 兼容' },
-  { value: 'openrouter', label: 'OpenRouter' },
-  { value: 'anthropic', label: 'Anthropic Claude' },
-  { value: 'xai', label: 'xAI Grok' },
-] as const;
+const formatOptions = computed(() => [
+  { value: 'openai', label: t('launcher.diagnostics.cred.formatOpenai') },
+  { value: 'openai_responses', label: t('launcher.diagnostics.cred.formatOpenaiResponses') },
+  { value: 'anthropic', label: t('launcher.diagnostics.cred.formatAnthropic') },
+  { value: 'google', label: t('launcher.diagnostics.cred.formatGoogle') },
+]);
 
-const provider = ref<string>('openai');
+const providerName = ref('');
+const apiFormat = ref('openai');
 const apiBase = ref('');
 const model = ref('');
 const apiKeyInput = ref('');
@@ -33,18 +46,39 @@ const message = ref<string | null>(null);
 const error = ref<string | null>(null);
 
 const canTest = computed(() => Boolean(apiKeyInput.value.trim()) && !isTesting.value && !isSaving.value);
-const canSave = computed(() => Boolean(apiBase.value.trim() || model.value.trim() || apiKeyInput.value.trim()));
+const canSave = computed(
+  () =>
+    Boolean(providerName.value.trim()) ||
+    Boolean(apiBase.value.trim()) ||
+    Boolean(model.value.trim()) ||
+    Boolean(apiKeyInput.value.trim()),
+);
 
 // 已保存配置回填（用户编辑过后不再覆盖，对齐 Gemini key 的 effect 语义）
 watch(
   () => system.modelConfigEnv?.default_model,
   (dm) => {
     if (!dm || isEdited.value) return;
-    if (dm.provider) provider.value = dm.provider;
+    // 提供商显示名优先；旧配置没有 provider_label 时留空待用户填写
+    providerName.value = dm.provider_label ?? '';
+    if (dm.provider) apiFormat.value = dm.provider;
     if (dm.model) model.value = dm.model;
     if (dm.api_base) apiBase.value = dm.api_base;
   },
   { immediate: true },
+);
+
+// 「编辑」回填：把已保存端点记录的值载入表单重新编辑
+watch(
+  () => props.prefill,
+  (p) => {
+    if (!p) return;
+    providerName.value = p.provider ?? '';
+    if (p.api_format) apiFormat.value = p.api_format;
+    apiBase.value = p.api_base ?? '';
+    model.value = p.model ?? '';
+    isEdited.value = true;
+  },
 );
 
 let msgTimer: ReturnType<typeof setTimeout> | null = null;
@@ -65,7 +99,7 @@ async function testEndpoint(): Promise<void> {
   message.value = null;
   error.value = null;
   try {
-    const res = await system.testApiKey(provider.value, apiKeyInput.value.trim(), apiBase.value.trim() || undefined);
+    const res = await system.testApiKey(apiFormat.value, apiKeyInput.value.trim(), apiBase.value.trim() || undefined);
     if (res?.valid) message.value = res.message || t('launcher.diagnostics.cred.endpointTestOk');
     else error.value = res?.message || t('launcher.diagnostics.cred.endpointTestFail');
   } catch (err) {
@@ -84,7 +118,8 @@ async function saveEndpoint(): Promise<void> {
   try {
     const apiKey = apiKeyInput.value.trim();
     const res = await system.saveModelConfig({
-      provider: provider.value,
+      provider: providerName.value.trim() || undefined,
+      api_format: apiFormat.value,
       model: model.value.trim() || undefined,
       api_base: apiBase.value.trim() || undefined,
       api_key: apiKey || undefined,
@@ -111,14 +146,27 @@ async function saveEndpoint(): Promise<void> {
     <div class="endpoint-grid">
       <label class="field">
         <span class="field-label">{{ t('launcher.diagnostics.cred.endpointProviderLabel') }}</span>
-        <a-select
-          v-model="provider"
+        <a-input
+          v-model="providerName"
+          class="endpoint-provider-input"
           size="small"
-          class="provider-select"
-          :options="[...PROVIDER_OPTIONS]"
-          @change="isEdited = true"
+          :placeholder="t('launcher.diagnostics.cred.endpointProviderPlaceholder')"
+          spellcheck="false"
+          autocomplete="off"
+          @input="isEdited = true"
         />
       </label>
+      <div class="field">
+        <span class="field-label">{{ t('launcher.diagnostics.cred.endpointFormatLabel') }}</span>
+        <a-select
+          v-model="apiFormat"
+          class="endpoint-format-select"
+          size="small"
+          :options="formatOptions"
+          @change="isEdited = true"
+        />
+        <span class="field-hint">{{ t('launcher.diagnostics.cred.endpointFormatHint') }}</span>
+      </div>
       <label class="field field-wide">
         <span class="field-label">{{ t('launcher.diagnostics.cred.endpointBaseUrlLabel') }}</span>
         <a-input
@@ -252,6 +300,12 @@ async function saveEndpoint(): Promise<void> {
 .field-label {
   font-size: 12px;
   color: var(--color-text-2);
+}
+
+.field-hint {
+  font-size: 11px;
+  color: var(--color-text-3);
+  line-height: 1.4;
 }
 
 .key-row {

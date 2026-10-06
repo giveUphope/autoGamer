@@ -155,6 +155,130 @@ async def test_update_model_config_routes_api_key_to_credential_store(
 
 
 @pytest.mark.asyncio
+async def test_update_model_config_splits_provider_label_and_api_format(config_file: Path) -> None:
+    """The user-defined provider name becomes provider_label; api_format drives dispatch."""
+    async with _client() as client:
+        res = await client.post(
+            "/api/system/model-config",
+            json={"provider": "deepseek", "api_format": "openai", "model": "qwen3-32b"},
+        )
+
+    assert res.status_code == 200
+    body = res.json()
+    assert body["default_model"]["provider"] == "openai"
+    assert body["default_model"]["provider_label"] == "deepseek"
+
+
+@pytest.mark.asyncio
+async def test_update_model_config_rejects_unknown_api_format(config_file: Path) -> None:
+    async with _client() as client:
+        res = await client.post("/api/system/model-config", json={"api_format": "not-a-protocol"})
+
+    assert res.status_code == 400
+    assert config_file.read_text(encoding="utf-8") == JSONC_SAMPLE
+
+
+def test_model_provider_accepts_openai_responses() -> None:
+    from artemis.llm.router import ModelProvider
+
+    assert ModelProvider.from_string("openai_responses") == ModelProvider.OPENAI_RESPONSES
+    assert ModelProvider.from_string("responses").value == "openai_responses"
+
+
+def test_set_api_key_routes_openai_responses_to_openai_store(
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    monkeypatch.setenv("OPENAI_API_KEY", "")
+    from artemis.config.settings import Settings
+
+    s = Settings()
+    s.set_api_key("openai_responses", "sk-resp-1", persist_to_env=False)
+    assert s.OPENAI_API_KEY is not None
+    assert s.OPENAI_API_KEY.get_secret_value() == "sk-resp-1"
+
+
+@pytest.mark.asyncio
+async def test_update_model_config_persists_openai_responses_format(config_file: Path) -> None:
+    async with _client() as client:
+        res = await client.post("/api/system/model-config", json={"api_format": "openai_responses"})
+
+    assert res.status_code == 200
+    assert res.json()["default_model"]["provider"] == "openai_responses"
+
+
+@pytest.mark.asyncio
+async def test_delete_model_config_removes_default_block(
+    config_file: Path, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    import sys
+
+    # Point .env at a throwaway file: DELETE also clears the persisted
+    # OPENAI_BASE_URL, which must not touch the developer's real .env.
+    settings_module = sys.modules["artemis.config.settings"]
+    env_file = tmp_path / ".env"
+    env_file.write_text("OPENAI_BASE_URL=http://10.0.0.5:8000/v1\n", encoding="utf-8")
+    monkeypatch.setattr(settings_module, "get_env_file", lambda: env_file)
+    monkeypatch.setenv("OPENAI_BASE_URL", "http://10.0.0.5:8000/v1")
+
+    async with _client() as client:
+        res = await client.delete("/api/system/model-config")
+        assert res.status_code == 200
+
+        text = config_file.read_text(encoding="utf-8")
+        # The default block is gone; comments and presets survive byte-identical.
+        assert '"default"' not in text
+        assert "// header comment — keep this comment" in text
+        assert '"presets"' in text
+        assert '"model": "preset-model"' in text
+
+        # The persisted base URL is cleared from .env as well.
+        assert "http://10.0.0.5:8000/v1" not in env_file.read_text(encoding="utf-8")
+
+        # The display list is now empty.
+        list_res = await client.get("/api/system/credentials/entries")
+        assert list_res.json()["rows"] == []
+
+
+@pytest.mark.asyncio
+async def test_delete_model_config_without_default_returns_404(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    target = tmp_path / "artemis.jsonc"
+    target.write_text('{\n  "presets": {}\n}\n', encoding="utf-8")
+    monkeypatch.setattr("artemis.config.paths.get_config_path", lambda name: target)
+
+    async with _client() as client:
+        res = await client.delete("/api/system/model-config")
+
+    assert res.status_code == 404
+    assert target.read_text(encoding="utf-8") == '{\n  "presets": {}\n}\n'
+
+
+@pytest.mark.asyncio
+async def test_api_key_is_routed_by_api_format_not_label(
+    config_file: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    from artemis.config.settings import Settings
+
+    recorded: dict = {}
+
+    def fake_set_api_key(self, provider: str, key: str, persist_to_env: bool = False) -> None:
+        recorded["api_key"] = (provider, key, persist_to_env)
+
+    monkeypatch.setattr(Settings, "set_api_key", fake_set_api_key)
+
+    async with _client() as client:
+        res = await client.post(
+            "/api/system/model-config",
+            json={"provider": "deepseek", "api_format": "openai", "api_key": "sk-1"},
+        )
+
+    assert res.status_code == 200
+    # The label "deepseek" is not a runtime provider; the protocol is.
+    assert recorded["api_key"] == ("openai", "sk-1", True)
+
+
+@pytest.mark.asyncio
 async def test_update_model_config_invalid_jsonc_is_rejected(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

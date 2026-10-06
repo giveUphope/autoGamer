@@ -24,8 +24,7 @@ import type {
   AdbServerConnectionResponse,
   AdbServerStatus,
   CredentialEntriesResponse,
-  CredentialEntry,
-  CredentialEntryPayload,
+  CredentialEndpointRow,
   DeviceInfo,
   EmulatorLaunchState,
   ModelConfigEnvResponse,
@@ -74,7 +73,7 @@ export const useSystemStore = defineStore('system', () => {
   const lastCheckedTime = ref<Date | null>(null);
   const isSkipCredentialsCheck = ref<boolean>(false);
   const modelConfigEnv = ref<ModelConfigEnvResponse | null>(null);
-  const credentialEntries = ref<CredentialEntry[]>([]);
+  const credentialRows = ref<CredentialEndpointRow[]>([]);
 
   // 非响应式定时器与 in-flight 缓存（母本 L52/L151-152/L154）
   let connectivityTimer: ReturnType<typeof setInterval> | null = null;
@@ -552,13 +551,13 @@ export const useSystemStore = defineStore('system', () => {
   }
 
   // ---------------------------------------------------------------------------
-  // 统一凭据条目（自定义变量名 → 提供商）
+  // 已保存端点信息展示（只读表格：一行一条端点记录，字段作列名）
   // ---------------------------------------------------------------------------
-  /** 拉取用户自定义凭据条目列表（值仅掩码回显）。 */
+  /** 拉取已保存端点记录（API Key 仅掩码回显）。录入走端点信息表单。 */
   async function fetchCredentialEntries(): Promise<CredentialEntriesResponse> {
     try {
       const data = await apiGet<CredentialEntriesResponse>('/api/system/credentials/entries');
-      credentialEntries.value = data.entries;
+      credentialRows.value = data.rows;
       return data;
     } catch (err) {
       console.error('Failed to fetch credential entries:', err);
@@ -566,35 +565,15 @@ export const useSystemStore = defineStore('system', () => {
     }
   }
 
-  /** 新增/更新凭据条目：值写入 .env，name→provider 绑定持久化并在启动时回放。 */
-  async function saveCredentialEntry(
-    payload: CredentialEntryPayload,
-  ): Promise<{ status?: string; message?: string } | null> {
+  /** 从 artemis.jsonc 删除已保存的端点信息（default 块），成功后刷新列表与配置。 */
+  async function deleteEndpointRecord(): Promise<{ status?: string; message?: string } | null> {
     try {
-      const res = await apiPost<{ status?: string; message?: string }>(
-        '/api/system/credentials/entries',
-        payload,
-      );
+      const res = await apiDelete<{ status?: string; message?: string }>('/api/system/model-config');
       void fetchCredentialEntries().catch(() => {});
+      void fetchModelConfigEnv().catch(() => {});
       return res;
     } catch (err) {
-      console.error(`Failed to save credential entry ${payload.name}:`, err);
-      throw err;
-    }
-  }
-
-  /** 删除凭据条目：同时从 .env 与绑定文件中移除。 */
-  async function deleteCredentialEntry(
-    name: string,
-  ): Promise<{ status?: string; message?: string } | null> {
-    try {
-      const res = await apiDelete<{ status?: string; message?: string }>(
-        `/api/system/credentials/entries/${encodeURIComponent(name)}`,
-      );
-      void fetchCredentialEntries().catch(() => {});
-      return res;
-    } catch (err) {
-      console.error(`Failed to delete credential entry ${name}:`, err);
+      console.error('Failed to delete endpoint record:', err);
       throw err;
     }
   }
@@ -709,9 +688,8 @@ export const useSystemStore = defineStore('system', () => {
     testApiKey,
     updateApiKey,
     saveModelConfig,
-    credentialEntries,
+    credentialRows,
     fetchCredentialEntries,
-    saveCredentialEntry,
-    deleteCredentialEntry,
+    deleteEndpointRecord,
   };
 });

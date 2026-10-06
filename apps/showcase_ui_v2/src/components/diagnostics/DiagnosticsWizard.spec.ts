@@ -13,7 +13,7 @@ import type {
   ProbeResult,
   SystemReadinessReport,
 } from '../../types/system.model';
-import { type CredentialEntry, type ModelConfigEnvResponse } from './contract';
+import { type CredentialEndpointRow, type ModelConfigEnvResponse } from './contract';
 import DiagnosticsWizard from './DiagnosticsWizard.vue';
 
 /**
@@ -74,6 +74,7 @@ const MOCK_ENV: ModelConfigEnvResponse = {
   config_content: '{\n  "default_model": { "provider": "google", "model": "gemini-flash" }\n}',
   default_model: {
     provider: 'google',
+    provider_label: 'lmstudio',
     model: 'gemini-flash',
     api_base: 'http://127.0.0.1:1234/v1',
     thinking_level: 'low',
@@ -159,13 +160,10 @@ const mockSystem = reactive({
   saveModelConfig: vi.fn(() =>
     Promise.resolve({ status: 'success', message: 'Model endpoint configuration saved and applied.' }),
   ),
-  credentialEntries: [] as CredentialEntry[],
-  fetchCredentialEntries: vi.fn(() => Promise.resolve({ entries: [], bindings_path: 'credential_bindings.json' })),
-  saveCredentialEntry: vi.fn(() =>
-    Promise.resolve({ status: 'success', message: "Credential 'MY_KEY' saved." }),
-  ),
-  deleteCredentialEntry: vi.fn(() =>
-    Promise.resolve({ status: 'success', message: "Credential 'MY_KEY' removed." }),
+  credentialRows: [] as CredentialEndpointRow[],
+  fetchCredentialEntries: vi.fn(() => Promise.resolve({ rows: [] })),
+  deleteEndpointRecord: vi.fn(() =>
+    Promise.resolve({ status: 'success', message: 'Saved endpoint information removed from artemis.jsonc.' }),
   ),
 });
 
@@ -424,10 +422,11 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(mockSystem.setSkipCredentialsCheck).toHaveBeenCalledWith(true);
     expect(mockSystem.fetchModelConfigEnv).toHaveBeenCalled();
 
-    // 模式选择卡与预设列表均已移除
+    // 模式选择卡与预设列表均已移除（API 格式下拉的选项标签可合法含 "Google Gemini"）
     expect(wrapper.findAll('.mode-card').length).toBe(0);
+    expect(wrapper.find('.mode-cards').exists()).toBe(false);
+    expect(wrapper.find('.cred-box').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('可用预设');
-    expect(wrapper.text()).not.toContain('Google Gemini');
 
     // 端点表单与只读配置卡仍在
     expect(wrapper.find('.endpoint-card').exists()).toBe(true);
@@ -476,8 +475,9 @@ describe('DiagnosticsWizard (M5)', () => {
     const wrapper = mountWizard();
     await flushPromises();
 
-    // 自定义为默认模式：端点表单直接可见，并用 modelConfigEnv 预填
-    expect(wrapper.find('.endpoint-base-input').exists()).toBe(true);
+    // 提供商为文本框（回显 provider_label），API 格式为独立下拉栏（回显 provider）
+    expect((wrapper.find('.endpoint-provider-input input').element as HTMLInputElement).value).toBe('lmstudio');
+    expect(wrapper.find('.endpoint-format-select').exists()).toBe(true);
     expect((wrapper.find('.endpoint-base-input input').element as HTMLInputElement).value).toBe(
       'http://127.0.0.1:1234/v1',
     );
@@ -489,7 +489,8 @@ describe('DiagnosticsWizard (M5)', () => {
 
     expect(mockSystem.saveModelConfig).toHaveBeenCalledWith(
       expect.objectContaining({
-        provider: 'google',
+        provider: 'lmstudio',
+        api_format: 'google',
         model: 'gemini-flash',
         api_base: 'http://127.0.0.1:1234/v1',
         api_key: 'sk-test-123',
@@ -498,30 +499,90 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(wrapper.text()).toContain('Model endpoint configuration saved and applied.');
   });
 
-  it('manages user-defined credential entries in the unified list', async () => {
-    mockSystem.credentialEntries = [
-      { name: 'MY_LLM_KEY', provider: 'openai', is_set: true, preview: '****1234' },
+  it('renders saved endpoints as a table with form fields as columns', async () => {
+    mockSystem.credentialRows = [
+      {
+        provider: 'deepseek',
+        api_format: 'openai',
+        api_base: 'http://127.0.0.1:1234/v1',
+        model: 'qwen3.6-35b-a3b-mtp',
+        api_key: '****udio',
+      },
     ];
     const wrapper = mountWizard();
     await flushPromises();
 
-    // 已配置项回显：变量名 / 提供商 / 掩码预览
-    expect(wrapper.find('.creds-list').exists()).toBe(true);
-    expect(wrapper.text()).toContain('MY_LLM_KEY');
-    expect(wrapper.text()).toContain('****1234');
+    // 一行一条端点记录，列名 = 表单字段，末列为操作
+    expect(wrapper.find('.creds-table').exists()).toBe(true);
+    const headers = wrapper.findAll('.creds-table th').map((h) => h.text());
+    expect(headers).toEqual(['提供商', 'API 格式', 'API 端点地址', '模型名称', 'API Key（可选）', '操作']);
+    const cells = wrapper.findAll('.creds-table tbody td').map((c) => c.text());
+    expect(cells).toEqual([
+      'deepseek',
+      'OpenAI Chat Completions',
+      'http://127.0.0.1:1234/v1',
+      'qwen3.6-35b-a3b-mtp',
+      '****udio',
+      '',
+    ]);
 
-    // 新增一条：变量名 + 提供商 + 值 完全由用户定义
-    await wrapper.find('.creds-name-input input').setValue('SECOND_KEY');
-    await wrapper.find('.creds-provider-input input').setValue('my-provider');
-    await wrapper.find('.creds-value-input input').setValue('secret-2');
-    await wrapper.find('.creds-add-btn').trigger('click');
+    // 纯展示之外的操作列：编辑回填上方表单，删除经确认后调用删除接口
+    expect(wrapper.find('.creds-edit-btn').exists()).toBe(true);
+    expect(wrapper.find('.creds-delete-btn').exists()).toBe(true);
+  });
+
+  it('fills the endpoint form when clicking edit on a saved row', async () => {
+    mockSystem.credentialRows = [
+      {
+        provider: 'deepseek',
+        api_format: 'openai',
+        api_base: 'http://127.0.0.1:1234/v1',
+        model: 'qwen3.6-35b-a3b-mtp',
+        api_key: '****udio',
+      },
+    ];
+    const wrapper = mountWizard();
     await flushPromises();
 
-    expect(mockSystem.saveCredentialEntry).toHaveBeenCalledWith({
-      name: 'SECOND_KEY',
-      provider: 'my-provider',
-      value: 'secret-2',
-    });
-    expect(wrapper.text()).toContain("Credential 'MY_KEY' saved.");
+    await wrapper.find('.creds-edit-btn').trigger('click');
+    await flushPromises();
+
+    // 行值回填到上方表单（掩码 Key 不回填，留空沿用现值）
+    expect((wrapper.find('.endpoint-provider-input input').element as HTMLInputElement).value).toBe('deepseek');
+    expect(
+      (wrapper.find('.endpoint-format-select .arco-select-view-value')?.element as HTMLElement)?.textContent?.trim(),
+    ).toBe('OpenAI Chat Completions');
+    expect((wrapper.find('.endpoint-base-input input').element as HTMLInputElement).value).toBe(
+      'http://127.0.0.1:1234/v1',
+    );
+    expect((wrapper.find('.endpoint-model-input input').element as HTMLInputElement).value).toBe('qwen3.6-35b-a3b-mtp');
+    expect((wrapper.find('.endpoint-key-input input').element as HTMLInputElement).value).toBe('');
+  });
+
+  it('deletes the saved endpoint record after confirmation', async () => {
+    mockSystem.credentialRows = [
+      {
+        provider: 'deepseek',
+        api_format: 'openai',
+        api_base: 'http://127.0.0.1:1234/v1',
+        model: 'qwen3.6-35b-a3b-mtp',
+        api_key: '****udio',
+      },
+    ];
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    await wrapper.find('.creds-delete-btn').trigger('click');
+    await flushPromises();
+
+    // Popconfirm 弹层挂在 body 上，从 document 里找确认按钮
+    const okButton = Array.from(document.querySelectorAll('button')).find(
+      (b) => (b.textContent || '').trim() === '确定',
+    );
+    expect(okButton).toBeTruthy();
+    okButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
+    await flushPromises();
+
+    expect(mockSystem.deleteEndpointRecord).toHaveBeenCalled();
   });
 });

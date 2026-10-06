@@ -11,8 +11,7 @@ import type {
   AdbServerConnectionResponse,
   AdbServerStatus,
   CredentialEntriesResponse,
-  CredentialEntry,
-  CredentialEntryPayload,
+  CredentialEndpointRow,
   DeviceInfo,
   EmulatorLaunchState,
   ModelConfigEnvResponse,
@@ -25,8 +24,7 @@ import type {
 /** 数据层已平移至 @/types/system.model；此处 re-export 维持组件侧 import 路径稳定。 */
 export type {
   CredentialEntriesResponse,
-  CredentialEntry,
-  CredentialEntryPayload,
+  CredentialEndpointRow,
   ModelConfigEnvResponse,
   ModelConfigUpdatePayload,
   ModelConfigUpdateResult,
@@ -69,7 +67,7 @@ export interface SystemStoreContract {
   lastCheckedTime: Date | null;
   isSkipCredentialsCheck: boolean;
   modelConfigEnv: ModelConfigEnvResponse | null;
-  credentialEntries: CredentialEntry[];
+  credentialRows: CredentialEndpointRow[];
 
   // ---- computed ----
   readonly hasReadinessReport: boolean;
@@ -121,8 +119,7 @@ export interface SystemStoreContract {
   updateApiKey(provider: string, apiKey: string, persistToEnv?: boolean): Promise<ApiKeyUpdateResult | null>;
   saveModelConfig(payload: ModelConfigUpdatePayload): Promise<ModelConfigUpdateResult | null>;
   fetchCredentialEntries(): Promise<CredentialEntriesResponse>;
-  saveCredentialEntry(payload: CredentialEntryPayload): Promise<{ status?: string; message?: string } | null>;
-  deleteCredentialEntry(name: string): Promise<{ status?: string; message?: string } | null>;
+  deleteEndpointRecord(): Promise<{ status?: string; message?: string } | null>;
 }
 
 /** 按契约消费 system store（编译期结构断言：真实 store 必须与契约逐字段兼容）。 */

@@ -202,7 +202,7 @@ class Settings(BaseSettings):
             key = self.GOOGLE_API_KEY or self.GEMINI_API_KEY or self.GCP_API_KEY
         elif provider_lower in ("ocr", "vision", "google_vision"):
             key = self.OCR_API_KEY or self.VISION_API_KEY
-        elif provider_lower == "openai":
+        elif provider_lower in ("openai", "openai_responses"):
             key = self.OPENAI_API_KEY
         elif provider_lower in ("anthropic", "claude"):
             key = self.ANTHROPIC_API_KEY
@@ -237,7 +237,7 @@ class Settings(BaseSettings):
             os.environ[ENV_GOOGLE_API_KEY] = key
             os.environ[ENV_GEMINI_API_KEY] = key
             os.environ[ENV_GCP_API_KEY] = key
-        elif provider_lower == "openai":
+        elif provider_lower in ("openai", "openai_responses"):
             self.OPENAI_API_KEY = secret
             env_key_name = ENV_OPENAI_API_KEY
             os.environ[ENV_OPENAI_API_KEY] = key
@@ -331,33 +331,6 @@ class Settings(BaseSettings):
             os.environ.pop(ENV_OPENAI_BASE_URL, None)
         if persist_to_env:
             self.persist_env_values({ENV_OPENAI_BASE_URL: normalized})
-
-    def remove_env_values(self, keys: list[str]) -> None:
-        """Delete ``KEY=...`` lines for the given keys from the app .env file.
-
-        Commented-out lines are removed as well, and the variables are dropped
-        from the process environment so removal takes effect immediately.
-        """
-        env_file = get_env_file()
-        try:
-            if env_file.exists():
-                keys_set = set(keys)
-                lines = env_file.read_text(encoding="utf-8").splitlines()
-                kept = [
-                    line
-                    for line in lines
-                    if not any(
-                        line.startswith(f"{k}=")
-                        or line.startswith(f"#{k}=")
-                        or line.startswith(f"# {k}=")
-                        for k in keys_set
-                    )
-                ]
-                env_file.write_text("\n".join(kept) + "\n", encoding="utf-8")
-            for k in keys:
-                os.environ.pop(k, None)
-        except Exception as e:
-            logger.warning(f"Could not remove {keys} from {env_file}: {e}")
 
     def apply_custom_credential_bindings(self) -> int:
         """Feed user-defined env var names into the provider credential store.

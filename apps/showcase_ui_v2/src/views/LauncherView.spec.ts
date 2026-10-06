@@ -78,10 +78,9 @@ const mockSystem = reactive({
   testApiKey: vi.fn(() => Promise.resolve({ valid: true, provider: 'google', message: 'ok' })),
   updateApiKey: vi.fn(() => Promise.resolve({ message: 'saved' })),
   saveModelConfig: vi.fn(() => Promise.resolve({ message: 'saved' })),
-  credentialEntries: [],
-  fetchCredentialEntries: vi.fn(() => Promise.resolve({ entries: [], bindings_path: '' })),
-  saveCredentialEntry: vi.fn(() => Promise.resolve({ message: 'saved' })),
-  deleteCredentialEntry: vi.fn(() => Promise.resolve({ message: 'removed' })),
+  credentialRows: [],
+  fetchCredentialEntries: vi.fn(() => Promise.resolve({ rows: [] })),
+  deleteEndpointRecord: vi.fn(() => Promise.resolve({ message: 'removed' })),
 });
 
 vi.mock('@/stores/system', () => ({
