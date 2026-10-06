@@ -1,0 +1,32 @@
+{
+  "name": "artemis-showcase-ui-v2",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "ARTEMIS showcase UI v2 - Vue 3 + Arco Design Vue rewrite (M0 scaffold)",
+  "scripts": {
+    "dev": "vite",
+    "build": "vue-tsc --noEmit && vite build",
+    "preview": "vite preview",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "typecheck": "vue-tsc --noEmit"
+  },
+  "dependencies": {
+    "@arco-design/web-vue": "~2.58.0",
+    "pinia": "^3.0.0",
+    "vue": "^3.5.13",
+    "vue-i18n": "^11.1.0",
+    "vue-router": "^4.5.0"
+  },
+  "devDependencies": {
+    "@types/node": "^24.0.0",
+    "@vitejs/plugin-vue": "^6.0.0",
+    "@vue/test-utils": "^2.4.6",
+    "jsdom": "^30.0.0",
+    "typescript": "~5.9.0",
+    "vite": "^7.0.0",
+    "vitest": "^4.1.0",
+    "vue-tsc": "^3.0.0"
+  }
+}

@@ -1,0 +1,51 @@
+/*
+ * 全局样式入口 —— Arco Design Vue 暗色主题基调。
+ *
+ * 暗色 CSS 变量来自 arco.css + body[arco-theme='dark']（main.ts 中设置）。
+ * 页面级样式后续按 Arco token 重做，不逐像素复刻 Angular 版手写 SCSS。
+ */
+
+:root {
+  color-scheme: dark;
+}
+
+html,
+body,
+#app {
+  height: 100%;
+}
+
+body {
+  margin: 0;
+  background-color: var(--color-bg-1);
+  color: var(--color-text-1);
+  font-family:
+    Inter,
+    'Segoe UI',
+    'PingFang SC',
+    'Hiragino Sans GB',
+    'Microsoft YaHei',
+    sans-serif;
+  -webkit-font-smoothing: antialiased;
+}
+
+/* 占位页通用布局（M1 起逐步替换为正式布局组件） */
+.page {
+  max-width: 960px;
+  margin: 0 auto;
+  padding: 32px 24px;
+}
+
+.page-title {
+  margin: 0 0 12px;
+  font-size: 24px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.page-desc {
+  margin: 0 0 20px;
+  font-size: 14px;
+  line-height: 1.7;
+  color: var(--color-text-2);
+}
