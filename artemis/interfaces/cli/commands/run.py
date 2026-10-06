@@ -366,8 +366,18 @@ def run_command(
                             )
                             return
                         else:
-                            err = final_res.get("error") or final_res.get("explanation") or ""
+                            err = (
+                                final_res.get("error_message")
+                                or final_res.get("error")
+                                or final_res.get("explanation")
+                                or ""
+                            )
                             console.print(f"\n[bold red]✖ Task {final_st}[/bold red]: {err}")
+                            if err:
+                                console.print(
+                                    f"[dim]Worker output: `artemis trace view {target_sid}`; "
+                                    "daemon log: %LOCALAPPDATA%\\Artemis\\logs\\daemon-8000.log[/dim]"
+                                )
                             raise SystemExit(1)
                     except KeyboardInterrupt:
                         console.print("\n[yellow]Stopping task on Daemon...[/yellow]")

@@ -25,6 +25,7 @@ class SessionMetadata(BaseModel):
     start_time: float = Field(default_factory=time.time)
     end_time: float | None = None
     status: str = "running"  # running, success, failed
+    error_message: str | None = None
     device_info: dict[str, Any] = Field(default_factory=dict)
     pid: int | None = None
     video_filepath: str | None = None

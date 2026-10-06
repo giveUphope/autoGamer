@@ -124,6 +124,11 @@ class StorageManager:
             except sqlite3.OperationalError:
                 pass
 
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN error_message TEXT")
+            except sqlite3.OperationalError:
+                pass
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS images (
                     image_name TEXT PRIMARY KEY,
@@ -303,8 +308,8 @@ class StorageManager:
         with self._get_connection() as conn:
             conn.execute(
                 """
-                UPDATE sessions 
-                SET end_time = ?, status = ?, device_info = ?, video_filepath = ?
+                UPDATE sessions
+                SET end_time = ?, status = ?, device_info = ?, video_filepath = ?, error_message = ?
                 WHERE session_id = ?
                 """,
                 (
@@ -312,6 +317,7 @@ class StorageManager:
                     session.status,
                     json.dumps(session.device_info),
                     session.video_filepath,
+                    session.error_message,
                     str(session.session_id),
                 ),
             )

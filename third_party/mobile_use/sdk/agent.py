@@ -23,6 +23,7 @@ environment preparation, cancellation watching and UI hierarchy backend reportin
 """
 
 import asyncio
+import json
 import os
 
 try:
@@ -733,7 +734,7 @@ class AgentBase:
                     cancelled=True,
                 )
                 if context.data_engine:
-                    context.data_engine.end_session("cancelled")
+                    context.data_engine.end_session("cancelled", error_message=err)
 
                 raise
             except Exception as e:
@@ -745,7 +746,7 @@ class AgentBase:
                     error=err,
                 )
                 if context.data_engine:
-                    context.data_engine.end_session("failed")
+                    context.data_engine.end_session("failed", error_message=err)
 
                 raise
             finally:
@@ -889,7 +890,10 @@ class AgentBase:
                 session_status = "failed"
             elif task.status == "cancelled":
                 session_status = "cancelled"
-            context.data_engine.end_session(status=session_status)
+            task_error = task.result.error if task.result else None
+            context.data_engine.end_session(
+                status=session_status, error_message=task_error
+            )
 
         exec_setup_ctx = context.execution_setup
         if not exec_setup_ctx:
@@ -917,7 +921,12 @@ class AgentBase:
         traces_output_path = Path(task.request.trace_path).resolve()
 
         logger.info(f"[{task_name}] Compiling trace FROM FOLDER: " + str(temp_trace_path))
-        create_gif_from_trace_folder(temp_trace_path)
+        self._materialize_session_trace_artifacts(context, temp_trace_path)
+        try:
+            create_gif_from_trace_folder(temp_trace_path)
+        except Exception as e:
+            # The GIF needs ffmpeg; its absence must not cost us the steps.json.
+            logger.warning(f"[{task_name}] GIF compilation skipped: {e}")
         create_steps_json_from_trace_folder(temp_trace_path)
 
         logger.info(f"[{task_name}] Video created, removing dust...")
@@ -931,6 +940,44 @@ class AgentBase:
         new_video_path = output_folder_path / "recording.mp4"
         if new_video_path.exists() and context.data_engine:
             context.data_engine.update_video_path(new_video_path)
+
+    def _materialize_session_trace_artifacts(
+        self, context: ArtemisContext, temp_trace_path: Path
+    ) -> None:
+        """Copy the session's screenshots and step payloads into the flat trace
+        layout the compilers expect (``<n>.jpeg`` frames, ``<ts>.json`` steps).
+
+        The DataEngine persists steps in SQLite and screenshots under
+        ``<traces>/images/`` while the legacy compilers only scan this temp
+        folder; without this step the compiled replay artifacts would always
+        come out empty.
+        """
+        engine = getattr(context, "data_engine", None)
+        session_id = getattr(engine, "current_session_id", None) if engine else None
+        if not session_id:
+            return
+        try:
+            steps = engine.storage.get_steps(session_id)
+            images_dir = self._tmp_traces_dir / "images"
+            temp_trace_path.mkdir(parents=True, exist_ok=True)
+            for step in steps:
+                image_name = step.post_image_name or step.pre_image_name
+                if image_name:
+                    src = images_dir / f"{image_name}.jpg"
+                    if not src.exists():
+                        src = images_dir / f"{image_name}.jpeg"
+                    if src.exists():
+                        shutil.copy(src, temp_trace_path / f"{step.step_number}.jpeg")
+                step_payload = json.dumps(
+                    step.model_dump(mode="json"),
+                    ensure_ascii=False,
+                    default=str,
+                )
+                step_path = temp_trace_path / f"{int(step.timestamp * 1000)}.json"
+                step_path.write_text(step_payload, encoding="utf-8")
+            logger.info(f"Materialized {len(steps)} session steps into the trace folder.")
+        except Exception as e:
+            logger.warning(f"Could not materialize session trace artifacts: {e}")
 
     def _prepare_output_files(self, task: Task):
         if task.request.llm_output_path:

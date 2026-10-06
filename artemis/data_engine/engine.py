@@ -641,8 +641,8 @@ class DataEngine:
         self._publish("session_started", session.model_dump())
         return session_id
 
-    def end_session(self, status: str = "completed"):
-        """End the current session, updating its status and end time."""
+    def end_session(self, status: str = "completed", error_message: str | None = None):
+        """End the current session, updating its status, end time and failure reason."""
         if not self.current_session_id:
             return
 
@@ -677,6 +677,8 @@ class DataEngine:
         if session:
             session.end_time = end_time
             session.status = status
+            if error_message:
+                session.error_message = error_message
         else:
             session = SessionMetadata(
                 session_id=session_id,
@@ -684,6 +686,7 @@ class DataEngine:
                 start_time=self.session_start_time or end_time,
                 end_time=end_time,
                 status=status,
+                error_message=error_message,
                 device_info=self.ctx.device.model_dump()
                 if getattr(self, "ctx", None) and self.ctx.device
                 else {},
