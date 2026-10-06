@@ -30,15 +30,9 @@ logger = get_logger(__name__)
 
 def _strip_json_comments(text: str) -> str:
     """Strip // and /* */ comments from JSONC text while preserving string literals."""
-    pattern = r'//.*?$|/\*.*?\*/|\'(?:\\.|[^\\\'])*\'|"(?:\\.|[^\\"])*"'
+    from third_party.mobile_use.utils.file import strip_json_comments
 
-    def replacer(match: re.Match) -> str:
-        s = match.group(0)
-        if s.startswith("/"):
-            return ""
-        return s
-
-    return re.sub(pattern, replacer, text, flags=re.DOTALL | re.MULTILINE)
+    return strip_json_comments(text)
 
 
 def _deep_merge(base: dict[str, Any], override: dict[str, Any]) -> dict[str, Any]:

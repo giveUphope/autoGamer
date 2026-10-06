@@ -22,9 +22,21 @@ from typing import IO
 
 
 def strip_json_comments(text: str) -> str:
-    text = re.sub(r"//.*?$", "", text, flags=re.MULTILINE)
-    text = re.sub(r"/\*.*?\*/", "", text, flags=re.DOTALL)
-    return text
+    """Strip // and /* */ comments from JSONC text while preserving string literals.
+
+    String-aware: ``//`` inside a quoted value (e.g. an ``http://`` api_base
+    URL) must not start a comment, so quoted strings are matched and kept
+    verbatim before comment patterns get a chance.
+    """
+    pattern = r"//.*?$|/\*.*?\*/|'(?:\\.|[^\\'])*'|\"(?:\\.|[^\\\"])*\""
+
+    def replacer(match: re.Match) -> str:
+        s = match.group(0)
+        if s.startswith("/"):
+            return ""
+        return s
+
+    return re.sub(pattern, replacer, text, flags=re.DOTALL | re.MULTILINE)
 
 
 def load_jsonc(file: IO) -> dict:

@@ -52,50 +52,78 @@ def validate_vertex_ai_credentials() -> None:
 
 
 class LLM(BaseModel):
-    """Base model representing an LLM model provider and runtime parameters."""
+    """Base model representing an LLM model provider and runtime parameters.
+
+    An node may stay unconfigured (``provider``/``model`` unset): the factory
+    default endpoint only applies when its credentials exist, otherwise the
+    deployment default stays empty and must be configured explicitly.
+    """
 
     model_config = {"ignored_types": (CyFunctionDetector,)}
-    provider: LLMProvider
-    model: str
+    provider: LLMProvider | None = None
+    model: str | None = None
     temperature: float | None = None
     thinking_budget: int | None = None
     thinking_level: Literal["minimal", "low", "medium", "high"] | None = None
     reasoning_effort: Literal["none", "low", "medium", "high"] | None = None
     include_thoughts: bool | None = None
     enable_grounding: bool | None = None
+    # Custom endpoint overrides. Unset fields inherit the deployment default
+    # (the "default" entry of artemis.jsonc); an explicit value wins over the
+    # provider's official endpoint and over environment variables.
+    api_base: str | None = None
+    api_key: str | None = None
+    api_key_env: str | None = None
+
+    def _credential_present(self, settings_key: object) -> bool:
+        """Whether a usable credential exists: config api_key, its env var, or the provider env key."""
+        if self.api_key:
+            return True
+        if self.api_key_env and os.environ.get(self.api_key_env):
+            return True
+        return bool(settings_key)
 
     def validate_provider(self, name: str) -> None:
-        """Ensure the required API key or credentials exist in settings for this provider."""
+        """Ensure the required API key or credentials exist for this provider."""
+        if not self.provider or not self.model:
+            return
         if self.provider == "openai":
-            if not settings.OPENAI_API_KEY:
-                raise Exception(f"{name} requires OPENAI_API_KEY in .env")
+            if not self._credential_present(settings.OPENAI_API_KEY):
+                raise Exception(
+                    f"{name} requires OPENAI_API_KEY in .env "
+                    "(or api_key/api_key_env on the LLM config node)"
+                )
         elif self.provider == "google":
-            if not settings.GOOGLE_API_KEY:
+            if not self._credential_present(settings.GOOGLE_API_KEY):
                 raise Exception(f"{name} requires GOOGLE_API_KEY in .env")
         elif self.provider == "vertexai":
             validate_vertex_ai_credentials()
         elif self.provider == "anthropic":
-            if not (settings.ANTHROPIC_API_KEY or os.environ.get("ANTHROPIC_API_KEY")):
+            if not self._credential_present(settings.ANTHROPIC_API_KEY):
                 raise Exception(f"{name} requires ANTHROPIC_API_KEY in .env")
         elif self.provider == "openrouter":
-            if not settings.OPEN_ROUTER_API_KEY:
+            if not self._credential_present(settings.OPEN_ROUTER_API_KEY):
                 raise Exception(f"{name} requires OPEN_ROUTER_API_KEY in .env")
         elif self.provider == "xai":
-            if not settings.XAI_API_KEY:
+            if not self._credential_present(settings.XAI_API_KEY):
                 raise Exception(f"{name} requires XAI_API_KEY in .env")
 
     def __str__(self) -> str:
+        if not self.provider or not self.model:
+            return "unconfigured"
         return f"{self.provider}/{self.model}"
 
 
 class LLMWithFallback(LLM):
     """LLM configuration with automatic secondary fallback and timeout specs."""
 
-    fallback: LLM
+    fallback: LLM | None = None
     fix_model: str | None = None
     timeout: float | None = None
 
     def __str__(self) -> str:
+        if not self.provider or not self.model:
+            return "unconfigured"
         return f"{self.provider}/{self.model} (fallback: {self.fallback})"
 
 

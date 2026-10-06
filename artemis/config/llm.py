@@ -14,6 +14,7 @@
 
 """LLM provider, model hierarchy, fallback chaining, and configuration loaders."""
 
+import os
 from pathlib import Path
 from typing import Any
 
@@ -23,6 +24,7 @@ from artemis.config.constants import (
     AgentNode,
 )
 from artemis.config.paths import ROOT_DIR, get_config_path
+from artemis.config.settings import settings
 from artemis.utils.cython_compat import CyFunctionDetector
 from third_party.mobile_use.config import llm as base_llm_config
 from third_party.mobile_use.config.llm import (
@@ -39,7 +41,18 @@ from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
+#: Built-in endpoint used when artemis.jsonc has no usable "default" entry.
+FACTORY_DEFAULT_MODEL_CFG: dict[str, Any] = {
+    "provider": "google",
+    "model": "gemini-3.8-flash",
+    "fallback": {
+        "provider": "google",
+        "model": "gemini-3.7-flash",
+    },
+}
+
 __all__ = [
+    "FACTORY_DEFAULT_MODEL_CFG",
     "LLM",
     "AgentNodeWithFallback",
     "LLMUtilsNodeWithFallback",
@@ -51,24 +64,64 @@ __all__ = [
     "get_default_llm_config",
     "initialize_llm_config",
     "lightweight_judge_default",
+    "load_default_model_cfg",
     "load_llm_config_override",
     "parse_llm_config",
     "validate_vertex_ai_credentials",
 ]
 
 
+def _google_credentials_present() -> bool:
+    """Whether Google/Gemini credentials exist for the factory default endpoint."""
+    return bool(
+        settings.GOOGLE_API_KEY
+        or os.environ.get("GEMINI_API_KEY")
+        or os.environ.get("GOOGLE_API_KEY")
+    )
+
+
+def _factory_default_cfg() -> dict[str, Any]:
+    """Factory default endpoint, or an empty one when it cannot work.
+
+    The built-in default targets Google's official endpoint; without Google
+    credentials the deployment default stays empty (no endpoint specified)
+    and must be configured explicitly.
+    """
+    if _google_credentials_present():
+        return dict(FACTORY_DEFAULT_MODEL_CFG)
+    return {}
+
+
 def lightweight_judge_default() -> "LLMWithFallback":
     """Factory default for the lightweight judge nodes (pixel safety net and
-    planner validation): a flash-lite model at temperature 0."""
-    return LLMWithFallback(
-        provider="google",
-        model="gemini-3.5-flash-lite",
-        temperature=0.0,
-        fallback=LLM(
+    planner validation): a flash-lite model at temperature 0. Without Google
+    credentials the judges inherit the deployment default endpoint instead."""
+    if _google_credentials_present():
+        return LLMWithFallback(
             provider="google",
-            model="gemini-3.1-flash-lite",
+            model="gemini-3.5-flash-lite",
             temperature=0.0,
-        ),
+            fallback=LLM(
+                provider="google",
+                model="gemini-3.1-flash-lite",
+                temperature=0.0,
+            ),
+        )
+    cfg = load_default_model_cfg()
+    provider = cfg.get("provider")
+    model = cfg.get("model")
+    if provider and model:
+        return LLMWithFallback(
+            provider=provider,
+            model=model,
+            temperature=0.0,
+            fallback=LLM(provider=provider, model=model, temperature=0.0),
+        )
+    return LLMWithFallback(
+        provider=None,
+        model=None,
+        temperature=0.0,
+        fallback=LLM(provider=None, model=None, temperature=0.0),
     )
 
 
@@ -130,22 +183,22 @@ class LLMConfig(LLMConfigBase):
         return val
 
 
+def _resolve_llm_config_path() -> Path:
+    """Location of the active LLM config file (workspace artemis.jsonc, then fallbacks)."""
+    for candidate in ("artemis.jsonc", "artemis.json", LLM_CONFIG_FILENAME):
+        try:
+            return get_config_path(candidate)
+        except FileNotFoundError:
+            continue
+    return get_config_path(LLM_CONFIG_FILENAME, ROOT_DIR / LLM_CONFIG_FILENAME)
+
+
 def _expand_default_into_nodes(config_dict: dict) -> dict:
     """Expand unified config format with 'default' and 'nodes' into full LLMConfig schema."""
     if "planner" in config_dict and "utils" in config_dict:
         return config_dict
 
-    default_model_cfg = config_dict.get(
-        "default",
-        {
-            "provider": "google",
-            "model": "gemini-3.8-flash",
-            "fallback": {
-                "provider": "google",
-                "model": "gemini-3.7-flash",
-            },
-        },
-    )
+    default_model_cfg = dict(config_dict.get("default") or _factory_default_cfg())
 
     nodes_override = config_dict.get("nodes", {})
 
@@ -197,18 +250,25 @@ def _expand_default_into_nodes(config_dict: dict) -> dict:
     return result
 
 
+def load_default_model_cfg() -> dict[str, Any]:
+    """Raw "default" entry of artemis.jsonc — the endpoint inheritance base.
+
+    Nodes that configure only a model name (no provider/endpoint of their own)
+    inherit from this entry. Falls back to the factory default when the config
+    file is missing or unreadable.
+    """
+    try:
+        with open(_resolve_llm_config_path(), encoding="utf-8") as f:
+            config_dict = load_jsonc(f)
+    except Exception as e:  # pylint: disable=broad-exception-caught
+        logger.error(f"Failed to load llm config: {_resolve_llm_config_path()}. Error: {e}")
+        return _factory_default_cfg()
+    return dict(config_dict.get("default") or _factory_default_cfg())
+
+
 def parse_llm_config() -> LLMConfig:
     """Parse and instantiate LLMConfig from artemis.jsonc or llm-config.json."""
-    config_path = None
-    for candidate in ("artemis.jsonc", "artemis.json", LLM_CONFIG_FILENAME):
-        try:
-            config_path = get_config_path(candidate)
-            break
-        except FileNotFoundError:
-            continue
-
-    if not config_path:
-        config_path = get_config_path(LLM_CONFIG_FILENAME, ROOT_DIR / LLM_CONFIG_FILENAME)
+    config_path = _resolve_llm_config_path()
 
     try:
         with open(config_path, encoding="utf-8") as f:

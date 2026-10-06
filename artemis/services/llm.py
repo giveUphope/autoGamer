@@ -22,8 +22,10 @@ import asyncio
 from collections.abc import Awaitable, Callable, Iterator
 from contextlib import contextmanager
 from contextvars import ContextVar, Token
+from dataclasses import dataclass
 import functools
 import logging
+import os
 from pathlib import Path
 import re
 import sys
@@ -870,18 +872,31 @@ invoke_llm_with_timeout_message = LLMWaitNotice(
 ).__call__
 
 
+def _resolve_configured_api_key(api_key: str | None, api_key_env: str | None) -> str | None:
+    """Config api_key wins; otherwise the env var named by api_key_env."""
+    if api_key:
+        return api_key
+    if api_key_env:
+        return os.environ.get(api_key_env)
+    return None
+
+
 # Backward compatible factory functions delegating to ModelFactory
-def get_google_llm(
-    model_name: str = "gemini-3.8-flash",
+def get_provider_llm(
+    model_name: str,
+    provider: str = "google",
     temperature: float | None = None,
     timeout: float | None = None,
-    thinking_budget: int | None = None,
+    thinking_budget: float | None = None,
     thinking_level: str | None = "medium",
     include_thoughts: bool | None = None,
     enable_grounding: bool = False,
+    api_base: str | None = None,
+    api_key: str | None = None,
 ) -> BaseChatModel:
+    """Build a chat model for an explicit model name on an explicit endpoint."""
     ep = ModelEndpoint(
-        provider=ModelProvider.GOOGLE,
+        provider=ModelProvider.from_string(provider),
         model_name=model_name,
         temperature=temperature or 0.0,
         timeout_seconds=timeout or 60.0,
@@ -889,8 +904,77 @@ def get_google_llm(
         thinking_level=thinking_level,
         include_thoughts=include_thoughts,
         enable_grounding=enable_grounding,
+        api_base=api_base,
+        api_key=api_key,
     )
     return ModelFactory.create_model(ep)
+
+
+@dataclass(frozen=True)
+class DefaultDeployment:
+    """The endpoint every node that configures only a model name inherits.
+
+    Empty ``provider``/``model`` mean no deployment default: without Google
+    credentials the built-in Google endpoint is not assumed and configuration
+    is required.
+    """
+
+    provider: str = ""
+    model: str = ""
+    api_base: str | None = None
+    api_key: str | None = None
+    api_key_env: str | None = None
+
+
+def get_default_deployment() -> DefaultDeployment:
+    """Endpoint settings of the raw "default" entry in artemis.jsonc.
+
+    Reads the unmerged entry (not a specific node), so per-node overrides can
+    never leak into the inheritance base. Returns an empty deployment when the
+    config provides no default and the factory default cannot work.
+    """
+    try:
+        from artemis.config.llm import load_default_model_cfg
+
+        cfg = load_default_model_cfg()
+        return DefaultDeployment(
+            provider=str(cfg.get("provider") or ""),
+            model=str(cfg.get("model") or ""),
+            api_base=cfg.get("api_base") or None,
+            api_key=cfg.get("api_key") or None,
+            api_key_env=cfg.get("api_key_env") or None,
+        )
+    except Exception:  # pylint: disable=broad-exception-caught
+        return DefaultDeployment()
+
+
+def get_default_deployment_llm(
+    model_name: str | None = None,
+    temperature: float | None = None,
+    timeout: float | None = None,
+) -> BaseChatModel:
+    """Build a model on the deployment's default endpoint, overriding only the model name.
+
+    Single entry point for nodes that carry a bare model name in config (step
+    summarizer, history chunker) and for degraded-mode fallbacks. Never
+    hardcodes a provider: provider and endpoint come from artemis.jsonc.
+    """
+    deployment = get_default_deployment()
+    if not deployment.provider or not deployment.model:
+        raise RuntimeError(
+            "No default model endpoint is configured. Set provider/model "
+            "(optionally api_base) under 'default' in config/artemis.jsonc, "
+            "or provide a provider API key such as GEMINI_API_KEY."
+        )
+    return get_provider_llm(
+        model_name=model_name or deployment.model,
+        provider=deployment.provider,
+        temperature=temperature,
+        timeout=timeout,
+        thinking_level=None,
+        api_base=deployment.api_base,
+        api_key=_resolve_configured_api_key(deployment.api_key, deployment.api_key_env),
+    )
 
 
 def _resolve_endpoint(
@@ -915,7 +999,15 @@ def _resolve_endpoint(
 
     if use_fallback:
         if isinstance(cfg, LLMWithFallback) or (hasattr(cfg, "fallback") and cfg.fallback):
-            cfg = cfg.fallback
+            parent, cfg = cfg, cfg.fallback
+            # Endpoint overrides inherit into the fallback unless it declares its own.
+            inherited = {
+                field: getattr(parent, field)
+                for field in ("api_base", "api_key", "api_key_env")
+                if getattr(cfg, field, None) is None and getattr(parent, field, None) is not None
+            }
+            if inherited:
+                cfg = cfg.model_copy(update=inherited)
         else:
             raise ValueError(f"LLM configuration for '{name}' has no fallback!")
 
@@ -923,8 +1015,15 @@ def _resolve_endpoint(
         val = getattr(obj, attr, None)
         return val if isinstance(val, expected_type) else None
 
-    provider_val = getattr(cfg, "provider", "google")
-    model_val = getattr(cfg, "model", "gemini-2.5-flash")
+    provider_val = getattr(cfg, "provider", None)
+    model_val = getattr(cfg, "model", None)
+    if not provider_val or not model_val:
+        raise RuntimeError(
+            f"No model endpoint configured for '{name}'. Set provider/model "
+            "(optionally api_base) for this node or 'default' in "
+            "config/artemis.jsonc, or provide a provider API key such as "
+            "GEMINI_API_KEY."
+        )
 
     return ModelEndpoint(
         provider=ModelProvider.from_string(provider_val),
@@ -936,6 +1035,10 @@ def _resolve_endpoint(
         reasoning_effort=_get_val(cfg, "reasoning_effort", str),
         include_thoughts=_get_val(cfg, "include_thoughts", bool),
         enable_grounding=_get_val(cfg, "enable_grounding", bool) or False,
+        api_base=_get_val(cfg, "api_base", str),
+        api_key=_resolve_configured_api_key(
+            _get_val(cfg, "api_key", str), _get_val(cfg, "api_key_env", str)
+        ),
     )
 
 

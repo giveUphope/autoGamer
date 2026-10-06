@@ -225,7 +225,7 @@ class RunSetupMixin:
         fallback_model = None
         thinking_level = None
         if llm_cfg:
-            model_name = llm_cfg.model
+            model_name = llm_cfg.model or DEFAULT_EXPLORER_MODEL
             if "/" in model_name:
                 model_name = model_name.split("/")[-1]
             if getattr(llm_cfg, "temperature", None) is not None:
