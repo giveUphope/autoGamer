@@ -17,6 +17,7 @@ import logging
 from pathlib import Path
 import queue
 import subprocess
+import sys
 import time
 from typing import IO
 
@@ -73,7 +74,15 @@ class PythonExecutor:
             kernel_output = self._kernel_log if self._kernel_log is not None else subprocess.DEVNULL
 
             self.km = jupyter_client.KernelManager(kernel_name="python3")
-            self.km.start_kernel(stdout=kernel_output, stderr=kernel_output)
+            extra_kwargs: dict = {}
+            if sys.platform == "win32":
+                # jupyter_client only sets CREATE_NO_WINDOW when the parent is
+                # pythonw.exe; spawned from a console-less daemon/worker the
+                # kernel would otherwise get a fresh, blank console window.
+                extra_kwargs["creationflags"] = (
+                    subprocess.CREATE_NEW_PROCESS_GROUP | subprocess.CREATE_NO_WINDOW
+                )
+            self.km.start_kernel(stdout=kernel_output, stderr=kernel_output, **extra_kwargs)
             self.kc = self.km.client()
             self.kc.start_channels()
             self.kc.wait_for_ready(timeout=KERNEL_STARTUP_TIMEOUT_S)
