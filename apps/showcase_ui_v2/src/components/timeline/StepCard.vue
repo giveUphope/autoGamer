@@ -92,12 +92,12 @@ const timelineStore = useTimelineStore();
 const playerStore = usePlayerStore();
 
 // ---- 折叠状态（Angular 的 expandedActionCards / collapsedStreams 的组件内等价物） ----
-const expandedCards = reactive(new Set<string>());
+const collapsedCards = reactive(new Set<string>());
 const streamCollapsed = reactive(new Set<string>());
 
 function toggleCard(cardId: string): void {
-  if (expandedCards.has(cardId)) expandedCards.delete(cardId);
-  else expandedCards.add(cardId);
+  if (collapsedCards.has(cardId)) collapsedCards.delete(cardId);
+  else collapsedCards.add(cardId);
 }
 
 function toggleStream(key: string): void {
@@ -419,7 +419,7 @@ function resumePausedTask(): void {
           class="action-card report-card"
           :class="{
             'is-failed': getReportStatusValue(item.data) === 'failed',
-            'is-expanded': expandedCards.has(`report-${itemIdx}`),
+            'is-collapsed': collapsedCards.has(`report-${itemIdx}`),
           }"
           @click="toggleCard(`report-${itemIdx}`)"
         >
@@ -438,15 +438,15 @@ function resumePausedTask(): void {
             <a-tag size="small" :color="getReportStatusValue(item.data) === 'failed' ? 'red' : 'green'">
               {{ getReportStatusValue(item.data) === 'failed' ? t('workspace.timeline.failed') : t('workspace.timeline.completed') }}
             </a-tag>
-            <icon-down class="expand-icon" :class="{ rotated: expandedCards.has(`report-${itemIdx}`) }" />
+            <icon-down class="expand-icon" :class="{ rotated: collapsedCards.has(`report-${itemIdx}`) }" />
           </div>
-          <div v-if="!expandedCards.has(`report-${itemIdx}`) && getReportStatusExplanation(item.data)" class="card-body">
+          <div v-if="!collapsedCards.has(`report-${itemIdx}`) && getReportStatusExplanation(item.data)" class="card-body">
             <div class="detail-row">
               <span class="detail-label">{{ t('workspace.timeline.summary') }}:</span>
               <span class="detail-value">"{{ getReportStatusExplanation(item.data) }}"</span>
             </div>
           </div>
-          <div v-if="expandedCards.has(`report-${itemIdx}`)" class="card-expanded" @click.stop>
+          <div v-if="collapsedCards.has(`report-${itemIdx}`)" class="card-expanded" @click.stop>
             <div v-if="getReportStatusExplanation(item.data)" class="expanded-grid">
               <div class="grid-item full-width">
                 <span class="grid-label">{{ t('workspace.timeline.reportFindings') }}</span>
@@ -485,7 +485,7 @@ function resumePausedTask(): void {
           class="action-card"
           :class="{
             'is-failed': isActionFailed(item.data, props.block.data),
-            'is-expanded': expandedCards.has(`action-${itemIdx}`),
+            'is-collapsed': collapsedCards.has(`action-${itemIdx}`),
           }"
           @click="toggleCard(`action-${itemIdx}`)"
         >
@@ -497,10 +497,10 @@ function resumePausedTask(): void {
             <a-tag v-if="isActionFailed(item.data, props.block.data)" size="small" color="red">
               {{ t('workspace.timeline.failed') }}
             </a-tag>
-            <icon-down class="expand-icon" :class="{ rotated: expandedCards.has(`action-${itemIdx}`) }" />
+            <icon-down class="expand-icon" :class="{ rotated: collapsedCards.has(`action-${itemIdx}`) }" />
           </div>
           <div
-            v-if="!expandedCards.has(`action-${itemIdx}`) && (getActionTargetText(item.data) || getActionInputText(item.data) || getActionCoords(item.data))"
+            v-if="!collapsedCards.has(`action-${itemIdx}`) && (getActionTargetText(item.data) || getActionInputText(item.data) || getActionCoords(item.data))"
             class="card-body"
           >
             <div v-if="getActionTargetText(item.data)" class="detail-row">
@@ -516,7 +516,7 @@ function resumePausedTask(): void {
               <span class="detail-value coordinate-badge">{{ getActionCoords(item.data) }}</span>
             </div>
           </div>
-          <div v-if="expandedCards.has(`action-${itemIdx}`)" class="card-expanded" @click.stop>
+          <div v-if="collapsedCards.has(`action-${itemIdx}`)" class="card-expanded" @click.stop>
             <div class="expanded-grid">
               <div v-if="getActionTargetText(item.data)" class="grid-item">
                 <span class="grid-label">{{ t('workspace.timeline.target') }}</span>
@@ -684,7 +684,7 @@ function resumePausedTask(): void {
               class="action-card tool-action-card"
               :class="{
                 'is-failed': isToolFailed(item.data),
-                'is-expanded': expandedCards.has(`tool-${itemIdx}`),
+                'is-collapsed': collapsedCards.has(`tool-${itemIdx}`),
               }"
               @click="hasToolDetails(item) && toggleCard(`tool-${itemIdx}`)"
             >
@@ -694,9 +694,9 @@ function resumePausedTask(): void {
                 </span>
                 <span class="action-title">{{ getToolTitle(item.data) }}</span>
                 <a-tag v-if="isToolFailed(item.data)" size="small" color="red">{{ t('workspace.timeline.failed') }}</a-tag>
-                <icon-down v-if="hasToolDetails(item)" class="expand-icon" :class="{ rotated: expandedCards.has(`tool-${itemIdx}`) }" />
+                <icon-down v-if="hasToolDetails(item)" class="expand-icon" :class="{ rotated: collapsedCards.has(`tool-${itemIdx}`) }" />
               </div>
-              <div v-if="!expandedCards.has(`tool-${itemIdx}`) && hasToolDetails(item)" class="card-body">
+              <div v-if="!collapsedCards.has(`tool-${itemIdx}`) && hasToolDetails(item)" class="card-body">
                 <template v-if="isAdbCommandTool(item.data)">
                   <div v-if="adbCommandValue(item.data)" class="detail-row">
                     <span class="detail-label">{{ t('workspace.timeline.command') }}:</span>
@@ -734,7 +734,7 @@ function resumePausedTask(): void {
                   </div>
                 </template>
               </div>
-              <div v-if="expandedCards.has(`tool-${itemIdx}`)" class="card-expanded" @click.stop>
+              <div v-if="collapsedCards.has(`tool-${itemIdx}`)" class="card-expanded" @click.stop>
                 <div class="expanded-grid">
                   <template v-if="isAdbCommandTool(item.data)">
                     <div v-if="adbCommandValue(item.data)" class="grid-item full-width">

@@ -519,3 +519,33 @@ describe('AgentTimeline 轮级开合', () => {
     });
   });
 });
+
+describe('AgentTimeline 动作卡展开图标语义', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    apiGetMock.mockReset();
+    mockBackend();
+  });
+
+  it('动作卡：展开显示下箭头（可收起），收起显示右箭头（可展开）', async () => {
+    const wrapper = mountTimeline();
+    const sessionStore = useSessionStore();
+    sessionStore.rawSessions = [SESSION];
+    sessionStore.selectSession('sess-1', false);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已执行'));
+
+    // 展开选中轮的第一个回合
+    const phaseHeader = wrapper.find('.round-block.active .phase-container .phase-header');
+    await phaseHeader.trigger('click');
+    await vi.waitFor(() => expect(wrapper.find('.action-card').exists()).toBe(true));
+
+    const card = wrapper.find('.action-card');
+    const icon = card.find('.expand-icon');
+    // 动作卡默认展开：下箭头（点击收起）
+    expect(icon.classes()).not.toContain('rotated');
+    await card.find('.card-header').trigger('click');
+    // 收起后：右箭头（点击展开）
+    expect(icon.classes()).toContain('rotated');
+  });
+});
