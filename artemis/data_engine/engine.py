@@ -28,6 +28,7 @@ from typing import Any
 from uuid import UUID, uuid4
 
 from artemis.config import PAUSE_FILE, get_ipc_port_file, read_ipc_port, settings
+from artemis.config.constants import ENV_ARTEMIS_MODEL_ENDPOINT
 from artemis.context import ArtemisContext
 from artemis.data_engine.models import (
     BackgroundTaskRecord,
@@ -608,6 +609,10 @@ class DataEngine:
             start_time=self.session_start_time,
             device_info=device_info or {},
             pid=os.getpid(),
+            # The queue worker pins its model through this env var; recording it
+            # makes "which endpoint produced this session" readable afterwards
+            # instead of inferred from whatever the default block says today.
+            model_endpoint=os.environ.get(ENV_ARTEMIS_MODEL_ENDPOINT, "").strip() or None,
         )
         self.storage.create_session(session)
         try:

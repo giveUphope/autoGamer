@@ -860,9 +860,11 @@ async def update_model_config(request: UpdateModelConfigRequest):
     # "已保存" means, and the record mirrors the block that was just written so
     # the two can never disagree about which endpoint is live.
     if provider_label:
+        from artemis.config import endpoint_library
+
         saved = _read_jsonc_default(config_path)
-        _upsert_endpoint_record(
-            _endpoint_record(
+        endpoint_library.upsert(
+            endpoint_library.make_record(
                 provider_label,
                 str(saved.get("provider") or ""),
                 str(saved.get("api_base") or ""),
@@ -879,16 +881,6 @@ async def update_model_config(request: UpdateModelConfigRequest):
     }
 
 
-# Fields of the ``default`` block that belong to whichever endpoint is active.
-# The runtime reads them straight out of artemis.jsonc (services/llm.py), and
-# its ``api_base`` outranks OPENAI_BASE_URL, so a leftover value here keeps
-# pointing at the previous provider even after the model name has changed.
-# ``fallback`` is in this set because it names a provider and a model too: a
-# record that declares no fallback must not inherit one that points at the
-# endpoint being replaced.
-_ENDPOINT_OWNED_KEYS = ("api_base", "api_key", "api_key_env", "fallback")
-
-
 class UseEndpointRequest(BaseModel):
     """Selects an endpoint to make the one the runtime uses."""
 
@@ -898,52 +890,37 @@ class UseEndpointRequest(BaseModel):
     )
 
 
-def _text_field(source: dict, key: str) -> str:
-    """Non-blank string value of ``key`` — records store blanks as absent."""
-    return str(source.get(key) or "").strip()
-
-
 @router.post("/endpoints/use")
 async def use_endpoint(request: UseEndpointRequest):
     """Make a saved endpoint library record the active model configuration.
 
     The record is read server-side, so a library edited by hand takes effect
-    without a restart and no key is involved in the request at all. Endpoint-owned
-    fields the record does not declare are cleared rather than inherited (see
-    ``_ENDPOINT_OWNED_KEYS``): the jsonc ``api_base`` outranks
-    ``OPENAI_BASE_URL``, so a leftover local URL would keep pointing a cloud
-    endpoint at 127.0.0.1, and a stale ``fallback`` would name the vendor being
-    replaced. Reasoning knobs such as ``thinking_level`` are left alone — they
-    describe how the agent thinks, not which endpoint answers.
+    without a restart and no key is involved in the request at all. Which fields
+    a record owns (and therefore which leftovers get cleared) is defined once, in
+    ``endpoint_library.to_default_overrides`` — the same map a pinned task worker
+    applies, so switching and pinning cannot disagree.
     """
+    from artemis.config import endpoint_library
     from artemis.config.paths import get_config_path
 
     name = (request.name or "").strip()
     if not name:
         raise HTTPException(status_code=400, detail="An endpoint name is required.")
 
-    records = _read_endpoint_library()
-    record = next((r for r in records if _text_field(r, "name") == name), None)
+    record = endpoint_library.find(name)
     if record is None:
-        saved = sorted(_text_field(r, "name") for r in records)
         raise HTTPException(
             status_code=404,
-            detail=f"Unknown endpoint {name!r}. Saved endpoints: {saved}",
+            detail=f"Unknown endpoint {name!r}. Saved endpoints: {sorted(endpoint_library.names())}",
         )
 
-    provider = _text_field(record, "api_format")
-    model = _text_field(record, "model")
-    if not provider or not model:
+    mapped = endpoint_library.to_default_overrides(record)
+    if not mapped.get("provider") or not mapped.get("model"):
         raise HTTPException(
             status_code=400, detail=f"Endpoint {name!r} needs both an API format and a model."
         )
-
-    updates: dict[str, object] = {"provider": provider, "model": model, "provider_label": name}
-    for field in ("api_base", "thinking_level"):
-        value = _text_field(record, field)
-        if value:
-            updates[field] = value
-    removals = tuple(key for key in _ENDPOINT_OWNED_KEYS if key not in updates)
+    updates: dict[str, object] = {k: v for k, v in mapped.items() if v is not None}
+    removals = tuple(k for k, v in mapped.items() if v is None)
 
     config_path = get_config_path("artemis.jsonc")
     _apply_default_endpoint(
@@ -1087,60 +1064,6 @@ _ENDPOINT_SOURCE_LIBRARY = "library"
 _ENDPOINT_SOURCE_DEFAULT = "default"
 
 
-def _read_endpoint_library() -> list[dict]:
-    """Return the saved endpoint records, tolerating a missing or broken file."""
-    import json
-
-    from artemis.config.paths import get_endpoint_library_file
-
-    try:
-        data = json.loads(get_endpoint_library_file().read_text(encoding="utf-8"))
-    except (OSError, ValueError):
-        return []
-    records = data.get("endpoints", []) if isinstance(data, dict) else []
-    return [
-        record
-        for record in records
-        if isinstance(record, dict) and str(record.get("name") or "").strip()
-    ]
-
-
-def _write_endpoint_library(records: list[dict]) -> None:
-    """Persist endpoint records; blank fields are dropped rather than stored."""
-    import json
-
-    from artemis.config.paths import get_endpoint_library_file
-
-    library_file = get_endpoint_library_file()
-    library_file.parent.mkdir(parents=True, exist_ok=True)
-    payload = {"endpoints": [{k: v for k, v in record.items() if v} for record in records]}
-    library_file.write_text(
-        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
-    )
-
-
-def _endpoint_record(name: str, api_format: str, api_base: str, model: str) -> dict:
-    """Normalize one record to the four fields the endpoint form collects."""
-    return {
-        "name": name.strip(),
-        "api_format": (api_format or "").strip(),
-        "api_base": (api_base or "").strip(),
-        "model": (model or "").strip(),
-    }
-
-
-def _upsert_endpoint_record(record: dict) -> None:
-    """Insert or replace the record of the same name, keeping list order."""
-    records = _read_endpoint_library()
-    for index, existing in enumerate(records):
-        if str(existing.get("name") or "").strip() == record["name"]:
-            records[index] = record
-            break
-    else:
-        records.append(record)
-    _write_endpoint_library(records)
-
-
 def _masked_key_for(api_format: str) -> str | None:
     """Masked preview of the key the credential store holds for a protocol."""
     from artemis.config import settings
@@ -1161,6 +1084,7 @@ async def list_credential_entries():
     configured while the next task is about to use it. Keys are resolved per
     protocol from the credential store and masked — records hold no secrets.
     """
+    from artemis.config import endpoint_library
     from artemis.config.paths import get_config_path
 
     default = _read_jsonc_default(get_config_path("artemis.jsonc"))
@@ -1169,7 +1093,7 @@ async def list_credential_entries():
     active_model = str(default.get("model") or "").strip()
 
     rows = []
-    for record in _read_endpoint_library():
+    for record in endpoint_library.read_library():
         name = str(record.get("name") or "").strip()
         api_format = str(record.get("api_format") or "").strip()
         rows.append(
@@ -1212,16 +1136,14 @@ async def delete_endpoint(name: str):
     and the row reappears as ``source: "default"`` — taking the live
     configuration down is DELETE /model-config, a deliberately separate act.
     """
+    from artemis.config import endpoint_library
+
     wanted = (name or "").strip()
-    records = _read_endpoint_library()
-    remaining = [r for r in records if str(r.get("name") or "").strip() != wanted]
-    if len(remaining) == len(records):
+    if not endpoint_library.remove(wanted):
         raise HTTPException(status_code=404, detail=f"Endpoint {wanted!r} is not in the library.")
-    _write_endpoint_library(remaining)
     return {
         "status": "success",
         "message": f"Endpoint {wanted!r} removed from the library.",
-        "rows_removed": len(records) - len(remaining),
     }
 
 

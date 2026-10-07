@@ -38,6 +38,23 @@ except ImportError:
 router = APIRouter(tags=["sessions"])
 
 
+def _session_model_info(
+    row_dict: dict, sess_profile: str | None, default_model_info: dict[str, str]
+) -> dict[str, str]:
+    """Model identity for one session row.
+
+    A session that pinned an endpoint-library record reports that record, not the
+    server's current default: otherwise a later global switch would retroactively
+    rewrite which model every earlier run claims to have used.
+    """
+    pinned = str(row_dict.get("model_endpoint") or "").strip()
+    if pinned:
+        return model_service.get_pinned_model_info(pinned, sess_profile)
+    if sess_profile:
+        return model_service.get_active_model_info(sess_profile)
+    return default_model_info
+
+
 @router.get("/api/sessions")
 async def list_sessions():
     # The body does blocking work (sqlite queries, filesystem scans, ffmpeg
@@ -119,11 +136,7 @@ def _list_sessions_sync():
         sess_profile = model_service.resolve_session_profile(
             row_dict, None, state.current_profile, agent_names=agent_names
         )
-        row_dict["model_info"] = (
-            model_service.get_active_model_info(sess_profile)
-            if sess_profile
-            else default_model_info
-        )
+        row_dict["model_info"] = _session_model_info(row_dict, sess_profile, default_model_info)
         if not sess_profile:
             unresolved_profiles.append(row_dict)
         result.append(row_dict)
@@ -143,7 +156,9 @@ def _list_sessions_sync():
                 row_dict, llm_traces, state.current_profile
             )
             if sess_profile:
-                row_dict["model_info"] = model_service.get_active_model_info(sess_profile)
+                row_dict["model_info"] = _session_model_info(
+                    row_dict, sess_profile, default_model_info
+                )
 
     if orphaned_ids:
         try:

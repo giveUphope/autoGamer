@@ -129,6 +129,11 @@ class StorageManager:
             except sqlite3.OperationalError:
                 pass
 
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN model_endpoint TEXT")
+            except sqlite3.OperationalError:
+                pass
+
             conn.execute("""
                 CREATE TABLE IF NOT EXISTS images (
                     image_name TEXT PRIMARY KEY,
@@ -282,8 +287,8 @@ class StorageManager:
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO sessions (session_id, initial_goal, start_time, end_time, status, device_info, pid, video_filepath)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO sessions (session_id, initial_goal, start_time, end_time, status, device_info, pid, video_filepath, model_endpoint)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(session.session_id),
@@ -294,6 +299,7 @@ class StorageManager:
                     json.dumps(session.device_info),
                     session.pid,
                     session.video_filepath,
+                    session.model_endpoint,
                 ),
             )
             conn.commit()
@@ -842,6 +848,7 @@ class StorageManager:
                     device_info=json.loads(row_dict["device_info"]),
                     pid=row_dict.get("pid"),
                     video_filepath=row_dict.get("video_filepath"),
+                    model_endpoint=row_dict.get("model_endpoint"),
                 )
         return None
 

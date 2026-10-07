@@ -29,6 +29,10 @@ class RunRequest(BaseModel):
     locked_app_package: str | None = None
     app_path: str | None = None
     device_serial: str | None = None
+    # Name of an entry in the endpoint library. When set, the task pins that
+    # model for its whole life instead of following the global default block, so
+    # what the UI's model selector showed at submit time is what runs.
+    model_endpoint: str | None = None
     ingress: str | None = "frontend"
     session_id: str | None = None
     conversation_id: str | None = None

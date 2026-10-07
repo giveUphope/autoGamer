@@ -78,6 +78,26 @@ class ModelService:
             "architecture": f"ARTEMIS {arch_name}",
         }
 
+    @classmethod
+    def get_pinned_model_info(
+        cls, endpoint_name: str, profile: str | None = None
+    ) -> dict[str, str]:
+        """Model identity for a session that pinned one endpoint-library record.
+
+        The record is re-read at display time so the session reports the endpoint
+        it actually ran with, not whatever the global default became afterwards.
+        A record deleted since the run leaves only the name: an empty model is
+        honest, the global default would be a guess.
+        """
+        from artemis.config import endpoint_library
+
+        info = cls.get_active_model_info(profile)
+        info["endpoint"] = endpoint_name
+        record = endpoint_library.find(endpoint_name)
+        info["id"] = str((record or {}).get("model") or "").strip()
+        info["provider"] = str((record or {}).get("api_format") or "").strip()
+        return info
+
     @staticmethod
     def resolve_session_profile(
         row_dict: dict[str, Any],

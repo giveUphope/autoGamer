@@ -80,6 +80,21 @@ async def run_task(request: RunRequest):
             detail="Either 'goal' or 'goals' list must be provided.",
         )
 
+    # A pinned model must exist before the task is accepted: queueing a name that
+    # cannot be resolved would either fail mid-run or — worse — silently fall back
+    # to a model nobody chose. The endpoint library is the single source here, the
+    # same one the UI's model selector lists.
+    model_endpoint = (request.model_endpoint or "").strip() or None
+    if model_endpoint:
+        from artemis.config import endpoint_library
+
+        if endpoint_library.find(model_endpoint) is None:
+            saved = sorted(endpoint_library.names())
+            raise HTTPException(
+                status_code=400,
+                detail=f"Unknown model endpoint {model_endpoint!r}. Saved endpoints: {saved}",
+            )
+
     # Idempotent SDK retries must never re-run device readiness checks. A task
     # can hold the device while its admission response is lost in transit; in
     # that state, probing the same device again may fail or block even though
@@ -105,6 +120,7 @@ async def run_task(request: RunRequest):
             task_payload.setdefault("goal", incoming_goals[0])
             task_payload.setdefault("profile", request.profile or "flash")
             task_payload.setdefault("device_serial", request.device_serial)
+            task_payload.setdefault("model_endpoint", model_endpoint)
             task_payload.setdefault("status", "running" if is_active else "queued")
             return {
                 "status": task_payload["status"],
@@ -178,6 +194,7 @@ async def run_task(request: RunRequest):
         ingress=request.ingress or "frontend",
         session_id=request.session_id,
         conversation_id=request.conversation_id,
+        model_endpoint=model_endpoint,
     )
 
 
@@ -315,7 +332,15 @@ async def get_status():
                 sess_row, llm_traces, agent_names=agent_names
             )
 
-    model_info = model_service.get_active_model_info(active_profile)
+    # A queued task pins its endpoint on the queue item -- the same record the
+    # worker command's env is built from -- so status reports the model the run
+    # actually uses instead of whatever the global default became.
+    pinned_endpoint = str((running_task or {}).get("model_endpoint") or "").strip()
+    model_info = (
+        model_service.get_pinned_model_info(pinned_endpoint, active_profile)
+        if pinned_endpoint
+        else model_service.get_active_model_info(active_profile)
+    )
 
     # Unified Global Queue: merge web tasks and external SDK/CLI device queue tickets
     global_queued = DeviceExecutionLock.get_queued_tasks()

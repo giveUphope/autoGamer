@@ -20,6 +20,7 @@ from typing import Any
 
 
 from artemis.config.constants import (
+    ENV_ARTEMIS_MODEL_ENDPOINT,
     LLM_CONFIG_FILENAME,
     AgentNode,
 )
@@ -250,20 +251,66 @@ def _expand_default_into_nodes(config_dict: dict) -> dict:
     return result
 
 
+def _pinned_endpoint() -> dict[str, Any | None] | None:
+    """The default-block overrides for the record this process is pinned to.
+
+    Pinning is how the model chosen in the setup UI survives into a running
+    task: the queue worker exports ``ARTEMIS_MODEL_ENDPOINT`` and every model
+    resolution in that process follows the named record. An unknown name raises
+    instead of falling back — silently running on a model nobody selected is the
+    failure mode worth avoiding most.
+    """
+    from artemis.config.endpoint_library import to_default_overrides
+
+    from artemis.config import endpoint_library
+
+    name = os.environ.get(ENV_ARTEMIS_MODEL_ENDPOINT, "").strip()
+    if not name:
+        return None
+    record = endpoint_library.find(name)
+    if not record:
+        raise RuntimeError(
+            f"ARTEMIS_MODEL_ENDPOINT={name!r} is not in the endpoint library "
+            f"({endpoint_library.library_file()}). Saved: {endpoint_library.names()}"
+        )
+    overrides = to_default_overrides(record)
+    if not overrides.get("provider") or not overrides.get("model"):
+        raise RuntimeError(
+            f"Endpoint record {name!r} needs both api_format and model before it can run a task."
+        )
+    return overrides
+
+
+def _apply_endpoint_override(config_dict: dict[str, Any]) -> dict[str, Any]:
+    """Layer the pinned record over the config's ``default`` entry."""
+    overrides = _pinned_endpoint()
+    if not overrides:
+        return config_dict
+    default = dict(config_dict.get("default") or _factory_default_cfg())
+    for key, value in overrides.items():
+        if value is None:
+            default.pop(key, None)
+        else:
+            default[key] = value
+    return {**config_dict, "default": default}
+
+
 def load_default_model_cfg() -> dict[str, Any]:
     """Raw "default" entry of artemis.jsonc — the endpoint inheritance base.
 
     Nodes that configure only a model name (no provider/endpoint of their own)
     inherit from this entry. Falls back to the factory default when the config
-    file is missing or unreadable.
+    file is missing or unreadable. A pinned endpoint (``ARTEMIS_MODEL_ENDPOINT``)
+    replaces the entry's endpoint-owned fields here, which is what the Flash
+    runner and the background compressors resolve through.
     """
     try:
         with open(_resolve_llm_config_path(), encoding="utf-8") as f:
             config_dict = load_jsonc(f)
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(f"Failed to load llm config: {_resolve_llm_config_path()}. Error: {e}")
-        return _factory_default_cfg()
-    return dict(config_dict.get("default") or _factory_default_cfg())
+        config_dict = {"default": _factory_default_cfg()}
+    return dict(_apply_endpoint_override(config_dict).get("default") or _factory_default_cfg())
 
 
 def parse_llm_config() -> LLMConfig:
@@ -272,7 +319,7 @@ def parse_llm_config() -> LLMConfig:
 
     try:
         with open(config_path, encoding="utf-8") as f:
-            config_dict = load_jsonc(f)
+            config_dict = _apply_endpoint_override(load_jsonc(f))
             expanded_dict = _expand_default_into_nodes(config_dict)
             return LLMConfig.model_validate(expanded_dict)
     except Exception as e:

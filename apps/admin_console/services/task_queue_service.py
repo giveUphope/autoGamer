@@ -41,6 +41,7 @@ from artemis.config import (
     TEST_OUTPUTS_DIR,
     WORKSPACE_ROOT,
 )
+from artemis.config.constants import ENV_ARTEMIS_MODEL_ENDPOINT
 from artemis.runtime import (
     AdbEndpoint,
     AdbTarget,
@@ -525,6 +526,11 @@ class TaskQueueService:
             env["ARTEMIS_SESSION_ID"] = str(sess_id)
         env["ARTEMIS_TASK_INGRESS"] = str(task_item.get("ingress", "frontend"))
         env["ARTEMIS_TASK_WORKER"] = "1"
+        # Pin the model for this task's whole life: the worker's config layer
+        # resolves every node through the named endpoint-library record.
+        model_endpoint = task_item.get("model_endpoint")
+        if model_endpoint:
+            env[ENV_ARTEMIS_MODEL_ENDPOINT] = str(model_endpoint)
         target.endpoint.apply_to_environment(env)
         env[DeviceExecutionLock.LOCK_SCOPE_ENV] = target.lock_scope
         queue_ticket = task_item.get("queue_ticket")
@@ -1004,6 +1010,7 @@ class TaskQueueService:
         conversation_id: str | None,
         verification_level: str | None = None,
         explorer_mode: str | None = None,
+        model_endpoint: str | None = None,
     ) -> dict[str, Any]:
         """Reserve a device slot and build one pending queue item for a goal."""
         sess_id = single_session_id if single_session_id else str(uuid.uuid4())
@@ -1025,6 +1032,10 @@ class TaskQueueService:
             "enable_outputter": enable_outputter,
             "verification_level": verification_level,
             "explorer_mode": explorer_mode,
+            # Pinned for the whole life of this task: the worker exports it as
+            # ARTEMIS_MODEL_ENDPOINT so a later switch of the global default
+            # cannot change the model this task runs on.
+            "model_endpoint": model_endpoint,
             "locked_app_package": locked_app_package,
             "app_path": app_path,
             "device_serial": assigned_serial,
@@ -1052,12 +1063,15 @@ class TaskQueueService:
         conversation_id: str | None = None,
         verification_level: str | None = None,
         explorer_mode: str | None = None,
+        model_endpoint: str | None = None,
     ) -> dict[str, Any]:
         """Enqueues one or more goals and wakes up the background worker.
 
         ``verification_level`` and ``explorer_mode`` are Pro-profile tuning knobs
         forwarded to the worker as ``--verification-level`` / ``--explorer-pro-mode``;
         they are normalised here so the queue item and the CLI see one spelling.
+        ``model_endpoint`` names an entry of the endpoint library and is forwarded
+        as ``ARTEMIS_MODEL_ENDPOINT``, pinning this task's model for its lifetime.
         """
         verification_level = (
             str(verification_level).strip().lower() or None if verification_level else None
@@ -1105,6 +1119,7 @@ class TaskQueueService:
                 conversation_id,
                 verification_level=verification_level,
                 explorer_mode=explorer_mode,
+                model_endpoint=model_endpoint,
             )
             state.queue_items.append(task_item)
             enqueued_tasks.append(task_item)

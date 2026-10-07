@@ -29,6 +29,10 @@ class SessionMetadata(BaseModel):
     device_info: dict[str, Any] = Field(default_factory=dict)
     pid: int | None = None
     video_filepath: str | None = None
+    # Endpoint-library record this session pinned at submit time (None = ran on
+    # the global default). Recorded so "which model produced this" is readable
+    # after the fact instead of being inferred from today's configuration.
+    model_endpoint: str | None = None
 
 
 class ImageRecord(BaseModel):

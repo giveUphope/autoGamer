@@ -40,6 +40,11 @@ ENV_ARTEMIS_IPC_PORT = "ARTEMIS_IPC_PORT"
 ENV_ANTIGRAVITY_LS_ADDRESS = "ANTIGRAVITY_LS_ADDRESS"
 ENV_ARTEMIS_MCP_SERVER = "ARTEMIS_MCP_SERVER"
 
+# Model endpoint selection: the task worker pins its LLM deployment to one
+# endpoint-library record, so the model chosen in the UI at submit time is the
+# model that task runs with even if the global default changes afterwards.
+ENV_ARTEMIS_MODEL_ENDPOINT = "ARTEMIS_MODEL_ENDPOINT"
+
 # Device & ADB
 ENV_ADB_DEVICE_SERIAL = "ADB_DEVICE_SERIAL"
 ENV_ARTEMIS_DEVICE_ID = "ARTEMIS_DEVICE_ID"
@@ -85,6 +90,7 @@ ENV_RESULTS_OUTPUT_PATH = "RESULTS_OUTPUT_PATH"
 ARTEMIS_CONFIG_FILENAME = "artemis.jsonc"
 LLM_CONFIG_FILENAME = "llm-config.json"
 LLM_CONFIG_OVERRIDE_FILENAME = "llm-config.override.jsonc"
+ENDPOINT_LIBRARY_FILENAME = "endpoint_library.json"
 AGENT_CONFIG_FILENAME = "agent_config.json"
 DATA_ENGINE_DB_FILENAME = "data_engine.db"
 IPC_PORT_FILENAME = ".artemis_ipc_port"
