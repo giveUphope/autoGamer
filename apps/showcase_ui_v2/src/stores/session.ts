@@ -25,6 +25,7 @@ import { useStreamStore } from '@/stores/stream';
 import { useSystemStore } from '@/stores/system';
 import type { ModelInfo, Session, TaskQueueItem } from '@/types/session.model';
 import {
+  getTaskStatus,
   mapPendingQueue,
   mergeSessions,
   statusSignature,
@@ -39,6 +40,8 @@ const DEFAULT_PAUSE_ERROR = 'AI model request failed. The task is paused.';
 
 /** `GET /api/run` 的 Pro 调优可选项（pro-tuning.model 中的 id）。 */
 export interface RunTaskOptions {
+  /** Chat thread this submission continues; omit to start a new thread. */
+  conversationId?: string;
   expectedOutput?: string;
   enableOutputter?: boolean;
   verificationLevel?: string;
@@ -300,6 +303,11 @@ export const useSessionStore = defineStore('session', () => {
     proTuning?: RunTaskOptions,
   ): Promise<unknown> {
     const payload: Record<string, unknown> = { goal, profile };
+    // 会话续聊：提交进指定对话线程（后端据此继承前序任务的笔记作为上下文），
+    // 命令条的「运行信息」与会话列表也按该线程聚合。
+    if (proTuning?.conversationId) {
+      payload.conversation_id = proTuning.conversationId;
+    }
     // 提交那一刻选择器显示的是哪条端点，就把它的名字一起发给后端 pin 住：
     // 队列 worker 用它导出 ARTEMIS_MODEL_ENDPOINT，之后全局默认再怎么切，
     // 这个任务用的仍是提交时的那条记录（未入库的端点没有名字，任务跟随默认）。
@@ -610,6 +618,75 @@ export const useSessionStore = defineStore('session', () => {
     }
   }
 
+  // ---- 会话线程（conversation）：左栏的会话级列表按此聚合 ----
+  const CONVERSATION_KEY = 'artemis_conversation_id';
+  const currentConversationId = ref<string | null>(
+    typeof localStorage !== 'undefined' ? localStorage.getItem(CONVERSATION_KEY) : null,
+  );
+
+  function selectConversation(id: string | null): void {
+    currentConversationId.value = id;
+    if (typeof localStorage !== 'undefined') {
+      if (id) localStorage.setItem(CONVERSATION_KEY, id);
+      else localStorage.removeItem(CONVERSATION_KEY);
+    }
+  }
+
+  interface ConversationGroup {
+    id: string;
+    name: string;
+    tasks: Session[];
+    latest: Session;
+    status: string;
+    time: number;
+  }
+
+  /** 任务按 conversation_id 聚合为会话线程；旧数据无线程标记时各任务自成一个会话。 */
+  const conversationGroups = computed<ConversationGroup[]>(() => {
+    const groups = new Map<string, Session[]>();
+    for (const session of sessions.value) {
+      const key = session.conversation_id || `task:${session.session_id}`;
+      const list = groups.get(key);
+      if (list) list.push(session);
+      else groups.set(key, [session]);
+    }
+    const result: ConversationGroup[] = [];
+    for (const [key, tasks] of groups) {
+      // 线程内任务按提交顺序排列；名字 = 第一条消息（最早任务的 goal）
+      tasks.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+      const latest = tasks[tasks.length - 1]!;
+      const statusRank: Record<string, number> = { running: 0, paused: 1, pending: 2 };
+      const status = tasks
+        .map((task) => getTaskStatus(task, runningSessionId.value, agentStatus.value))
+        .sort((a, b) => (statusRank[a] ?? 9) - (statusRank[b] ?? 9))[0]!;
+      result.push({
+        id: key,
+        name: tasks[0]!.initial_goal || '',
+        tasks,
+        latest,
+        status,
+        time: Math.max(...tasks.map((task) => task.start_time || 0)),
+      });
+    }
+    // 运行/暂停的线程置顶，其余按最近活动倒序
+    return result.sort((a, b) => {
+      const aActive = a.status === 'running' || a.status === 'paused' || a.status === 'pending';
+      const bActive = b.status === 'running' || b.status === 'paused' || b.status === 'pending';
+      if (aActive !== bActive) return aActive ? -1 : 1;
+      return b.time - a.time;
+    });
+  });
+
+  /** 删除整个会话线程：级联删除组内全部任务。 */
+  async function deleteConversation(group: ConversationGroup): Promise<void> {
+    for (const task of group.tasks) {
+      await deleteSession(task.session_id);
+    }
+    if (currentConversationId.value === group.id) {
+      selectConversation(null);
+    }
+  }
+
   return {
     // state
     rawSessions,
@@ -623,8 +700,11 @@ export const useSessionStore = defineStore('session', () => {
     activeModel,
     userPinnedSessionId,
     currentSessionId,
+    currentConversationId,
+    selectConversation,
     // computed
     sessions,
+    conversationGroups,
     currentSession,
     isCurrentSessionRunning,
     isRunningTask,
@@ -639,6 +719,7 @@ export const useSessionStore = defineStore('session', () => {
     stopTask,
     resumeTask,
     deleteSession,
+    deleteConversation,
     clearAllHistory,
     selectSession,
     clearUserPinnedSession,

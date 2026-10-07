@@ -526,6 +526,11 @@ class TaskQueueService:
             env["ARTEMIS_SESSION_ID"] = str(sess_id)
         env["ARTEMIS_TASK_INGRESS"] = str(task_item.get("ingress", "frontend"))
         env["ARTEMIS_TASK_WORKER"] = "1"
+        # Conversation thread: consecutive submissions sharing a conversation_id
+        # continue one chat; the worker inherits prior context from the thread.
+        conversation_id = task_item.get("conversation_id")
+        if conversation_id:
+            env["ARTEMIS_CONVERSATION_ID"] = str(conversation_id)
         # Pin the model for this task's whole life: the worker's config layer
         # resolves every node through the named endpoint-library record.
         model_endpoint = task_item.get("model_endpoint")

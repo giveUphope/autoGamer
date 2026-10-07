@@ -384,6 +384,15 @@ export default {
       submit: '提交',
       submitFail: '提交失败：{reason}',
     },
+    conversations: {
+      title: '会话',
+      new: '新建会话',
+      untitled: '未命名会话',
+      empty: '暂无会话，点击「新建会话」开始',
+      tasksCount: '{n} 个任务',
+      delete: '删除会话',
+      deleteConfirm: '删除该会话及其全部任务？此操作不可恢复。',
+    },
     timeline: {
       loadingRunHistory: '正在加载运行记录…',
       emptyTitle: '未选择会话活动',

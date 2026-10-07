@@ -5,11 +5,11 @@ import AppNav from '@/components/AppNav.vue';
 import CommandDock from '@/components/CommandDock.vue';
 import FloatingPlayer from '@/components/FloatingPlayer.vue';
 import AgentTimeline from '@/components/timeline/AgentTimeline.vue';
-import TaskQueuePanel from '@/components/TaskQueuePanel.vue';
+import SessionListPanel from '@/components/SessionListPanel.vue';
 
 /**
  * 工作台（对应 Angular WorkspaceComponent）：
- * a-layout 布局 + 可拖拽左右分栏（左：任务队列面板 / 右：M2 会话时间线
+ * a-layout 布局 + 可拖拽左右分栏（左：会话列表 SessionListPanel / 右：M2 会话时间线
  * AgentTimeline + 底部输入区 CommandDock）。拖拽逻辑平移自 Angular 版：
  * mousemove 监听仅在拖拽期间挂载，宽度更新经 requestAnimationFrame 合帧。
  *
@@ -75,7 +75,7 @@ onBeforeUnmount(detachDragListeners);
     </a-layout-header>
     <a-layout class="workspace-body">
       <aside class="workspace-side" :style="{ width: `${sidePanelWidth}px` }">
-        <TaskQueuePanel />
+        <SessionListPanel />
       </aside>
       <div class="workspace-divider" :class="{ dragging: isDragging }" @mousedown="onDragStart" />
       <div class="workspace-main">

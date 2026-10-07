@@ -66,6 +66,13 @@ class State(BaseModel):
         " prompt template)",
         take_last,
     ] = None
+    # ── Conversation continuation (inherited thread context) ─────────────
+    prior_conversation_context: Annotated[
+        str | None,
+        "Notes/outcome of the previous task in this conversation, handed to"
+        " the Planner so consecutive submissions continue one thread",
+        take_last,
+    ] = None
     run_outcome: Annotated[
         dict | None,
         "Machine-readable run outcome (task_status + test summary), populated"
@@ -142,10 +149,15 @@ class State(BaseModel):
     ] = None
 
     @classmethod
-    def initial(cls, goal: str) -> "State":
+    def initial(
+        cls, goal: str, prior_conversation_context: str | None = None
+    ) -> "State":
         """Single source for the graph's initial state.
 
         Every entrypoint (SDK, engine runners, tests) must construct the
         first State through here so required fields stay in one place.
         """
-        return cls(initial_goal=goal)
+        return cls(
+            initial_goal=goal,
+            prior_conversation_context=prior_conversation_context,
+        )

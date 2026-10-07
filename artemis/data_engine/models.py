@@ -33,6 +33,11 @@ class SessionMetadata(BaseModel):
     # the global default). Recorded so "which model produced this" is readable
     # after the fact instead of being inferred from today's configuration.
     model_endpoint: str | None = None
+    # Conversation thread this session belongs to: consecutive submissions
+    # sharing a conversation_id form one chat thread in the console. Later
+    # submissions inherit prior context from the thread, so it behaves as
+    # one continuing conversation instead of isolated one-shot tasks.
+    conversation_id: str | None = None
 
 
 class ImageRecord(BaseModel):

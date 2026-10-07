@@ -274,6 +274,13 @@ class PlannerNode:
 
         human_message = Template(human_content).render(**render_kwargs)
 
+        # Conversation continuation: notes inherited from the previous task of
+        # the thread are prepended so the plan builds on them instead of
+        # starting from scratch.
+        prior_context = getattr(state, "prior_conversation_context", None)
+        if prior_context:
+            human_message = f"{prior_context}\n\n---\n\n{human_message}"
+
         human_message_content = [{"type": "text", "text": human_message}]
         if screenshot_b64:
             human_message_content.append(

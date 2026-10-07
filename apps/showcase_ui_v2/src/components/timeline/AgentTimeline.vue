@@ -26,6 +26,7 @@ import { checkPlanningLoader, formatTokenCount } from '@/utils/stream-aggregator
 import { isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
 import { parseNote } from '@/utils/markdown';
 import type { PhaseBlock, StepBlock } from '@/types/stream.model';
+import type { Session } from '@/types/session.model';
 import ReplayDrawer from '@/components/session-extras/ReplayDrawer.vue';
 import SessionTreeDrawer from '@/components/session-extras/SessionTreeDrawer.vue';
 import CheckerPanel from './CheckerPanel.vue';
@@ -58,9 +59,17 @@ const scrollContainer = ref<HTMLElement | null>(null);
 // ---- 多轮对话流：每个任务是一轮（轮头 = 用户目标气泡），选中任务的轮身内嵌
 // 其执行轨迹（步骤回合，惰性拉取）；未选中轮只显示摘要头，点击即选中展开。 ----
 
-/** 对话轮列表：旧 → 新（聊天顺序；store 的 sessions 是最新在前，翻转渲染）。 */
+/** 会话线程分组键（与 store 的 conversationGroups 同一规则）。 */
+function threadKey(session: Session): string {
+  return session.conversation_id || `task:${session.session_id}`;
+}
+
+/** 对话轮列表：旧 → 新（聊天顺序），只渲染选中的会话线程。 */
 const rounds = computed(() => {
-  const list = [...sessionStore.sessions].reverse();
+  const thread = sessionStore.currentConversationId;
+  const list = [...sessionStore.sessions]
+    .filter((session) => !thread || threadKey(session) === thread)
+    .reverse();
   return list.map((session) => {
     const status = getTaskStatus(session, sessionStore.runningSessionId, sessionStore.agentStatus);
     return {

@@ -53,6 +53,8 @@ export interface Session {
   device_serial?: string | null;
   device_id?: string | null;
   device_info?: any;
+  /** 所属对话线程（提交时带 conversation_id 的任务才有）；会话列表按它聚合。 */
+  conversation_id?: string | null;
 }
 
 /** 单段屏幕录像：scrcpy 重启（转屏 / 崩溃恢复）时录像切分为多段（M4，平移自 agent.service.ts L30-40）。 */

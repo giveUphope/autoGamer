@@ -279,6 +279,10 @@ class StorageManager:
                 conn.execute("ALTER TABLE background_tasks ADD COLUMN logs TEXT")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN conversation_id TEXT")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
         logger.info(f"Database initialized at {self.db_path}")
 
@@ -287,8 +291,8 @@ class StorageManager:
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO sessions (session_id, initial_goal, start_time, end_time, status, device_info, pid, video_filepath, model_endpoint)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO sessions (session_id, initial_goal, start_time, end_time, status, device_info, pid, video_filepath, model_endpoint, conversation_id)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(session.session_id),
@@ -300,6 +304,7 @@ class StorageManager:
                     session.pid,
                     session.video_filepath,
                     session.model_endpoint,
+                    session.conversation_id,
                 ),
             )
             conn.commit()
@@ -396,6 +401,69 @@ class StorageManager:
                 (str(video_path), str(session_id)),
             )
             conn.commit()
+
+    def get_conversation_prior_context(
+        self,
+        conversation_id: str,
+        exclude_session_id: str | None = None,
+        max_chars: int = 8000,
+    ) -> str | None:
+        """Notes of a conversation's latest finished session, as inherited context.
+
+        Notes are the thread's durable memory (plan, milestones, findings), so
+        they travel across submissions of the same conversation. Content is
+        capped to keep the prompt injection bounded. ``None`` when the thread
+        has no finished session or no notes yet.
+        """
+        latest = self.get_latest_session_in_conversation(
+            conversation_id, exclude_session_id=exclude_session_id
+        )
+        if not latest:
+            return None
+        notes_dir = self.base_trace_dir / str(latest["session_id"]) / "notes"
+        if not notes_dir.is_dir():
+            return None
+        sections: list[str] = []
+        budget = max_chars
+        for md in sorted(notes_dir.glob("*.md")):
+            try:
+                content = md.read_text(encoding="utf-8", errors="replace").strip()
+            except OSError:
+                continue
+            if not content:
+                continue
+            section = f"### {md.stem}\n{content[:budget]}"
+            sections.append(section)
+            budget -= len(section)
+            if budget <= 0:
+                break
+        if not sections:
+            return None
+        goal = str(latest.get("initial_goal") or "")
+        header = (
+            "This submission continues an ongoing conversation. The previous task"
+            f" of this thread ({goal!r}) produced the notes below; build on them"
+            " instead of starting from scratch unless the new goal says otherwise."
+        )
+        return header + "\n\n" + "\n\n".join(sections)
+
+    def get_latest_session_in_conversation(
+        self, conversation_id: str, exclude_session_id: str | None = None
+    ):
+        """Most recent finished session of a conversation, excluding one id.
+
+        Used by conversation continuation: the next submission inherits the
+        thread's latest recorded outcome as prior context.
+        """
+        with self._get_connection() as conn:
+            cursor = conn.cursor()
+            cursor.execute(
+                "SELECT * FROM sessions WHERE conversation_id = ? AND session_id != ? "
+                "AND end_time IS NOT NULL ORDER BY start_time DESC LIMIT 1",
+                (conversation_id, exclude_session_id or ""),
+            )
+            row = cursor.fetchone()
+            return dict(row) if row else None
 
     def get_video_recording(self, video_id: UUID) -> VideoRecordingRecord | None:
         """Retrieve a video recording record by ID."""

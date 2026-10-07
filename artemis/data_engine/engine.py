@@ -613,6 +613,9 @@ class DataEngine:
             # makes "which endpoint produced this session" readable afterwards
             # instead of inferred from whatever the default block says today.
             model_endpoint=os.environ.get(ENV_ARTEMIS_MODEL_ENDPOINT, "").strip() or None,
+            # Conversation thread this submission continues (set by the queue
+            # worker for consecutive submissions of one console conversation).
+            conversation_id=os.environ.get("ARTEMIS_CONVERSATION_ID", "").strip() or None,
         )
         self.storage.create_session(session)
         try:

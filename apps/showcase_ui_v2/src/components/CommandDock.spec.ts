@@ -89,7 +89,9 @@ describe('CommandDock', () => {
     await textarea.trigger('keydown', { key: 'Enter' });
     await flushPromises();
 
-    expect(mockSession.runTask).toHaveBeenCalledWith('打开时钟', 'pro');
+    expect(mockSession.runTask).toHaveBeenCalledWith('打开时钟', 'pro', {
+      conversationId: undefined,
+    });
     expect(mockSession.fetchStatus).toHaveBeenCalled();
     expect((wrapper.find('.dock-input textarea').element as HTMLTextAreaElement).value).toBe('');
   });

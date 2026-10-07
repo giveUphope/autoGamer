@@ -355,7 +355,23 @@ class Agent(AgentBase):
             )
 
     def _get_graph_state(self, task: Task):
-        return State.initial(task.request.goal)
+        # Conversation continuation: when this worker was queued for a chat
+        # thread (ARTEMIS_CONVERSATION_ID), inherit the thread's latest notes
+        # so the planner continues where the previous task left off. Runs
+        # before start_session, so the query naturally targets prior tasks.
+        prior_context = None
+        conversation_id = os.environ.get("ARTEMIS_CONVERSATION_ID", "").strip()
+        if conversation_id:
+            try:
+                from artemis.config import DB_PATH, TRACES_PATH
+                from artemis.data_engine.storage import StorageManager
+
+                prior_context = StorageManager(DB_PATH, TRACES_PATH).get_conversation_prior_context(
+                    conversation_id
+                )
+            except Exception as exc:
+                logger.debug(f"Could not load prior conversation context: {exc}")
+        return State.initial(task.request.goal, prior_conversation_context=prior_context)
 
     async def _connect_screen_client(self, context: ArtemisContext, session_id: str) -> None:
         """Connect the screen client with visible progress for slow first-time steps."""

@@ -311,6 +311,15 @@ export default {
       submit: 'Submit',
       submitFail: 'Submit failed: {reason}',
     },
+    conversations: {
+      title: 'Sessions',
+      new: 'New session',
+      untitled: 'Untitled session',
+      empty: 'No sessions yet — click "New session" to start',
+      tasksCount: '{n} tasks',
+      delete: 'Delete session',
+      deleteConfirm: 'Delete this session and all its tasks? This cannot be undone.',
+    },
     timeline: {
       loadingRunHistory: 'Loading run history...',
       emptyTitle: 'No stream activity selected',
