@@ -429,6 +429,7 @@ export default {
       viewInNotes: 'View in Notes',
       // Run info popover
       runInfo: {
+        button: 'Run info',
         elapsed: 'Elapsed',
         tokens: 'Tokens',
         endpoint: 'Endpoint',

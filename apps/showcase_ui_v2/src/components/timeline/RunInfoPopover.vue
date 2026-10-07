@@ -114,14 +114,18 @@ onBeforeUnmount(() => {
     trigger="click"
     content-class="run-info-popover-content"
   >
-    <button type="button" class="model-chip" :class="{ 'is-pro': isPro, active: popoverOpen }">
-      <span class="chip-icon">
-        <icon-star v-if="isPro" />
+    <a-button
+      size="small"
+      class="run-info-btn"
+      :class="{ 'is-pro': isPro }"
+      :title="t('workspace.timeline.runInfo.button')"
+    >
+      <template #icon>
+        <icon-star v-if="isPro" :class="{ 'is-pro': isPro }" />
         <icon-thunderbolt v-else />
-      </span>
-      <span class="chip-label">{{ t('workspace.timeline.architecture') }}:</span>
-      <span class="chip-name">{{ modelDisplayName }}</span>
-    </button>
+      </template>
+      {{ t('workspace.timeline.runInfo.button') }}
+    </a-button>
     <template #content>
       <div class="run-info" role="dialog" :aria-label="t('workspace.timeline.architecture')">
         <div class="run-info-header">
@@ -195,51 +199,13 @@ onBeforeUnmount(() => {
 </template>
 
 <style scoped>
-.model-chip {
-  display: inline-flex;
-  align-items: center;
-  gap: 6px;
-  padding: 3px 10px;
-  border: 1px solid var(--color-border-2);
-  border-radius: 999px;
-  background-color: var(--color-bg-2);
-  color: var(--color-text-2);
-  font-size: 12px;
-  cursor: pointer;
-  transition:
-    border-color 0.2s,
-    color 0.2s;
-}
-
-.model-chip:hover,
-.model-chip.active {
-  border-color: rgb(var(--arcoblue-6));
-  color: var(--color-text-1);
-}
-
-.model-chip.is-pro {
-  border-color: rgb(var(--purple-6) / 60%);
-}
-
-.chip-icon {
-  display: inline-flex;
-  font-size: 13px;
-}
-
-.model-chip.is-pro .chip-icon {
+/* 触发按钮只承担「查看运行信息」入口；架构/模型的发射凭据在命令条，不在此展示 */
+.run-info-btn.is-pro {
   color: rgb(var(--purple-6));
 }
 
-.chip-icon {
-  color: rgb(var(--arcoblue-6));
-}
-
-.chip-label {
-  color: var(--color-text-3);
-}
-
-.chip-name {
-  font-weight: 600;
+.run-info-btn :deep(.is-pro) {
+  color: rgb(var(--purple-6));
 }
 
 .run-info {

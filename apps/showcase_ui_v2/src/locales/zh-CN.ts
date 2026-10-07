@@ -502,6 +502,7 @@ export default {
       viewInNotes: '在笔记中查看',
       // RunInfo 气泡
       runInfo: {
+        button: '运行信息',
         elapsed: '用时',
         tokens: 'Tokens',
         endpoint: '端点',
