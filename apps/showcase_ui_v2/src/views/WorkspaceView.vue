@@ -9,9 +9,9 @@ import TaskQueuePanel from '@/components/TaskQueuePanel.vue';
 
 /**
  * 工作台（对应 Angular WorkspaceComponent）：
- * a-layout 布局 + 可拖拽分栏（左：M2 会话时间线 AgentTimeline / 右：任务队列面板）
- * + 浮动命令条。拖拽逻辑平移自 Angular 版：mousemove 监听仅在拖拽期间挂载，
- * 宽度更新经 requestAnimationFrame 合帧。
+ * a-layout 布局 + 可拖拽左右分栏（左：M2 会话时间线 AgentTimeline + 底部输入区
+ * CommandDock / 右：任务队列面板）。拖拽逻辑平移自 Angular 版：mousemove 监听
+ * 仅在拖拽期间挂载，宽度更新经 requestAnimationFrame 合帧。
  *
  * 点击右侧历史条目 → session store 选中会话（pin 语义）→ timeline store
  * 按选中会话拉取 steps/notes/checks/usage 并渲染时间线。
@@ -75,13 +75,14 @@ onBeforeUnmount(detachDragListeners);
     <a-layout class="workspace-body">
       <div class="workspace-main">
         <AgentTimeline />
+        <!-- 输入区并入左栏会话：不再是全页面 fixed 浮条，聊天式「会话流 + 底部输入」 -->
+        <CommandDock />
       </div>
       <div class="workspace-divider" :class="{ dragging: isDragging }" @mousedown="onDragStart" />
       <aside class="workspace-side" :style="{ width: `${rightPanelWidth}px` }">
         <TaskQueuePanel />
       </aside>
     </a-layout>
-    <CommandDock />
     <!-- M4 浮动播放器：开合由 player store 的 isVideoWindowOpen 驱动（组件内部 v-if 控制） -->
     <FloatingPlayer />
   </a-layout>
@@ -104,6 +105,9 @@ onBeforeUnmount(detachDragListeners);
 
 .workspace-body {
   display: flex;
+  /* a-layout 基类（.arco-layout）默认 flex-direction: column，不显式声明 row
+     会变成上下堆叠——队列面板被压成底部横条，内容一多就挤占时间线。 */
+  flex-direction: row;
   overflow: hidden;
 }
 

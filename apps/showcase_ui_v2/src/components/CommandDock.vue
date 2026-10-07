@@ -1,17 +1,19 @@
 <script setup lang="ts">
 import { onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { Input } from '@arco-design/web-vue';
+import { Textarea } from '@arco-design/web-vue';
 
 import ModelSelect from '@/components/ModelSelect.vue';
 import { ApiError } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 
 /**
- * 常驻命令条（对应 Angular WorkspaceComponent 的 command dock，UI 按 Arco 重做）：
- * 输入框不再靠悬停/聚焦展开，始终常驻在页面底部；Ctrl+K / ⌘K 仍然聚焦它。
- * 回车提交任务（`/api/run`），架构 profile（flash/pro）持久化到 localStorage；
- * 模型选择器与启动器、诊断向导共用 ModelSelect，状态在 system store 里只有一份。
+ * 会话输入区（对应 Angular WorkspaceComponent 的 command dock，UI 按 Arco 重做）：
+ * 并在左栏会话时间线底部（聊天式「会话流 + 底部输入」）；Ctrl+K / ⌘K 仍然聚焦它。
+ * 多行输入框独占主体，下方控件行从左到右：架构 profile（flash/pro）→ 模型选择器
+ * → 提交按钮。Enter 提交任务（`/api/run`）、Shift+Enter 换行、输入法组词中的
+ * Enter 不触发。profile 持久化到 localStorage；模型选择器与启动器、诊断向导
+ * 共用 ModelSelect，状态在 system store 里只有一份。
  */
 const { t } = useI18n();
 const sessionStore = useSessionStore();
@@ -20,7 +22,7 @@ const taskInput = ref('');
 const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 const selectedProfile = ref<'flash' | 'pro'>('flash');
-const inputRef = ref<InstanceType<typeof Input> | null>(null);
+const inputRef = ref<InstanceType<typeof Textarea> | null>(null);
 let errorTimer: ReturnType<typeof setTimeout> | null = null;
 
 // 与 Angular 版一致：记住上一次选择的架构 profile
@@ -39,6 +41,13 @@ function onGlobalKeyDown(event: KeyboardEvent): void {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === 'k') {
     event.preventDefault();
     focusInput();
+  }
+}
+
+function onTextareaKeydown(event: KeyboardEvent): void {
+  if (event.key === 'Enter' && !event.shiftKey && !event.isComposing) {
+    event.preventDefault();
+    void submitTask();
   }
 }
 
@@ -93,7 +102,18 @@ async function submitTask(): Promise<void> {
   <div class="command-dock">
     <div class="dock-card">
       <a-alert v-if="errorMessage" type="error" class="dock-error">{{ errorMessage }}</a-alert>
-      <div class="dock-row">
+      <div class="dock-main-row">
+        <a-textarea
+          ref="inputRef"
+          v-model="taskInput"
+          class="dock-input"
+          :placeholder="t('workspace.dock.placeholder')"
+          :auto-size="{ minRows: 2, maxRows: 5 }"
+          allow-clear
+          @keydown="onTextareaKeydown"
+        />
+      </div>
+      <div class="dock-bottom-row">
         <a-radio-group
           :model-value="selectedProfile"
           type="button"
@@ -105,14 +125,6 @@ async function submitTask(): Promise<void> {
           <a-radio value="pro">Pro</a-radio>
         </a-radio-group>
         <ModelSelect class="dock-model-select" />
-        <a-input
-          ref="inputRef"
-          v-model="taskInput"
-          class="dock-input"
-          :placeholder="t('workspace.dock.placeholder')"
-          allow-clear
-          @press-enter="submitTask"
-        />
         <a-button type="primary" :loading="isSubmitting" @click="submitTask">
           {{ t('workspace.dock.submit') }}
         </a-button>
@@ -122,14 +134,11 @@ async function submitTask(): Promise<void> {
 </template>
 
 <style scoped>
+/* 输入区并入左栏会话底部（不再是页面级 fixed 浮条）：宽度跟随左栏，
+   上方与时间线留出间距。 */
 .command-dock {
-  position: fixed;
-  left: 50%;
-  bottom: 24px;
-  transform: translateX(-50%);
-  z-index: 1000;
-  max-width: min(980px, calc(100vw - 48px));
-  width: min(980px, calc(100vw - 48px));
+  flex-shrink: 0;
+  margin-top: 10px;
 }
 
 .dock-card {
@@ -140,20 +149,9 @@ async function submitTask(): Promise<void> {
   box-shadow: var(--shadow2-center);
 }
 
-.dock-row {
+.dock-main-row {
   display: flex;
-  align-items: center;
-  gap: 8px;
-}
-
-.dock-profile-group {
-  flex-shrink: 0;
-}
-
-.dock-model-select {
-  width: 260px;
-  flex-shrink: 0;
-  min-width: 0;
+  align-items: flex-start;
 }
 
 .dock-input {
@@ -161,7 +159,24 @@ async function submitTask(): Promise<void> {
   min-width: 120px;
 }
 
-.dock-error {
-  margin-bottom: 8px;
+/* 底部控件行：profile + 模型选择器靠左成组，提交按钮推到最右。
+   Arco Select 的根元素不带父组件的 scoped data-v 属性（attrs 手动透传时丢失），
+   普通类选择器永远匹配不上——必须经 :deep() 下沉。 */
+.dock-bottom-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 8px;
+}
+
+.dock-bottom-row :deep(.dock-model-select) {
+  width: 220px;
+  flex-shrink: 0;
+  min-width: 0;
+  margin-right: auto;
+}
+
+.dock-profile-group {
+  flex-shrink: 0;
 }
 </style>
