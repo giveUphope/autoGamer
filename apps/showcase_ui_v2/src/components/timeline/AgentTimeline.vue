@@ -61,7 +61,7 @@ const scrollContainer = ref<HTMLElement | null>(null);
 
 /** 会话线程分组键（与 store 的 conversationGroups 同一规则）。 */
 function threadKey(session: Session): string {
-  return session.conversation_id || `task:${session.session_id}`;
+  return session.conversation_id || `round:${session.session_id}`;
 }
 
 /** 对话轮列表：旧 → 新（聊天顺序），只渲染选中的会话线程。roundNumber 是
@@ -188,6 +188,10 @@ const visiblePhases = computed(() => timelineStore.phases.filter(hasVisibleBlock
 const anyContent = computed(
   () => visiblePhases.value.length > 0 || startupWorkItems.value.length > 0,
 );
+
+/** 工具条常驻于每个被选中的会话：不管该会话有没有轮内容（新会话/空轮次
+ *  也要能打开笔记、录像、轨迹树与回放），只有完全未选中会话时才隐藏。 */
+const hasSelectedConversation = computed(() => Boolean(sessionStore.currentSessionId));
 
 // ---- M3 实时流状态（平移自 Angular AgentStreamComponent L444-461 / L573-587）----
 
@@ -471,8 +475,8 @@ const isRecordBtnProcessing = computed(
 
 <template>
   <section class="agent-timeline">
-    <!-- 会话工具行：操作按钮（属于选中的那轮任务） -->
-    <div v-if="anyContent" class="timeline-toolbar">
+    <!-- 会话工具行：常驻于每个被选中的会话（新会话/空轮次同样可用） -->
+    <div v-if="hasSelectedConversation" class="timeline-toolbar">
       <div class="toolbar-actions">
         <a-popover v-model:popup-visible="notesPopoverOpen" position="bl" trigger="click">
           <a-button size="small" class="notes-btn">
