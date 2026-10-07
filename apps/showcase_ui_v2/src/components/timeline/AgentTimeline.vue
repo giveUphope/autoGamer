@@ -653,6 +653,8 @@ const isRecordBtnProcessing = computed(
   flex: 1;
   min-height: 0;
   overflow-y: auto;
+  /* 内容（长 token 数/坐标/流文本）不得撑出横向滚动条 */
+  overflow-x: hidden;
   padding: 2px;
 }
 
@@ -778,8 +780,7 @@ const isRecordBtnProcessing = computed(
   cursor: pointer;
   user-select: none;
   border-radius: var(--border-radius-small);
-  padding: 2px 4px;
-  margin: -2px -4px;
+  padding: 2px 4px 4px;
   transition: background-color 0.15s, color 0.15s;
 }
 
@@ -800,10 +801,6 @@ const isRecordBtnProcessing = computed(
 .phase-step-count {
   margin-left: auto;
   flex-shrink: 0;
-}
-
-.phase-container.collapsed .phase-header {
-  padding-bottom: 4px;
 }
 
 .phase-worked-time {
