@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { Textarea } from '@arco-design/web-vue';
 
 import ModelSelect from '@/components/ModelSelect.vue';
+import RunInfoPopover from '@/components/timeline/RunInfoPopover.vue';
 import { ApiError } from '@/services/api';
 import { useSessionStore } from '@/stores/session';
 
@@ -11,9 +12,10 @@ import { useSessionStore } from '@/stores/session';
  * 会话输入区（对应 Angular WorkspaceComponent 的 command dock，UI 按 Arco 重做）：
  * 并在左栏会话时间线底部（聊天式「会话流 + 底部输入」）；Ctrl+K / ⌘K 仍然聚焦它。
  * 多行输入框独占主体，下方控件行从左到右：架构 profile（flash/pro）→ 模型选择器
- * → 提交按钮。Enter 提交任务（`/api/run`）、Shift+Enter 换行、输入法组词中的
- * Enter 不触发。profile 持久化到 localStorage；模型选择器与启动器、诊断向导
- * 共用 ModelSelect，状态在 system store 里只有一份。
+ * → 运行信息（选中任务的耗时/tokens 内联指标，点击看详情）→ 提交按钮。
+ * Enter 提交任务（`/api/run`）、Shift+Enter 换行、输入法组词中的 Enter 不触发。
+ * profile 持久化到 localStorage；模型选择器与启动器、诊断向导共用 ModelSelect，
+ * 状态在 system store 里只有一份。
  */
 const { t } = useI18n();
 const sessionStore = useSessionStore();
@@ -125,6 +127,8 @@ async function submitTask(): Promise<void> {
           <a-radio value="pro">Pro</a-radio>
         </a-radio-group>
         <ModelSelect class="dock-model-select" />
+        <!-- 运行信息：选中任务的耗时/tokens 内联指标，点击弹详情——发射前凭据 → 发射后账单 -->
+        <RunInfoPopover class="dock-run-info" />
         <a-button type="primary" :loading="isSubmitting" @click="submitTask">
           {{ t('workspace.dock.submit') }}
         </a-button>
@@ -174,6 +178,10 @@ async function submitTask(): Promise<void> {
   flex-shrink: 0;
   min-width: 0;
   margin-right: auto;
+}
+
+.dock-run-info {
+  flex-shrink: 0;
 }
 
 .dock-profile-group {

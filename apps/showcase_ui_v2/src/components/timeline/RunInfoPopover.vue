@@ -16,9 +16,11 @@ import {
 import type { SessionRunTuning } from '@/types/session.model';
 
 /**
- * Run 信息气泡（对应 Angular 的 Flash/Pro chip + run-info 下拉，按映射表用 a-popover 重做）：
- * 耗时、token 用量、执行器上下文占比与本次运行的 Pro 调优。
- * usage 拉取语义平移自组件 effect：打开或会话变化时拉取；会话仍在运行时每 3s 刷新。
+ * 运行信息（挂在命令条下排，与发射凭据构成「发射前凭据 → 发射后账单」）：
+ * 按钮内联核心指标（Tokens · 用时），点击弹出详情——耗时 / LLM 调用次数 /
+ * 步骤数 / 平均输出速度 / token 用量 / 上下文占比 / Pro 调优。
+ * 指标行集中在一个 computed 数组里，统计口径调整只改这一处。
+ * usage 拉取语义：打开或会话变化时拉取；会话仍在运行时每 3s 刷新。
  */
 const { t } = useI18n();
 const sessionStore = useSessionStore();
@@ -49,10 +51,15 @@ const modelDisplayName = computed(() => {
   return name.replace(/^artemis\s+/i, '');
 });
 
-const elapsed = computed(() => {
-  const session = sessionStore.currentSession;
-  return formatElapsed(sessionElapsedSeconds(session, sessionStore.isCurrentSessionRunning, clock.value));
-});
+const elapsedSeconds = computed(() =>
+  sessionElapsedSeconds(
+    sessionStore.currentSession,
+    sessionStore.isCurrentSessionRunning,
+    clock.value,
+  ),
+);
+
+const elapsed = computed(() => formatElapsed(elapsedSeconds.value));
 
 const tuning = computed<SessionRunTuning | null>(() => {
   const usage = timelineStore.runUsage;
@@ -68,21 +75,60 @@ const contextPercentValue = computed<number | null>(() => {
   return contextPercent(usage.operator_context_tokens, usage.operator_context_window_tokens);
 });
 
+/** 执行回合步骤总数（轮身时间线里的块数，checker 核查块不计）。 */
+const stepsCount = computed(
+  () =>
+    timelineStore.phases
+      .map((phase) => phase.blocks.filter((block) => block.type !== 'checker').length)
+      .reduce((sum, n) => sum + n, 0),
+);
+
+/** 平均输出速度：completion tokens / 会话已进行秒数。 */
+const outputSpeed = computed<string | null>(() => {
+  const usage = timelineStore.runUsage;
+  if (!usage?.completion_tokens || !elapsedSeconds.value) return null;
+  return `${(usage.completion_tokens / elapsedSeconds.value).toFixed(1)} tok/s`;
+});
+
+/** 详情指标行（统计口径调整只改这里）。 */
+const metricRows = computed(() => {
+  const usage = timelineStore.runUsage;
+  return [
+    { label: t('workspace.timeline.runInfo.elapsed'), value: elapsed.value },
+    { label: t('workspace.timeline.runInfo.calls'), value: usage?.llm_calls ?? null },
+    { label: t('workspace.timeline.runInfo.steps'), value: stepsCount.value || null },
+    { label: t('workspace.timeline.runInfo.speed'), value: outputSpeed.value },
+  ];
+});
+
+/** 按钮内联的核心指标：Tokens · 用时（无数据时退回「运行信息」占位）。 */
+const inlineLabel = computed(() => {
+  const usage = timelineStore.runUsage;
+  const parts: string[] = [];
+  if (usage) {
+    parts.push(`${formatCompactTokens(usage.total_tokens)} tokens`);
+  }
+  if (elapsedSeconds.value > 0) {
+    parts.push(elapsed.value);
+  }
+  return parts.length > 0 ? parts.join(' · ') : t('workspace.timeline.runInfo.button');
+});
+
+const hasSession = computed(() => Boolean(sessionStore.currentSessionId));
+
 function loadUsage(): void {
   const sessionId = sessionStore.currentSessionId;
-  if (popoverOpen.value && sessionId) {
+  if (sessionId) {
     void timelineStore.loadRunUsage(sessionId);
   }
 }
 
-watch([popoverOpen, () => sessionStore.currentSessionId], () => {
-  // 会话变化时清掉旧 usage（平移自 runUsage.set(null) 守卫）
-  loadUsage();
-});
+// 挂载/会话变化即拉取：内联按钮要显示 tokens，不等到气泡打开
+watch(() => sessionStore.currentSessionId, loadUsage, { immediate: true });
 
 watch(
-  () => [popoverOpen.value, sessionStore.isCurrentSessionRunning] as const,
-  ([open, running]) => {
+  () => [sessionStore.isCurrentSessionRunning] as const,
+  ([running]) => {
     if (clockTimer) {
       clearInterval(clockTimer);
       clockTimer = null;
@@ -91,7 +137,7 @@ watch(
       clearInterval(usageTimer);
       usageTimer = null;
     }
-    if (open && running) {
+    if (running) {
       clock.value = Date.now();
       clockTimer = setInterval(() => {
         clock.value = Date.now();
@@ -99,6 +145,7 @@ watch(
       usageTimer = setInterval(loadUsage, 3000);
     }
   },
+  { immediate: true },
 );
 
 onBeforeUnmount(() => {
@@ -110,7 +157,7 @@ onBeforeUnmount(() => {
 <template>
   <a-popover
     v-model:popup-visible="popoverOpen"
-    position="br"
+    position="top"
     trigger="click"
     content-class="run-info-popover-content"
   >
@@ -118,16 +165,17 @@ onBeforeUnmount(() => {
       size="small"
       class="run-info-btn"
       :class="{ 'is-pro': isPro }"
+      :disabled="!hasSession"
       :title="t('workspace.timeline.runInfo.button')"
     >
       <template #icon>
-        <icon-star v-if="isPro" :class="{ 'is-pro': isPro }" />
+        <icon-star v-if="isPro" />
         <icon-thunderbolt v-else />
       </template>
-      {{ t('workspace.timeline.runInfo.button') }}
+      {{ inlineLabel }}
     </a-button>
     <template #content>
-      <div class="run-info" role="dialog" :aria-label="t('workspace.timeline.architecture')">
+      <div class="run-info" role="dialog" :aria-label="t('workspace.timeline.runInfo.button')">
         <div class="run-info-header">
           <span class="run-info-title" :class="{ 'is-pro': isPro }">{{ modelDisplayName }}</span>
           <span v-if="model?.id" class="run-info-model" :title="model.id">{{ model.id }}</span>
@@ -138,9 +186,12 @@ onBeforeUnmount(() => {
           <span class="run-info-value" :title="pinnedEndpoint">{{ pinnedEndpoint }}</span>
         </div>
 
-        <div class="run-info-row">
-          <span class="run-info-label">{{ t('workspace.timeline.runInfo.elapsed') }}</span>
-          <span class="run-info-value">{{ elapsed }}</span>
+        <div v-for="metric in metricRows" :key="metric.label" class="run-info-row">
+          <span class="run-info-label">{{ metric.label }}</span>
+          <span v-if="metric.value !== null && metric.value !== ''" class="run-info-value">
+            {{ metric.value }}
+          </span>
+          <span v-else class="run-info-value is-muted">—</span>
         </div>
 
         <div class="run-info-row">
@@ -192,20 +243,19 @@ onBeforeUnmount(() => {
             <span class="run-info-value">{{ tuningLabel('explore', tuning?.explorer_mode) }}</span>
           </div>
         </template>
-        <div v-else class="run-info-note">{{ t('workspace.timeline.runInfo.flashNote') }}</div>
       </div>
     </template>
   </a-popover>
 </template>
 
 <style scoped>
-/* 触发按钮只承担「查看运行信息」入口；架构/模型的发射凭据在命令条，不在此展示 */
+/* 触发按钮内联核心指标；架构/模型的发射凭据在命令条左侧，不在此展示 */
 .run-info-btn.is-pro {
   color: rgb(var(--purple-6));
 }
 
-.run-info-btn :deep(.is-pro) {
-  color: rgb(var(--purple-6));
+.run-info-value {
+  font-variant-numeric: tabular-nums;
 }
 
 .run-info {
@@ -266,7 +316,6 @@ onBeforeUnmount(() => {
 }
 
 .run-info-value {
-  font-variant-numeric: tabular-nums;
   color: var(--color-text-1);
 }
 
@@ -279,10 +328,5 @@ onBeforeUnmount(() => {
   color: var(--color-text-3);
   font-size: 11px;
   margin-left: 4px;
-}
-
-.run-info-note {
-  color: var(--color-text-3);
-  font-size: 12px;
 }
 </style>

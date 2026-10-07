@@ -31,7 +31,6 @@ import SessionTreeDrawer from '@/components/session-extras/SessionTreeDrawer.vue
 import CheckerPanel from './CheckerPanel.vue';
 import NoteDocument from './NoteDocument.vue';
 import NotesPanel from './NotesPanel.vue';
-import RunInfoPopover from './RunInfoPopover.vue';
 import StepCard from './StepCard.vue';
 
 /**
@@ -41,7 +40,7 @@ import StepCard from './StepCard.vue';
  * - 会话头：当前会话的目标 / 状态 / 设备（选中历史会话后时间线可自证「在看哪个会话」）；
  * - 阶段分组（Worked for Xs · tokens）+ StepCard / CheckerPanel 路由；
  * - 启动准备块（startup_progress）与任务报告卡（output.md）；
- * - 顶部工具条：架构 chip（RunInfoPopover）+ 笔记与计划（NotesPanel）；
+ * - 顶部工具条：笔记与计划（NotesPanel）、屏幕录像、轨迹树、步骤回放；
  * - M3 实时流：planning loader、LLM 重试警示条、任务暂停卡 + 恢复、
  *   自动滚动（接近底部才跟随，平移自 Angular scheduleAutoScroll）。
  */
@@ -450,7 +449,6 @@ const isRecordBtnProcessing = computed(
     <!-- 会话工具行：操作按钮（属于选中的那轮任务） -->
     <div v-if="anyContent" class="timeline-toolbar">
       <div class="toolbar-actions">
-        <RunInfoPopover />
         <a-popover v-model:popup-visible="notesPopoverOpen" position="bl" trigger="click">
           <a-button size="small" class="notes-btn">
             <template #icon><icon-file /></template>

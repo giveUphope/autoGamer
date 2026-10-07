@@ -504,6 +504,9 @@ export default {
       runInfo: {
         button: '运行信息',
         elapsed: '用时',
+        calls: 'LLM 调用',
+        steps: '步骤数',
+        speed: '平均输出速度',
         tokens: 'Tokens',
         endpoint: '端点',
         inOut: '{in} 入 · {out} 出',
@@ -511,7 +514,6 @@ export default {
         ofWindow: '共 {window}',
         resultCheck: '结果核查',
         screenReading: '屏幕读取',
-        flashNote: 'Flash 无额外设置。',
       },
     },
     // B6 轨迹树抽屉（节点 name/type/status/duration 为后端 get_trace_tree 字段）

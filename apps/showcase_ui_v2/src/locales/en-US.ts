@@ -431,6 +431,9 @@ export default {
       runInfo: {
         button: 'Run info',
         elapsed: 'Elapsed',
+        calls: 'LLM calls',
+        steps: 'Steps',
+        speed: 'Avg output speed',
         tokens: 'Tokens',
         endpoint: 'Endpoint',
         inOut: '{in} in · {out} out',
@@ -438,7 +441,6 @@ export default {
         ofWindow: 'of {window}',
         resultCheck: 'Result check',
         screenReading: 'Screen reading',
-        flashNote: 'No extra settings for Flash.',
       },
     },
     // B6 trace tree drawer (node name/type/status/duration come from get_trace_tree)
