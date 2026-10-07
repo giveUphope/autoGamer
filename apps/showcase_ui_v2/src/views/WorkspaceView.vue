@@ -9,15 +9,15 @@ import TaskQueuePanel from '@/components/TaskQueuePanel.vue';
 
 /**
  * 工作台（对应 Angular WorkspaceComponent）：
- * a-layout 布局 + 可拖拽左右分栏（左：M2 会话时间线 AgentTimeline + 底部输入区
- * CommandDock / 右：任务队列面板）。拖拽逻辑平移自 Angular 版：mousemove 监听
- * 仅在拖拽期间挂载，宽度更新经 requestAnimationFrame 合帧。
+ * a-layout 布局 + 可拖拽左右分栏（左：任务队列面板 / 右：M2 会话时间线
+ * AgentTimeline + 底部输入区 CommandDock）。拖拽逻辑平移自 Angular 版：
+ * mousemove 监听仅在拖拽期间挂载，宽度更新经 requestAnimationFrame 合帧。
  *
- * 点击右侧历史条目 → session store 选中会话（pin 语义）→ timeline store
+ * 点击左侧历史条目 → session store 选中会话（pin 语义）→ timeline store
  * 按选中会话拉取 steps/notes/checks/usage 并渲染时间线。
  */
-// 右栏默认宽度：屏幕的 1/3（与 Angular 版一致）
-const rightPanelWidth = ref<number>(
+// 左栏（队列/历史面板）默认宽度：屏幕的 1/3（与 Angular 版一致）
+const sidePanelWidth = ref<number>(
   typeof window !== 'undefined' ? Math.round(window.innerWidth / 3) : 450,
 );
 const isDragging = ref(false);
@@ -35,16 +35,17 @@ const onMouseMove = (event: MouseEvent): void => {
   if (!isDragging.value) {
     return;
   }
-  const newWidth = window.innerWidth - event.clientX;
+  // 面板在左侧：宽度即鼠标到视口左缘的距离
+  const newWidth = event.clientX;
   const minWidth = 250;
   const maxWidth = window.innerWidth - 300;
-  // 边界限制，防止面板缩得过小
+  // 边界限制：面板不小于 250px，右侧时间线区至少留 300px
   if (newWidth >= minWidth && newWidth <= maxWidth) {
     pendingDragWidth = newWidth;
     if (dragWidthRafId === null) {
       dragWidthRafId = requestAnimationFrame(() => {
         dragWidthRafId = null;
-        rightPanelWidth.value = pendingDragWidth;
+        sidePanelWidth.value = pendingDragWidth;
       });
     }
   }
@@ -73,15 +74,15 @@ onBeforeUnmount(detachDragListeners);
       <AppNav />
     </a-layout-header>
     <a-layout class="workspace-body">
-      <div class="workspace-main">
-        <AgentTimeline />
-        <!-- 输入区并入左栏会话：不再是全页面 fixed 浮条，聊天式「会话流 + 底部输入」 -->
-        <CommandDock />
-      </div>
-      <div class="workspace-divider" :class="{ dragging: isDragging }" @mousedown="onDragStart" />
-      <aside class="workspace-side" :style="{ width: `${rightPanelWidth}px` }">
+      <aside class="workspace-side" :style="{ width: `${sidePanelWidth}px` }">
         <TaskQueuePanel />
       </aside>
+      <div class="workspace-divider" :class="{ dragging: isDragging }" @mousedown="onDragStart" />
+      <div class="workspace-main">
+        <AgentTimeline />
+        <!-- 输入区并入会话栏：不再是全页面 fixed 浮条，聊天式「会话流 + 底部输入」 -->
+        <CommandDock />
+      </div>
     </a-layout>
     <!-- M4 浮动播放器：开合由 player store 的 isVideoWindowOpen 驱动（组件内部 v-if 控制） -->
     <FloatingPlayer />
