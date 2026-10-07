@@ -6,6 +6,8 @@
  * 选中即生效（写 artemis.jsonc 的 default 块），所以显示值单向绑定 store：
  * 切换失败时下拉自己弹回原来那条，不会留下"看着已切、其实没切"的错位。
  * 正在使用但从未存入端点库的端点占一个只读选项，避免出现"当前用着 A、列表里没有 A"。
+ * 收起的触发器只显示模型名；完整信息（记录名、协议/模型、端点地址）收进下拉
+ * 菜单的第二行，避免触发器被长地址撑满。
  */
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
@@ -37,23 +39,26 @@ const activeRow = computed(
   () => system.credentialRows.find((row) => row.is_active) ?? null,
 );
 
-function optionLabel(row: CredentialEndpointRow): string {
-  return [
-    row.provider,
-    `${row.api_format ?? ''}/${row.model ?? ''}`,
-    row.api_base || t('model.noBase'),
-  ]
+/** 触发器收起时显示的文本：只有模型名（无模型的记录退回记录名）。 */
+function shortLabel(row: CredentialEndpointRow): string {
+  return row.model || row.provider || '';
+}
+
+/** 下拉菜单第二行的完整信息：协议/模型 · 端点地址（第一行是记录名，即 label）。 */
+function optionDetail(row: CredentialEndpointRow): string {
+  return [`${row.api_format ?? ''}/${row.model ?? ''}`, row.api_base || t('model.noBase')]
     .filter(Boolean)
     .join(' · ');
 }
 
-const unsavedLabel = computed(() => {
+const unsavedModel = computed(
+  () => system.modelConfigEnv?.default_model?.model ?? '',
+);
+
+const unsavedDetail = computed(() => {
   const dm = system.modelConfigEnv?.default_model;
   if (!dm?.model) return '';
-  return [
-    `${t('model.currentUnsaved')} · ${dm.provider ?? ''}/${dm.model}`,
-    dm.api_base || t('model.noBase'),
-  ]
+  return [`${dm.provider ?? ''}/${dm.model}`, dm.api_base || t('model.noBase')]
     .filter(Boolean)
     .join(' · ');
 });
@@ -61,10 +66,20 @@ const unsavedLabel = computed(() => {
 const options = computed(() => {
   const saved = system.credentialRows
     .filter((row) => row.source === 'library' && row.provider)
-    .map((row) => ({ value: row.provider as string, label: optionLabel(row) }));
+    .map((row) => ({
+      value: row.provider as string,
+      label: shortLabel(row),
+      name: row.provider as string,
+      detail: optionDetail(row),
+    }));
   const currentIsSaved = activeRow.value?.source === 'library';
-  if (!currentIsSaved && unsavedLabel.value) {
-    saved.unshift({ value: UNSAVED, label: unsavedLabel.value });
+  if (!currentIsSaved && unsavedModel.value) {
+    saved.unshift({
+      value: UNSAVED,
+      label: unsavedModel.value,
+      name: t('model.currentUnsaved'),
+      detail: unsavedDetail.value,
+    });
   }
   return saved;
 });
@@ -75,7 +90,7 @@ const selected = computed(() => {
   if (activeRow.value?.source === 'library' && activeRow.value.provider) {
     return activeRow.value.provider;
   }
-  return unsavedLabel.value ? UNSAVED : '';
+  return unsavedModel.value ? UNSAVED : '';
 });
 
 async function onChange(
@@ -110,11 +125,33 @@ async function onChange(
     :placeholder="t('model.placeholder')"
     :popup-max-height="280"
     @change="onChange"
-  />
+  >
+    <template #option="{ data }">
+      <div class="model-option">
+        <span class="model-option-name">{{ data.name }}</span>
+        <span class="model-option-detail">{{ data.detail }}</span>
+      </div>
+    </template>
+  </a-select>
 </template>
 
 <style scoped>
-.model-select {
-  min-width: 200px;
+/* 注意：根元素 <a-select> 是 Arco 组件，父级与自身的 scoped data-v 都到不了它的
+   DOM 根（Arco 手动透传 attrs 时丢弃），所以这里不放选择器本体尺寸——由使用处
+   经 :deep() 控制；本块只管 #option 插槽内容（它们是本组件模板的直属元素）。 */
+
+.model-option {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  line-height: 1.4;
+}
+
+.model-option-detail {
+  font-size: 12px;
+  color: var(--color-text-3);
+  /* 弹层宽度跟随触发器，长端点地址换行展示而不是省略号截断 */
+  white-space: normal;
+  word-break: break-all;
 }
 </style>

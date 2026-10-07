@@ -320,7 +320,8 @@ async function submitTask(): Promise<void> {
   flex-shrink: 0;
 }
 
-.task-model-select {
+/* Arco Select 根元素不带父组件 scoped data-v（attrs 手动透传时丢失），须 :deep() 下沉 */
+.task-model :deep(.task-model-select) {
   width: 320px;
   min-width: 0;
 }

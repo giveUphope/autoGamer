@@ -656,9 +656,10 @@ describe('DiagnosticsWizard (M5)', () => {
     // 选择器在「当前模型配置」卡内部，与启动器/工作台是同一个组件
     expect(wrapper.find('.inspector-card .switch-row').exists()).toBe(true);
     const select = wrapper.findComponent(ModelSelect).findComponent({ name: 'Select' });
+    // 触发器只显示模型名；完整信息在 option 的 detail 字段里（下拉第二行）
     expect((select.props('options') as { label: string }[]).map((o) => o.label)).toEqual([
-      'deepseek · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
-      'my-gateway · openai/gateway-1 · 提供商官方端点',
+      'qwen3.6-35b-a3b-mtp',
+      'gateway-1',
     ]);
     expect(select.props('modelValue')).toBe('deepseek');
 
@@ -680,14 +681,25 @@ describe('DiagnosticsWizard (M5)', () => {
     await flushPromises();
 
     const select = wrapper.findComponent(ModelSelect).findComponent({ name: 'Select' });
-    const options = select.props('options') as { value: string; label: string }[];
+    const options = select.props('options') as {
+      value: string;
+      label: string;
+      name?: string;
+      detail?: string;
+    }[];
     // 当前用的那条没存进库，列表里必须有它（否则选中项指向一个不存在的条目），
     // 但它没有可切换的名字，选中它不该发出请求
     expect(options).toHaveLength(2);
-    expect(options[0]!.label).toContain('当前端点（未存入端点库） · google/gemini-flash');
+    // 触发器/label 只显示模型名；完整信息（记录名 + 协议/模型 · 地址）在下拉的
+    // name/detail 两行里
+    expect(options[0]!.label).toBe('gemini-flash');
+    expect(options[0]!.name).toBe('当前端点（未存入端点库）');
+    expect(options[0]!.detail).toContain('google/gemini-flash');
     expect(options[1]).toEqual({
       value: 'other',
-      label: 'other · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
+      label: 'qwen3.6-35b-a3b-mtp',
+      name: 'other',
+      detail: 'openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
     });
     expect(select.props('modelValue')).toBe(options[0]!.value);
 
