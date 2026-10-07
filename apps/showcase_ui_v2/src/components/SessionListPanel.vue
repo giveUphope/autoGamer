@@ -123,9 +123,9 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
       >
         <div class="conversation-head">
           <span v-if="row.isRunning" class="live-dot" :title="t('workspace.conversations.running')" />
+          <span class="conversation-name" :title="row.name">{{ row.name }}</span>
           <span class="conversation-time">{{ row.timeText }}</span>
         </div>
-        <div class="conversation-name" :title="row.name">{{ row.name }}</div>
         <div class="conversation-meta">
           <span v-if="row.deviceSerial" class="conversation-device" :title="row.deviceSerial">
             <icon-computer />
@@ -216,8 +216,20 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
 .conversation-head {
   display: flex;
   align-items: center;
-  justify-content: space-between;
   gap: 8px;
+  min-width: 0;
+}
+
+/* 会话名与时间同一行：名字过长省略，时间常驻右对齐 */
+.conversation-name {
+  flex: 1;
+  min-width: 0;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--color-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 /* 进行时指示：线程内有运行中的轮（结果性状态不在此展示） */
@@ -245,19 +257,6 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
   font-size: 11px;
   color: var(--color-text-3);
   font-variant-numeric: tabular-nums;
-}
-
-.conversation-name {
-  margin-top: 4px;
-  font-size: 13px;
-  font-weight: 600;
-  color: var(--color-text-1);
-  display: -webkit-box;
-  -webkit-box-orient: vertical;
-  -webkit-line-clamp: 2;
-  line-clamp: 2;
-  overflow: hidden;
-  overflow-wrap: anywhere;
 }
 
 .conversation-meta {
