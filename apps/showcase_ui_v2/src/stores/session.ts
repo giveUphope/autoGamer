@@ -635,37 +635,38 @@ export const useSessionStore = defineStore('session', () => {
   interface ConversationGroup {
     id: string;
     name: string;
-    tasks: Session[];
+    /** 线程内的轮（= 一次任务提交），按提交顺序排列。 */
+    rounds: Session[];
     latest: Session;
     status: string;
     time: number;
   }
 
-  /** 任务按 conversation_id 聚合为会话线程；旧数据无线程标记时各任务自成一个会话。 */
+  /** 轮按 conversation_id 聚合为会话线程；无线程标记的旧轮各自成一个会话。 */
   const conversationGroups = computed<ConversationGroup[]>(() => {
     const groups = new Map<string, Session[]>();
-    for (const session of sessions.value) {
-      const key = session.conversation_id || `task:${session.session_id}`;
-      const list = groups.get(key);
-      if (list) list.push(session);
-      else groups.set(key, [session]);
+    for (const round of sessions.value) {
+      const key = round.conversation_id || `round:${round.session_id}`;
+      const bucket = groups.get(key);
+      if (bucket) bucket.push(round);
+      else groups.set(key, [round]);
     }
     const result: ConversationGroup[] = [];
-    for (const [key, tasks] of groups) {
-      // 线程内任务按提交顺序排列；名字 = 第一条消息（最早任务的 goal）
-      tasks.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
-      const latest = tasks[tasks.length - 1]!;
+    for (const [key, rounds] of groups) {
+      // 线程内轮次按提交顺序排列；会话名 = 第一条消息（最早一轮的 goal）
+      rounds.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+      const latest = rounds[rounds.length - 1]!;
       const statusRank: Record<string, number> = { running: 0, paused: 1, pending: 2 };
-      const status = tasks
-        .map((task) => getTaskStatus(task, runningSessionId.value, agentStatus.value))
+      const status = rounds
+        .map((round) => getTaskStatus(round, runningSessionId.value, agentStatus.value))
         .sort((a, b) => (statusRank[a] ?? 9) - (statusRank[b] ?? 9))[0]!;
       result.push({
         id: key,
-        name: tasks[0]!.initial_goal || '',
-        tasks,
+        name: rounds[0]!.initial_goal || '',
+        rounds,
         latest,
         status,
-        time: Math.max(...tasks.map((task) => task.start_time || 0)),
+        time: Math.max(...rounds.map((round) => round.start_time || 0)),
       });
     }
     // 运行/暂停的线程置顶，其余按最近活动倒序
@@ -677,10 +678,10 @@ export const useSessionStore = defineStore('session', () => {
     });
   });
 
-  /** 删除整个会话线程：级联删除组内全部任务。 */
+  /** 删除整个会话线程：级联删除线程内全部轮次。 */
   async function deleteConversation(group: ConversationGroup): Promise<void> {
-    for (const task of group.tasks) {
-      await deleteSession(task.session_id);
+    for (const round of group.rounds) {
+      await deleteSession(round.session_id);
     }
     if (currentConversationId.value === group.id) {
       selectConversation(null);

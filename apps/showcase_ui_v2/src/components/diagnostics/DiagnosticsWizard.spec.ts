@@ -317,7 +317,7 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(wrapper.text()).toContain('AI 模型配置');
     expect(wrapper.text()).toContain('Android 设备与模拟器连接');
     // 就绪横幅不出现
-    expect(wrapper.text()).not.toContain('系统已就绪，可以执行自主任务');
+    expect(wrapper.text()).not.toContain('系统已就绪，可以开始自主执行');
   });
 
   it('aggregates command actions into the one-click install bar when env is not ready', () => {
@@ -343,7 +343,7 @@ describe('DiagnosticsWizard (M5)', () => {
     mockSystem.isReady = true;
 
     const wrapper = mountWizard();
-    expect(wrapper.text()).toContain('系统已就绪，可以执行自主任务');
+    expect(wrapper.text()).toContain('系统已就绪，可以开始自主执行');
     await wrapper.find('.ready-launch-btn').trigger('click');
     expect(wrapper.emitted('proceed')).toBeTruthy();
   });

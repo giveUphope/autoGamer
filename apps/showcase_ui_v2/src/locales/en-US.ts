@@ -307,7 +307,7 @@ export default {
       noDevice: 'Unassigned',
     },
     dock: {
-      placeholder: 'Type a task instruction — Enter to submit, Shift+Enter for a new line',
+      placeholder: 'Type an instruction — Enter to submit, Shift+Enter for a new line',
       submit: 'Submit',
       submitFail: 'Submit failed: {reason}',
     },
@@ -316,9 +316,10 @@ export default {
       new: 'New session',
       untitled: 'Untitled session',
       empty: 'No sessions yet — click "New session" to start',
-      tasksCount: '{n} tasks',
+      roundsCount: '{n} rounds',
       delete: 'Delete session',
-      deleteConfirm: 'Delete this session and all its tasks? This cannot be undone.',
+      deleteConfirm: 'Delete this session and all its rounds? This cannot be undone.',
+      stop: 'Stop',
     },
     timeline: {
       loadingRunHistory: 'Loading run history...',
@@ -326,8 +327,9 @@ export default {
       emptyHint: 'Describe a task in the input box below to get started, or pick a past session from the list on the right to inspect its trace.',
       // Startup / phase headers
       workedFor: 'Worked for {seconds}s',
+      roundNumber: 'Round {n}',
       stepsCount: '{n} steps',
-      roundEmpty: 'No execution trace recorded for this task.',
+      roundEmpty: 'No execution trace recorded for this round.',
       checkedFor: 'Checked for {seconds}s',
       waiting: 'Waiting {time}',
       waited: 'Waited {time}',

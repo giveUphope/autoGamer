@@ -64,16 +64,32 @@ function threadKey(session: Session): string {
   return session.conversation_id || `task:${session.session_id}`;
 }
 
-/** 对话轮列表：旧 → 新（聊天顺序），只渲染选中的会话线程。 */
+/** 对话轮列表：旧 → 新（聊天顺序），只渲染选中的会话线程。roundNumber 是
+ * 会话内 1 起始的轮序号（与 store 的线程分组同一排序规则）。 */
 const rounds = computed(() => {
   const thread = sessionStore.currentConversationId;
-  const list = [...sessionStore.sessions]
-    .filter((session) => !thread || threadKey(session) === thread)
-    .reverse();
+  const chronological = [...sessionStore.sessions].sort(
+    (a, b) => (a.start_time || 0) - (b.start_time || 0),
+  );
+  const roundOrderBySession = new Map<string, number>();
+  const byThread = new Map<string, Session[]>();
+  for (const session of chronological) {
+    const key = threadKey(session);
+    const bucket = byThread.get(key);
+    if (bucket) bucket.push(session);
+    else byThread.set(key, [session]);
+  }
+  for (const bucket of byThread.values()) {
+    bucket.forEach((session, index) => roundOrderBySession.set(session.session_id, index + 1));
+  }
+  const list = chronological.filter(
+    (session) => !thread || threadKey(session) === thread,
+  );
   return list.map((session) => {
     const status = getTaskStatus(session, sessionStore.runningSessionId, sessionStore.agentStatus);
     return {
       id: session.session_id,
+      roundNumber: roundOrderBySession.get(session.session_id) ?? 1,
       goal: session.initial_goal,
       status,
       statusText: t(`status.${status}`),
@@ -522,6 +538,9 @@ const isRecordBtnProcessing = computed(
               class="round-chevron"
               :class="{ expanded: isRoundOpen(round) }"
             />
+            <span class="round-index">
+              {{ t('workspace.timeline.roundNumber', { n: round.roundNumber }) }}
+            </span>
             <a-tag :color="round.statusColor" size="small" class="round-status">
               {{ round.statusText }}
             </a-tag>
@@ -851,6 +870,12 @@ const isRecordBtnProcessing = computed(
 .phase-step-count {
   margin-left: auto;
   flex-shrink: 0;
+}
+
+.round-index {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--color-text-2);
 }
 
 .phase-worked-time {

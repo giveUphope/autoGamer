@@ -118,13 +118,13 @@ describe('LauncherView (M1)', () => {
   it('renders the diagnostics / launcher mode tabs', () => {
     const wrapper = mountView();
     expect(wrapper.text()).toContain('系统设置与前置条件');
-    expect(wrapper.text()).toContain('启动自主任务');
+    expect(wrapper.text()).toContain('自主执行');
   });
 
   it('renders a task textarea and a submit button', () => {
     const wrapper = mountView();
     expect(wrapper.find('textarea').exists()).toBe(true);
-    expect(wrapper.text()).toContain('提交任务');
+    expect(wrapper.text()).toContain('开始执行');
     expect(wrapper.find('.arco-btn').exists()).toBe(true);
   });
 

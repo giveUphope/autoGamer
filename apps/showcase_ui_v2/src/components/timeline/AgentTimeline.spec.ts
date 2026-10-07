@@ -56,9 +56,13 @@ function planningLoaderText(wrapper: VueWrapper<any>): string {
 }
 
 function mountTimeline() {
+  // 测试代码与组件必须共用同一个 pinia 实例：否则 rawSessions/selectSession
+  // 塞进测试侧 store，组件读的是 mount 插件里的另一个实例，渲染永远卡加载态。
+  const pinia = createPinia();
+  setActivePinia(pinia);
   return mount(AgentTimeline, {
     global: {
-      plugins: [ArcoVue, i18n, createPinia()],
+      plugins: [ArcoVue, i18n, pinia],
     },
   });
 }
@@ -168,10 +172,11 @@ describe('AgentTimeline (M2)', () => {
     return wrapper;
   }
 
+
   it('renders the empty state when no session is selected', () => {
     const wrapper = mountTimeline();
     expect(wrapper.text()).toContain('未选择会话活动');
-    expect(wrapper.text()).toContain('在下方输入框描述任务即可开始');
+    expect(wrapper.text()).toContain('在下方输入框描述要执行的操作即可开始');
   });
 
   it('renders step cards with action details from the steps snapshot', async () => {

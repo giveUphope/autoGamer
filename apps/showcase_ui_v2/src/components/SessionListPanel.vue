@@ -4,7 +4,11 @@ import { useI18n } from 'vue-i18n';
 import { IconComputer, IconPlus } from '@arco-design/web-vue/es/icon';
 
 import { useSessionStore } from '@/stores/session';
-import { getTaskStatus, sessionStatusColor } from '@/utils/session-merge';
+import {
+  formatSessionTime,
+  getTaskStatus,
+  sessionStatusColor,
+} from '@/utils/session-merge';
 import type { Session } from '@/types/session.model';
 
 /**
@@ -35,8 +39,8 @@ interface ConversationRow {
 const rows = computed<ConversationRow[]>(() =>
   sessionStore.conversationGroups.map((group) => {
     const status = group.status;
-    const runningTask = group.tasks.find((task) => {
-      const s = getTaskStatus(task, sessionStore.runningSessionId, sessionStore.agentStatus);
+      const runningTask = group.rounds.find((round) => {
+      const s = getTaskStatus(round, sessionStore.runningSessionId, sessionStore.agentStatus);
       return s === 'running' || s === 'paused';
     });
     return {
@@ -46,10 +50,10 @@ const rows = computed<ConversationRow[]>(() =>
       statusText: t(`status.${status}`),
       statusColor: sessionStatusColor(status),
       time: group.time,
-      timeText: formatTime(group.time),
-      taskCount: group.tasks.length,
-      deviceSerial: latestDevice(group.tasks),
-      isSelected: group.tasks.some(
+      timeText: formatSessionTime(group.time),
+      taskCount: group.rounds.length,
+      deviceSerial: latestDevice(group.rounds),
+      isSelected: group.rounds.some(
         (task) => task.session_id === sessionStore.currentSessionId,
       ),
       runningTaskId: runningTask?.session_id ?? null,
@@ -57,20 +61,12 @@ const rows = computed<ConversationRow[]>(() =>
   }),
 );
 
-function latestDevice(tasks: Session[]): string {
-  for (let i = tasks.length - 1; i >= 0; i -= 1) {
-    const serial = tasks[i]?.device_serial;
+function latestDevice(rounds: Session[]): string {
+  for (let i = rounds.length - 1; i >= 0; i -= 1) {
+    const serial = rounds[i]?.device_serial;
     if (serial) return serial;
   }
   return '';
-}
-
-function formatTime(startTime?: number): string {
-  if (!startTime) return '--:--';
-  const date = new Date(startTime * 1000);
-  const hm = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
-  if (date.toDateString() === new Date().toDateString()) return hm;
-  return `${date.toLocaleDateString([], { month: '2-digit', day: '2-digit' })} ${hm}`;
 }
 
 function createConversation(): void {
@@ -82,7 +78,7 @@ function selectConversationRow(row: ConversationRow): void {
   sessionStore.selectConversation(row.id);
   // 选中线程内最新任务，右栏时间线随之定位
   const group = sessionStore.conversationGroups.find((g) => g.id === row.id);
-  const latest = group?.tasks[group.tasks.length - 1];
+  const latest = group?.rounds[group.rounds.length - 1];
   if (latest) {
     sessionStore.selectSession(latest.session_id, true);
   }
@@ -146,7 +142,7 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
             {{ row.deviceSerial }}
           </span>
           <span class="conversation-count">
-            {{ t('workspace.conversations.tasksCount', { n: row.taskCount }) }}
+            {{ t('workspace.conversations.roundsCount', { n: row.taskCount }) }}
           </span>
           <span class="conversation-actions" @click.stop>
             <a-button
@@ -157,7 +153,7 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
               :loading="busy"
               @click="stopRunning(row)"
             >
-              {{ t('workspace.queue.stop') }}
+              {{ t('workspace.conversations.stop') }}
             </a-button>
             <a-popconfirm
               :content="t('workspace.conversations.deleteConfirm')"
