@@ -513,7 +513,7 @@ const isRecordBtnProcessing = computed(
           >
             <icon-right
               class="round-chevron"
-              :class="{ expanded: isRoundOpen(round), placeholder: !round.isSelected }"
+              :class="{ expanded: isRoundOpen(round) }"
             />
             <a-tag :color="round.statusColor" size="small" class="round-status">
               {{ round.statusText }}
@@ -751,11 +751,6 @@ const isRecordBtnProcessing = computed(
 
 .round-chevron.expanded {
   transform: rotate(90deg);
-}
-
-/* 未选中轮不可展开，chevron 以透明占位保持各行文本对齐 */
-.round-chevron.placeholder {
-  opacity: 0;
 }
 
 .round-head:hover {
