@@ -418,3 +418,18 @@ def test_safe_unlink_and_replace_retry(tmp_path):
     src.write_text("world")
     assert DeviceExecutionLock._safe_replace(src, dst) is True
     assert dst.read_text() == "world"
+
+
+def test_reserve_prefixes_increase_even_when_the_clock_stalls(tmp_path):
+    """FIFO order lives in the filename prefix; two reservations inside one
+    coarse clock tick must not fall back to random uuid ordering."""
+    queue_dir = tmp_path / "artemis-global-device.queue"
+
+    first_ticket = DeviceExecutionLock.reserve("first submitted task")
+    second_ticket = DeviceExecutionLock.reserve("second submitted task")
+
+    names = sorted(path.name for path in queue_dir.glob("*.wait"))
+    assert len(names) == 2
+    assert names[0].endswith(f"-{first_ticket}.wait")
+    assert names[1].endswith(f"-{second_ticket}.wait")
+    assert names[0][:20] != names[1][:20]

@@ -159,6 +159,15 @@ def test_disconnect_reconciliation_stops_heartbeat_and_allows_reenrollment(
     assert configure.call_count == 2
 
 
+@patch.dict(
+    "os.environ",
+    {
+        "ARTEMIS_KEEP_DEVICE_AWAKE": "true",
+        "ARTEMIS_CLOUD_MODE": "",
+        "ARTEMIS_DEVICE_ID": "",
+        "ADB_DEVICE_SERIAL": "",
+    },
+)
 @patch("artemis.runtime.device_pool.device_pool.get_claimed_serials")
 @patch("artemis.runtime.awake_service.AdbClient")
 def test_discovery_keeps_only_pool_claimed_devices(adb_client, claimed):
@@ -174,6 +183,15 @@ def test_discovery_keeps_only_pool_claimed_devices(adb_client, claimed):
     assert _discover_connected_device_ids() == ["device-1", "device-2"]
 
 
+@patch.dict(
+    "os.environ",
+    {
+        "ARTEMIS_KEEP_DEVICE_AWAKE": "true",
+        "ARTEMIS_CLOUD_MODE": "",
+        "ARTEMIS_DEVICE_ID": "",
+        "ADB_DEVICE_SERIAL": "",
+    },
+)
 @patch(
     "artemis.runtime.device_pool.device_pool.get_claimed_serials",
     return_value=set(),

@@ -22,6 +22,7 @@ import json
 import os
 from pathlib import Path
 import re
+import threading
 import time
 from typing import Any
 import uuid
@@ -84,6 +85,14 @@ class DeviceExecutionLock:
     _DEFAULT_POLL_INTERVAL_SECONDS = 0.1
     QUEUE_TICKET_ENV = "ARTEMIS_DEVICE_QUEUE_TICKET"
     LOCK_SCOPE_ENV = "ARTEMIS_ADB_ENDPOINT_ID"
+
+    #: Queue tickets sort by filename prefix, so the time_ns prefix must be
+    #: unique and strictly increasing in reservation order. Coarse clocks
+    #: (Windows ticks at ~1ms) hand consecutive reservations the same prefix,
+    #: which would fall back to random uuid ordering and break FIFO; the lock
+    #: serializes reservations within a process and the prefix-bump loop below
+    #: keeps each prefix distinct.
+    _reserve_lock = threading.Lock()
 
     @staticmethod
     def _normalize_device_id(device_id: str | None) -> str:
@@ -397,18 +406,24 @@ class DeviceExecutionLock:
             ingress=ingress,
             lock_scope=lock_scope or os.getenv(cls.LOCK_SCOPE_ENV) or None,
         )
-        for _ in range(8):
-            path = queue_dir / f"{time.time_ns():020d}-{token}.wait"
-            try:
-                fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
-            except FileExistsError:
-                continue
-            else:
+        with cls._reserve_lock:
+            prefix = time.time_ns()
+            for _ in range(64):
+                path = queue_dir / f"{prefix:020d}-{token}.wait"
+                if any(queue_dir.glob(f"{prefix:020d}-*.wait")):
+                    prefix += 1
+                    continue
                 try:
-                    os.write(fd, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
-                finally:
-                    os.close(fd)
-                return token
+                    fd = os.open(path, os.O_CREAT | os.O_EXCL | os.O_WRONLY)
+                except FileExistsError:
+                    prefix += 1
+                    continue
+                else:
+                    try:
+                        os.write(fd, json.dumps(payload, ensure_ascii=False).encode("utf-8"))
+                    finally:
+                        os.close(fd)
+                    return token
         raise DeviceBusyError("Could not reserve a position in the Artemis device queue.")
 
     @classmethod

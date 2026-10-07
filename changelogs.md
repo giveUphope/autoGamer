@@ -197,6 +197,8 @@
 | 10-06 五测 | 故障注入：`api_base` 指向死端口 | ✅ CLI 显示 `Connection error.` + 定位提示；`sessions.error_message` 持久化（#3-1） |
 | 10-06 六测 | Flash 回归（恢复配置）+ 编译产物 | ✅ 任务成功；`Materialized N steps`、`steps.json` 非空、`trace.gif` 生成；成功会话 error_message 为 NULL（#3-2） |
 | 10-06 七测 | 无控制台父进程启动 Jupyter 内核 + 窗口快照 diff | ✅ 无新窗口弹出；内核执行正常（`print(2+3)`→`5`），输出落盘 `kernel.log`（#5） |
+| 10-07 全量 | 后端 pytest 全量套件（Windows 实机，修复前） | ❌ 6 处失败：explorer×9 / video_analyzer×3 / readiness 缓存 / 设备发现 / device_lock 偶发（立出 #7） |
+| 10-07 全量 | 后端 pytest 全量套件（修复后，含 device_lock 连跑 10 次） | ✅ 2570 passed / 0 failed，ruff 通过；前端 254 用例 + vue-tsc + 生产构建通过（#7） |
 
 ---
 
@@ -225,4 +227,38 @@
 - [x] 前端：vitest 198 用例全绿 + vue-tsc 零错误 + 生产构建通过
 - [x] 后端：托管链路 66 用例全绿
 - [x] 打包：`uv build --wheel` 解包确认 `showcase_ui` 资源完整
+
+---
+
+### #7 Windows 实机全量测试修复：FIFO 预约乱序（真 bug）+ 强刷缓存吞没 + 5 处测试隔离缺失
+
+- **日期**: 2026-10-07
+- **状态**: ✅ 已完成
+- **优先级**: 高（device_lock 为真产品缺陷：队列顺序随机；其余为测试对环境/平台的隐性依赖，迁移期只跑过子集，全量套件在 Windows 实机长期未绿）
+- **来源**: 从断点恢复后跑全量后端套件
+
+#### 问题描述
+
+迁移与端点库特性期间只验证过前端全套与后端托管链路子集；全量 `pytest tests/` 在 Windows 实机上有 6 处失败：
+
+| 失败 | 性质 | 根因 |
+|---|---|---|
+| `test_device_lock.py::test_submission_reservations_preserve_order_before_workers_start`（偶发，单独跑必过） | **真产品 bug** | `reserve()` 以 `time.time_ns()` 作为票据文件名排序前缀，Windows 时钟约 1ms 才走一格：连续两次 reserve 拿到相同前缀，`sorted()` 退化为按随机 uuid 排序——后提交的任务有 50% 概率插队到先提交的之前，FIFO 预约顺序失效 |
+| `test_diagnostics.py::test_readiness_engine_reuses_cache_until_forced` | 真产品边界 bug | `run_all` 合并分支用 `>=` 比较 `_report_cache_time` 与 `request_started`；Windows `time.monotonic()` 刻度约 16ms，强刷请求与上一次刷新落在同一刻度时两值相等，强制刷新被当作「等待期间完成的刷新」吞掉，返回陈旧快照 |
+| `test_explorer.py` ×9、`test_video_analyzer.py` ×3 | 测试夹具过期 | 用例只 mock 了 `genai.Client`，但引擎探测收紧后（无 `GOOGLE_API_KEY` 时走 universal 引擎）落到 `_resolve_endpoint`，MagicMock provider 撞上 `ModelProvider.from_string` 校验抛 `ValueError`；同文件后写的用例已改用「预设 `ctx._genai_client` 选 native 引擎」模式，旧用例没跟上 |
+| `test_awake_service.py::test_discovery_keeps_only_pool_claimed_devices` | 测试环境泄漏 | 开发机 shell 导出了 `ADB_DEVICE_SERIAL=127.0.0.1:16384`（MuMu 序号），`_discover_connected_device_ids` 的显式 target 优先分支使断言落空返回 `[]` |
+
+#### 整改方案与实施
+
+1. **FIFO 前缀严格递增**（`artemis/runtime/device_lock.py`）：`reserve()` 增加类级 `_reserve_lock`（进程内串行化）+ 前缀占用检测——目标前缀已被任何 `*.wait` 占用时递增 ns 重试，保证前缀唯一且严格按预约完成顺序递增；跨进程残留碰撞由 O_EXCL 兜底。新增确定性回归用例 `test_reserve_prefixes_increase_even_when_the_clock_stalls`。
+2. **强刷合并改严格大于**（`artemis/core/diagnostics/engine.py`）：`_report_cache_time > request_started` 才合并——刷新确实在本请求开始之后完成才允许吃掉强制刷新；同刻度歧义一律重建（对强制语义安全）。非强制请求随后的 TTL 缓存检查不受影响。
+3. **测试夹具对齐现行引擎探测**（`tests/unit/agents/test_explorer.py`、`test_video_analyzer.py`）：12 个用例在创建 mock client 后补 `mock_ctx._genai_client = mock_client`，与既有 `test_explorer_final_turn_tool_stripping` 同模式，引擎选择不再依赖环境里有没有 Google Key。
+4. **测试环境钉死**（`tests/unit/runtime/test_awake_service.py`）：两个 discovery 用例加 `@patch.dict` 钉住 `ARTEMIS_KEEP_DEVICE_AWAKE` / `ARTEMIS_CLOUD_MODE` / `ARTEMIS_DEVICE_ID` / `ADB_DEVICE_SERIAL`，不再受开发机 shell 环境影响。
+
+#### 验收标准
+
+- [x] 全量 `pytest tests/`：2570 passed / 0 failed（修复前 6 failed）
+- [x] `test_device_lock.py` 连跑 10 次全绿（修复前 10 次挂 3 次；因果经 12 轮插桩试验确认：6 次前缀碰撞全部对应乱序与提前获得锁）
+- [x] ruff 对全部改动文件通过
+- [x] 前端回归不受影响：vitest 254 用例 + vue-tsc + 生产构建通过
 

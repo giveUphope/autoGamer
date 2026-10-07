@@ -153,7 +153,10 @@ class ReadinessEngine:
         async with self._report_lock:
             # A refresh that completed while this caller waited satisfies even a
             # forced request that began before it, coalescing concurrent clicks.
-            if cacheable and self._report_cache_time >= request_started:
+            # Strictly greater: Windows' monotonic clock ticks at ~16ms, so an
+            # equal timestamp means the previous refresh predates this request
+            # and a forced refresh must rebuild instead of being swallowed.
+            if cacheable and self._report_cache_time > request_started:
                 cached = self._cached_report(float("inf"))
                 if cached is not None:
                     return cached
