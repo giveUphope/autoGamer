@@ -5,7 +5,6 @@ import {
   IconCamera,
   IconCheckCircle,
   IconCloseCircle,
-  IconDown,
   IconExclamationCircle,
   IconFile,
   IconPlayArrow,
@@ -396,7 +395,7 @@ function resumePausedTask(): void {
       <button type="button" class="section-header" @click="toggleStream('native')">
         <span class="status-dot done" />
         <span class="header-label">{{ t('workspace.timeline.thought') }}</span>
-        <icon-down class="expand-icon" :class="{ rotated: streamCollapsed.has('native') }" />
+        <icon-right class="expand-icon" :class="{ expanded: !streamCollapsed.has('native') }" />
       </button>
       <div v-show="!streamCollapsed.has('native')" class="section-content stream-text" v-html="renderMarkdown(nativeStreamText || '')" />
     </div>
@@ -438,7 +437,7 @@ function resumePausedTask(): void {
             <a-tag size="small" :color="getReportStatusValue(item.data) === 'failed' ? 'red' : 'green'">
               {{ getReportStatusValue(item.data) === 'failed' ? t('workspace.timeline.failed') : t('workspace.timeline.completed') }}
             </a-tag>
-            <icon-down class="expand-icon" :class="{ rotated: collapsedCards.has(`report-${itemIdx}`) }" />
+            <icon-right class="expand-icon" :class="{ expanded: !collapsedCards.has(`report-${itemIdx}`) }" />
           </div>
           <div v-if="!collapsedCards.has(`report-${itemIdx}`) && getReportStatusExplanation(item.data)" class="card-body">
             <div class="detail-row">
@@ -497,7 +496,7 @@ function resumePausedTask(): void {
             <a-tag v-if="isActionFailed(item.data, props.block.data)" size="small" color="red">
               {{ t('workspace.timeline.failed') }}
             </a-tag>
-            <icon-down class="expand-icon" :class="{ rotated: collapsedCards.has(`action-${itemIdx}`) }" />
+            <icon-right class="expand-icon" :class="{ expanded: !collapsedCards.has(`action-${itemIdx}`) }" />
           </div>
           <div
             v-if="!collapsedCards.has(`action-${itemIdx}`) && (getActionTargetText(item.data) || getActionInputText(item.data) || getActionCoords(item.data))"
@@ -694,7 +693,7 @@ function resumePausedTask(): void {
                 </span>
                 <span class="action-title">{{ getToolTitle(item.data) }}</span>
                 <a-tag v-if="isToolFailed(item.data)" size="small" color="red">{{ t('workspace.timeline.failed') }}</a-tag>
-                <icon-down v-if="hasToolDetails(item)" class="expand-icon" :class="{ rotated: collapsedCards.has(`tool-${itemIdx}`) }" />
+                <icon-right v-if="hasToolDetails(item)" class="expand-icon" :class="{ expanded: !collapsedCards.has(`tool-${itemIdx}`) }" />
               </div>
               <div v-if="!collapsedCards.has(`tool-${itemIdx}`) && hasToolDetails(item)" class="card-body">
                 <template v-if="isAdbCommandTool(item.data)">
@@ -879,8 +878,8 @@ function resumePausedTask(): void {
   transition: transform 0.2s;
 }
 
-.expand-icon.rotated {
-  transform: rotate(-90deg);
+.expand-icon.expanded {
+  transform: rotate(90deg);
 }
 
 .status-dot {

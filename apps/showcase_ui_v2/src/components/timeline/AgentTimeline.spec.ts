@@ -542,10 +542,10 @@ describe('AgentTimeline 动作卡展开图标语义', () => {
 
     const card = wrapper.find('.action-card');
     const icon = card.find('.expand-icon');
-    // 动作卡默认展开：下箭头（点击收起）
-    expect(icon.classes()).not.toContain('rotated');
+    // 动作卡默认展开：chevron 向下（点击收起）
+    expect(icon.classes()).toContain('expanded');
     await card.find('.card-header').trigger('click');
-    // 收起后：右箭头（点击展开）
-    expect(icon.classes()).toContain('rotated');
+    // 收起后：chevron 复位向右（点击展开）
+    expect(icon.classes()).not.toContain('expanded');
   });
 });
