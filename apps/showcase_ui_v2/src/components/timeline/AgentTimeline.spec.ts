@@ -370,8 +370,8 @@ describe('AgentTimeline 回合级折叠', () => {
       expect(container.classes()).toContain('collapsed');
       expect(isBodyShown(container)).toBe(false);
     }
-    // 步骤计数（两个 step 块分属不同回合，各 1 步）
-    expect(wrapper.findAll('.phase-step-count').some((el) => el.text().includes('1 步'))).toBe(true);
+    // 步数指示器已按设计移除（每回合恒为 1 步，信息冗余）
+    expect(wrapper.findAll('.phase-step-count').length).toBe(0);
   });
 
   it('点击回合头部手动展开，再次点击收起', async () => {

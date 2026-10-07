@@ -603,9 +603,6 @@ const isRecordBtnProcessing = computed(
                   <span v-if="phase.tokens" class="phase-token-usage" :title="formatTokenCount(phase.tokens)">
                     · {{ formatTokenCount(phase.tokens) }}
                   </span>
-                  <span class="phase-step-count">
-                    {{ t('workspace.timeline.stepsCount', { n: phase.blocks.length }) }}
-                  </span>
                 </div>
                 <div v-show="isPhaseExpanded(phase.id)" class="phase-body">
                   <template v-for="block in phase.blocks" :key="block.id">
@@ -869,11 +866,6 @@ const isRecordBtnProcessing = computed(
 
 .phase-chevron.expanded {
   transform: rotate(90deg);
-}
-
-.phase-step-count {
-  margin-left: auto;
-  flex-shrink: 0;
 }
 
 .round-index {

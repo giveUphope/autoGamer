@@ -316,7 +316,6 @@ export default {
       // Startup / phase headers
       workedFor: 'Worked for {seconds}s',
       roundNumber: 'Round {n}',
-      stepsCount: '{n} steps',
       roundEmpty: 'No execution trace recorded for this round.',
       checkedFor: 'Checked for {seconds}s',
       waiting: 'Waiting {time}',
