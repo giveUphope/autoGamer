@@ -189,7 +189,7 @@ src/
 
 | 模块 | 文件 | 说明 |
 | --- | --- | --- |
-| SSE store | `src/stores/stream.ts` | 单通道 `EventSource('/api/stream')`（幂等 `start()` / `stop()`；断线依赖浏览器原生重连）；**17 种事件逐条平移**（自 Angular `agent.service.ts` L762-1436）：`llm_stream` 合批（可见 80ms / 页面隐藏 500ms，按 `execution_id|stream_type` 键）、**非流事件先 flush 再落库**（§3.3 条款 1）、新 execution 关闭同泳道（stream_type + parent_trace_id）未完成流、`trace_recorded` 按 trace_id 就地去重、note 工具 trace 触发 `fetchNotes`、`llm_stream_reset` 丢弃缓冲并标记 `isReset/resetMessage`、`llm_retrying` 合成重试 trace（request_id + scheduled_at 去重）、`task_paused/task_resumed` 状态机与暂停卡合成（session+error 去重）、`session_ended` 终态映射（cancelled/failed/completed）与全局状态推导、`session_started` / `startup_progress` **自动跟随（pin 语义）**、`info` 事件触发当前会话快照对账（断线重连后 §3.3 条款 2 幂等回填）、其余事件按 session_id（trim+lowercase）过滤 |
+| SSE store | `src/stores/stream.ts` | 单通道 `EventSource('/api/stream')`（幂等 `start()` / `stop()`；断线依赖浏览器原生重连）；**17 种事件逐条平移**（自 Angular `agent.service.ts` L762-1436）：`llm_stream` 合批（可见 80ms / 页面隐藏 500ms，按 `execution_id` + `stream_type` 键）、**非流事件先 flush 再落库**（§3.3 条款 1）、新 execution 关闭同泳道（stream_type + parent_trace_id）未完成流、`trace_recorded` 按 trace_id 就地去重、note 工具 trace 触发 `fetchNotes`、`llm_stream_reset` 丢弃缓冲并标记 `isReset/resetMessage`、`llm_retrying` 合成重试 trace（request_id + scheduled_at 去重）、`task_paused/task_resumed` 状态机与暂停卡合成（session+error 去重）、`session_ended` 终态映射（cancelled/failed/completed）与全局状态推导、`session_started` / `startup_progress` **自动跟随（pin 语义）**、`info` 事件触发当前会话快照对账（断线重连后 §3.3 条款 2 幂等回填）、其余事件按 session_id（trim+lowercase）过滤 |
 | store 接线 | `src/stores/session.ts`、`src/stores/timeline.ts` | session 导出 `setSessionStatus` / `invalidateStatusSignatures`；`fetchStatus` paused 分支接暂停卡兜底（轮询补偿）、非 paused 清卡片键；`stopTask` 接 `resetRetryState` + `markStoppedSessionStreamsCompleted`（平移自 Angular stopTask L529-549）；`selectSession` 切换时重置暂停态；timeline 新增 `appendStartupEvent`（按 stage 幂等合入会话桶） |
 | 时间线 UI | `src/components/timeline/AgentTimeline.vue` | planning loader（`checkPlanningLoader` 三态，运行中等待下一步时显示）、LLM 重试警示条（由 `retryInfo` 经 i18n 组装，attempt/max 为 0 时省略）、任务暂停卡（`isViewingPausedTask` 条件 + pausedError 文本 + 恢复按钮 `resumeTask()`）、自动滚动（150px 接近底部阈值 + 50ms 合批，流文本盒钉底） |
 | 断流提示 | `src/components/timeline/StepCard.vue` | 流文本块 `data.isReset` 时显示 `resetMessage`（缺省 `DEFAULT_STREAM_RESET_MESSAGE`） |
@@ -275,9 +275,9 @@ src/
 
 | 模块 | 文件 | 说明 |
 | --- | --- | --- |
-| 系统 store | `src/stores/system.ts` | 自 Angular `SystemService`（610 行）完整平移：`fetchReadiness`（silent/force 两参、**共享 in-flight 请求**防慢探针排队、**timestamp 单调守卫** + **内容签名去重**——3s 轮询零响应式抖动）、3s 自动轮询（页面隐藏暂停 + visibilitychange 静默刷新）；emulator 生命周期（`launchEmulator` 乐观初始态、**1s 状态轮询**、ready/failed/stopped/idle 停轮询并联动 readiness 刷新、失败合成态）；ADB 管理（`restartAdb` / Wi-Fi `connectWirelessAdb` / 远程 server `fetchAdbServerStatus`·`probeAdbServer`·`connectAdbServer`·`useLocalAdbServer` / `selectDevice`，返回 report 幂等应用）；凭据（`testApiKey` 不落库验证、`updateApiKey` 应用 report 并刷新 model-config-env、`skipCredentialsCheck` 旁路）；三步引导 computed（`isEnvironmentReady` 四条件、`isCredentialsReady`、`isDeviceReady`、`passedStepCount` 等）与 probe lookups（llm/ocr 双 id 兼容）；M1 的 `online` 连通性行为兼容保留并与 readiness 联动 |
+| 系统 store | `src/stores/system.ts` | 自 Angular `SystemService`（610 行）完整平移：`fetchReadiness`（silent/force 两参、**共享 in-flight 请求**防慢探针排队、**timestamp 单调守卫** + **内容签名去重**——3s 轮询零响应式抖动）、3s 自动轮询（页面隐藏暂停 + visibilitychange 静默刷新）；emulator 生命周期（`launchEmulator` 乐观初始态、**1s 状态轮询**、ready/failed/stopped/idle 停轮询并联动 readiness 刷新、失败合成态）；ADB 管理（`restartAdb` / Wi-Fi `connectWirelessAdb` / 远程 server `fetchAdbServerStatus`·`probeAdbServer`·`connectAdbServer`·`useLocalAdbServer` / `selectDevice`，返回 report 幂等应用）；凭据（`testApiKey` 不落库验证、`updateApiKey` 应用 report 并刷新 model-config-env、`skipCredentialsCheck` 旁路）；端点配置（`saveModelConfig` / `useEndpoint` / `updateApiKey` 成功后**同时刷新 `model-config-env` 与 `credentials/entries`**——两处读的都是 artemis.jsonc 的 `default` 块，漏刷其一就会出现「保存成功但页面没变」；`deleteEndpointRecord(row)` 按行来源分流：库记录走 `/endpoints/{name}`（名字过 `encodeURIComponent`，否则 `/` 会多切一段路径），只存在于 default 块的那行走 `/model-config`）；三步引导 computed（`isEnvironmentReady` 四条件、`isCredentialsReady`、`isDeviceReady`、`passedStepCount` 等）与 probe lookups（llm/ocr 双 id 兼容）；M1 的 `online` 连通性行为兼容保留并与 readiness 联动 |
 | 类型契约 | `src/types/system.model.ts` | 补 `ModelConfigEnvResponse`（自 Angular `system.service.ts` L581-609） |
-| 诊断向导 | `src/components/diagnostics/` | `DiagnosticsWizard.vue` 容器（三步完成度 + 手动重新检测 + 跳过凭据 + 就绪横幅；模拟器启动期 watch 驱动 1s 状态轮询）；`EnvironmentStep.vue`（python/adb/config/toolchain 四探针卡 + `probe.actions` 三类动作 + 一键安装条 + 设备列表）；`CredentialsStep.vue`（Gemini/自定义二选一、key 显隐/复制/测试/保存、OCR 增强卡、模型摘要 + presets + JSONC 折叠查看器 + .env keys 表格）；`DeviceStep.vue`（四态互斥：就绪+多设备切换 / 启动中进度跟踪（35%/65% 阈值 + 日志流 + 停止）/ 失败诊断卡（重试[远程 ADB 禁用]+重启 ADB+关闭）/ 连接引导（Emulator AVD 列表 · USB · Wi-Fi 表单 · 远程 ADB Server 面板））；`useCopy.ts` / `errors.ts` 辅助 |
+| 诊断向导 | `src/components/diagnostics/` | `DiagnosticsWizard.vue` 容器（三步完成度 + 手动重新检测 + 跳过凭据 + 就绪横幅；模拟器启动期 watch 驱动 1s 状态轮询）；`EnvironmentStep.vue`（python/adb/config/toolchain 四探针卡 + `probe.actions` 三类动作 + 一键安装条 + 设备列表）；`CredentialsStep.vue`（三张卡：`EndpointConfigForm.vue` 端点信息录入 —— 提供商自由命名 + API 格式下拉 + 端点地址 + 模型 + 可选 Key，保存即写 `default` 块并存成一条端点库记录；当前模型配置卡 —— 逐项显示 `default` 块的真实端点名 / 协议 / 端点地址 / 模型 / 思考等级 / 回退，缺项标「未配置」而不用兜底常量冒充，卡内合并 `EndpointSwitcher.vue` 切换行（候选只来自端点库 —— 配置文件里的厂商预设已随响应契约一起删除，端点库为空时切换行不出现；当前生效的那条只可看、不可重复选用）与 JSONC 折叠查看器（`api_key` 已在后端掩码）；`CredentialsManager.vue` 端点库表格 —— 一行一条记录、生效的那条带「当前」徽标、`table-layout: fixed` + 不换行 + 省略号让行高一致，编辑回填表单、删除按行来源分流）；`DeviceStep.vue`（四态互斥：就绪+多设备切换 / 启动中进度跟踪（35%/65% 阈值 + 日志流 + 停止）/ 失败诊断卡（重试[远程 ADB 禁用]+重启 ADB+关闭）/ 连接引导（Emulator AVD 列表 · USB · Wi-Fi 表单 · 远程 ADB Server 面板））；`useCopy.ts` / `errors.ts` 辅助 |
 | 契约视图 | `src/components/diagnostics/contract.ts` | 组件侧窄契约 `SystemStoreContract` + **编译期结构断言**（真实 store 必须逐字段兼容，数据层漂移即编译报错） |
 | 启动器集成 | `src/views/LauncherView.vue` | 顶部 diagnostics/launcher 双 tab 切换（就绪时 diagnostics tab 打勾，对齐 Angular 首页）；launcher tab 保留 M1 任务提交与摘要 |
 | i18n | `src/locales/{zh-CN,en-US}.ts` | 新增 `launcher.tabs.*` / `launcher.diagnostics.*` 约 130 键（键集一致性由 `locales.spec.ts` 锁定）；probe 的 title/summary 等后端字段原样透传不 i18n |
@@ -288,17 +288,33 @@ src/
 - `GET/POST /api/system/adb/server`、`POST /adb/server/probe|connect|local`、`POST /adb/restart`、`POST /adb/connect`、`POST /devices/select`
 - `GET /api/system/emulator/status`（1s 轮询）、`POST /emulator/launch|stop|dismiss`
 - `POST /api/system/credentials/test`、`POST /api/system/credentials`（provider 沿用母本 `'google'` / `'ocr'`）
-- `GET /api/system/model-config-env`
+- `GET /api/system/credentials/entries`（端点库一行一条记录，Key 仅掩码回显；`is_active` 标出
+  运行时正在用的那条，`source` 说明它来自库记录还是只存在于 `default` 块）
+- `GET /api/system/model-config-env`（`default_model` 剥掉 `api_key`，`config_content` 里的
+  `api_key` 值同样按掩码规则改写，密钥不过网络；不再返回 `presets`）
+- `POST /api/system/model-config`（写 `default` 块与 `.env`，填了提供商名再存成一条端点库记录）
+- `POST /api/system/endpoints/use`（**端点库是可选端点的唯一来源**：按名字取记录写入 `default` 块，
+  并清掉该记录未声明的端点自有字段 `api_base` / `api_key` / `fallback`——jsonc 的 `api_base` 优先于
+  `OPENAI_BASE_URL`，残留会把请求继续指向上一个端点，旧 `fallback` 会指着上一家的模型；
+  `thinking_level` 这类推理旋钮不清）
+- `DELETE /api/system/endpoints/{name}`（只移除库记录，不动运行时配置）、
+  `DELETE /api/system/model-config`（移除 `default` 块，回到出厂配置）
+- 端点库落盘在 `.env` 同级的 `endpoint_library.json`（gitignore，与 `credential_bindings.json`
+  同一族）：它是 UI 的记录存储，运行时读的仍是 artemis.jsonc 的 `default` 块，库里不存密钥
 
 ### 测试
 
-- `src/stores/system.spec.ts`（扩至 27 用例）：silent/force、共享 in-flight、单调守卫、
+- `src/stores/system.spec.ts`（30 用例）：silent/force、共享 in-flight、单调守卫、
   签名去重（引用稳定断言）、3s 轮询 + hidden 跳过 + visibilitychange、emulator 乐观态/
   1s 轮询四态/失败合成、ADB connect 失败不更新/local query persist/probe 无副作用、
-  凭据 report+modelConfigEnv 刷新/skip 旁路、三步 computed 四条件、stop 清全部定时器。
-- `src/components/diagnostics/DiagnosticsWizard.spec.ts`（11 用例）：三步完成度、
+  凭据 report+modelConfigEnv 刷新/skip 旁路、**保存与切换端点后配置卡与端点库同时刷新**、
+  **删除按行来源分流且名字过 URL 编码**、三步 computed 四条件、stop 清全部定时器。
+- `src/components/diagnostics/DiagnosticsWizard.spec.ts`（19 用例）：三步完成度、
   emulator 进度阈值与停止、远程 ADB 禁用重试、Wi-Fi 提交、凭据测试/保存、
-  多设备切换、JSONC/env 表格渲染。
+  多设备切换、JSONC 折叠查看器、端点库表格与编辑回填/删除（含「当前」徽标）、
+  **切换行在配置卡内、候选只来自端点库（「用了但没存」的 default 行不进候选）**、
+  **当前项不可重复选用**、**选中的记录被删后选择自动作废**、
+  **default 块为空时标「未配置」而非兜底常量**。
 - `src/views/LauncherView.spec.ts`：补双 tab 用例。
 
 ### 与 Angular 的偏差

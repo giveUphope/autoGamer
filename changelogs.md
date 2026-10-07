@@ -14,9 +14,14 @@
 
 ## 整改后的预期形状（2026-10-06 已落地）
 
-- **端点即配置**：`artemis.jsonc` 的每个节点（`default` / `nodes` / `presets`）都可用 `api_base` + `api_key`（或 `api_key_env`）声明完整端点；只写 `model` 的节点自动继承部署默认端点（含 fallback）。
+- **端点即配置**：`artemis.jsonc` 的每个节点（`default` / `nodes`）都可用 `api_base` + `api_key`（或 `api_key_env`）声明完整端点；只写 `model` 的节点自动继承部署默认端点（含 fallback）。
 - **优先级链**：配置显式指定 > 环境变量（`OPENAI_BASE_URL` 等）> 提供商官方默认端点。
 - **零硬编码**：代码中不存在任何按调用点写死的 provider/端点；所有模型构建收敛到 provider 感知工厂。
+- **2026-10-07 修订**：`presets` 段从 `config/artemis.jsonc` 与打包副本
+  `artemis/resources/config/artemis.jsonc` 中删除——全仓没有任何代码按名字解析过它
+  （`load_default_model_cfg` 只读 `default`），注释里的"Switch easily in code or CLI"是空头承诺；
+  设置界面可选端点改由端点库 `endpoint_library.json`（`.env` 同级、gitignore）承载，
+  运行时读的仍是 `default` 块。
 
 ---
 

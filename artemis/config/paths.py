@@ -93,6 +93,17 @@ def get_credentials_bindings_file() -> Path:
     return get_env_file().parent / "credential_bindings.json"
 
 
+def get_endpoint_library_file() -> Path:
+    """Return the JSON file holding the setup UI's saved endpoint library.
+
+    A record store, not a runtime input: the endpoint the agent actually calls
+    stays in artemis.jsonc's ``default`` block. It sits next to the canonical
+    .env (like credential_bindings.json) so a checkout and a user-dir install
+    keep the library with the credentials its records point at.
+    """
+    return get_env_file().parent / "endpoint_library.json"
+
+
 def get_default_traces_path() -> Path:
     """Returns default traces directory.
 

@@ -1,15 +1,16 @@
 <script setup lang="ts">
 /**
- * 已保存端点信息的只读表格：一行一条端点记录，列名即上方端点信息表单的
- * 字段（提供商 / API 格式 / API 端点地址 / 模型名称 / API Key），外加操作列。
+ * 端点库表格：一行一条记录，列名即上方端点信息表单的字段（提供商 / API 格式 /
+ * API 端点地址 / 模型名称 / API Key），外加操作列；当前生效的那条带「当前」徽标。
  * 「编辑」向父组件回传该行记录（由端点信息表单回填重新编辑，掩码 Key 不回填，
- * 语义为留空沿用）；「删除」经确认后从 artemis.jsonc 移除对应端点信息。
+ * 语义为留空沿用）；「删除」按行的来源分两种——库记录只移除记录本身，
+ * 只存在于 artemis.jsonc default 块的那一行会清空当前配置。
  */
 import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconDelete, IconEdit } from '@arco-design/web-vue/es/icon';
 
-import { useSystemContract } from './contract';
+import { apiFormatLabel, useSystemContract } from './contract';
 import type { CredentialEndpointRow } from './contract';
 import { errText } from './errors';
 
@@ -30,23 +31,13 @@ const COLUMNS = [
   { key: 'api_key', labelKey: 'endpointApiKeyLabel' },
 ] as const;
 
-const FORMAT_LABEL_KEYS: Record<string, string> = {
-  openai: 'formatOpenai',
-  openai_responses: 'formatOpenaiResponses',
-  anthropic: 'formatAnthropic',
-  google: 'formatGoogle',
-};
-
 function columnLabel(labelKey: string): string {
   return t(`launcher.diagnostics.cred.${labelKey}`);
 }
 
 function displayValue(field: string, value: string | null): string {
   if (!value) return '—';
-  if (field === 'api_format') {
-    const key = FORMAT_LABEL_KEYS[value];
-    if (key) return t(`launcher.diagnostics.cred.${key}`);
-  }
+  if (field === 'api_format') return apiFormatLabel(t, value);
   return value;
 }
 
@@ -54,17 +45,24 @@ function onEdit(row: CredentialEndpointRow): void {
   emit('edit', { ...row });
 }
 
-async function onDelete(): Promise<void> {
+async function onDelete(row: CredentialEndpointRow): Promise<void> {
   if (isDeleting.value) return;
   isDeleting.value = true;
   error.value = null;
   try {
-    await system.deleteEndpointRecord();
+    await system.deleteEndpointRecord(row);
   } catch (err) {
     error.value = errText(err, t('launcher.diagnostics.cred.credsDeleteFail'));
   } finally {
     isDeleting.value = false;
   }
+}
+
+/** 删除确认按行的来源分措辞：库记录删了不动配置，default 行会真的清空配置。 */
+function deleteConfirm(row: CredentialEndpointRow): string {
+  return row.source === 'library' && row.provider
+    ? t('launcher.diagnostics.cred.credsDeleteLibraryConfirm')
+    : t('launcher.diagnostics.cred.credsDeleteDefaultConfirm');
 }
 
 onMounted(() => {
@@ -79,44 +77,59 @@ onMounted(() => {
       <span class="creds-sub">{{ t('launcher.diagnostics.cred.credsSubtitle') }}</span>
     </div>
 
-    <!-- 已保存端点记录（一行一条，列名 = 表单字段，末列为操作） -->
+    <!-- 端点库（一行一条记录，列名 = 表单字段，末列为操作；当前生效的那条带徽标） -->
     <table v-if="rows.length" class="creds-table">
+      <colgroup>
+        <col style="width: 19%" />
+        <col style="width: 19%" />
+        <col style="width: 26%" />
+        <col style="width: 17%" />
+        <col style="width: 10%" />
+        <col style="width: 68px" />
+      </colgroup>
       <thead>
         <tr>
           <th v-for="col in COLUMNS" :key="col.key">{{ columnLabel(col.labelKey) }}</th>
-          <th class="actions-col">{{ t('launcher.diagnostics.cred.credsActionsLabel') }}</th>
+          <th>{{ t('launcher.diagnostics.cred.credsActionsLabel') }}</th>
         </tr>
       </thead>
       <tbody>
-        <tr v-for="(row, i) in rows" :key="i">
-          <td v-for="col in COLUMNS" :key="col.key" :class="{ mono: col.key !== 'provider' }">
+        <tr v-for="(row, i) in rows" :key="`${row.source}:${row.provider ?? ''}:${i}`">
+          <td
+            v-for="col in COLUMNS"
+            :key="col.key"
+            :class="{ mono: col.key !== 'provider' }"
+            :title="row[col.key] ?? undefined"
+          >
+            <span v-if="col.key === 'provider' && row.is_active" class="creds-active-tag">
+              {{ t('launcher.diagnostics.cred.credsActive') }}
+            </span>
             {{ displayValue(col.key, row[col.key]) }}
           </td>
           <td class="actions-cell">
-            <a-button
-              size="mini"
-              type="text"
-              class="creds-edit-btn"
-              :title="t('launcher.diagnostics.cred.credsEditBtn')"
-              @click="onEdit(row)"
-            >
-              <icon-edit />
-            </a-button>
-            <a-popconfirm
-              :content="t('launcher.diagnostics.cred.credsDeleteConfirm')"
-              type="warning"
-              @ok="onDelete"
-            >
+            <!-- 按钮包在 span 里：td 一旦设成 flex 就退出表格单元格布局，行高会不齐 -->
+            <span class="actions-inner">
               <a-button
                 size="mini"
                 type="text"
-                class="creds-delete-btn"
-                :loading="isDeleting"
-                :title="t('launcher.diagnostics.cred.credsDeleteBtn')"
+                class="creds-edit-btn"
+                :title="t('launcher.diagnostics.cred.credsEditBtn')"
+                @click="onEdit(row)"
               >
-                <icon-delete />
+                <icon-edit />
               </a-button>
-            </a-popconfirm>
+              <a-popconfirm :content="deleteConfirm(row)" type="warning" @ok="onDelete(row)">
+                <a-button
+                  size="mini"
+                  type="text"
+                  class="creds-delete-btn"
+                  :loading="isDeleting"
+                  :title="t('launcher.diagnostics.cred.credsDeleteBtn')"
+                >
+                  <icon-delete />
+                </a-button>
+              </a-popconfirm>
+            </span>
           </td>
         </tr>
       </tbody>
@@ -156,6 +169,8 @@ onMounted(() => {
 .creds-table {
   width: 100%;
   border-collapse: collapse;
+  /* 固定列宽 + 单元格不换行：行高不再随内容长短变化，长地址截断并由 title 给出全文 */
+  table-layout: fixed;
   font-size: 12px;
 }
 
@@ -164,13 +179,18 @@ onMounted(() => {
   text-align: left;
   padding: 6px 10px;
   border: 1px solid var(--color-border-2);
+  height: 32px;
+  box-sizing: border-box;
+  vertical-align: middle;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
 }
 
 .creds-table th {
   font-weight: 500;
   color: var(--color-text-2);
   background-color: var(--color-fill-2);
-  white-space: nowrap;
 }
 
 .creds-table td {
@@ -181,11 +201,22 @@ onMounted(() => {
   font-family: var(--font-mono, monospace);
 }
 
-.actions-col {
-  width: 84px;
+.creds-active-tag {
+  display: inline-block;
+  margin-right: 4px;
+  padding: 0 5px;
+  border: 1px solid rgb(var(--green-6) / 45%);
+  border-radius: var(--border-radius-small);
+  color: rgb(var(--green-6));
+  font-size: 10px;
+  line-height: 14px;
 }
 
 .actions-cell {
+  padding: 0 6px;
+}
+
+.actions-inner {
   display: flex;
   align-items: center;
   gap: 4px;

@@ -18,38 +18,7 @@
   },
 
   // ------------------------------------------------------------------------------
-  // 2. Ready-to-Use Presets (Switch easily in code or CLI)
-  // ------------------------------------------------------------------------------
-  "presets": {
-    "gemini-flagship": {
-      "provider": "google",
-      "model": "gemini-3.8-flash",
-      "fallback": { "provider": "google", "model": "gemini-3.7-flash" }
-    },
-    "gemini-flash": {
-      "provider": "google",
-      "model": "gemini-2.5-flash",
-      "fallback": { "provider": "google", "model": "gemini-2.0-flash" }
-    },
-    "openai-gpt4o": {
-      "provider": "openai",
-      "model": "gpt-4o",
-      "fallback": { "provider": "openai", "model": "gpt-4o-mini" }
-    },
-    "cost-saving": {
-      "provider": "google",
-      "model": "gemini-3.5-flash-lite",
-      "fallback": { "provider": "google", "model": "gemini-3.1-flash-lite" }
-    },
-    "local-ollama": {
-      "provider": "openai",
-      "model": "llama3.2-vision",
-      "fallback": { "provider": "openai", "model": "llama3.2-vision" }
-    }
-  },
-
-  // ------------------------------------------------------------------------------
-  // 3. Agent & Sub-Agent Node Customizations (Optional - Inherits from 'default')
+  // 2. Agent & Sub-Agent Node Customizations (Optional - Inherits from 'default')
   // ------------------------------------------------------------------------------
   "nodes": {
     // 🧠 Planner: High-level goal decomposition and strategic step planning
@@ -129,11 +98,11 @@
   },
 
   // ------------------------------------------------------------------------------
-  // 4. Runtime Mode & Agent Capabilities Configuration (Dual-Engine: Flash vs. Pro)
+  // 3. Runtime Mode & Agent Capabilities Configuration (Dual-Engine: Flash vs. Pro)
   // ------------------------------------------------------------------------------
   "agent": {
     // ==========================================================================
-    // ⚡ 4.1 FLASH Profile Options (Reactive Single-Agent Lightweight Loop)
+    // ⚡ 3.1 FLASH Profile Options (Reactive Single-Agent Lightweight Loop)
     // ==========================================================================
     // Best for: Simple, fast, deterministic tasks; runs unbounded by default.
     // Execution: Observe-Think-Act single LLM reactive loop without graph overhead.
@@ -150,7 +119,7 @@
       }
     },
     // ==========================================================================
-    // 🚀 4.2 PRO Profile Options (Deep Multi-Agent Graph Closed-Loop)
+    // 🚀 3.2 PRO Profile Options (Deep Multi-Agent Graph Closed-Loop)
     // ==========================================================================
     // Best for: Complex, exploratory, dynamic multi-branch tasks.
     // Execution: LangGraph multi-node graph with a living task plan, a pre-execution safety net (single actions) / fast-action bursts (multi-action turns),
@@ -190,7 +159,7 @@
       }
     },
     // ==========================================================================
-    // 🌐 4.3 Shared Capabilities & Global Overrides
+    // 🌐 3.3 Shared Capabilities & Global Overrides
     // ==========================================================================
     // Shared step memory and history compression
     // Transcript ledger + layered compression for the Pro operator.

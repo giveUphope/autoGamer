@@ -18,6 +18,7 @@ The endpoint powers the setup UI's endpoint form: users fill in provider,
 base URL, model, and key instead of editing artemis.jsonc / .env by hand.
 """
 
+import json
 from pathlib import Path
 
 import pytest
@@ -34,8 +35,8 @@ JSONC_SAMPLE = """{
     // nested comment
     "fallback": { "provider": "openai", "model": "old-model" }
   },
-  "presets": {
-    "p": { "provider": "openai", "model": "preset-model" }
+  "nodes": {
+    "planner": { "model": "sibling-model" }
   }
 }
 """
@@ -78,7 +79,7 @@ async def test_update_model_config_writes_default_block(config_file: Path) -> No
     assert '"thinking_level": "medium"' in text
     # Only the first (top-level) "model" is rewritten; fallback keeps its own.
     assert body["default_model"]["fallback"]["model"] == "old-model"
-    assert '"model": "preset-model"' in text
+    assert '"model": "sibling-model"' in text
 
 
 @pytest.mark.asyncio
@@ -225,11 +226,11 @@ async def test_delete_model_config_removes_default_block(
         assert res.status_code == 200
 
         text = config_file.read_text(encoding="utf-8")
-        # The default block is gone; comments and presets survive byte-identical.
+        # The default block is gone; comments and the sibling section survive byte-identical.
         assert '"default"' not in text
         assert "// header comment — keep this comment" in text
-        assert '"presets"' in text
-        assert '"model": "preset-model"' in text
+        assert '"nodes"' in text
+        assert '"model": "sibling-model"' in text
 
         # The persisted base URL is cleared from .env as well.
         assert "http://10.0.0.5:8000/v1" not in env_file.read_text(encoding="utf-8")
@@ -244,14 +245,14 @@ async def test_delete_model_config_without_default_returns_404(
     tmp_path: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:
     target = tmp_path / "artemis.jsonc"
-    target.write_text('{\n  "presets": {}\n}\n', encoding="utf-8")
+    target.write_text('{\n  "nodes": {}\n}\n', encoding="utf-8")
     monkeypatch.setattr("artemis.config.paths.get_config_path", lambda name: target)
 
     async with _client() as client:
         res = await client.delete("/api/system/model-config")
 
     assert res.status_code == 404
-    assert target.read_text(encoding="utf-8") == '{\n  "presets": {}\n}\n'
+    assert target.read_text(encoding="utf-8") == '{\n  "nodes": {}\n}\n'
 
 
 @pytest.mark.asyncio
@@ -347,3 +348,341 @@ def test_persist_to_env_files_upserts_multiple_keys(
     assert "GEMINI_API_KEY=g-fresh" in content
     assert "stale" not in content
     assert "OTHER=x" in content
+
+
+# ---------------------------------------------------------------------------
+# 端点库与选用（/endpoints/use）：库里保存过的记录是唯一来源
+# ---------------------------------------------------------------------------
+
+ENDPOINT_JSONC = """{
+  // keep me
+  "default": {
+    "provider": "openai",
+    "model": "local-model",
+    "api_base": "http://127.0.0.1:1234/v1",
+    "api_key": "stale-local-key",
+    "thinking_level": "medium",
+    "fallback": {
+      "provider": "openai",
+      "model": "local-model"
+    }
+  },
+  "nodes": {
+    // sibling section the default-block editor must never reach into
+    "planner": { "model": "sibling-model" }
+  }
+}
+"""
+
+
+@pytest.fixture
+def endpoint_config(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> Path:
+    """A jsonc with a live default endpoint plus a sibling section to protect."""
+    target = tmp_path / "artemis.jsonc"
+    target.write_text(ENDPOINT_JSONC, encoding="utf-8")
+    monkeypatch.setattr("artemis.config.paths.get_config_path", lambda name: target)
+    return target
+
+
+def _write_library(path: Path, *records: dict) -> None:
+    """Seed the endpoint library the way a hand edit of the file would."""
+    path.write_text(json.dumps({"endpoints": list(records)}, ensure_ascii=False), encoding="utf-8")
+
+
+@pytest.fixture
+def credential_writes(monkeypatch: pytest.MonkeyPatch) -> dict:
+    """Record credential/base-URL writes instead of touching the developer's .env."""
+    from artemis.config.settings import Settings
+
+    recorded: dict = {}
+
+    def fake_set_api_key(self, provider: str, key: str, persist_to_env: bool = False) -> None:
+        recorded["api_key"] = (provider, key, persist_to_env)
+
+    def fake_set_base_url(self, base_url: str | None, persist_to_env: bool = True) -> None:
+        recorded["base_url"] = (base_url, persist_to_env)
+
+    monkeypatch.setattr(Settings, "set_api_key", fake_set_api_key)
+    monkeypatch.setattr(Settings, "set_openai_base_url", fake_set_base_url)
+    return recorded
+
+
+@pytest.mark.asyncio
+async def test_use_endpoint_applies_saved_record(
+    endpoint_config: Path, credential_writes: dict, isolated_endpoint_library: Path
+) -> None:
+    _write_library(
+        isolated_endpoint_library,
+        {
+            "name": "mine",
+            "api_format": "openai",
+            "api_base": "http://127.0.0.1:1234/v1",
+            "model": "qwen-vl",
+        },
+    )
+
+    async with _client() as client:
+        res = await client.post("/api/system/endpoints/use", json={"name": "mine"})
+
+    assert res.status_code == 200
+    dm = res.json()["default_model"]
+    assert dm["provider"] == "openai"
+    assert dm["model"] == "qwen-vl"
+    assert dm["provider_label"] == "mine"
+    assert dm["api_base"] == "http://127.0.0.1:1234/v1"
+    # 库里不存密钥：这次切换只该把 jsonc 里那条清掉，不该写凭据存储
+    assert "api_key" not in dm
+    assert "api_key" not in credential_writes
+    assert credential_writes["base_url"] == ("http://127.0.0.1:1234/v1", True)
+    text = endpoint_config.read_text(encoding="utf-8")
+    assert "// keep me" in text
+    assert "stale-local-key" not in text
+    # 记录没声明 fallback，旧的整条（连嵌套体）必须一起消失，否则它会继续指着
+    # 上一家的模型；兄弟区块不许被顺手改写。
+    assert "local-model" not in text.split('"nodes"')[0]
+    assert '"model": "sibling-model"' in text
+
+
+@pytest.mark.asyncio
+async def test_use_endpoint_clears_endpoint_owned_fields_the_record_lacks(
+    endpoint_config: Path, credential_writes: dict, isolated_endpoint_library: Path
+) -> None:
+    """A cloud record must not inherit the local base URL that outranks .env."""
+    _write_library(
+        isolated_endpoint_library,
+        {"name": "cloud", "api_format": "google", "model": "gemini-2.5-flash"},
+    )
+
+    async with _client() as client:
+        res = await client.post("/api/system/endpoints/use", json={"name": "cloud"})
+
+    assert res.status_code == 200
+    dm = res.json()["default_model"]
+    assert dm["provider"] == "google"
+    assert dm["model"] == "gemini-2.5-flash"
+    assert "api_base" not in dm
+    assert "api_key" not in dm
+    assert "fallback" not in dm
+    # Reasoning knobs are not endpoint-owned, so they survive the switch.
+    assert dm["thinking_level"] == "medium"
+    assert credential_writes["base_url"] == (None, True)
+    assert '"api_key": "stale-local-key"' not in endpoint_config.read_text(encoding="utf-8")
+
+
+@pytest.mark.asyncio
+async def test_use_endpoint_unknown_name_leaves_config_untouched(
+    endpoint_config: Path, credential_writes: dict, isolated_endpoint_library: Path
+) -> None:
+    _write_library(
+        isolated_endpoint_library, {"name": "mine", "api_format": "openai", "model": "m"}
+    )
+
+    async with _client() as client:
+        res = await client.post("/api/system/endpoints/use", json={"name": "no-such-endpoint"})
+
+    assert res.status_code == 404
+    assert "mine" in res.json()["detail"]
+    assert endpoint_config.read_text(encoding="utf-8") == ENDPOINT_JSONC
+    assert credential_writes == {}
+
+
+@pytest.mark.asyncio
+async def test_use_endpoint_requires_format_and_model(
+    endpoint_config: Path, credential_writes: dict, isolated_endpoint_library: Path
+) -> None:
+    _write_library(isolated_endpoint_library, {"name": "broken", "api_format": "google"})
+
+    async with _client() as client:
+        res = await client.post("/api/system/endpoints/use", json={"name": "broken"})
+
+    assert res.status_code == 400
+    assert endpoint_config.read_text(encoding="utf-8") == ENDPOINT_JSONC
+
+
+@pytest.mark.asyncio
+async def test_use_endpoint_blank_name_is_rejected(endpoint_config: Path) -> None:
+    async with _client() as client:
+        res = await client.post("/api/system/endpoints/use", json={"name": "  "})
+
+    assert res.status_code == 400
+
+
+@pytest.mark.asyncio
+async def test_model_config_env_never_ships_raw_keys(endpoint_config: Path) -> None:
+    """The card and the config viewer read presence, not the secret itself."""
+    async with _client() as client:
+        res = await client.get("/api/system/model-config-env")
+
+    assert res.status_code == 200
+    data = res.json()
+    assert "api_key" not in data["default_model"]
+    assert data["default_model"]["model"] == "local-model"
+    # 厂商预设已从配置文件与响应契约一起退场：端点库是唯一来源
+    assert "presets" not in data
+    # The raw-JSONC viewer is masked too: it shows structure, not secrets.
+    assert "stale-local-key" not in data["config_content"]
+    assert '"api_key": "****-key"' in data["config_content"]
+
+
+@pytest.mark.asyncio
+async def test_saving_named_endpoints_builds_the_library(
+    endpoint_config: Path,
+    credential_writes: dict,
+    isolated_endpoint_library: Path,
+    monkeypatch: pytest.MonkeyPatch,
+) -> None:
+    """A named save is what "已保存" means: one record per name, order kept."""
+    from pydantic import SecretStr
+
+    from artemis.config import settings as settings_obj
+
+    # The key column resolves through the credential store by protocol, so pin
+    # what the store holds rather than depending on the developer's real .env.
+    monkeypatch.setattr(settings_obj, "OPENAI_API_KEY", SecretStr("sk-live-9876"))
+
+    async with _client() as client:
+        await client.post(
+            "/api/system/model-config",
+            json={
+                "provider": "deepseek",
+                "api_format": "openai",
+                "model": "deepseek-vl",
+                "api_base": "https://api.deepseek.example/v1",
+                "api_key": "sk-deepseek-1",
+            },
+        )
+        res = await client.post(
+            "/api/system/model-config",
+            json={
+                "provider": "my-gateway",
+                "api_format": "openai",
+                "model": "gateway-1",
+                "api_base": "https://gateway.example/v1",
+            },
+        )
+        assert res.status_code == 200
+        entries = await client.get("/api/system/credentials/entries")
+
+    rows = entries.json()["rows"]
+    assert [(r["provider"], r["model"], r["is_active"], r["source"]) for r in rows] == [
+        ("deepseek", "deepseek-vl", False, "library"),
+        ("my-gateway", "gateway-1", True, "library"),
+    ]
+    # Both records speak the openai protocol, so both show the store's key for
+    # it — masked, and never read back out of the library file.
+    assert rows[0]["api_key"] == "****9876"
+    assert rows[1]["api_key"] == "****9876"
+    assert "sk-live-9876" not in entries.text
+    stored = json.loads(isolated_endpoint_library.read_text(encoding="utf-8"))
+    assert [e["name"] for e in stored["endpoints"]] == ["deepseek", "my-gateway"]
+    assert all("api_key" not in e for e in stored["endpoints"])
+
+
+@pytest.mark.asyncio
+async def test_resaving_same_name_updates_record_instead_of_duplicating(
+    endpoint_config: Path, credential_writes: dict, isolated_endpoint_library: Path
+) -> None:
+    async with _client() as client:
+        for model in ("v1", "v2"):
+            res = await client.post(
+                "/api/system/model-config",
+                json={"provider": "mine", "api_format": "openai", "model": model},
+            )
+            assert res.status_code == 200
+        entries = await client.get("/api/system/credentials/entries")
+
+    rows = entries.json()["rows"]
+    assert len(rows) == 1
+    assert rows[0]["model"] == "v2"
+
+
+@pytest.mark.asyncio
+async def test_use_endpoint_clears_fallback_the_record_never_declared(
+    endpoint_config: Path, credential_writes: dict
+) -> None:
+    """A saved endpoint without a fallback must not inherit the previous vendor's."""
+    async with _client() as client:
+        await client.post(
+            "/api/system/model-config",
+            json={"provider": "plain", "api_format": "openai", "model": "m-plain"},
+        )
+        res = await client.post("/api/system/endpoints/use", json={"name": "plain"})
+
+    dm = res.json()["default_model"]
+    assert dm["model"] == "m-plain"
+    assert "fallback" not in dm
+    # Reasoning knobs are still not endpoint-owned, so they survive.
+    assert dm["thinking_level"] == "medium"
+
+
+@pytest.mark.asyncio
+async def test_delete_endpoint_removes_record_and_keeps_live_default_visible(
+    endpoint_config: Path, credential_writes: dict
+) -> None:
+    async with _client() as client:
+        await client.post(
+            "/api/system/model-config",
+            json={"provider": "first", "api_format": "openai", "model": "m1"},
+        )
+        await client.post(
+            "/api/system/model-config",
+            json={"provider": "second", "api_format": "openai", "model": "m2"},
+        )
+        res = await client.delete("/api/system/endpoints/second")
+        entries = await client.get("/api/system/credentials/entries")
+
+    assert res.status_code == 200
+    rows = entries.json()["rows"]
+    # The record is gone, but the endpoint the runtime still uses is not hidden.
+    assert [(r["provider"], r["is_active"], r["source"]) for r in rows] == [
+        ("second", True, "default"),
+        ("first", False, "library"),
+    ]
+
+
+@pytest.mark.asyncio
+async def test_delete_endpoint_unknown_name_returns_404(
+    endpoint_config: Path, credential_writes: dict
+) -> None:
+    async with _client() as client:
+        res = await client.delete("/api/system/endpoints/ghost")
+
+    assert res.status_code == 404
+    assert "ghost" in res.json()["detail"]
+
+
+def test_default_block_removal_of_last_entry_keeps_jsonc_valid(tmp_path: Path) -> None:
+    """The final entry owns no comma; the edit must take the previous one too."""
+    from apps.admin_console.routers.system import _update_jsonc_default_block
+
+    target = tmp_path / "artemis.jsonc"
+    target.write_text(
+        '{\n  "default": {\n    "provider": "openai",\n    "api_key": "stale"\n  }\n}\n',
+        encoding="utf-8",
+    )
+
+    out = _update_jsonc_default_block(target, {"model": "m"}, removals=("api_key", "api_base"))
+
+    assert out == {"provider": "openai", "model": "m"}
+    assert '"api_key"' not in target.read_text(encoding="utf-8")
+
+
+def test_default_block_edits_only_depth_one_keys(tmp_path: Path) -> None:
+    """A key that also appears inside ``fallback`` must not be touched."""
+    from apps.admin_console.routers.system import _update_jsonc_default_block
+
+    target = tmp_path / "artemis.jsonc"
+    target.write_text(
+        '{\n  "default": {\n    "model": "outer",\n'
+        '    "fallback": { "model": "inner" } // trailing note\n'
+        "  }\n}\n",
+        encoding="utf-8",
+    )
+
+    out = _update_jsonc_default_block(target, {"model": "next"})
+
+    assert out["model"] == "next"
+    assert out["fallback"] == {"model": "inner"}
+    text = target.read_text(encoding="utf-8")
+    assert '"model": "outer"' not in text
+    assert "// trailing note" in text

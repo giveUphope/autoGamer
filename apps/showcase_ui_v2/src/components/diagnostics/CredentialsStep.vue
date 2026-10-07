@@ -1,21 +1,25 @@
 <script setup lang="ts">
 /**
- * 诊断向导 STEP 2：AI 模型配置。
- * 仅保留自定义路径，无模式二选一：端点信息表单（provider / API 端点地址 /
- * 模型名称 / 可选 Key）写入 artemis.jsonc default 块与 .env；统一凭据管理
- * （CredentialsManager）由用户自定义变量名与提供商、多条增删并回显；
- * 当前模型配置卡只读展示 default 摘要与完整 JSONC（预设列表已移除）。
+ * 诊断向导 STEP 2：AI 模型配置。三张卡，各司其职：
+ * 端点信息表单（提供商 / API 格式 / 端点地址 / 模型 / 可选 Key）写入
+ * artemis.jsonc default 块与 .env，填了提供商名还会存成一条端点库记录；
+ * 当前模型配置卡只读展示 default 块里的真实端点（端点名 / 协议 / 端点地址 /
+ * 模型 / 思考等级 / 回退），缺项显式标「未配置」而不用兜底常量冒充，卡内合并了
+ * 端点切换行（EndpointSwitcher，候选来自端点库）与完整 JSONC 折叠查看器（密钥
+ * 已在后端掩码）；端点库表格（CredentialsManager）一行一条记录，带当前徽标与
+ * 编辑/删除。
  * 挂载即跳过凭据检查并拉取 modelConfigEnv（对齐 Angular setModelSetupMode 语义）。
  */
 import { computed, nextTick, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconCheck, IconCopy } from '@arco-design/web-vue/es/icon';
 
-import { useSystemContract } from './contract';
+import { apiFormatLabel, useSystemContract } from './contract';
 import type { CredentialEndpointRow } from './contract';
 import { useCopy } from './useCopy';
 import CredentialsManager from './CredentialsManager.vue';
 import EndpointConfigForm from './EndpointConfigForm.vue';
+import EndpointSwitcher from './EndpointSwitcher.vue';
 
 const { t } = useI18n();
 const system = useSystemContract();
@@ -55,7 +59,7 @@ onMounted(() => {
 
     <div class="diag-step-body">
       <div class="cred-panel">
-        <!-- 端点信息填写：唯一录入入口；「编辑」时由下方表格回填 -->
+        <!-- 端点信息填写：自定义录入入口；「编辑」时由下方端点库表格回填 -->
         <EndpointConfigForm :prefill="editingEndpoint" />
 
         <a-alert v-if="!env" type="info">{{ t('launcher.diagnostics.cred.notLoaded') }}</a-alert>
@@ -81,13 +85,36 @@ onMounted(() => {
 
           <div class="model-summary-row">
             <div class="summary-metric">
+              <span class="metric-label">{{ t('launcher.diagnostics.cred.cfgEndpoint') }}</span>
+              <span class="metric-pill">
+                {{ env.default_model?.provider_label || t('launcher.diagnostics.cred.cfgUnnamed') }}
+              </span>
+            </div>
+            <div class="summary-metric">
+              <span class="metric-label">{{ t('launcher.diagnostics.cred.endpointFormatLabel') }}</span>
+              <span class="metric-pill secondary">
+                {{
+                  env.default_model?.provider
+                    ? apiFormatLabel(t, env.default_model.provider)
+                    : t('launcher.diagnostics.cred.cfgNotConfigured')
+                }}
+              </span>
+            </div>
+            <div class="summary-metric">
+              <span class="metric-label">{{ t('launcher.diagnostics.cred.endpointBaseUrlLabel') }}</span>
+              <span class="metric-pill secondary">
+                {{ env.default_model?.api_base || t('launcher.diagnostics.cred.cfgProviderBase') }}
+              </span>
+            </div>
+            <div class="summary-metric">
               <span class="metric-label">{{ t('launcher.diagnostics.cred.defaultModel') }}</span>
               <span class="metric-pill">
-                {{ env.default_model?.provider || 'google' }} / {{ env.default_model?.model || 'gemini-3.8-flash' }}
+                {{ env.default_model?.model || t('launcher.diagnostics.cred.cfgNotConfigured') }}
               </span>
-              <span v-if="env.default_model?.thinking_level" class="metric-tag">
-                {{ t('launcher.diagnostics.cred.thinkingLevel') }}: {{ env.default_model.thinking_level }}
-              </span>
+            </div>
+            <div v-if="env.default_model?.thinking_level" class="summary-metric">
+              <span class="metric-label">{{ t('launcher.diagnostics.cred.thinkingLevel') }}</span>
+              <span class="metric-tag">{{ env.default_model.thinking_level }}</span>
             </div>
             <div v-if="env.default_model?.fallback" class="summary-metric">
               <span class="metric-label">{{ t('launcher.diagnostics.cred.fallbackModel') }}</span>
@@ -96,6 +123,9 @@ onMounted(() => {
               </span>
             </div>
           </div>
+
+          <!-- 端点切换：候选来自下方端点库，与配置同卡，不再自立一张卡 -->
+          <EndpointSwitcher />
 
           <a-collapse v-if="env.config_content" class="jsonc-collapse">
             <a-collapse-item key="jsonc" :header="t('launcher.diagnostics.cred.viewJsonc')">

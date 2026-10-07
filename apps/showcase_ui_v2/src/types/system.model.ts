@@ -138,11 +138,6 @@ export interface ModelConfigEnvResponse {
       thinking_level?: string;
     };
   };
-  presets: Record<string, {
-    provider: string;
-    model: string;
-    fallback?: { provider: string; model: string };
-  }>;
   env_path: string;
   env_filename: string;
   env_vars: Array<{
@@ -172,16 +167,22 @@ export interface ModelConfigUpdateResult {
   default_model?: ModelConfigEnvResponse['default_model'];
 }
 
-/** 已保存端点记录：字段与端点信息表单一一对应（API Key 仅掩码），一行一条。 */
+/**
+ * 端点库的一行：字段与端点信息表单一一对应（API Key 仅掩码）。
+ * `is_active` 标记运行时正在使用的那一条；`source` 说明它来自端点库记录
+ * （library）还是只存在于 artemis.jsonc 的 default 块（default，即「用了但没存」）。
+ */
 export interface CredentialEndpointRow {
   provider: string | null;
   api_format: string | null;
   api_base: string | null;
   model: string | null;
   api_key: string | null;
+  is_active: boolean;
+  source: 'library' | 'default';
 }
 
-/** GET /api/system/credentials/entries 响应（只读展示已保存的端点信息）。 */
+/** GET /api/system/credentials/entries 响应（端点库记录列表）。 */
 export interface CredentialEntriesResponse {
   rows: CredentialEndpointRow[];
 }

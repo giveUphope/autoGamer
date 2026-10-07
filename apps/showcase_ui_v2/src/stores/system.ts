@@ -526,6 +526,7 @@ export const useSystemStore = defineStore('system', () => {
         applyReadinessReport(res.report);
       }
       void fetchModelConfigEnv().catch(() => {}); // 刷新 model config & env
+      void fetchCredentialEntries().catch(() => {}); // 掩码后的 Key 列同样要跟着变
       return res;
     } catch (err) {
       console.error(`Failed to update credentials for ${provider}:`, err);
@@ -534,8 +535,10 @@ export const useSystemStore = defineStore('system', () => {
   }
 
   /**
-   * 保存默认模型端点配置（provider/model/api_base/可选 api_key）：
-   * 后端写入 artemis.jsonc default 块与 .env，成功后刷新 modelConfigEnv。
+   * 保存默认模型端点配置（provider/model/api_base/可选 api_key）：后端写入
+   * artemis.jsonc default 块与 .env，填了提供商名还会存成一条端点库记录；
+   * 成功后同时刷新配置卡与端点库列表（两者读的是同一个 default 块，漏一个就
+   * 会出现「保存成功但页面没变」）。
    */
   async function saveModelConfig(
     payload: ModelConfigUpdatePayload,
@@ -543,6 +546,7 @@ export const useSystemStore = defineStore('system', () => {
     try {
       const res = await apiPost<ModelConfigUpdateResult>('/api/system/model-config', payload);
       void fetchModelConfigEnv().catch(() => {}); // 刷新 model config & env
+      void fetchCredentialEntries().catch(() => {}); // 刷新端点库列表
       return res;
     } catch (err) {
       console.error('Failed to save model config:', err);
@@ -550,10 +554,26 @@ export const useSystemStore = defineStore('system', () => {
     }
   }
 
+  /**
+   * 选用端点库里的一条记录作为当前默认：后端按名字从库里取端点写入 default 块
+   * （密钥只在后端流转），成功后刷新配置卡与端点库列表。
+   */
+  async function useEndpoint(name: string): Promise<ModelConfigUpdateResult | null> {
+    try {
+      const res = await apiPost<ModelConfigUpdateResult>('/api/system/endpoints/use', { name });
+      void fetchModelConfigEnv().catch(() => {});
+      void fetchCredentialEntries().catch(() => {});
+      return res;
+    } catch (err) {
+      console.error('Failed to use endpoint:', err);
+      throw err;
+    }
+  }
+
   // ---------------------------------------------------------------------------
-  // 已保存端点信息展示（只读表格：一行一条端点记录，字段作列名）
+  // 端点库（表格：一行一条记录，字段作列名；当前生效的那条带 is_active）
   // ---------------------------------------------------------------------------
-  /** 拉取已保存端点记录（API Key 仅掩码回显）。录入走端点信息表单。 */
+  /** 拉取端点库记录（API Key 仅掩码回显）。录入走端点信息表单，生效走 useEndpoint。 */
   async function fetchCredentialEntries(): Promise<CredentialEntriesResponse> {
     try {
       const data = await apiGet<CredentialEntriesResponse>('/api/system/credentials/entries');
@@ -565,10 +585,20 @@ export const useSystemStore = defineStore('system', () => {
     }
   }
 
-  /** 从 artemis.jsonc 删除已保存的端点信息（default 块），成功后刷新列表与配置。 */
-  async function deleteEndpointRecord(): Promise<{ status?: string; message?: string } | null> {
+  /**
+   * 删除一行端点记录：库记录走 `/api/system/endpoints/{name}`（只删记录，不动
+   * 运行时正在用的配置）；「用了但没存」的 default 行走 `/api/system/model-config`
+   * （清空 default 块，回到出厂配置）。两条路都刷新列表与配置卡。
+   */
+  async function deleteEndpointRecord(
+    row: CredentialEndpointRow,
+  ): Promise<{ status?: string; message?: string } | null> {
+    const url =
+      row.source === 'library' && row.provider
+        ? `/api/system/endpoints/${encodeURIComponent(row.provider)}`
+        : '/api/system/model-config';
     try {
-      const res = await apiDelete<{ status?: string; message?: string }>('/api/system/model-config');
+      const res = await apiDelete<{ status?: string; message?: string }>(url);
       void fetchCredentialEntries().catch(() => {});
       void fetchModelConfigEnv().catch(() => {});
       return res;
@@ -688,6 +718,7 @@ export const useSystemStore = defineStore('system', () => {
     testApiKey,
     updateApiKey,
     saveModelConfig,
+    useEndpoint,
     credentialRows,
     fetchCredentialEntries,
     deleteEndpointRecord,

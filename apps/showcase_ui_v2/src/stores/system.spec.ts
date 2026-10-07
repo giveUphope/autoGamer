@@ -1,9 +1,9 @@
 import { afterEach, beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
-vi.mock('@/services/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock('@/services/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn(), apiDelete: vi.fn() }));
 
-import { apiGet, apiPost } from '@/services/api';
+import { apiDelete, apiGet, apiPost } from '@/services/api';
 import { useSystemStore } from './system';
 import type {
   DeviceInfo,
@@ -16,6 +16,7 @@ import type {
 
 const apiGetMock = apiGet as unknown as Mock;
 const apiPostMock = apiPost as unknown as Mock;
+const apiDeleteMock = apiDelete as unknown as Mock;
 
 const READINESS_URL = '/api/system/readiness';
 const EMULATOR_STATUS_URL = '/api/system/emulator/status';
@@ -106,7 +107,6 @@ function makeModelConfigEnv(): ModelConfigEnvResponse {
     config_filename: 'artemis.jsonc',
     config_content: '{}',
     default_model: { provider: 'google', model: 'gemini-2.0-flash' },
-    presets: {},
     env_path: '/cfg/.env',
     env_filename: '.env',
     env_vars: [
@@ -549,6 +549,102 @@ describe('system store — M5 凭据', () => {
     expect(store.isCredentialsReady).toBe(true);
     store.setSkipCredentialsCheck(false);
     expect(store.isCredentialsReady).toBe(false);
+  });
+
+  /** 保存/切换是 fire-and-forget 刷新，让挂起的微任务全部落地后再断言。 */
+  async function settle(): Promise<void> {
+    await new Promise((resolve) => setTimeout(resolve, 0));
+  }
+
+  function mockEntryRowRefresh(row: Record<string, unknown>): void {
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/api/system/credentials/entries' ? { rows: [row] } : makeModelConfigEnv(),
+      ),
+    );
+  }
+
+  it('saveModelConfig 成功后同时刷新配置卡与端点库列表', async () => {
+    const row = {
+      provider: 'local',
+      api_format: 'openai',
+      api_base: 'http://127.0.0.1:1234/v1',
+      model: 'qwen3.6-35b-a3b-mtp',
+      api_key: '****tudio',
+      is_active: true,
+      source: 'library' as const,
+    };
+    apiPostMock.mockResolvedValue({ status: 'success', message: 'saved' });
+    mockEntryRowRefresh(row);
+    const store = useSystemStore();
+
+    await store.saveModelConfig({ model: row.model });
+    await settle();
+
+    // 两处读的都是 artemis.jsonc 的 default 块：只刷其一就会出现「保存成功但页面没变」。
+    expect(apiGetMock).toHaveBeenCalledWith('/api/system/model-config-env');
+    expect(apiGetMock).toHaveBeenCalledWith('/api/system/credentials/entries');
+    expect(store.modelConfigEnv?.config_filename).toBe('artemis.jsonc');
+    expect(store.credentialRows).toEqual([row]);
+  });
+
+  it('useEndpoint 走 /endpoints/use 并刷新配置卡与端点库', async () => {
+    const row = {
+      provider: 'local-lmstudio',
+      api_format: 'openai',
+      api_base: 'http://127.0.0.1:1234/v1',
+      model: 'qwen3.6-35b-a3b-mtp',
+      api_key: null,
+      is_active: true,
+      source: 'library' as const,
+    };
+    apiPostMock.mockResolvedValue({ status: 'success', message: 'applied' });
+    mockEntryRowRefresh(row);
+    const store = useSystemStore();
+
+    await store.useEndpoint('local-lmstudio');
+    await settle();
+
+    expect(apiPostMock).toHaveBeenCalledWith('/api/system/endpoints/use', {
+      name: 'local-lmstudio',
+    });
+    expect(store.credentialRows).toEqual([row]);
+    expect(store.modelConfigEnv?.config_filename).toBe('artemis.jsonc');
+  });
+
+  it('删除按行来源分流：库记录走 /endpoints/{name}，default 行走 /model-config', async () => {
+    apiDeleteMock.mockResolvedValue({ status: 'success' });
+    apiGetMock.mockResolvedValue({ rows: [] });
+    const store = useSystemStore();
+
+    await store.deleteEndpointRecord({
+      provider: '我的中转站 / v1',
+      api_format: 'openai',
+      api_base: null,
+      model: null,
+      api_key: null,
+      is_active: false,
+      source: 'library',
+    });
+    // 名字要进 URL 路径：空格与斜杠必须被转义，否则 / 会多切出一段路径、打不到后端路由
+    const libraryUrl = apiDeleteMock.mock.calls[0][0] as string;
+    expect(libraryUrl.startsWith('/api/system/endpoints/')).toBe(true);
+    expect(libraryUrl).not.toMatch(/\s/);
+    expect(libraryUrl.split('/')).toHaveLength(5);
+    expect(decodeURIComponent(libraryUrl.slice('/api/system/endpoints/'.length))).toBe(
+      '我的中转站 / v1',
+    );
+
+    await store.deleteEndpointRecord({
+      provider: null,
+      api_format: 'openai',
+      api_base: null,
+      model: 'm',
+      api_key: null,
+      is_active: true,
+      source: 'default',
+    });
+    expect(apiDeleteMock).toHaveBeenLastCalledWith('/api/system/model-config');
   });
 });
 

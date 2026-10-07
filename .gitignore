@@ -104,6 +104,7 @@ live_screenshot*.png
 .env.*
 !.env.example
 credential_bindings.json
+endpoint_library.json
 *.pem
 *.key
 

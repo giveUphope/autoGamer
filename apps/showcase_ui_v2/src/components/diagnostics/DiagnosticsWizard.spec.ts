@@ -15,6 +15,7 @@ import type {
 } from '../../types/system.model';
 import { type CredentialEndpointRow, type ModelConfigEnvResponse } from './contract';
 import DiagnosticsWizard from './DiagnosticsWizard.vue';
+import EndpointSwitcher from './EndpointSwitcher.vue';
 
 /**
  * 组件测试：DiagnosticsWizard（M5 诊断向导）。
@@ -80,13 +81,23 @@ const MOCK_ENV: ModelConfigEnvResponse = {
     thinking_level: 'low',
     fallback: { provider: 'openai', model: 'gpt-4o' },
   },
-  presets: { fast: { provider: 'google', model: 'gemini-flash' } },
   env_path: '.env',
   env_filename: '.env',
   env_vars: [
     { name: 'GEMINI_API_KEY', provider: 'google', is_set: true, preview: 'AIza***', description: 'Gemini key' },
     { name: 'OPENAI_API_KEY', provider: 'openai', is_set: false, preview: null, description: 'OpenAI key' },
   ],
+};
+
+/** 端点库里的一条已保存记录（当前生效的那条，表格与切换行共用）。 */
+const SAVED_ROW: CredentialEndpointRow = {
+  provider: 'deepseek',
+  api_format: 'openai',
+  api_base: 'http://127.0.0.1:1234/v1',
+  model: 'qwen3.6-35b-a3b-mtp',
+  api_key: '****udio',
+  is_active: true,
+  source: 'library',
 };
 
 const CONNECTION_OK = {
@@ -160,6 +171,9 @@ const mockSystem = reactive({
   saveModelConfig: vi.fn(() =>
     Promise.resolve({ status: 'success', message: 'Model endpoint configuration saved and applied.' }),
   ),
+  useEndpoint: vi.fn(() =>
+    Promise.resolve({ status: 'success', message: 'Endpoint applied.' }),
+  ),
   credentialRows: [] as CredentialEndpointRow[],
   fetchCredentialEntries: vi.fn(() => Promise.resolve({ rows: [] })),
   deleteEndpointRecord: vi.fn(() =>
@@ -196,6 +210,7 @@ function resetSystemMock(): void {
   mockSystem.lastCheckedTime = null;
   mockSystem.isSkipCredentialsCheck = false;
   mockSystem.modelConfigEnv = null;
+  mockSystem.credentialRows = [];
   mockSystem.hasReadinessReport = false;
   mockSystem.isRemoteAdbServer = false;
   mockSystem.isEmulatorLaunching = false;
@@ -413,8 +428,9 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(wrapper.text()).toContain('已连接到 192.168.1.50:5555！');
   });
 
-  it('renders only the custom path without mode cards or presets', async () => {
+  it('renders only the custom path without mode cards', async () => {
     mockSystem.modelConfigEnv = MOCK_ENV;
+    mockSystem.credentialRows = [SAVED_ROW];
     const wrapper = mountWizard();
     await flushPromises();
 
@@ -422,15 +438,20 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(mockSystem.setSkipCredentialsCheck).toHaveBeenCalledWith(true);
     expect(mockSystem.fetchModelConfigEnv).toHaveBeenCalled();
 
-    // 模式选择卡与预设列表均已移除（API 格式下拉的选项标签可合法含 "Google Gemini"）
+    // 模式选择卡已移除（API 格式下拉的选项标签可合法含 "Google Gemini"）
     expect(wrapper.findAll('.mode-card').length).toBe(0);
     expect(wrapper.find('.mode-cards').exists()).toBe(false);
     expect(wrapper.find('.cred-box').exists()).toBe(false);
     expect(wrapper.text()).not.toContain('可用预设');
 
-    // 端点表单与只读配置卡仍在
+    // 端点表单、当前配置卡（内含端点切换行）与端点库表格都在
     expect(wrapper.find('.endpoint-card').exists()).toBe(true);
-    expect(wrapper.text()).toContain('google / gemini-flash');
+    expect(wrapper.find('.inspector-card .endpoint-switch').exists()).toBe(true);
+    // 配置卡逐项显示 default 块里的真实值（端点名与端点地址都可见）
+    const card = wrapper.find('.inspector-card').text();
+    expect(card).toContain('lmstudio');
+    expect(card).toContain('http://127.0.0.1:1234/v1');
+    expect(card).toContain('gemini-flash');
   });
 
   it('switches active device through the select', async () => {
@@ -457,9 +478,12 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(mockSystem.setSkipCredentialsCheck).toHaveBeenCalledWith(true);
     expect(mockSystem.fetchModelConfigEnv).toHaveBeenCalled();
 
-    // 默认模型摘要 + 回退 + JSONC 路径
-    expect(wrapper.text()).toContain('google / gemini-flash');
-    expect(wrapper.text()).toContain('openai/gpt-4o');
+    // 端点名 / 协议 / 端点地址 / 模型 / 回退 逐项来自 default 块，协议走文案映射
+    const card = wrapper.find('.inspector-card').text();
+    expect(card).toContain('lmstudio');
+    expect(card).toContain('Google Gemini');
+    expect(card).toContain('http://127.0.0.1:1234/v1');
+    expect(card).toContain('openai/gpt-4o');
     expect(wrapper.text()).toContain('config/artemis.jsonc');
 
     // JSONC 查看器（a-collapse 展开）
@@ -500,15 +524,7 @@ describe('DiagnosticsWizard (M5)', () => {
   });
 
   it('renders saved endpoints as a table with form fields as columns', async () => {
-    mockSystem.credentialRows = [
-      {
-        provider: 'deepseek',
-        api_format: 'openai',
-        api_base: 'http://127.0.0.1:1234/v1',
-        model: 'qwen3.6-35b-a3b-mtp',
-        api_key: '****udio',
-      },
-    ];
+    mockSystem.credentialRows = [SAVED_ROW];
     const wrapper = mountWizard();
     await flushPromises();
 
@@ -516,9 +532,11 @@ describe('DiagnosticsWizard (M5)', () => {
     expect(wrapper.find('.creds-table').exists()).toBe(true);
     const headers = wrapper.findAll('.creds-table th').map((h) => h.text());
     expect(headers).toEqual(['提供商', 'API 格式', 'API 端点地址', '模型名称', 'API Key（可选）', '操作']);
-    const cells = wrapper.findAll('.creds-table tbody td').map((c) => c.text());
+    const cells = wrapper
+      .findAll('.creds-table tbody td')
+      .map((c) => c.text().replace(/\s+/g, ' ').trim());
     expect(cells).toEqual([
-      'deepseek',
+      '当前 deepseek',
       'OpenAI Chat Completions',
       'http://127.0.0.1:1234/v1',
       'qwen3.6-35b-a3b-mtp',
@@ -532,15 +550,7 @@ describe('DiagnosticsWizard (M5)', () => {
   });
 
   it('fills the endpoint form when clicking edit on a saved row', async () => {
-    mockSystem.credentialRows = [
-      {
-        provider: 'deepseek',
-        api_format: 'openai',
-        api_base: 'http://127.0.0.1:1234/v1',
-        model: 'qwen3.6-35b-a3b-mtp',
-        api_key: '****udio',
-      },
-    ];
+    mockSystem.credentialRows = [SAVED_ROW];
     const wrapper = mountWizard();
     await flushPromises();
 
@@ -559,16 +569,8 @@ describe('DiagnosticsWizard (M5)', () => {
     expect((wrapper.find('.endpoint-key-input input').element as HTMLInputElement).value).toBe('');
   });
 
-  it('deletes the saved endpoint record after confirmation', async () => {
-    mockSystem.credentialRows = [
-      {
-        provider: 'deepseek',
-        api_format: 'openai',
-        api_base: 'http://127.0.0.1:1234/v1',
-        model: 'qwen3.6-35b-a3b-mtp',
-        api_key: '****udio',
-      },
-    ];
+  it('deletes the row it was clicked on so the store can pick the route', async () => {
+    mockSystem.credentialRows = [SAVED_ROW];
     const wrapper = mountWizard();
     await flushPromises();
 
@@ -583,6 +585,110 @@ describe('DiagnosticsWizard (M5)', () => {
     okButton!.dispatchEvent(new MouseEvent('click', { bubbles: true, cancelable: true }));
     await flushPromises();
 
-    expect(mockSystem.deleteEndpointRecord).toHaveBeenCalled();
+    // 库记录与 default 行的删除语义不同，store 需要拿到这一行才能分流
+    expect(mockSystem.deleteEndpointRecord).toHaveBeenCalledWith(SAVED_ROW);
+  });
+
+  it('lists the endpoint library inside the config card and switches to the chosen record', async () => {
+    mockSystem.modelConfigEnv = MOCK_ENV;
+    mockSystem.credentialRows = [
+      SAVED_ROW,
+      {
+        provider: 'my-gateway',
+        api_format: 'openai',
+        api_base: null,
+        model: 'gateway-1',
+        api_key: '****9876',
+        is_active: false,
+        source: 'library',
+      },
+    ];
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    // 切换行在「当前模型配置」卡内部，不再自立一张卡
+    const switcher = wrapper.findComponent(EndpointSwitcher);
+    expect(wrapper.find('.inspector-card .endpoint-switch').exists()).toBe(true);
+    const select = switcher.findComponent({ name: 'Select' });
+    expect((select.props('options') as { label: string }[]).map((o) => o.label)).toEqual([
+      'deepseek · 当前 · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
+      'my-gateway · openai/gateway-1 · 提供商官方端点',
+    ]);
+
+    select.vm.$emit('update:modelValue', 'my-gateway');
+    await flushPromises();
+    await switcher.find('.switch-apply-btn').trigger('click');
+    await flushPromises();
+
+    expect(mockSystem.useEndpoint).toHaveBeenCalledWith('my-gateway');
+    expect(switcher.text()).toContain('Endpoint applied.');
+  });
+
+  it('offers only saved library records and never re-applies the active one', async () => {
+    const implicit: CredentialEndpointRow = {
+      ...SAVED_ROW,
+      provider: 'in-use-but-unsaved',
+      source: 'default',
+    };
+    const other: CredentialEndpointRow = { ...SAVED_ROW, provider: 'other', is_active: false };
+    mockSystem.modelConfigEnv = MOCK_ENV;
+    mockSystem.credentialRows = [implicit, other, SAVED_ROW];
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    const select = wrapper.findComponent(EndpointSwitcher).findComponent({ name: 'Select' });
+    const labels = (select.props('options') as { label: string }[]).map((o) => o.label);
+    expect(labels).toEqual([
+      'other · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
+      'deepseek · 当前 · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
+    ]);
+
+    const applyBtn = wrapper
+      .findComponent(EndpointSwitcher)
+      .find('.switch-apply-btn')
+      .element as HTMLButtonElement;
+
+    // 当前那条不许再点一次：记录里没有 fallback 时，重复应用会把现存 fallback 清掉
+    select.vm.$emit('update:modelValue', 'deepseek');
+    await flushPromises();
+    expect(applyBtn.disabled).toBe(true);
+
+    select.vm.$emit('update:modelValue', 'other');
+    await flushPromises();
+    expect(applyBtn.disabled).toBe(false);
+  });
+
+  it('drops a selection whose record left the library', async () => {
+    const other: CredentialEndpointRow = { ...SAVED_ROW, provider: 'other', is_active: false };
+    mockSystem.modelConfigEnv = MOCK_ENV;
+    mockSystem.credentialRows = [SAVED_ROW, other];
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    const switcher = wrapper.findComponent(EndpointSwitcher);
+    switcher.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'other');
+    await flushPromises();
+    expect((switcher.find('.switch-apply-btn').element as HTMLButtonElement).disabled).toBe(false);
+
+    // 选中的那条被删了、库里还剩别的：选择必须清空，按钮不许继续对着不存在的端点
+    mockSystem.credentialRows = [SAVED_ROW];
+    await flushPromises();
+
+    expect((switcher.find('.switch-apply-btn').element as HTMLButtonElement).disabled).toBe(true);
+  });
+
+  it('marks the config as 未配置 instead of inventing an endpoint when there is none', async () => {
+    mockSystem.modelConfigEnv = { ...MOCK_ENV, default_model: {} };
+    mockSystem.credentialRows = [];
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    const card = wrapper.find('.inspector-card').text();
+    expect(card).toContain('未配置');
+    // 旧实现把 google / gemini-3.8-flash 当兜底常量写死在模板里，配置文件为空时会显示假配置
+    expect(card).not.toContain('gemini-3.8-flash');
+    expect(card).not.toContain('Google Gemini');
+    // 端点库为空时不出现切换行
+    expect(wrapper.find('.endpoint-switch').exists()).toBe(false);
   });
 });

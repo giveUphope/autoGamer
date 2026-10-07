@@ -438,7 +438,7 @@ async def get_model_config_and_env():
     try:
         config_path_obj = get_config_path("artemis.jsonc")
         config_path = str(config_path_obj)
-        config_content = config_path_obj.read_text(encoding="utf-8")
+        config_content = _mask_jsonc_secrets(config_path_obj.read_text(encoding="utf-8"))
         with open(config_path_obj, encoding="utf-8") as f:
             parsed_config = load_jsonc(f)
     except Exception as e:
@@ -536,21 +536,117 @@ async def get_model_config_and_env():
         "config_path": config_path or "config/artemis.jsonc",
         "config_filename": "artemis.jsonc",
         "config_content": config_content,
-        "default_model": parsed_config.get("default", {}),
-        "presets": parsed_config.get("presets", {}),
+        "default_model": _without_secrets(parsed_config.get("default", {})),
         "env_path": str(env_path),
         "env_filename": ".env",
         "env_vars": env_vars,
     }
 
 
-def _update_jsonc_default_block(config_path: Path, updates: dict[str, str]) -> dict:
-    """Surgically update keys inside the top-level ``"default"`` object of a JSONC file.
+def _read_jsonc_string(text: str, start: int) -> tuple[str, int]:
+    """Return the string literal opened at ``start`` and the index past its close quote."""
+    i = start + 1
+    out: list[str] = []
+    while i < len(text):
+        ch = text[i]
+        if ch == "\\":
+            out.append(text[i : i + 2])
+            i += 2
+            continue
+        if ch == '"':
+            return "".join(out), i + 1
+        out.append(ch)
+        i += 1
+    return "".join(out), i
 
-    Comment-preserving by design: only matched ``"key": value`` spans are
-    rewritten, so comments and formatting elsewhere survive the edit; missing
-    keys are inserted at the top of the block. Returns the reparsed
-    ``default`` object and raises ``ValueError`` when the file has no
+
+def _skip_jsonc_value(text: str, i: int) -> int:
+    """Return the index just past the JSON value that starts at ``i``."""
+    n = len(text)
+    if i >= n:
+        return i
+    if text[i] in "{[":
+        depth = 0
+        while i < n:
+            ch = text[i]
+            if ch == '"':
+                _, i = _read_jsonc_string(text, i)
+                continue
+            if ch in "{[":
+                depth += 1
+            elif ch in "}]":
+                depth -= 1
+                if depth == 0:
+                    return i + 1
+            i += 1
+        return i
+    if text[i] == '"':
+        _, i = _read_jsonc_string(text, i)
+        return i
+    while i < n:
+        ch = text[i]
+        if ch in ",}\n":
+            break
+        if ch == "/" and i + 1 < n and text[i + 1] in "/*":
+            break
+        i += 1
+    return i
+
+
+def _scan_jsonc_object_entries(body: str) -> list[tuple[str, int, int, int]]:
+    """Enumerate the depth-1 ``"key": value`` entries of a JSONC object body.
+
+    Yields ``(key, key_start, value_start, value_end)``. Nested objects, string
+    literals and comments are skipped as opaque text, so a key that only exists
+    inside ``"fallback"`` is never reported as a top-level one.
+    """
+    entries: list[tuple[str, int, int, int]] = []
+    i = 0
+    n = len(body)
+    while i < n:
+        ch = body[i]
+        if ch in " \t\r\n,":
+            i += 1
+            continue
+        if ch == "/" and i + 1 < n and body[i + 1] == "/":
+            newline = body.find("\n", i)
+            i = n if newline == -1 else newline + 1
+            continue
+        if ch == "/" and i + 1 < n and body[i + 1] == "*":
+            end = body.find("*/", i + 2)
+            i = n if end == -1 else end + 2
+            continue
+        if ch != '"':
+            break
+        key_start = i
+        key, i = _read_jsonc_string(body, key_start)
+        while i < n and body[i] in " \t\r\n":
+            i += 1
+        if i >= n or body[i] != ":":
+            break
+        i += 1
+        while i < n and body[i] in " \t\r\n":
+            i += 1
+        value_start = i
+        value_end = _skip_jsonc_value(body, value_start)
+        entries.append((key, key_start, value_start, value_end))
+        i = value_end
+    return entries
+
+
+def _update_jsonc_default_block(
+    config_path: Path,
+    updates: dict[str, object],
+    removals: tuple[str, ...] = (),
+) -> dict:
+    """Set and clear keys inside the top-level ``"default"`` object of a JSONC file.
+
+    Comment-preserving by design: only matched value spans are rewritten and a
+    removed key is cut out whole, so comments and formatting elsewhere survive
+    the edit; missing keys are inserted at the top of the block. Values are
+    replaced as whole spans, so a nested ``fallback`` object can be swapped for
+    another endpoint's fallback instead of corrupting the block. Returns the
+    reparsed ``default`` object and raises ``ValueError`` when the file has no
     ``default`` object or the edit would produce invalid JSONC (the file is
     left untouched in that case).
     """
@@ -588,19 +684,48 @@ def _update_jsonc_default_block(config_path: Path, updates: dict[str, str]) -> d
 
     block_start, block_end = match.end(), cursor - 1
     block = original[block_start:block_end]
+    entries = {key: (ks, vs, ve) for key, ks, vs, ve in _scan_jsonc_object_entries(block)}
+    ops: list[tuple[int, int, str]] = []
+
+    for key in removals:
+        found = entries.get(key)
+        if not found:
+            continue
+        key_start, _, value_end = found
+        trailing = re.match(r"[ \t\r\n]*,", block[value_end:])
+        if trailing:
+            # Take the entry's own comma, plus the line break and indent that
+            # only existed to put that entry on its own line.
+            cut_end = value_end + trailing.end()
+            prefix = block[:key_start]
+            collapsed = re.sub(r"[ \t]*\n[ \t]*$", "\n", prefix)
+            cut_from = len(collapsed) - 1 if collapsed.endswith("\n") else key_start
+        else:
+            # Last entry of the block: the comma that keeps the JSON valid
+            # belongs to the entry before it.
+            cut_from = key_start
+            cut_end = value_end
+            head = block[:key_start].rstrip()
+            if head.endswith(","):
+                cut_from = len(head) - 1
+        ops.append((cut_from, cut_end, ""))
 
     for key, value in updates.items():
-        encoded = json.dumps(value)
-        pattern = re.compile(rf'("{re.escape(key)}"\s*:\s*)("[^"]*"|[^,}}]+)')
-        if pattern.search(block):
-            block = pattern.sub(lambda m: f"{m.group(1)}{encoded}", block, count=1)
-        elif block.strip():
-            # Insert after the opening brace, ahead of the existing keys.
-            block = f'\n    "{key}": {encoded},' + block
+        encoded = json.dumps(value, ensure_ascii=False)
+        found = entries.get(key)
+        if found:
+            _, value_start, value_end = found
+            ops.append((value_start, value_end, encoded))
         else:
-            block = f'\n    "{key}": {encoded}\n  '
+            ops.append((0, 0, f'\n    "{key}": {encoded},'))
 
-    candidate = original[:block_start] + block + original[block_end:]
+    new_block = block
+    for start, end, text in sorted(ops, key=lambda op: op[0], reverse=True):
+        new_block = new_block[:start] + text + new_block[end:]
+    if not entries:
+        new_block = re.sub(r",\s*$", "", new_block.rstrip()) + "\n  "
+
+    candidate = original[:block_start] + new_block + original[block_end:]
     try:
         parsed = load_jsonc(io.StringIO(candidate))
     except Exception as exc:
@@ -609,15 +734,73 @@ def _update_jsonc_default_block(config_path: Path, updates: dict[str, str]) -> d
     return parsed.get("default", {})
 
 
-def _read_jsonc_default(config_path: Path) -> dict:
-    """Best-effort reparse of artemis.jsonc to echo the current default model."""
+def _without_secrets(entry: object) -> object:
+    """Drop credential fields from a config block headed for the browser.
+
+    The raw key never needs to render: the endpoint table shows the masked
+    preview from the credential store instead. Presets carry placeholder keys
+    (``lm-studio``) that are no different in kind.
+    """
+    if isinstance(entry, dict):
+        return {k: v for k, v in entry.items() if k not in ("api_key", "api_key_env")}
+    return entry
+
+
+def _read_jsonc_section(config_path: Path, section: str) -> dict:
+    """Best-effort read of one top-level object of artemis.jsonc."""
     from third_party.mobile_use.utils.file import load_jsonc
 
     try:
         with open(config_path, encoding="utf-8") as f:
-            return load_jsonc(f).get("default", {})
+            value = load_jsonc(f).get(section, {})
     except Exception:  # pylint: disable=broad-exception-caught
         return {}
+    return value if isinstance(value, dict) else {}
+
+
+def _read_jsonc_default(config_path: Path) -> dict:
+    """Best-effort reparse of artemis.jsonc to echo the current default model."""
+    return _read_jsonc_section(config_path, "default")
+
+
+# Sentinel: the caller says nothing about OPENAI_BASE_URL, so .env is left alone.
+_ENV_BASE_UNCHANGED = object()
+
+
+def _apply_default_endpoint(
+    config_path: Path,
+    updates: dict[str, object],
+    *,
+    removals: tuple[str, ...] = (),
+    api_key: str = "",
+    api_key_protocol: str | None = None,
+    env_base_url: object = _ENV_BASE_UNCHANGED,
+) -> None:
+    """Write one endpoint into every place the runtime reads it from.
+
+    Shared by the endpoint form and the preset chooser so both land the same
+    three writes: the jsonc ``default`` block, the provider credential store,
+    and ``OPENAI_BASE_URL``. The key is routed by wire protocol, never by the
+    display label (unknown providers are no-ops in ``set_api_key`` and the key
+    would be dropped), and it is resolved after the block is written so an
+    omitted ``api_format`` picks up the protocol just saved.
+    """
+    from artemis.config import settings
+
+    try:
+        if updates or removals:
+            _update_jsonc_default_block(config_path, updates, removals=removals)
+        if api_key:
+            protocol = api_key_protocol or str(
+                _read_jsonc_default(config_path).get("provider") or "openai"
+            )
+            settings.set_api_key(protocol, api_key, persist_to_env=True)
+        if env_base_url is not _ENV_BASE_UNCHANGED:
+            settings.set_openai_base_url(str(env_base_url or "") or None, persist_to_env=True)
+    except Exception as exc:
+        raise HTTPException(
+            status_code=500, detail=f"Failed to update model config: {exc}"
+        ) from exc
 
 
 @router.post("/model-config")
@@ -635,7 +818,6 @@ async def update_model_config(request: UpdateModelConfigRequest):
     validated against a cloud vendor — so callers use POST /credentials/test
     for explicit checks.
     """
-    from artemis.config import settings
     from artemis.config.paths import get_config_path
 
     updates: dict[str, str] = {}
@@ -665,30 +847,118 @@ async def update_model_config(request: UpdateModelConfigRequest):
     if api_base and not api_base.startswith(("http://", "https://")):
         raise HTTPException(status_code=400, detail="api_base must start with http:// or https://")
 
-    try:
-        config_path = get_config_path("artemis.jsonc")
-        if updates:
-            _update_jsonc_default_block(config_path, updates)
-        if api_key:
-            # Route the key by wire protocol, not the display label: unknown
-            # providers are no-ops in set_api_key and the key would be dropped.
-            protocol = api_format or str(
-                _read_jsonc_default(config_path).get("provider") or "openai"
+    config_path = get_config_path("artemis.jsonc")
+    _apply_default_endpoint(
+        config_path,
+        updates,
+        api_key=api_key,
+        api_key_protocol=api_format or None,
+        env_base_url=api_base if api_base else _ENV_BASE_UNCHANGED,
+    )
+
+    # A named endpoint is also a library record: saving from the form is what
+    # "已保存" means, and the record mirrors the block that was just written so
+    # the two can never disagree about which endpoint is live.
+    if provider_label:
+        saved = _read_jsonc_default(config_path)
+        _upsert_endpoint_record(
+            _endpoint_record(
+                provider_label,
+                str(saved.get("provider") or ""),
+                str(saved.get("api_base") or ""),
+                str(saved.get("model") or ""),
             )
-            settings.set_api_key(protocol, api_key, persist_to_env=True)
-        if api_base:
-            settings.set_openai_base_url(api_base, persist_to_env=True)
-    except HTTPException:
-        raise
-    except Exception as exc:
-        raise HTTPException(status_code=500, detail=f"Failed to update model config: {exc}")
+        )
 
     readiness_engine.invalidate_cache()
     return {
         "status": "success",
         "message": "Model endpoint configuration saved and applied.",
         "provider": updates.get("provider_label"),
-        "default_model": _read_jsonc_default(config_path),
+        "default_model": _without_secrets(_read_jsonc_default(config_path)),
+    }
+
+
+# Fields of the ``default`` block that belong to whichever endpoint is active.
+# The runtime reads them straight out of artemis.jsonc (services/llm.py), and
+# its ``api_base`` outranks OPENAI_BASE_URL, so a leftover value here keeps
+# pointing at the previous provider even after the model name has changed.
+# ``fallback`` is in this set because it names a provider and a model too: a
+# record that declares no fallback must not inherit one that points at the
+# endpoint being replaced.
+_ENDPOINT_OWNED_KEYS = ("api_base", "api_key", "api_key_env", "fallback")
+
+
+class UseEndpointRequest(BaseModel):
+    """Selects an endpoint to make the one the runtime uses."""
+
+    name: str = Field(
+        ...,
+        description="Endpoint library record name to make the active default",
+    )
+
+
+def _text_field(source: dict, key: str) -> str:
+    """Non-blank string value of ``key`` — records store blanks as absent."""
+    return str(source.get(key) or "").strip()
+
+
+@router.post("/endpoints/use")
+async def use_endpoint(request: UseEndpointRequest):
+    """Make a saved endpoint library record the active model configuration.
+
+    The record is read server-side, so a library edited by hand takes effect
+    without a restart and no key is involved in the request at all. Endpoint-owned
+    fields the record does not declare are cleared rather than inherited (see
+    ``_ENDPOINT_OWNED_KEYS``): the jsonc ``api_base`` outranks
+    ``OPENAI_BASE_URL``, so a leftover local URL would keep pointing a cloud
+    endpoint at 127.0.0.1, and a stale ``fallback`` would name the vendor being
+    replaced. Reasoning knobs such as ``thinking_level`` are left alone — they
+    describe how the agent thinks, not which endpoint answers.
+    """
+    from artemis.config.paths import get_config_path
+
+    name = (request.name or "").strip()
+    if not name:
+        raise HTTPException(status_code=400, detail="An endpoint name is required.")
+
+    records = _read_endpoint_library()
+    record = next((r for r in records if _text_field(r, "name") == name), None)
+    if record is None:
+        saved = sorted(_text_field(r, "name") for r in records)
+        raise HTTPException(
+            status_code=404,
+            detail=f"Unknown endpoint {name!r}. Saved endpoints: {saved}",
+        )
+
+    provider = _text_field(record, "api_format")
+    model = _text_field(record, "model")
+    if not provider or not model:
+        raise HTTPException(
+            status_code=400, detail=f"Endpoint {name!r} needs both an API format and a model."
+        )
+
+    updates: dict[str, object] = {"provider": provider, "model": model, "provider_label": name}
+    for field in ("api_base", "thinking_level"):
+        value = _text_field(record, field)
+        if value:
+            updates[field] = value
+    removals = tuple(key for key in _ENDPOINT_OWNED_KEYS if key not in updates)
+
+    config_path = get_config_path("artemis.jsonc")
+    _apply_default_endpoint(
+        config_path,
+        updates,
+        removals=removals,
+        env_base_url=updates.get("api_base") or None,
+    )
+
+    readiness_engine.invalidate_cache()
+    return {
+        "status": "success",
+        "message": f"Endpoint “{name}” is now the active default model.",
+        "provider": name,
+        "default_model": _without_secrets(_read_jsonc_default(config_path)),
     }
 
 
@@ -696,7 +966,7 @@ def _delete_jsonc_default_block(config_path: Path) -> None:
     """Remove the top-level ``"default"`` object from a JSONC file.
 
     Comment-preserving like the update helper: everything outside the block
-    (comments, presets) stays byte-identical. The runtime falls back to factory
+    (comments, sibling sections) stays byte-identical. The runtime falls back to factory
     defaults when the block is absent, so this is how the UI "un-saves" an
     endpoint. Raises ``ValueError`` when the block is missing, braces are
     unbalanced, or the spliced result no longer parses (file untouched then).
@@ -791,47 +1061,168 @@ def _mask_secret(k: str | None) -> str | None:
     return f"****{k[-4:]}"
 
 
-# Mirrors the endpoint form fields so the read-only table below the form shows
-# exactly what the form saves, in the same order and vocabulary. Each entry in
-# the rows array is one saved endpoint record; the fields are the columns.
+# A jsonc ``"api_key": "…"`` assignment. Only the string form is matched, so a
+# nested object or a number can't be swallowed by the substitution.
+_JSONC_API_KEY_RE = re.compile(r'("api_key"\s*:\s*)"([^"]*)"')
+
+
+def _mask_jsonc_secrets(text: str) -> str:
+    """Mask ``api_key`` values in raw JSONC text headed for the config viewer.
+
+    The viewer exists to show the file's structure, not to echo credentials
+    back over HTTP — the same reason the structured blocks drop them.
+    ``api_key_env`` is a variable *name*, so it stays readable, and the
+    replacement is masked with the same rule as everywhere else.
+    """
+    return _JSONC_API_KEY_RE.sub(lambda m: f'{m.group(1)}"{_mask_secret(m.group(2))}"', text)
+
+
+# Mirrors the endpoint form fields so the library table shows exactly what the
+# form saves, in the same order and vocabulary.
 _ENDPOINT_FORM_FIELDS = ("provider", "api_format", "api_base", "model", "api_key")
+
+# Where a row came from: a saved library record, or the live ``default`` block
+# (an endpoint in use that was never saved to the library).
+_ENDPOINT_SOURCE_LIBRARY = "library"
+_ENDPOINT_SOURCE_DEFAULT = "default"
+
+
+def _read_endpoint_library() -> list[dict]:
+    """Return the saved endpoint records, tolerating a missing or broken file."""
+    import json
+
+    from artemis.config.paths import get_endpoint_library_file
+
+    try:
+        data = json.loads(get_endpoint_library_file().read_text(encoding="utf-8"))
+    except (OSError, ValueError):
+        return []
+    records = data.get("endpoints", []) if isinstance(data, dict) else []
+    return [
+        record
+        for record in records
+        if isinstance(record, dict) and str(record.get("name") or "").strip()
+    ]
+
+
+def _write_endpoint_library(records: list[dict]) -> None:
+    """Persist endpoint records; blank fields are dropped rather than stored."""
+    import json
+
+    from artemis.config.paths import get_endpoint_library_file
+
+    library_file = get_endpoint_library_file()
+    library_file.parent.mkdir(parents=True, exist_ok=True)
+    payload = {"endpoints": [{k: v for k, v in record.items() if v} for record in records]}
+    library_file.write_text(
+        json.dumps(payload, ensure_ascii=False, indent=2) + "\n", encoding="utf-8"
+    )
+
+
+def _endpoint_record(name: str, api_format: str, api_base: str, model: str) -> dict:
+    """Normalize one record to the four fields the endpoint form collects."""
+    return {
+        "name": name.strip(),
+        "api_format": (api_format or "").strip(),
+        "api_base": (api_base or "").strip(),
+        "model": (model or "").strip(),
+    }
+
+
+def _upsert_endpoint_record(record: dict) -> None:
+    """Insert or replace the record of the same name, keeping list order."""
+    records = _read_endpoint_library()
+    for index, existing in enumerate(records):
+        if str(existing.get("name") or "").strip() == record["name"]:
+            records[index] = record
+            break
+    else:
+        records.append(record)
+    _write_endpoint_library(records)
+
+
+def _masked_key_for(api_format: str) -> str | None:
+    """Masked preview of the key the credential store holds for a protocol."""
+    from artemis.config import settings
+
+    secret = settings.get_api_key(api_format) if api_format else None
+    return _mask_secret(secret.get_secret_value()) if secret else None
 
 
 @router.get("/credentials/entries")
 async def list_credential_entries():
-    """Return saved endpoint records for the read-only display table.
+    """Return the endpoint library for the display table, one row per record.
 
-    Values come from the same places the runtime reads: the artemis.jsonc
-    ``default`` block (provider/format/label/model/api_base) and the provider
-    credential store for the resolved API key (masked; the secret itself never
-    leaves the backend). The base URL falls back to OPENAI_BASE_URL when the
-    jsonc block does not pin one, matching router precedence. One row per
-    saved endpoint; the runtime currently keeps a single default endpoint.
+    Records come from the endpoint library file; the endpoint the runtime
+    actually calls is read from artemis.jsonc's ``default`` block and marked
+    ``is_active``. A live endpoint that was never saved is still listed (as
+    ``source: "default"``, its base URL falling back to OPENAI_BASE_URL the way
+    the router's precedence does) so the table can never claim nothing is
+    configured while the next task is about to use it. Keys are resolved per
+    protocol from the credential store and masked — records hold no secrets.
     """
-    from artemis.config import settings
     from artemis.config.paths import get_config_path
 
     default = _read_jsonc_default(get_config_path("artemis.jsonc"))
-    provider = str(default.get("provider") or "").strip()
-    provider_label = str(default.get("provider_label") or "").strip()
-    model = str(default.get("model") or "").strip()
-    api_base = (
-        str(default.get("api_base") or "").strip()
-        or (os.environ.get("OPENAI_BASE_URL") or "").strip()
-    )
+    active_label = str(default.get("provider_label") or "").strip()
+    active_provider = str(default.get("provider") or "").strip()
+    active_model = str(default.get("model") or "").strip()
 
-    api_key = settings.get_api_key(provider) if provider else None
-    api_key_preview = _mask_secret(api_key.get_secret_value()) if api_key else None
+    rows = []
+    for record in _read_endpoint_library():
+        name = str(record.get("name") or "").strip()
+        api_format = str(record.get("api_format") or "").strip()
+        rows.append(
+            {
+                "provider": name,
+                "api_format": api_format or None,
+                "api_base": str(record.get("api_base") or "").strip() or None,
+                "model": str(record.get("model") or "").strip() or None,
+                "api_key": _masked_key_for(api_format),
+                "is_active": bool(active_label) and active_label == name,
+                "source": _ENDPOINT_SOURCE_LIBRARY,
+            }
+        )
 
-    row = {
-        "provider": provider_label or None,
-        "api_format": provider or None,
-        "api_base": api_base or None,
-        "model": model or None,
-        "api_key": api_key_preview,
-    }
-    rows = [row] if any(row.values()) else []
+    if not any(row["is_active"] for row in rows) and (active_provider or active_model):
+        rows.insert(
+            0,
+            {
+                "provider": active_label or None,
+                "api_format": active_provider or None,
+                "api_base": str(default.get("api_base") or "").strip()
+                or (os.environ.get("OPENAI_BASE_URL") or "").strip()
+                or None,
+                "model": active_model or None,
+                "api_key": _masked_key_for(active_provider),
+                "is_active": True,
+                "source": _ENDPOINT_SOURCE_DEFAULT,
+            },
+        )
     return {"rows": rows}
+
+
+@router.delete("/endpoints/{name}")
+async def delete_endpoint(name: str):
+    """Remove one record from the endpoint library.
+
+    Only the record goes: the endpoint the runtime reads lives in the jsonc
+    ``default`` block, so deleting a saved-but-inactive endpoint cannot change
+    what the next task uses. Deleting the active one leaves that block in place
+    and the row reappears as ``source: "default"`` — taking the live
+    configuration down is DELETE /model-config, a deliberately separate act.
+    """
+    wanted = (name or "").strip()
+    records = _read_endpoint_library()
+    remaining = [r for r in records if str(r.get("name") or "").strip() != wanted]
+    if len(remaining) == len(records):
+        raise HTTPException(status_code=404, detail=f"Endpoint {wanted!r} is not in the library.")
+    _write_endpoint_library(remaining)
+    return {
+        "status": "success",
+        "message": f"Endpoint {wanted!r} removed from the library.",
+        "rows_removed": len(records) - len(remaining),
+    }
 
 
 @router.get("/server-status")

@@ -15,6 +15,7 @@ import { useI18n } from 'vue-i18n';
 import { IconEye, IconEyeInvisible, IconSave } from '@arco-design/web-vue/es/icon';
 
 import { useSystemContract } from './contract';
+import { API_FORMAT_LABEL_KEYS, API_FORMAT_OPTIONS } from './contract';
 import type { CredentialEndpointRow } from './contract';
 import { errText } from './errors';
 
@@ -26,12 +27,12 @@ const props = defineProps<{
 const { t } = useI18n();
 const system = useSystemContract();
 
-const formatOptions = computed(() => [
-  { value: 'openai', label: t('launcher.diagnostics.cred.formatOpenai') },
-  { value: 'openai_responses', label: t('launcher.diagnostics.cred.formatOpenaiResponses') },
-  { value: 'anthropic', label: t('launcher.diagnostics.cred.formatAnthropic') },
-  { value: 'google', label: t('launcher.diagnostics.cred.formatGoogle') },
-]);
+const formatOptions = computed(() =>
+  API_FORMAT_OPTIONS.map((value) => ({
+    value,
+    label: t(`launcher.diagnostics.cred.${API_FORMAT_LABEL_KEYS[value]}`),
+  })),
+);
 
 const providerName = ref('');
 const apiFormat = ref('openai');
