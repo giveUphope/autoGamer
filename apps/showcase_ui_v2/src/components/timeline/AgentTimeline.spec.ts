@@ -440,3 +440,69 @@ describe('AgentTimeline 回合级折叠', () => {
     });
   });
 });
+
+describe('AgentTimeline 轮级开合', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    apiGetMock.mockReset();
+    mockBackend();
+  });
+
+  function mountWithSessions() {
+    const wrapper = mountTimeline();
+    const sessionStore = useSessionStore();
+    const second = { ...SESSION, session_id: 'sess-2', initial_goal: '回到主页列出主页内容', start_time: SESSION.start_time + 60 };
+    sessionStore.rawSessions = [SESSION, second];
+    sessionStore.selectSession('sess-1', false);
+    return { wrapper, sessionStore };
+  }
+
+  it('点击已选中轮头收起轮身，再点展开', async () => {
+    const { wrapper } = mountWithSessions();
+    await vi.waitFor(() => expect(wrapper.find('.round-block.active .round-body').exists()).toBe(true));
+
+    const activeHead = wrapper.find('.round-block.active .round-head');
+    await activeHead.trigger('click');
+    // 收起：选中态保持（active 类仍在），轮身移除
+    expect(wrapper.find('.round-block.active').exists()).toBe(true);
+    expect(wrapper.find('.round-block.active .round-body').exists()).toBe(false);
+    expect(wrapper.find('.round-block.active .round-head').attributes('aria-expanded')).toBe('false');
+
+    await wrapper.find('.round-block.active .round-head').trigger('click');
+    expect(wrapper.find('.round-block.active .round-body').exists()).toBe(true);
+    expect(wrapper.find('.round-block.active .round-head').attributes('aria-expanded')).toBe('true');
+  });
+
+  it('收起后切换到其他轮再切回，轮身恢复展开', async () => {
+    const { wrapper, sessionStore } = mountWithSessions();
+    await vi.waitFor(() => expect(wrapper.find('.round-block.active .round-body').exists()).toBe(true));
+
+    await wrapper.find('.round-block.active .round-head').trigger('click');
+    expect(wrapper.find('.round-block.active .round-body').exists()).toBe(false);
+
+    // 从右栏等来源切换选中（绕过轮头点击），再切回
+    sessionStore.selectSession('sess-2', true);
+    await vi.waitFor(() => expect(wrapper.find('.round-block.active .round-goal').text()).toContain('回到主页'));
+    sessionStore.selectSession('sess-1', true);
+    await vi.waitFor(() => {
+      const body = wrapper.find('.round-block.active .round-body');
+      expect(body.exists()).toBe(true);
+    });
+  });
+
+  it('点击未选中轮头即选中展开', async () => {
+    const { wrapper, sessionStore } = mountWithSessions();
+    await vi.waitFor(() => expect(wrapper.findAll('.round-block').length).toBe(2));
+
+    expect(wrapper.findAll('.round-block')[1]!.find('.round-body').exists()).toBe(false);
+    await wrapper.findAll('.round-block')[1]!.find('.round-head').trigger('click');
+    await vi.waitFor(() => {
+      expect(sessionStore.currentSessionId).toBe('sess-2');
+      // v-for 重渲染会替换节点，断言前实时查询
+      const block = wrapper.findAll('.round-block')[1]!;
+      expect(block.classes()).toContain('active');
+      expect(block.find('.round-body').exists()).toBe(true);
+    });
+  });
+});

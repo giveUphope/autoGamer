@@ -82,6 +82,35 @@ function selectRound(sessionId: string): void {
   }
 }
 
+/** 用户手动收起的选中轮。仅选中轮可收起；任何来源的选中切换都恢复展开。 */
+const manuallyCollapsed = ref(new Set<string>());
+
+watch(
+  () => sessionStore.currentSessionId,
+  () => {
+    manuallyCollapsed.value = new Set<string>();
+  },
+);
+
+function isRoundOpen(round: { id: string; isSelected: boolean }): boolean {
+  return round.isSelected && !manuallyCollapsed.value.has(round.id);
+}
+
+function toggleRound(round: { id: string; isSelected: boolean }): void {
+  if (!round.isSelected) {
+    // 未选中轮：点击即选中展开
+    selectRound(round.id);
+    return;
+  }
+  const next = new Set(manuallyCollapsed.value);
+  if (next.has(round.id)) {
+    next.delete(round.id);
+  } else {
+    next.add(round.id);
+  }
+  manuallyCollapsed.value = next;
+}
+
 // ---- B6 轨迹树 / 步骤回放抽屉（仅点击时打开，抽屉自行按需拉取） ----
 const treeDrawerVisible = ref(false);
 const replayDrawerVisible = ref(false);
@@ -479,9 +508,13 @@ const isRecordBtnProcessing = computed(
           <div
             class="round-head"
             role="button"
-            :aria-expanded="round.isSelected"
-            @click="selectRound(round.id)"
+            :aria-expanded="isRoundOpen(round)"
+            @click="toggleRound(round)"
           >
+            <icon-right
+              class="round-chevron"
+              :class="{ expanded: isRoundOpen(round), placeholder: !round.isSelected }"
+            />
             <a-tag :color="round.statusColor" size="small" class="round-status">
               {{ round.statusText }}
             </a-tag>
@@ -489,7 +522,7 @@ const isRecordBtnProcessing = computed(
             <span class="round-time">{{ round.time }}</span>
           </div>
 
-          <div v-if="round.isSelected" class="round-body">
+          <div v-if="isRoundOpen(round)" class="round-body">
             <template v-if="hasListContent">
               <!-- LLM 重试警示条（M3：stream store isRetrying 驱动，文案由 retryInfo 组装） -->
               <div v-if="retryMessage" class="retry-banner" role="alert">
@@ -708,6 +741,21 @@ const isRecordBtnProcessing = computed(
   background-color: var(--color-fill-1);
   cursor: pointer;
   transition: background-color 0.15s;
+}
+
+.round-chevron {
+  flex-shrink: 0;
+  color: var(--color-text-3);
+  transition: transform 0.15s;
+}
+
+.round-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+/* 未选中轮不可展开，chevron 以透明占位保持各行文本对齐 */
+.round-chevron.placeholder {
+  opacity: 0;
 }
 
 .round-head:hover {
