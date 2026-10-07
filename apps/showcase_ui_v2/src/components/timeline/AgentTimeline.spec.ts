@@ -184,8 +184,12 @@ describe('AgentTimeline (M2)', () => {
     // 动作卡与目标 / 坐标（来自 /steps 的 action_taken 实际字段；
     // 动作标题由 util 生成——app 级 i18n 实例在本 spec 中固定 en-US，保持迁移前英文断言）
     await vi.waitFor(() => expect(wrapper.text()).toContain('Tapping Element'));
-    expect(wrapper.text()).toContain('设置应用图标');
-    expect(wrapper.text()).toContain('[319, 909]');
+    // 详情在展开网格内：点击动作卡头部展开后断言
+    const card = wrapper.find('.action-card');
+    await card.find('.card-header').trigger('click');
+    await vi.waitFor(() => expect(card.find('.card-expanded').exists()).toBe(true));
+    expect(card.text()).toContain('设置应用图标');
+    expect(card.text()).toContain('[319, 909]');
     // markdown 流文本（Work 段）
     expect(wrapper.text()).toContain('I see the home screen with Settings icon.');
   });
@@ -528,7 +532,7 @@ describe('AgentTimeline 动作卡展开图标语义', () => {
     mockBackend();
   });
 
-  it('动作卡：展开显示下箭头（可收起），收起显示右箭头（可展开）', async () => {
+  it('动作卡手风琴：默认收起右箭头无内容，展开下箭头且内容可见', async () => {
     const wrapper = mountTimeline();
     const sessionStore = useSessionStore();
     sessionStore.rawSessions = [SESSION];
@@ -545,10 +549,12 @@ describe('AgentTimeline 动作卡展开图标语义', () => {
     // 图标必须是已解析的 Arco SVG 组件（防止漏 import 退化为空的原生元素）
     expect(icon.element.tagName.toLowerCase()).toBe('svg');
     expect(icon.classes()).toContain('arco-icon');
-    // 动作卡默认展开：chevron 向下（点击收起）
-    expect(icon.classes()).toContain('expanded');
-    await card.find('.card-header').trigger('click');
-    // 收起后：chevron 复位向右（点击展开）
+    // 默认收起：chevron 向右（可展开），且无任何详情内容
     expect(icon.classes()).not.toContain('expanded');
+    expect(card.find('.card-expanded').exists()).toBe(false);
+    await card.find('.card-header').trigger('click');
+    // 展开后：chevron 向下（可收起），详情网格随之可见——图标与内容必须成对出现
+    expect(icon.classes()).toContain('expanded');
+    expect(card.find('.card-expanded').exists()).toBe(true);
   });
 });
