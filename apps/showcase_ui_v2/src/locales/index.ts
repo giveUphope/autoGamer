@@ -9,9 +9,16 @@ export const DEFAULT_LOCALE = 'zh-CN' as const;
 export const SUPPORTED_LOCALES = ['zh-CN', 'en-US'] as const;
 export type SupportedLocale = (typeof SUPPORTED_LOCALES)[number];
 
+export const LOCALE_STORAGE_KEY = 'artemis.locale';
+
+function initialLocale(): SupportedLocale {
+  const stored = typeof localStorage !== 'undefined' ? localStorage.getItem(LOCALE_STORAGE_KEY) : null;
+  return stored === 'en-US' || stored === 'zh-CN' ? stored : DEFAULT_LOCALE;
+}
+
 const i18n = createI18n({
   legacy: false,
-  locale: DEFAULT_LOCALE,
+  locale: initialLocale(),
   fallbackLocale: DEFAULT_LOCALE,
   messages: {
     'zh-CN': zhCN,
