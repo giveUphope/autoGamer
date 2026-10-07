@@ -1,10 +1,15 @@
 import { beforeEach, afterEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createPinia, setActivePinia } from 'pinia';
 
-vi.mock('@/services/api', () => ({ apiGet: vi.fn(), apiPost: vi.fn() }));
+vi.mock('@/services/api', () => ({
+  apiGet: vi.fn(),
+  apiPost: vi.fn(),
+  apiDelete: vi.fn(),
+}));
 
 import { apiGet, apiPost } from '@/services/api';
 import { useSessionStore } from './session';
+import { useSystemStore } from './system';
 
 const apiGetMock = apiGet as unknown as Mock;
 const apiPostMock = apiPost as unknown as Mock;
@@ -156,6 +161,54 @@ describe('session store — 停止 / 恢复 / 提交（用例平移自 agent.ser
 
     expect(apiPostMock).toHaveBeenCalledWith('/api/run', { goal: 'test goal', profile: 'flash' });
     expect(store.currentSessionId).toBe('new-session');
+  });
+
+  it('runTask 把提交时刻生效的端点库记录名一起发出（pin 住本次任务的模型）', async () => {
+    const store = useSessionStore();
+    const system = useSystemStore();
+    system.credentialRows = [
+      {
+        provider: 'mine',
+        api_format: 'openai',
+        api_base: 'http://127.0.0.1:1234/v1',
+        model: 'pinned-model',
+        api_key: null,
+        is_active: true,
+        source: 'library',
+      },
+    ];
+    apiPostMock.mockResolvedValue({ tasks: [] });
+
+    await store.runTask('test goal');
+
+    expect(apiPostMock).toHaveBeenCalledWith('/api/run', {
+      goal: 'test goal',
+      profile: 'flash',
+      model_endpoint: 'mine',
+    });
+  });
+
+  it('runTask 不为未存入库的当前端点编造 pin 名字', async () => {
+    const store = useSessionStore();
+    const system = useSystemStore();
+    system.credentialRows = [
+      {
+        provider: 'hand-edited',
+        api_format: 'openai',
+        api_base: null,
+        model: 'm',
+        api_key: null,
+        is_active: true,
+        source: 'default',
+      },
+    ];
+    apiPostMock.mockResolvedValue({ tasks: [] });
+
+    await store.runTask('test goal');
+
+    // 后端按名字查库，名字不存在会 400；没存入库就应当让任务跟随全局默认
+    const payload = apiPostMock.mock.calls[0][1] as Record<string, unknown>;
+    expect(payload).not.toHaveProperty('model_endpoint');
   });
 
   it('runTask 在其他任务运行中时不抢走当前选择', async () => {

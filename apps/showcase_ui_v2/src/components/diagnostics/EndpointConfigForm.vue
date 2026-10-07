@@ -15,8 +15,8 @@ import { useI18n } from 'vue-i18n';
 import { IconEye, IconEyeInvisible, IconSave } from '@arco-design/web-vue/es/icon';
 
 import { useSystemContract } from './contract';
-import { API_FORMAT_LABEL_KEYS, API_FORMAT_OPTIONS } from './contract';
 import type { CredentialEndpointRow } from './contract';
+import { API_FORMAT_LABEL_KEYS, API_FORMAT_OPTIONS } from '@/utils/model-format';
 import { errText } from './errors';
 
 const props = defineProps<{

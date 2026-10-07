@@ -19,6 +19,12 @@ export interface ModelInfo {
   id: string;
   provider: string;
   architecture?: string;
+  /**
+   * 端点库记录名。会话把模型 pin 到某条记录时后端才带这个字段，
+   * 未 pin（跟随全局默认）时不下发。记录被删除后仍带名字、id 为空——
+   * 「不知道型号」比拿今天的全局默认冒充历史真相诚实。
+   */
+  endpoint?: string;
 }
 
 export interface TaskQueueItem {
@@ -30,6 +36,7 @@ export interface TaskQueueItem {
   start_time?: number;
   device_serial?: string | null;
   device_id?: string | null;
+  model_endpoint?: string | null;
 }
 
 export interface Session {
@@ -41,6 +48,8 @@ export interface Session {
   video_url?: string;
   recording_status?: 'recording' | 'finalizing' | 'processing' | 'ready' | 'failed' | 'unavailable';
   model_info?: ModelInfo;
+  /** 本次运行 pin 的端点库记录名；null/缺失表示跟随提交时的全局默认。 */
+  model_endpoint?: string | null;
   device_serial?: string | null;
   device_id?: string | null;
   device_info?: any;

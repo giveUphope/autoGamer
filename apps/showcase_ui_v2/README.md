@@ -68,7 +68,7 @@ src/
   locales/              vue-i18n（zh-CN 默认，en-US 键集由测试锁定）
   styles/               全局样式入口（Arco 暗色基调）
   types/                自 Angular core/models 原样平移的类型契约文件
-  components/           AppNav / TaskQueuePanel / CommandDock / FloatingPlayer
+  components/           AppNav / TaskQueuePanel / CommandDock / ModelSelect / FloatingPlayer
     timeline/           AgentTimeline / StepCard / CheckerPanel / NotesPanel 等
     diagnostics/        DiagnosticsWizard 三步向导（环境 / 凭据 / 设备）
   views/                LauncherView / WorkspaceView
@@ -98,7 +98,7 @@ M4 回放/投屏 → M5 系统诊断 → **M6 i18n/主题/打包收尾与切换�
 | 系统 store（最小） | `src/stores/system.ts` | 仅 `/api/status` 连通性轮询（5s）与顶栏小圆点；完整诊断功能留给 M5 |
 | 工作台 | `src/views/WorkspaceView.vue` | `a-layout` + 可拖拽分栏（rAF 合帧）+ 时间线 M2 占位 |
 | 任务队列面板 | `src/components/TaskQueuePanel.vue` | 队列/历史两个 tab（`a-badge` 计数），`a-list` + `a-tag` 状态色，运行中停止、历史 `a-popconfirm` 删除、`a-popconfirm` 清空历史，点击选中会话（pin 语义） |
-| 命令条 | `src/components/CommandDock.vue` | Ctrl+K / ⌘K 唤起，`a-input` 回车提交 `/api/run`，flash/pro profile 持久化，错误 5s 自动消失 |
+| 命令条 | `src/components/CommandDock.vue` | 常驻输入行（早期是悬停/聚焦才展开的胶囊，现按要求改为始终展开，Ctrl+K / ⌘K 仍聚焦输入框），`a-input` 回车提交 `/api/run`，flash/pro profile 持久化，模型选择器与启动器、诊断向导共用 `ModelSelect.vue` 的同一份 system store 状态，错误 5s 自动消失 |
 | 顶部导航 | `src/components/AppNav.vue` | 页面入口 + 连接小圆点 + 运行器状态 tag |
 | 启动器 | `src/views/LauncherView.vue` | `a-textarea` 任务提交（复用同一 store 提交路径）+ 会话数摘要（`a-statistic`）；诊断向导不做（M5） |
 | i18n | `src/locales/{zh-CN,en-US}.ts` | 状态 / 连接 / 队列 / 命令条 / 启动器 key 全量补齐，键集一致性由 `locales.spec.ts` 锁定 |
@@ -106,7 +106,7 @@ M4 回放/投屏 → M5 系统诊断 → **M6 i18n/主题/打包收尾与切换�
 ### 与后端的端点契约（与 Angular 版实际调用一致）
 
 - `GET /api/status`（2s 轮询）、`GET /api/sessions`（6s 轮询）
-- `POST /api/run`（`{goal, profile}`，可选 `expected_output` / `enable_outputter` / `verification_level` / `explorer_mode`）
+- `POST /api/run`（`{goal, profile}`，可选 `expected_output` / `enable_outputter` / `verification_level` / `explorer_mode` / `model_endpoint`；`model_endpoint` 为端点库记录名，提交时把选择器当前生效的那条 pin 给本次任务——后端校验名字存在后由队列 worker 导出 `ARTEMIS_MODEL_ENDPOINT`，此后全局默认再切换也不影响该任务，会话列表/运行信息气泡按 `model_info.endpoint` 显示这条运行用的端点；名字不在库里后端直接 400，未存入库的当前端点不发该字段）
 - `POST /api/stop?all=&session_id=`（query + body 双通道）、`POST /api/resume`
 - `POST /api/sessions/{id}/delete`、`POST /api/cleanup`
 
@@ -277,10 +277,10 @@ src/
 | --- | --- | --- |
 | 系统 store | `src/stores/system.ts` | 自 Angular `SystemService`（610 行）完整平移：`fetchReadiness`（silent/force 两参、**共享 in-flight 请求**防慢探针排队、**timestamp 单调守卫** + **内容签名去重**——3s 轮询零响应式抖动）、3s 自动轮询（页面隐藏暂停 + visibilitychange 静默刷新）；emulator 生命周期（`launchEmulator` 乐观初始态、**1s 状态轮询**、ready/failed/stopped/idle 停轮询并联动 readiness 刷新、失败合成态）；ADB 管理（`restartAdb` / Wi-Fi `connectWirelessAdb` / 远程 server `fetchAdbServerStatus`·`probeAdbServer`·`connectAdbServer`·`useLocalAdbServer` / `selectDevice`，返回 report 幂等应用）；凭据（`testApiKey` 不落库验证、`updateApiKey` 应用 report 并刷新 model-config-env、`skipCredentialsCheck` 旁路）；端点配置（`saveModelConfig` / `useEndpoint` / `updateApiKey` 成功后**同时刷新 `model-config-env` 与 `credentials/entries`**——两处读的都是 artemis.jsonc 的 `default` 块，漏刷其一就会出现「保存成功但页面没变」；`deleteEndpointRecord(row)` 按行来源分流：库记录走 `/endpoints/{name}`（名字过 `encodeURIComponent`，否则 `/` 会多切一段路径），只存在于 default 块的那行走 `/model-config`）；三步引导 computed（`isEnvironmentReady` 四条件、`isCredentialsReady`、`isDeviceReady`、`passedStepCount` 等）与 probe lookups（llm/ocr 双 id 兼容）；M1 的 `online` 连通性行为兼容保留并与 readiness 联动 |
 | 类型契约 | `src/types/system.model.ts` | 补 `ModelConfigEnvResponse`（自 Angular `system.service.ts` L581-609） |
-| 诊断向导 | `src/components/diagnostics/` | `DiagnosticsWizard.vue` 容器（三步完成度 + 手动重新检测 + 跳过凭据 + 就绪横幅；模拟器启动期 watch 驱动 1s 状态轮询）；`EnvironmentStep.vue`（python/adb/config/toolchain 四探针卡 + `probe.actions` 三类动作 + 一键安装条 + 设备列表）；`CredentialsStep.vue`（三张卡：`EndpointConfigForm.vue` 端点信息录入 —— 提供商自由命名 + API 格式下拉 + 端点地址 + 模型 + 可选 Key，保存即写 `default` 块并存成一条端点库记录；当前模型配置卡 —— 逐项显示 `default` 块的真实端点名 / 协议 / 端点地址 / 模型 / 思考等级 / 回退，缺项标「未配置」而不用兜底常量冒充，卡内合并 `EndpointSwitcher.vue` 切换行（候选只来自端点库 —— 配置文件里的厂商预设已随响应契约一起删除，端点库为空时切换行不出现；当前生效的那条只可看、不可重复选用）与 JSONC 折叠查看器（`api_key` 已在后端掩码）；`CredentialsManager.vue` 端点库表格 —— 一行一条记录、生效的那条带「当前」徽标、`table-layout: fixed` + 不换行 + 省略号让行高一致，编辑回填表单、删除按行来源分流）；`DeviceStep.vue`（四态互斥：就绪+多设备切换 / 启动中进度跟踪（35%/65% 阈值 + 日志流 + 停止）/ 失败诊断卡（重试[远程 ADB 禁用]+重启 ADB+关闭）/ 连接引导（Emulator AVD 列表 · USB · Wi-Fi 表单 · 远程 ADB Server 面板））；`useCopy.ts` / `errors.ts` 辅助 |
+| 诊断向导 | `src/components/diagnostics/` | `DiagnosticsWizard.vue` 容器（三步完成度 + 手动重新检测 + 跳过凭据 + 就绪横幅；模拟器启动期 watch 驱动 1s 状态轮询）；`EnvironmentStep.vue`（python/adb/config/toolchain 四探针卡 + `probe.actions` 三类动作 + 一键安装条 + 设备列表）；`CredentialsStep.vue`（三张卡：`EndpointConfigForm.vue` 端点信息录入 —— 提供商自由命名 + API 格式下拉 + 端点地址 + 模型 + 可选 Key，保存即写 `default` 块并存成一条端点库记录；当前模型配置卡 —— 逐项显示 `default` 块的真实端点名 / 协议 / 端点地址 / 模型 / 思考等级 / 回退，缺项标「未配置」而不用兜底常量冒充，卡内切换行改用共用组件 `ModelSelect.vue`（候选只来自端点库 —— 配置文件里的厂商预设已随响应契约一起删除；当前生效的那条就是选中值，未存入端点库的当前端点以只读条目占位、选中它不发请求；选中即生效，切换失败时单向绑定让下拉弹回原值）与 JSONC 折叠查看器（`api_key` 已在后端掩码）；`CredentialsManager.vue` 端点库表格 —— 一行一条记录、生效的那条带「当前」徽标、`table-layout: fixed` + 不换行 + 省略号让行高一致，编辑回填表单、删除按行来源分流）；`DeviceStep.vue`（四态互斥：就绪+多设备切换 / 启动中进度跟踪（35%/65% 阈值 + 日志流 + 停止）/ 失败诊断卡（重试[远程 ADB 禁用]+重启 ADB+关闭）/ 连接引导（Emulator AVD 列表 · USB · Wi-Fi 表单 · 远程 ADB Server 面板），其开合由 `showConnectionMethods` 单独决定：「无可用设备」只作为**初始**展开条件（watch 跟随），用户亲手开合一次后就不再被自动条件改回去 —— 以前写成「手动开 或 自动开」，无设备时自动项恒真，「收起连接方式」点了没有任何变化）；「未检测到 AVD」这类**检测结论**放在折叠块外面（`.avd-empty-notice`，条件为「未就绪 且 adb 未失败 且 已安装 AVD 数为 0」），收起连接方式也不会连带藏掉，面板内的模拟器页签只留一行指向它的说明（`.avd-empty-inline`），不重复出第二份告警）；`useCopy.ts` / `errors.ts` 辅助 |
 | 契约视图 | `src/components/diagnostics/contract.ts` | 组件侧窄契约 `SystemStoreContract` + **编译期结构断言**（真实 store 必须逐字段兼容，数据层漂移即编译报错） |
 | 启动器集成 | `src/views/LauncherView.vue` | 顶部 diagnostics/launcher 双 tab 切换（就绪时 diagnostics tab 打勾，对齐 Angular 首页）；launcher tab 保留 M1 任务提交与摘要 |
-| i18n | `src/locales/{zh-CN,en-US}.ts` | 新增 `launcher.tabs.*` / `launcher.diagnostics.*` 约 130 键（键集一致性由 `locales.spec.ts` 锁定）；probe 的 title/summary 等后端字段原样透传不 i18n |
+| i18n | `src/locales/{zh-CN,en-US}.ts` | 新增 `launcher.tabs.*` / `launcher.diagnostics.*` 约 130 键（键集一致性由 `locales.spec.ts` 锁定）；probe 的 title/summary 等后端字段原样透传不 i18n；例外：`launcher.presets.items.<id>.title/goal` 只登记在 zh-CN，en-US 故意不复制（英文以 `task_preset_catalog.py` 为权威，复制即漂移），该不对称由 spec 断言钉住 |
 
 ### 端点契约（与 Angular `system.service.ts` 实际调用一致）
 
@@ -396,4 +396,4 @@ M0–M6 之外的挂起项收尾（对应各里程碑已知边界与调研报告
 | 工程收尾 | `ipc_service.py` 删除 Angular 时代遗留别名 `filter_event_for_angular`；`package.json` 补 `engines: node>=20.19.0`（对齐 Vite 7 要求与 start.sh 校验）；`make release-ui` 一键构建 + 同步 wheel 回退资源；`changelogs.md` 补迁移完成记录 |
 | 深度 i18n | 见上文 M6 已知边界的修订说明 |
 | 打字机与轮换短语 | `useTypewriter` composable（双泳道 text/thought、母本节奏 667 chars/s 等价移植、live 判定零常驻定时器、`isReset` 单次 rewind）；planning loader 16 条轮换短语（2800ms，loader 可见才轮转） |
-| 未消费端点接入 | `GET /api/tasks/presets` → 启动器推荐任务 chips（点击填入不直接提交，失败静默）；`GET /api/sessions/{id}/tree` → 时间线工具条"轨迹树"抽屉（a-tree，按 trace 树节点归一渲染）；回放调试组（`/api/replay/tools|config`、`replay_steps`、`steps/{n}/replay`、`replay_traces`）→ 时间线工具条"步骤回放"抽屉（设备/工具选择 + **真实执行二次确认** + 结果折叠展示） |
+| 未消费端点接入 | `GET /api/tasks/presets` → 启动器推荐任务 chips（点击填入不直接提交，失败静默；chip 文案与填入的目标文本按 preset id 取 zh-CN 覆盖，无覆盖时退回后端英文目录原文）；`GET /api/sessions/{id}/tree` → 时间线工具条"轨迹树"抽屉（a-tree，按 trace 树节点归一渲染）；回放调试组（`/api/replay/tools 与 /api/replay/config`、`replay_steps`、`steps/{n}/replay`、`replay_traces`）→ 时间线工具条"步骤回放"抽屉（设备/工具选择 + **真实执行二次确认** + 结果折叠展示） |

@@ -15,6 +15,9 @@ function flattenKeys(obj: Record<string, unknown>, prefix = ''): string[] {
   });
 }
 
+/** 推荐任务的 id 键覆盖文案只登记在 zh-CN（英文以后端目录为准）。 */
+const PRESET_ITEM_PREFIX = 'launcher.presets.items.';
+
 describe('locales', () => {
   it('defaults to zh-CN (decision D3: 中文界面)', () => {
     expect(DEFAULT_LOCALE).toBe('zh-CN');
@@ -27,7 +30,24 @@ describe('locales', () => {
     expect(enUS.nav.workspace).toBe('Workspace');
   });
 
-  it('zh-CN and en-US share the exact same key set', () => {
-    expect(flattenKeys(zhCN).sort()).toEqual(flattenKeys(enUS).sort());
+  it('zh-CN and en-US share the same key set, bar the id-keyed preset overrides', () => {
+    const strip = (keys: string[]) => keys.filter((k) => !k.startsWith(PRESET_ITEM_PREFIX));
+    expect(strip(flattenKeys(zhCN)).sort()).toEqual(strip(flattenKeys(enUS)).sort());
+  });
+
+  it('keeps preset wording in zh-CN only, and complete there', () => {
+    const zhItems = flattenKeys(zhCN).filter((k) => k.startsWith(PRESET_ITEM_PREFIX));
+    expect(zhItems.length).toBeGreaterThan(0);
+    // 英文不复制后端文案：谁想"补齐对称"就是把一份会漂移的副本请进仓库
+    expect(flattenKeys(enUS).filter((k) => k.startsWith(PRESET_ITEM_PREFIX))).toEqual([]);
+
+    const items = zhCN.launcher.presets.items as Record<string, { title: string; goal: string }>;
+    for (const [id, entry] of Object.entries(items)) {
+      // 每个 id 都要同时有 title 与 goal，缺一即半中半英
+      expect(zhItems).toContain(`${PRESET_ITEM_PREFIX}${id}.title`);
+      expect(zhItems).toContain(`${PRESET_ITEM_PREFIX}${id}.goal`);
+      expect(entry.title.trim(), id).not.toBe('');
+      expect(entry.goal.trim(), id).not.toBe('');
+    }
   });
 });

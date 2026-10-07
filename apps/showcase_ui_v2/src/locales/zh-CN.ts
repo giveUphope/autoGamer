@@ -26,8 +26,15 @@ export default {
     online: '已连接',
     offline: '连接断开',
   },
+  // 模型选择器（启动器 / 工作台 / 诊断向导共用同一个组件与同一份状态）
+  model: {
+    placeholder: '选择模型端点',
+    noBase: '提供商官方端点',
+    currentUnsaved: '当前端点（未存入端点库）',
+  },
   launcher: {
     title: 'ARTEMIS 控制台',
+    modelLabel: '模型',
     description: '系统诊断三步引导（环境 / 凭据 / 设备）与自主任务启动。',
     tabs: {
       diagnostics: '系统设置与前置条件',
@@ -49,10 +56,91 @@ export default {
       pending: '排队中',
       done: '已完成',
     },
-    // B6 推荐任务 chips（presets 条目的 title/description/goal 为后端字段）
+    // B6 推荐任务 chips（条目标题与目标文本按 id 本地化；en-US 不复制，
+    // 直接用后端 task_preset_catalog 的英文原文，见 TaskPresets.vue 的回落链）
     presets: {
       title: '推荐任务',
       hint: '点击推荐项填入输入框，可修改后再提交',
+      items: {
+        maps_coffee: {
+          title: '查找精品咖啡',
+          goal: '打开 Google 地图，搜索附近评分最高的精品咖啡馆，并查看第一条结果的详情。',
+        },
+        pro_commute_share: {
+          title: '通勤到达时间与短信草稿',
+          goal:
+            '打开 Google 地图查看前往国际机场的通勤时间，推算到达时刻，然后打开短信应用起草一条告知预计到达时间的短信。',
+        },
+        gmail_receipts: {
+          title: '查找订单与行程邮件',
+          goal: '打开 Gmail，搜索最近的航班或快递确认邮件。',
+        },
+        pro_email_to_calendar: {
+          title: '把邮件行程写入日历',
+          goal:
+            '打开 Gmail 找到最新的活动邀请或行程邮件，提取日期与地点，然后打开 Google 日历创建对应的日程。',
+        },
+        chrome_research: {
+          title: '检索 AI 前沿进展',
+          goal: '打开 Chrome 浏览器，搜索多模态移动智能体的最新突破进展。',
+        },
+        pro_research_keep: {
+          title: '商品调研并记笔记',
+          goal:
+            '打开 Chrome，调研排名前三的降噪耳机并对比价格与续航，然后在 Keep 备忘里写一条结构化的对比小结。',
+        },
+        youtube_lofi: {
+          title: '播放 Lo-Fi 音乐电台',
+          goal: '打开 YouTube，搜索“Lofi hip hop beats relaxing radio”并点击进入直播。',
+        },
+        settings_display_wifi: {
+          title: '深色模式与 Wi-Fi 检查',
+          goal: '打开设置应用，进入显示设置，确认深色主题已开启，并查看 Wi-Fi 连接状态。',
+        },
+        pro_settings_qa: {
+          title: '设置项健康与崩溃巡检',
+          goal:
+            '遍历设置子菜单（网络、已连接设备、应用、电池、存储），确认每个页面都能正常加载、无 ANR 或崩溃弹窗，并汇总结果。',
+        },
+        clock_timer: {
+          title: '25 分钟番茄计时器',
+          goal: '打开时钟应用，切换到计时器标签，设置 25 分钟并启动倒计时。',
+        },
+        calc_gratuity: {
+          title: '分摊账单并计算小费',
+          goal: '打开计算器，计算 186.40 美元账单的 18% 小费，再除以 3 人分摊。',
+        },
+        photos_inspect: {
+          title: '查看最近一张截图',
+          goal: '打开 Google 相册，查看截图相册里最新的一张截图。',
+        },
+        wechat_browse: {
+          title: '查看微信消息',
+          goal: '打开微信，查看最上方的最近聊天消息。',
+        },
+        pro_wechat_to_calendar: {
+          title: '把微信通知写入日历',
+          goal:
+            '打开微信，在最上方的会话里找到最新的会议通知或活动消息，提取时间与主题，然后打开日历安排日程。',
+        },
+        xhs_coffee_guide: {
+          title: '小红书探店搜索',
+          goal: '打开小红书，搜索评分最高的精品咖啡馆，并查看排名第一的笔记。',
+        },
+        meituan_ramen_search: {
+          title: '美团美食搜索',
+          goal: '打开美团或大众点评，搜索附近评分最高的拉面店，并查看排名第一商家的评分。',
+        },
+        bilibili_stream: {
+          title: 'B 站技术视频',
+          goal: '打开哔哩哔哩，搜索“AI Agent 架构”，并播放排名第一的相关视频。',
+        },
+        pro_playstore_review: {
+          title: '应用商店同类应用评价调研',
+          goal:
+            '打开 Google Play 商店，搜索评分最高的任务管理类应用，对比排名前两位候选的评分与最新用户评价，并记录推荐结论。',
+        },
+      },
     },
     // M5 诊断向导（probe 的 title/summary/description/错误为后端字段，原样透传不 i18n）
     diagnostics: {
@@ -136,13 +224,7 @@ export default {
         hideKey: '隐藏明文',
         testing: '测试中…',
         switchTitle: '切换当前端点',
-        switchSubtitle: '候选来自下方端点库，选用后立即成为当前默认端点。',
-        switchPlaceholder: '选择一个端点',
-        switchApplyBtn: '选用并生效',
-        switchActive: '当前',
-        switchNoBase: '提供商官方端点',
-        switchOk: '端点 {name} 已设为当前默认模型。',
-        switchFail: '端点切换失败。',
+        switchSubtitle: '候选来自下方端点库，选中即成为当前默认端点。',
         cfgTitle: '当前模型配置',
         cfgSubtitle: '定义于 {path}',
         cfgEndpoint: '端点名称',
@@ -224,6 +306,7 @@ export default {
         avdEmptyTitle: '未检测到 Android 虚拟设备 (AVD)',
         avdEmptyDesc:
           '安装 Android Studio 并在 Device Manager 中创建虚拟设备（推荐 Pixel 8 / API 34），或用命令行 sdkmanager / avdmanager 创建。创建后 ARTEMIS 会自动检测并连接。',
+        avdEmptyInPanel: '当前没有已安装的 AVD，创建办法见上方的检测提示；创建完成后会自动出现在这里。',
         usbIntro: '用 USB 线连接 Android 手机并开启 USB 调试：',
         usb1Title: '连接 USB 数据线',
         usb1Desc: '用数据线将 Android 手机连接到本机。',
@@ -297,7 +380,6 @@ export default {
       noDevice: '未指定',
     },
     dock: {
-      capsuleHint: '输入任务指令',
       placeholder: '输入任务指令，回车提交',
       submit: '提交',
       submitFail: '提交失败：{reason}',
@@ -420,6 +502,7 @@ export default {
       runInfo: {
         elapsed: '用时',
         tokens: 'Tokens',
+        endpoint: '端点',
         inOut: '{in} 入 · {out} 出',
         context: '上下文',
         ofWindow: '共 {window}',

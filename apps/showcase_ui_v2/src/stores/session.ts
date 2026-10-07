@@ -22,6 +22,7 @@ import { defineStore } from 'pinia';
 import { apiGet, apiPost } from '@/services/api';
 import { usePlayerStore } from '@/stores/player';
 import { useStreamStore } from '@/stores/stream';
+import { useSystemStore } from '@/stores/system';
 import type { ModelInfo, Session, TaskQueueItem } from '@/types/session.model';
 import {
   mapPendingQueue,
@@ -299,6 +300,13 @@ export const useSessionStore = defineStore('session', () => {
     proTuning?: RunTaskOptions,
   ): Promise<unknown> {
     const payload: Record<string, unknown> = { goal, profile };
+    // 提交那一刻选择器显示的是哪条端点，就把它的名字一起发给后端 pin 住：
+    // 队列 worker 用它导出 ARTEMIS_MODEL_ENDPOINT，之后全局默认再怎么切，
+    // 这个任务用的仍是提交时的那条记录（未入库的端点没有名字，任务跟随默认）。
+    const modelEndpoint = useSystemStore().activeEndpointName;
+    if (modelEndpoint) {
+      payload.model_endpoint = modelEndpoint;
+    }
     if (proTuning?.expectedOutput && proTuning.expectedOutput.trim()) {
       payload.expected_output = proTuning.expectedOutput.trim();
     }

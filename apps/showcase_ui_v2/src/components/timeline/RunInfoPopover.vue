@@ -32,6 +32,9 @@ let usageTimer: ReturnType<typeof setInterval> | null = null;
 
 const model = computed(() => sessionStore.currentSession?.model_info || sessionStore.activeModel);
 
+/** 本次运行 pin 的端点库记录名（会话自带的事实）；未 pin 的由全局默认服务，不显示这一行。 */
+const pinnedEndpoint = computed(() => sessionStore.currentSession?.model_endpoint || '');
+
 const isPro = computed(() => {
   const name = (model.value?.name || '').toLowerCase();
   return name.includes('pro');
@@ -124,6 +127,11 @@ onBeforeUnmount(() => {
         <div class="run-info-header">
           <span class="run-info-title" :class="{ 'is-pro': isPro }">{{ modelDisplayName }}</span>
           <span v-if="model?.id" class="run-info-model" :title="model.id">{{ model.id }}</span>
+        </div>
+
+        <div v-if="pinnedEndpoint" class="run-info-row">
+          <span class="run-info-label">{{ t('workspace.timeline.runInfo.endpoint') }}</span>
+          <span class="run-info-value" :title="pinnedEndpoint">{{ pinnedEndpoint }}</span>
         </div>
 
         <div class="run-info-row">

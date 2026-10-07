@@ -15,7 +15,7 @@ import type {
 } from '../../types/system.model';
 import { type CredentialEndpointRow, type ModelConfigEnvResponse } from './contract';
 import DiagnosticsWizard from './DiagnosticsWizard.vue';
-import EndpointSwitcher from './EndpointSwitcher.vue';
+import ModelSelect from '@/components/ModelSelect.vue';
 
 /**
  * 组件测试：DiagnosticsWizard（M5 诊断向导）。
@@ -446,7 +446,7 @@ describe('DiagnosticsWizard (M5)', () => {
 
     // 端点表单、当前配置卡（内含端点切换行）与端点库表格都在
     expect(wrapper.find('.endpoint-card').exists()).toBe(true);
-    expect(wrapper.find('.inspector-card .endpoint-switch').exists()).toBe(true);
+    expect(wrapper.find('.inspector-card .switch-row').exists()).toBe(true);
     // 配置卡逐项显示 default 块里的真实值（端点名与端点地址都可见）
     const card = wrapper.find('.inspector-card').text();
     expect(card).toContain('lmstudio');
@@ -468,6 +468,53 @@ describe('DiagnosticsWizard (M5)', () => {
     select.vm.$emit('change', DEVICE_B.serial);
     await flushPromises();
     expect(mockSystem.selectDevice).toHaveBeenCalledWith(DEVICE_B.serial);
+  });
+
+  it('collapses and re-expands the connection guide, then stops auto-following', async () => {
+    const wrapper = mountWizard();
+    await flushPromises();
+
+    const deviceStep = wrapper.findComponent({ name: 'DeviceStep' });
+    const toggle = deviceStep.find('.conn-toggle-btn');
+    // 无设备：引导自动展开，按钮该提供「收起」
+    expect(deviceStep.find('.guide-panel').exists()).toBe(true);
+    expect(toggle.text()).toContain('收起连接方式');
+
+    await toggle.trigger('click');
+    expect(deviceStep.find('.guide-panel').exists()).toBe(false);
+    expect(toggle.text()).toContain('切换连接方式');
+
+    await toggle.trigger('click');
+    expect(deviceStep.find('.guide-panel').exists()).toBe(true);
+
+    // 用户亲手开合过之后，设备就绪也不该把它收回去
+    setDeviceReady(true);
+    await flushPromises();
+    expect(deviceStep.find('.guide-panel').exists()).toBe(true);
+  });
+
+  it('keeps the no-AVD detection notice outside the collapsible guide', async () => {
+    const wrapper = mountWizard();
+    await flushPromises();
+    const deviceStep = wrapper.findComponent({ name: 'DeviceStep' });
+
+    // 无设备且没装 AVD：检测提示独立于折叠块存在
+    expect(deviceStep.find('.avd-empty-notice').exists()).toBe(true);
+
+    await deviceStep.find('.conn-toggle-btn').trigger('click');
+    expect(deviceStep.find('.guide-panel').exists()).toBe(false);
+    expect(deviceStep.find('.avd-empty-notice').exists()).toBe(true);
+
+    // 展开时也只有一份告警，面板内改为一行指向性说明
+    await deviceStep.find('.conn-toggle-btn').trigger('click');
+    expect(deviceStep.findAll('.avd-empty-notice')).toHaveLength(1);
+    expect(deviceStep.find('.guide-panel .avd-empty-notice').exists()).toBe(false);
+    expect(deviceStep.find('.avd-empty-inline').exists()).toBe(true);
+
+    // 设备就绪后不再唠叨 AVD
+    setDeviceReady(true);
+    await flushPromises();
+    expect(deviceStep.find('.avd-empty-notice').exists()).toBe(false);
   });
 
   it('shows the jsonc viewer and hides the fixed env table in the default custom mode', async () => {
@@ -606,25 +653,21 @@ describe('DiagnosticsWizard (M5)', () => {
     const wrapper = mountWizard();
     await flushPromises();
 
-    // 切换行在「当前模型配置」卡内部，不再自立一张卡
-    const switcher = wrapper.findComponent(EndpointSwitcher);
-    expect(wrapper.find('.inspector-card .endpoint-switch').exists()).toBe(true);
-    const select = switcher.findComponent({ name: 'Select' });
+    // 选择器在「当前模型配置」卡内部，与启动器/工作台是同一个组件
+    expect(wrapper.find('.inspector-card .switch-row').exists()).toBe(true);
+    const select = wrapper.findComponent(ModelSelect).findComponent({ name: 'Select' });
     expect((select.props('options') as { label: string }[]).map((o) => o.label)).toEqual([
-      'deepseek · 当前 · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
+      'deepseek · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
       'my-gateway · openai/gateway-1 · 提供商官方端点',
     ]);
+    expect(select.props('modelValue')).toBe('deepseek');
 
-    select.vm.$emit('update:modelValue', 'my-gateway');
+    select.vm.$emit('change', 'my-gateway');
     await flushPromises();
-    await switcher.find('.switch-apply-btn').trigger('click');
-    await flushPromises();
-
     expect(mockSystem.useEndpoint).toHaveBeenCalledWith('my-gateway');
-    expect(switcher.text()).toContain('Endpoint applied.');
   });
 
-  it('offers only saved library records and never re-applies the active one', async () => {
+  it('shows an unsaved active endpoint as a read-only entry that cannot be re-applied', async () => {
     const implicit: CredentialEndpointRow = {
       ...SAVED_ROW,
       provider: 'in-use-but-unsaved',
@@ -632,49 +675,44 @@ describe('DiagnosticsWizard (M5)', () => {
     };
     const other: CredentialEndpointRow = { ...SAVED_ROW, provider: 'other', is_active: false };
     mockSystem.modelConfigEnv = MOCK_ENV;
-    mockSystem.credentialRows = [implicit, other, SAVED_ROW];
+    mockSystem.credentialRows = [implicit, other];
     const wrapper = mountWizard();
     await flushPromises();
 
-    const select = wrapper.findComponent(EndpointSwitcher).findComponent({ name: 'Select' });
-    const labels = (select.props('options') as { label: string }[]).map((o) => o.label);
-    expect(labels).toEqual([
-      'other · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
-      'deepseek · 当前 · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
-    ]);
+    const select = wrapper.findComponent(ModelSelect).findComponent({ name: 'Select' });
+    const options = select.props('options') as { value: string; label: string }[];
+    // 当前用的那条没存进库，列表里必须有它（否则选中项指向一个不存在的条目），
+    // 但它没有可切换的名字，选中它不该发出请求
+    expect(options).toHaveLength(2);
+    expect(options[0]!.label).toContain('当前端点（未存入端点库） · google/gemini-flash');
+    expect(options[1]).toEqual({
+      value: 'other',
+      label: 'other · openai/qwen3.6-35b-a3b-mtp · http://127.0.0.1:1234/v1',
+    });
+    expect(select.props('modelValue')).toBe(options[0]!.value);
 
-    const applyBtn = wrapper
-      .findComponent(EndpointSwitcher)
-      .find('.switch-apply-btn')
-      .element as HTMLButtonElement;
-
-    // 当前那条不许再点一次：记录里没有 fallback 时，重复应用会把现存 fallback 清掉
-    select.vm.$emit('update:modelValue', 'deepseek');
+    select.vm.$emit('change', options[0]!.value);
     await flushPromises();
-    expect(applyBtn.disabled).toBe(true);
+    expect(mockSystem.useEndpoint).not.toHaveBeenCalled();
 
-    select.vm.$emit('update:modelValue', 'other');
+    select.vm.$emit('change', 'other');
     await flushPromises();
-    expect(applyBtn.disabled).toBe(false);
+    expect(mockSystem.useEndpoint).toHaveBeenCalledWith('other');
   });
 
-  it('drops a selection whose record left the library', async () => {
-    const other: CredentialEndpointRow = { ...SAVED_ROW, provider: 'other', is_active: false };
+  it('snaps the selector back when switching endpoints fails', async () => {
     mockSystem.modelConfigEnv = MOCK_ENV;
-    mockSystem.credentialRows = [SAVED_ROW, other];
+    mockSystem.credentialRows = [SAVED_ROW];
+    mockSystem.useEndpoint.mockRejectedValueOnce(new Error('boom'));
     const wrapper = mountWizard();
     await flushPromises();
 
-    const switcher = wrapper.findComponent(EndpointSwitcher);
-    switcher.findComponent({ name: 'Select' }).vm.$emit('update:modelValue', 'other');
-    await flushPromises();
-    expect((switcher.find('.switch-apply-btn').element as HTMLButtonElement).disabled).toBe(false);
-
-    // 选中的那条被删了、库里还剩别的：选择必须清空，按钮不许继续对着不存在的端点
-    mockSystem.credentialRows = [SAVED_ROW];
+    const select = wrapper.findComponent(ModelSelect).findComponent({ name: 'Select' });
+    select.vm.$emit('change', 'my-gateway');
     await flushPromises();
 
-    expect((switcher.find('.switch-apply-btn').element as HTMLButtonElement).disabled).toBe(true);
+    // 单向绑定 store：失败后显示值仍是生效的那条，不会留下"看着已切、其实没切"
+    expect(select.props('modelValue')).toBe('deepseek');
   });
 
   it('marks the config as 未配置 instead of inventing an endpoint when there is none', async () => {
@@ -688,7 +726,9 @@ describe('DiagnosticsWizard (M5)', () => {
     // 旧实现把 google / gemini-3.8-flash 当兜底常量写死在模板里，配置文件为空时会显示假配置
     expect(card).not.toContain('gemini-3.8-flash');
     expect(card).not.toContain('Google Gemini');
-    // 端点库为空时不出现切换行
-    expect(wrapper.find('.endpoint-switch').exists()).toBe(false);
+    // 端点库为空时选择器不可用（不编出候选）
+    const select = wrapper.findComponent(ModelSelect).findComponent({ name: 'Select' });
+    expect(select.props('options')).toEqual([]);
+    expect(select.props('disabled')).toBe(true);
   });
 });

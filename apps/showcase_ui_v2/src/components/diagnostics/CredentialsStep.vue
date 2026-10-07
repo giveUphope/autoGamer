@@ -5,7 +5,7 @@
  * artemis.jsonc default 块与 .env，填了提供商名还会存成一条端点库记录；
  * 当前模型配置卡只读展示 default 块里的真实端点（端点名 / 协议 / 端点地址 /
  * 模型 / 思考等级 / 回退），缺项显式标「未配置」而不用兜底常量冒充，卡内合并了
- * 端点切换行（EndpointSwitcher，候选来自端点库）与完整 JSONC 折叠查看器（密钥
+ * 端点切换行（与启动器、工作台共用 ModelSelect，候选来自端点库）与完整 JSONC 折叠查看器（密钥
  * 已在后端掩码）；端点库表格（CredentialsManager）一行一条记录，带当前徽标与
  * 编辑/删除。
  * 挂载即跳过凭据检查并拉取 modelConfigEnv（对齐 Angular setModelSetupMode 语义）。
@@ -14,12 +14,13 @@ import { computed, nextTick, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconCheck, IconCopy } from '@arco-design/web-vue/es/icon';
 
-import { apiFormatLabel, useSystemContract } from './contract';
+import { useSystemContract } from './contract';
 import type { CredentialEndpointRow } from './contract';
+import { apiFormatLabel } from '@/utils/model-format';
 import { useCopy } from './useCopy';
 import CredentialsManager from './CredentialsManager.vue';
 import EndpointConfigForm from './EndpointConfigForm.vue';
-import EndpointSwitcher from './EndpointSwitcher.vue';
+import ModelSelect from '@/components/ModelSelect.vue';
 
 const { t } = useI18n();
 const system = useSystemContract();
@@ -124,8 +125,14 @@ onMounted(() => {
             </div>
           </div>
 
-          <!-- 端点切换：候选来自下方端点库，与配置同卡，不再自立一张卡 -->
-          <EndpointSwitcher />
+          <!-- 端点切换：与启动器、工作台共用 ModelSelect，状态全局只有一份 -->
+          <div class="switch-row">
+            <div class="switch-head">
+              <span class="switch-title">{{ t('launcher.diagnostics.cred.switchTitle') }}</span>
+              <span class="switch-sub">{{ t('launcher.diagnostics.cred.switchSubtitle') }}</span>
+            </div>
+            <ModelSelect class="switch-select" />
+          </div>
 
           <a-collapse v-if="env.config_content" class="jsonc-collapse">
             <a-collapse-item key="jsonc" :header="t('launcher.diagnostics.cred.viewJsonc')">
@@ -278,6 +285,36 @@ onMounted(() => {
 
 .jsonc-collapse {
   margin-bottom: 10px;
+}
+
+.switch-row {
+  border-top: 1px solid var(--color-border-2);
+  padding-top: 10px;
+  margin-bottom: 10px;
+}
+
+.switch-head {
+  display: flex;
+  align-items: baseline;
+  gap: 8px;
+  flex-wrap: wrap;
+  margin-bottom: 8px;
+}
+
+.switch-title {
+  font-size: 12px;
+  font-weight: 600;
+  color: var(--color-text-1);
+}
+
+.switch-sub {
+  font-size: 11px;
+  color: var(--color-text-3);
+}
+
+.switch-select {
+  width: 100%;
+  min-width: 0;
 }
 
 .jsonc-code {

@@ -13,6 +13,7 @@ import {
 import AppNav from '@/components/AppNav.vue';
 import DiagnosticsWizard from '@/components/diagnostics/DiagnosticsWizard.vue';
 import { useSystemContract } from '@/components/diagnostics/contract';
+import ModelSelect from '@/components/ModelSelect.vue';
 import TaskPresets from '@/components/session-extras/TaskPresets.vue';
 import { useSessionStore } from '@/stores/session';
 import { ApiError } from '@/services/api';
@@ -159,6 +160,10 @@ async function submitTask(): Promise<void> {
               {{ errorMessage }}
             </a-alert>
             <div class="task-actions">
+              <div class="task-model">
+                <span class="task-model-label">{{ t('launcher.modelLabel') }}</span>
+                <ModelSelect class="task-model-select" />
+              </div>
               <a-button type="primary" :loading="isSubmitting" @click="submitTask">
                 {{ isSubmitting ? t('launcher.submitting') : t('launcher.submit') }}
               </a-button>
@@ -297,6 +302,26 @@ async function submitTask(): Promise<void> {
 
 .task-actions {
   display: flex;
-  justify-content: flex-end;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+}
+
+.task-model {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+}
+
+.task-model-label {
+  font-size: 12px;
+  color: var(--color-text-3);
+  flex-shrink: 0;
+}
+
+.task-model-select {
+  width: 320px;
+  min-width: 0;
 }
 </style>

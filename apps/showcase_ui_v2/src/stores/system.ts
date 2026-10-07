@@ -75,6 +75,16 @@ export const useSystemStore = defineStore('system', () => {
   const modelConfigEnv = ref<ModelConfigEnvResponse | null>(null);
   const credentialRows = ref<CredentialEndpointRow[]>([]);
 
+  /**
+   * 当前生效端点的端点库记录名，提交任务时作为 pin 随 /api/run 发出。
+   * 正在用着但从未存入库的端点没有名字可 pin，返回 null 让任务跟随全局默认
+   * ——后端按名字查库，前端不许编一个名字出来。
+   */
+  const activeEndpointName = computed<string | null>(() => {
+    const row = credentialRows.value.find((entry) => entry.is_active && entry.source === 'library');
+    return row?.provider || null;
+  });
+
   // 非响应式定时器与 in-flight 缓存（母本 L52/L151-152/L154）
   let connectivityTimer: ReturnType<typeof setInterval> | null = null;
   let readinessPollTimer: ReturnType<typeof setInterval> | null = null;
@@ -720,6 +730,7 @@ export const useSystemStore = defineStore('system', () => {
     saveModelConfig,
     useEndpoint,
     credentialRows,
+    activeEndpointName,
     fetchCredentialEntries,
     deleteEndpointRecord,
   };

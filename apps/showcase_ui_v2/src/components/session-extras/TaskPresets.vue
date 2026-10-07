@@ -10,6 +10,8 @@ import { apiGet } from '@/services/api';
  * task_recommendation_engine.recommend_tasks 返回 TaskPreset.model_dump 数组），
  * 渲染为可点击 chips；点击仅 emit `select`（goal 文本）由父组件填入输入框，
  * 不直接提交。加载失败或空列表时整区静默隐藏。
+ * 文案按 preset id 走 i18n 覆盖（zh-CN 有 items 子树），没有覆盖时退回后端字段，
+ * 因此目录里新增条目只会显示英文、不会显示空白。
  */
 interface PresetItem {
   id?: unknown;
@@ -20,7 +22,7 @@ interface PresetItem {
 }
 
 const emit = defineEmits<{ (e: 'select', goal: string): void }>();
-const { t } = useI18n();
+const { t, te, locale } = useI18n();
 
 const presets = ref<PresetItem[]>([]);
 
@@ -28,12 +30,33 @@ function asText(value: unknown): string {
   return typeof value === 'string' ? value : '';
 }
 
+/**
+ * 当前语言下该条目的覆盖文案；`te` 必须限定在 locale 本身，否则 en-US 会经
+ * fallbackLocale 拿到中文，把英文界面变成中英混杂。
+ */
+function presetOverride(preset: PresetItem, field: 'title' | 'goal'): string {
+  const id = asText(preset.id);
+  if (!id) return '';
+  const key = `launcher.presets.items.${id}.${field}`;
+  return te(key, locale.value) ? t(key) : '';
+}
+
 function presetLabel(preset: PresetItem): string {
-  return asText(preset.title) || asText(preset.description) || asText(preset.goal) || asText(preset.id);
+  return (
+    presetOverride(preset, 'title') ||
+    asText(preset.title) ||
+    asText(preset.description) ||
+    asText(preset.goal) ||
+    asText(preset.id)
+  );
 }
 
 function onPick(preset: PresetItem): void {
-  const goal = asText(preset.goal) || asText(preset.description) || asText(preset.title);
+  const goal =
+    presetOverride(preset, 'goal') ||
+    asText(preset.goal) ||
+    asText(preset.description) ||
+    asText(preset.title);
   if (goal) {
     emit('select', goal);
   }

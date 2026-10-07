@@ -25,8 +25,15 @@ export default {
     online: 'Connected',
     offline: 'Disconnected',
   },
+  // Model selector (one component and one state shared by launcher / workspace / diagnostics)
+  model: {
+    placeholder: 'Select a model endpoint',
+    noBase: 'provider endpoint',
+    currentUnsaved: 'Active endpoint (not saved to the library)',
+  },
   launcher: {
     title: 'ARTEMIS Console',
+    modelLabel: 'Model',
     description: 'Three-step diagnostics wizard (environment / credentials / device) plus autonomous task launching.',
     tabs: {
       diagnostics: 'System Setup & Prerequisites',
@@ -48,7 +55,11 @@ export default {
       pending: 'Queued',
       done: 'Finished',
     },
-    // B6 recommended task chips (preset title/description/goal are backend fields)
+    // B6 recommended task chips. Deliberately no `items` subtree here: the English
+    // label and goal are authoritative in the backend catalog
+    // (apps/admin_console/services/task_preset_catalog.py), and copying them would
+    // drift from it. zh-CN carries id-keyed overrides only; locales.spec pins this
+    // asymmetry so the parity rule cannot be "fixed" by duplicating English text.
     presets: {
       title: 'Recommended tasks',
       hint: 'Click a suggestion to fill the input; edit before submitting',
@@ -137,13 +148,7 @@ export default {
         testing: 'Testing…',
         switchTitle: 'Switch the active endpoint',
         switchSubtitle:
-          'Choices come from the endpoint library below; applying one makes it the default endpoint.',
-        switchPlaceholder: 'Select an endpoint',
-        switchApplyBtn: 'Apply endpoint',
-        switchActive: 'current',
-        switchNoBase: 'provider endpoint',
-        switchOk: 'Endpoint {name} is now the default model.',
-        switchFail: 'Failed to switch endpoint.',
+          'Choices come from the endpoint library below; selecting one makes it the default endpoint.',
         cfgTitle: 'Active model configuration',
         cfgSubtitle: 'Defined in {path}',
         cfgEndpoint: 'Endpoint name',
@@ -227,6 +232,8 @@ export default {
         avdEmptyTitle: 'No Android virtual devices (AVD) detected',
         avdEmptyDesc:
           'Install Android Studio and create a virtual device in Device Manager (Pixel 8 / API 34 recommended), or create one via the sdkmanager / avdmanager command line. Artemis will detect and connect to it automatically.',
+        avdEmptyInPanel:
+          'No AVD is installed yet — see the detection notice above for how to create one; it shows up here automatically afterwards.',
         usbIntro: 'Connect your Android phone via USB cable and enable USB debugging:',
         usb1Title: 'Connect the USB cable',
         usb1Desc: 'Plug your Android phone into this computer with a data cable.',
@@ -300,7 +307,6 @@ export default {
       noDevice: 'Unassigned',
     },
     dock: {
-      capsuleHint: 'Type a task instruction',
       placeholder: 'Type a task instruction, Enter to submit',
       submit: 'Submit',
       submitFail: 'Submit failed: {reason}',
@@ -423,6 +429,7 @@ export default {
       runInfo: {
         elapsed: 'Elapsed',
         tokens: 'Tokens',
+        endpoint: 'Endpoint',
         inOut: '{in} in · {out} out',
         context: 'Context',
         ofWindow: 'of {window}',

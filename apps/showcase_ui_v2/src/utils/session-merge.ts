@@ -119,7 +119,10 @@ export function mergeSessions(
       ...s,
       status: sStatus,
       device_serial: serial,
-      model_info: isCurrentActive && activeModel ? activeModel : s.model_info,
+      // 全局 activeModel 回答的是「下一个任务用什么」，pin 过的会话带着
+      // 「这次用了什么」，后者不能被前者覆盖（后端已按 pin 下发 model_info）。
+      model_info:
+        isCurrentActive && activeModel && !s.model_endpoint ? activeModel : s.model_info,
     };
     sessionMap.set(s.session_id, finalSession);
     if (isTerminal) {

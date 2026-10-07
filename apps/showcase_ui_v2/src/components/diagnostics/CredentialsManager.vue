@@ -10,8 +10,9 @@ import { computed, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconDelete, IconEdit } from '@arco-design/web-vue/es/icon';
 
-import { apiFormatLabel, useSystemContract } from './contract';
+import { useSystemContract } from './contract';
 import type { CredentialEndpointRow } from './contract';
+import { apiFormatLabel } from '@/utils/model-format';
 import { errText } from './errors';
 
 const emit = defineEmits<{ (e: 'edit', row: CredentialEndpointRow): void }>();
@@ -80,12 +81,13 @@ onMounted(() => {
     <!-- 端点库（一行一条记录，列名 = 表单字段，末列为操作；当前生效的那条带徽标） -->
     <table v-if="rows.length" class="creds-table">
       <colgroup>
-        <col style="width: 19%" />
-        <col style="width: 19%" />
-        <col style="width: 26%" />
+        <col style="width: 17%" />
+        <col style="width: 18%" />
+        <col style="width: 25%" />
         <col style="width: 17%" />
         <col style="width: 10%" />
-        <col style="width: 68px" />
+        <!-- 两个 mini 图标按钮各 36px + 4px 间距 + 左右内边距，窄一档就会被裁掉半个图标 -->
+        <col style="width: 88px" />
       </colgroup>
       <thead>
         <tr>
@@ -212,13 +214,16 @@ onMounted(() => {
   line-height: 14px;
 }
 
-.actions-cell {
+/* 必须与 .creds-table td 同级压过它：只写 .actions-cell 会被后者的 padding 覆盖，
+   按钮就会顶出单元格边界被 overflow:hidden 裁掉半个图标 */
+.creds-table td.actions-cell {
   padding: 0 6px;
 }
 
-.actions-inner {
+.creds-table td.actions-cell .actions-inner {
   display: flex;
   align-items: center;
+  justify-content: center;
   gap: 4px;
 }
 

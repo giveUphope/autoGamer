@@ -44,6 +44,8 @@ const { copiedId, copy } = useCopy();
 
 // ---- 头部操作 ----
 const showConnectionMethods = ref(false);
+// 用户亲手开合过一次之后，自动条件就不再改回去
+const guideTouched = ref(false);
 const adbRestartFeedback = ref<string | null>(null);
 let restartTimer: ReturnType<typeof setTimeout> | null = null;
 
@@ -78,15 +80,30 @@ const showFailed = computed(
     system.emulatorLaunchState?.status === 'failed',
 );
 const ADB_WARN_STATES = ['Device Booting', 'Device Unauthorized', 'Device Locked', 'Lock State Unknown'];
-const showGuide = computed(
+/** 没有可用设备时默认展开连接引导，让第一次上手的人看得见入口。 */
+const guideAutoOpen = computed(
   () =>
-    showConnectionMethods.value ||
-    (!system.isDeviceReady &&
-      !system.isEmulatorLaunching &&
-      !ADB_WARN_STATES.includes(system.adbProbe?.summary ?? '') &&
-      system.adbProbe?.status !== 'fail' &&
-      system.emulatorLaunchState?.status !== 'failed'),
+    !system.isDeviceReady &&
+    !system.isEmulatorLaunching &&
+    !ADB_WARN_STATES.includes(system.adbProbe?.summary ?? '') &&
+    system.adbProbe?.status !== 'fail' &&
+    system.emulatorLaunchState?.status !== 'failed',
 );
+
+// 这里以前写成「手动开 或 自动开」：无设备时自动项恒真，
+// 于是「收起连接方式」点了什么都不会发生。自动条件现在只负责初始开合。
+watch(
+  guideAutoOpen,
+  (open) => {
+    if (!guideTouched.value) showConnectionMethods.value = open;
+  },
+  { immediate: true },
+);
+
+function toggleConnectionMethods(): void {
+  guideTouched.value = true;
+  showConnectionMethods.value = !showConnectionMethods.value;
+}
 const showLocked = computed(
   () =>
     system.adbProbe?.status === 'warn' &&
@@ -96,6 +113,18 @@ const showUnauthorized = computed(
   () => system.adbProbe?.status === 'warn' && system.adbProbe?.summary === 'Device Unauthorized',
 );
 const showAdbMissing = computed(() => system.adbProbe?.status === 'fail');
+
+/**
+ * 「没有 AVD」是检测结果，不是连接教程的一部分：以前它只在展开连接方式后才看得见，
+ * 一收起就跟着消失。所以把它提到可折叠块外面，条件仍是「还没有可用设备」。
+ * adb 本身缺失时不叠加这条（那一档有自己的指引，且枚举不到 AVD 是必然的）。
+ */
+const showAvdEmptyNotice = computed(
+  () =>
+    !system.isDeviceReady &&
+    !showAdbMissing.value &&
+    system.installedAvds.length === 0,
+);
 
 // ---- State A：多设备切换 ----
 function onDeviceChange(
@@ -342,7 +371,7 @@ const adbInstallCards = [
         <p class="diag-step-desc">{{ t('launcher.diagnostics.dev.desc') }}</p>
       </div>
       <div class="diag-step-actions">
-        <a-button size="small" class="conn-toggle-btn" @click="showConnectionMethods = !showConnectionMethods">
+        <a-button size="small" class="conn-toggle-btn" @click="toggleConnectionMethods">
           <template #icon><icon-swap /></template>
           {{ showConnectionMethods ? t('launcher.diagnostics.dev.hideConn') : t('launcher.diagnostics.dev.changeConn') }}
         </a-button>
@@ -524,8 +553,18 @@ const adbInstallCards = [
         </div>
       </div>
 
+      <!-- 检测提示：不随连接方式一起折叠 -->
+      <a-alert
+        v-if="showAvdEmptyNotice"
+        type="warning"
+        class="avd-empty-notice"
+        :title="t('launcher.diagnostics.dev.avdEmptyTitle')"
+      >
+        {{ t('launcher.diagnostics.dev.avdEmptyDesc') }}
+      </a-alert>
+
       <!-- STATE B-3：连接方式导航 -->
-      <div v-if="showGuide" class="guide-panel">
+      <div v-if="showConnectionMethods" class="guide-panel">
         <div class="method-nav">
           <button
             v-for="method in [
@@ -592,9 +631,7 @@ const adbInstallCards = [
               </div>
             </div>
           </template>
-          <a-alert v-else type="warning" :title="t('launcher.diagnostics.dev.avdEmptyTitle')">
-            {{ t('launcher.diagnostics.dev.avdEmptyDesc') }}
-          </a-alert>
+          <p v-else class="avd-empty-inline">{{ t('launcher.diagnostics.dev.avdEmptyInPanel') }}</p>
         </div>
 
         <!-- 方法 2：USB -->
@@ -1152,6 +1189,16 @@ const adbInstallCards = [
 }
 
 /* ---- State B-3 ---- */
+.avd-empty-notice {
+  margin-bottom: 14px;
+}
+
+.avd-empty-inline {
+  margin: 0;
+  font-size: 12.5px;
+  color: var(--color-text-3);
+}
+
 .guide-panel {
   border: 1px solid var(--color-border-2);
   border-radius: var(--border-radius-medium);

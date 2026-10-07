@@ -68,7 +68,7 @@ describe('mergeSessions — 4 步合并算法（§3.3 条款 3）', () => {
     expect(tracking.has('live')).toBe(true);
   });
 
-  it('step1: 运行中的会话状态由状态轮询决定（paused 覆盖 running），模型信息以 activeModel 为准', () => {
+  it('step1: 运行中的会话状态由状态轮询决定（paused 覆盖 running），未 pin 的模型信息以 activeModel 为准', () => {
     const activeModel = { name: 'GLM-Pro', id: 'glm-pro', provider: 'zhipu' };
     const merged = mergeSessions(
       ctx({
@@ -81,6 +81,30 @@ describe('mergeSessions — 4 步合并算法（§3.3 条款 3）', () => {
     );
     expect(merged[0].status).toBe('paused');
     expect(merged[0].model_info).toEqual(activeModel);
+  });
+
+  it('step1: pin 过端点的运行会话保留自己的 model_info，不被全局默认改写', () => {
+    const activeModel = { name: 'GLM-Pro', id: 'glm-pro', provider: 'zhipu' };
+    const pinned = { name: 'Flash', id: 'pinned-model', provider: 'openai', endpoint: 'mine' };
+    const merged = mergeSessions(
+      ctx({
+        raw: [
+          session({
+            session_id: 's1',
+            status: 'running',
+            start_time: 1,
+            model_endpoint: 'mine',
+            model_info: pinned,
+          }),
+        ],
+        agentStatus: 'running',
+        runningSessionId: 's1',
+        activeModel,
+      }),
+      new Map(),
+    );
+    // activeModel 说的是「下一个任务用什么」；这次运行用什么已经写在行里
+    expect(merged[0].model_info).toEqual(pinned);
   });
 
   it('step1: 未运行的 raw 行若在 pending 队列中则标记为 pending；设备序列号按 raw → device_info JSON 顺序解析', () => {
