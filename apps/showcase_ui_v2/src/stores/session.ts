@@ -25,6 +25,7 @@ import { useStreamStore } from '@/stores/stream';
 import { useSystemStore } from '@/stores/system';
 import type { ModelInfo, Session, TaskQueueItem } from '@/types/session.model';
 import {
+  conversationThreadKey,
   getTaskStatus,
   mapPendingQueue,
   mergeSessions,
@@ -549,6 +550,10 @@ export const useSessionStore = defineStore('session', () => {
       return;
     }
     currentSessionId.value = sessionId;
+    // 选中任务即选中其所属会话线程（左栏入口与右栏轮过滤共用该键）：
+    // 初始自动选中、SSE 自动跟随、用户点击等所有来源都在这里联动。
+    const selected = rawSessions.value.find((s) => s.session_id === sessionId);
+    selectConversation(selected?.conversation_id || `round:${sessionId}`);
     // 切会话重置暂停状态（平移自 Angular selectSession L742-743）。
     isPaused.value = false;
     pausedError.value = null;
@@ -646,7 +651,7 @@ export const useSessionStore = defineStore('session', () => {
   const conversationGroups = computed<ConversationGroup[]>(() => {
     const groups = new Map<string, Session[]>();
     for (const round of sessions.value) {
-      const key = round.conversation_id || `round:${round.session_id}`;
+      const key = conversationThreadKey(round);
       const bucket = groups.get(key);
       if (bucket) bucket.push(round);
       else groups.set(key, [round]);

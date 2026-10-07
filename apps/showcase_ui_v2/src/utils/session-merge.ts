@@ -293,6 +293,16 @@ export function statusSignature(value: unknown): string {
   return JSON.stringify(value ?? []);
 }
 
+/** 会话线程分组键：conversation_id 优先，无线程标记的旧轮各自成组。
+ *  store 的 conversationGroups、时间线的轮过滤与选中联动必须共用本函数，
+ *  否则左右两栏的键空间不一致会导致选中会话后轮次被过滤成空。 */
+export function conversationThreadKey(session: {
+  session_id: string;
+  conversation_id?: string | null;
+}): string {
+  return session.conversation_id || `round:${session.session_id}`;
+}
+
 /** 会话状态 → Arco tag 色彩（队列面板与会话头共用，避免两处映射漂移）。 */
 export const SESSION_STATUS_COLOR: Record<string, string> = {
   running: 'arcoblue',

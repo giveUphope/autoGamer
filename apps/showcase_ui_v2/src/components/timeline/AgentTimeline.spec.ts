@@ -457,8 +457,16 @@ describe('AgentTimeline 轮级开合', () => {
   function mountWithSessions() {
     const wrapper = mountTimeline();
     const sessionStore = useSessionStore();
-    const second = { ...SESSION, session_id: 'sess-2', initial_goal: '回到主页列出主页内容', start_time: SESSION.start_time + 60 };
-    sessionStore.rawSessions = [SESSION, second];
+    // 同一会话线程内的两轮（提交时带同一 conversation_id）
+    const second = {
+      ...SESSION,
+      session_id: 'sess-2',
+      initial_goal: '回到主页列出主页内容',
+      start_time: SESSION.start_time + 60,
+      conversation_id: 'conv-spec',
+    };
+    const first = { ...SESSION, conversation_id: 'conv-spec' };
+    sessionStore.rawSessions = [first, second];
     sessionStore.selectSession('sess-1', false);
     return { wrapper, sessionStore };
   }
