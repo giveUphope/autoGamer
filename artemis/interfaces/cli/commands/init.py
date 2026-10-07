@@ -126,7 +126,8 @@ def init_command() -> None:
             "",
             "# Execution Defaults",
             "ARTEMIS_DEFAULT_PROFILE=pro",
-            "ARTEMIS_DEFAULT_MODEL=gemini-2.5-flash",
+            "# Model endpoints are configured in config/artemis.jsonc (the 'default' block);"
+            " there is no built-in endpoint.",
             "ARTEMIS_TRACES_DIR=./traces",
             "",
         ]

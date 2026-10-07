@@ -25,7 +25,6 @@ from artemis.config.constants import (
     AgentNode,
 )
 from artemis.config.paths import ROOT_DIR, get_config_path
-from artemis.config.settings import settings
 from artemis.utils.cython_compat import CyFunctionDetector
 from third_party.mobile_use.config import llm as base_llm_config
 from third_party.mobile_use.config.llm import (
@@ -42,18 +41,7 @@ from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-#: Built-in endpoint used when artemis.jsonc has no usable "default" entry.
-FACTORY_DEFAULT_MODEL_CFG: dict[str, Any] = {
-    "provider": "google",
-    "model": "gemini-3.8-flash",
-    "fallback": {
-        "provider": "google",
-        "model": "gemini-3.7-flash",
-    },
-}
-
 __all__ = [
-    "FACTORY_DEFAULT_MODEL_CFG",
     "LLM",
     "AgentNodeWithFallback",
     "LLMUtilsNodeWithFallback",
@@ -72,42 +60,15 @@ __all__ = [
 ]
 
 
-def _google_credentials_present() -> bool:
-    """Whether Google/Gemini credentials exist for the factory default endpoint."""
-    return bool(
-        settings.GOOGLE_API_KEY
-        or os.environ.get("GEMINI_API_KEY")
-        or os.environ.get("GOOGLE_API_KEY")
-    )
-
-
-def _factory_default_cfg() -> dict[str, Any]:
-    """Factory default endpoint, or an empty one when it cannot work.
-
-    The built-in default targets Google's official endpoint; without Google
-    credentials the deployment default stays empty (no endpoint specified)
-    and must be configured explicitly.
-    """
-    if _google_credentials_present():
-        return dict(FACTORY_DEFAULT_MODEL_CFG)
-    return {}
-
-
 def lightweight_judge_default() -> "LLMWithFallback":
-    """Factory default for the lightweight judge nodes (pixel safety net and
-    planner validation): a flash-lite model at temperature 0. Without Google
-    credentials the judges inherit the deployment default endpoint instead."""
-    if _google_credentials_present():
-        return LLMWithFallback(
-            provider="google",
-            model="gemini-3.5-flash-lite",
-            temperature=0.0,
-            fallback=LLM(
-                provider="google",
-                model="gemini-3.1-flash-lite",
-                temperature=0.0,
-            ),
-        )
+    """Default for the lightweight judge nodes (pixel safety net and planner
+    validation): the deployment default endpoint at temperature 0.
+
+    There is no built-in endpoint of any kind — everything inherits whatever
+    the user configured under ``default``; an unconfigured deployment yields
+    unconfigured judges, and model resolution fails with guidance instead of
+    assuming any provider.
+    """
     cfg = load_default_model_cfg()
     provider = cfg.get("provider")
     model = cfg.get("model")
@@ -199,7 +160,7 @@ def _expand_default_into_nodes(config_dict: dict) -> dict:
     if "planner" in config_dict and "utils" in config_dict:
         return config_dict
 
-    default_model_cfg = dict(config_dict.get("default") or _factory_default_cfg())
+    default_model_cfg = dict(config_dict.get("default") or {})
 
     nodes_override = config_dict.get("nodes", {})
 
@@ -286,7 +247,7 @@ def _apply_endpoint_override(config_dict: dict[str, Any]) -> dict[str, Any]:
     overrides = _pinned_endpoint()
     if not overrides:
         return config_dict
-    default = dict(config_dict.get("default") or _factory_default_cfg())
+    default = dict(config_dict.get("default") or {})
     for key, value in overrides.items():
         if value is None:
             default.pop(key, None)
@@ -299,18 +260,20 @@ def load_default_model_cfg() -> dict[str, Any]:
     """Raw "default" entry of artemis.jsonc — the endpoint inheritance base.
 
     Nodes that configure only a model name (no provider/endpoint of their own)
-    inherit from this entry. Falls back to the factory default when the config
-    file is missing or unreadable. A pinned endpoint (``ARTEMIS_MODEL_ENDPOINT``)
-    replaces the entry's endpoint-owned fields here, which is what the Flash
-    runner and the background compressors resolve through.
+    inherit from this entry. There is no built-in endpoint: a missing or
+    unreadable config yields an empty default, and model resolution fails with
+    configuration guidance until the user provides one. A pinned endpoint
+    (``ARTEMIS_MODEL_ENDPOINT``) replaces the entry's endpoint-owned fields
+    here, which is what the Flash runner and the background compressors
+    resolve through.
     """
     try:
         with open(_resolve_llm_config_path(), encoding="utf-8") as f:
             config_dict = load_jsonc(f)
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(f"Failed to load llm config: {_resolve_llm_config_path()}. Error: {e}")
-        config_dict = {"default": _factory_default_cfg()}
-    return dict(_apply_endpoint_override(config_dict).get("default") or _factory_default_cfg())
+        config_dict = {}
+    return dict(_apply_endpoint_override(config_dict).get("default") or {})
 
 
 def parse_llm_config() -> LLMConfig:

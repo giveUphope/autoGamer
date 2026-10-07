@@ -63,9 +63,11 @@ async def test_planner_validation():
 
 
 def test_planner_validation_node_defaults_to_lightweight_judge():
-    """Unconfigured planner_validation resolves to the same flash-lite default
-    as the pixel safety net (cheap, temperature 0)."""
+    """Unconfigured planner_validation resolves to the same lightweight default
+    as the pixel safety net: the user-configured deployment default endpoint at
+    temperature 0 (there is no built-in Google judge model)."""
     from artemis.config import get_default_llm_config
+    from artemis.config.llm import load_default_model_cfg
 
     llm_cfg = get_default_llm_config()
     node = llm_cfg.get_agent("planner_validation")
@@ -73,7 +75,11 @@ def test_planner_validation_node_defaults_to_lightweight_judge():
     assert node.model == safety_net.model
     assert node.provider == safety_net.provider
     assert node.temperature == 0.0
-    assert "lite" in node.model
+    # Both judges inherit the deployment default (user configuration; there is
+    # no factory endpoint to fall back to).
+    base = load_default_model_cfg()
+    assert node.model == base.get("model")
+    assert node.provider == base.get("provider")
 
 
 if __name__ == "__main__":

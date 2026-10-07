@@ -847,3 +847,60 @@ class TestRunTuningSummary:
         summary = run_tuning_for_profile("pro", checker=checker, explorer=explorer)
         assert summary["verification_level"] == verification_level_for_checker(checker)
         assert summary["explorer_mode"] == explorer.resolve(profile="pro")
+
+
+def test_no_google_factory_default(monkeypatch, tmp_path):
+    """Policy: there is no built-in endpoint of any kind.
+
+    With no user-configured ``default`` block (missing file, unreadable file,
+    or empty config) the deployment default is empty, nodes expand
+    unconfigured, and model resolution fails with configuration guidance —
+    regardless of any Google credentials in the environment.
+    """
+    import json
+
+    from artemis.config import llm as llm_config_module
+
+    # A Google key in the environment must not resurrect any built-in endpoint.
+    monkeypatch.setenv("GEMINI_API_KEY", "fake-key-for-policy-test")
+    monkeypatch.setenv("GOOGLE_API_KEY", "fake-key-for-policy-test")
+    monkeypatch.delenv("ARTEMIS_MODEL_ENDPOINT", raising=False)
+    monkeypatch.setattr(
+        llm_config_module, "_resolve_llm_config_path", lambda: tmp_path / "artemis.jsonc"
+    )
+
+    # Missing config file -> empty default, not a Google endpoint.
+    assert llm_config_module.load_default_model_cfg() == {}
+
+    # Empty config object -> parse succeeds with unconfigured nodes.
+    (tmp_path / "artemis.jsonc").write_text("{}", encoding="utf-8")
+    cfg = llm_config_module.parse_llm_config()
+    assert cfg.operator.provider is None
+    assert cfg.operator.model is None
+    judge = llm_config_module.lightweight_judge_default()
+    assert judge.provider is None
+    assert judge.model is None
+
+    # Model resolution on the empty default fails with guidance.
+    from artemis.services.llm import get_default_deployment_llm
+
+    with pytest.raises(RuntimeError, match="No default model endpoint is configured"):
+        get_default_deployment_llm()
+
+    # Explicit user configuration (any provider, including google) is honored.
+    (tmp_path / "artemis.jsonc").write_text(
+        json.dumps(
+            {
+                "default": {
+                    "provider": "openai",
+                    "model": "qwen-test",
+                    "api_base": "http://127.0.0.1:1234/v1",
+                }
+            }
+        ),
+        encoding="utf-8",
+    )
+    configured = llm_config_module.parse_llm_config()
+    assert configured.operator.provider == "openai"
+    assert configured.operator.model == "qwen-test"
+    assert configured.operator.api_base == "http://127.0.0.1:1234/v1"

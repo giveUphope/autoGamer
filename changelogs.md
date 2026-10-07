@@ -22,6 +22,9 @@
   （`load_default_model_cfg` 只读 `default`），注释里的"Switch easily in code or CLI"是空头承诺；
   设置界面可选端点改由端点库 `endpoint_library.json`（`.env` 同级、gitignore）承载，
   运行时读的仍是 `default` 块。
+- **2026-10-07 修订（#8）**：**出厂默认端点彻底移除**。不再把 Google 端点作为任何形式的
+  fallback——一切端点信息（provider / model / api_base / api_key）都来自用户配置；
+  用户没有配置时系统明确不可用（报错附配置指引），有无 Google Key 都不存在零配置可用路径。
 
 ---
 
@@ -61,7 +64,7 @@
 - [x] 在 `artemis.jsonc` 中为节点指定 `api_base` 后，请求确实发往该端点——冒烟 6 项全过 + Flash/Pro 实测，守护进程日志确认全部请求命中 `http://127.0.0.1:1234/v1/chat/completions`
 - [x] 只配置 `model` 的节点（含 fallback）继承部署默认端点——冒烟 #3/#4 验证 operator 及其 fallback 均继承 `api_base` / `api_key`
 - [x] `.env.example` 补充端点字段与优先级说明
-- [ ] 未指定 `api_base` 时走官方端点的线上回归——暂无 Google Key；机制上 `api_base` 缺省为 `None` 时路由回退官方端点（构造路径已被冒烟覆盖），待有 Key 后补一次回归
+- [x] ~~未指定 `api_base` 时走官方端点的线上回归~~ —— 2026-10-07 随 **#8** 作废删除：官方端点回退路径已整体移除（不再有任何内置端点），无需回归
 
 ---
 
@@ -152,7 +155,7 @@
 
 - [x] 无 Google Key + 配置无 `default`：节点展开为未配置、`LLMConfig` 校验通过、解析时报清晰 `RuntimeError`（冒烟 1–4 通过）
 - [x] 有显式 `default`（本环境 openai + api_base）：行为完全不受影响（冒烟 5–7 + 实测回归通过）
-- [x] Google Key 存在时保留原出厂默认零配置体验（逻辑门控保证，待有 Key 时回归）
+- [x] ~~Google Key 存在时保留原出厂默认零配置体验~~ —— 2026-10-07 随 **#8** 政策反转：出厂默认彻底移除，有无 Google Key 都以用户配置为准
 
 ---
 
@@ -199,6 +202,7 @@
 | 10-06 七测 | 无控制台父进程启动 Jupyter 内核 + 窗口快照 diff | ✅ 无新窗口弹出；内核执行正常（`print(2+3)`→`5`），输出落盘 `kernel.log`（#5） |
 | 10-07 全量 | 后端 pytest 全量套件（Windows 实机，修复前） | ❌ 6 处失败：explorer×9 / video_analyzer×3 / readiness 缓存 / 设备发现 / device_lock 偶发（立出 #7） |
 | 10-07 全量 | 后端 pytest 全量套件（修复后，含 device_lock 连跑 10 次） | ✅ 2570 passed / 0 failed，ruff 通过；前端 254 用例 + vue-tsc + 生产构建通过（#7） |
+| 10-07 冒烟 | 无出厂默认行为 4 项（假 Key 注入下：缺文件→空默认 / 空配置→未配置节点与判官 / 解析报清晰指引 / 显式配置不受影响） | ✅ 全过，`test_no_google_factory_default` 钉住（#8） |
 
 ---
 
@@ -262,3 +266,47 @@
 - [x] ruff 对全部改动文件通过
 - [x] 前端回归不受影响：vitest 254 用例 + vue-tsc + 生产构建通过
 
+
+---
+
+### #8 移除 Google 出厂默认端点：一切端点信息均依靠用户配置
+
+- **日期**: 2026-10-07
+- **状态**: ✅ 已完成
+- **优先级**: 高（产品决策：Google 端点彻底退出 fallback 体系）
+- **来源**: 用户明确要求
+
+#### 决策
+
+不再把 Google 端点作为任何形式的 fallback / 出厂默认：一切端点信息（provider / model /
+api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`nodes` 与端点库）；
+用户没有配置时系统**明确不可用**——报错附配置指引，绝不静默假设任何厂商端点。
+#1 遗留的「未指定 `api_base` 时走官方端点的线上回归」随之作废删除（官方端点回退路径
+已不存在，无可回归）。用户**显式**配置 provider=google 的能力不受影响——移除的是
+"默认"，不是"支持"。
+
+#### 整改方案与实施
+
+1. `artemis/config/llm.py`：删除 `FACTORY_DEFAULT_MODEL_CFG`、`_google_credentials_present()`、
+   `_factory_default_cfg()`；`load_default_model_cfg` / `_expand_default_into_nodes` /
+   `_apply_endpoint_override` 在配置缺失/损坏/为空时统一落空 `default`（不再有任何内置端点，
+   有无 Google Key 均如此）；`lightweight_judge_default()` 删除 Google flash-lite 分支——
+   判官节点（像素安全网/计划校验）同样只继承用户配置的部署默认端点，未配置即为未配置。
+2. `artemis/services/llm.py`：两处未配置报错移除「或提供 GEMINI_API_KEY」指引（仅凭 Key
+   已不能使用任何端点），改为明确「没有内置端点，配置前无法运行」；`DefaultDeployment`
+   与 `get_default_deployment` 文档同步。
+3. `artemis/interfaces/cli/commands/init.py`：`artemis init` 生成的 `.env` 模板移除
+   `ARTEMIS_DEFAULT_MODEL=gemini-2.5-flash` 误导项（该变量无消费方），改为注释指回
+   `artemis.jsonc` 的 `default` 块。
+4. 测试：新增 `test_no_google_factory_default` 钉住策略（环境注入假 Google Key 也不复活
+   内置端点：缺文件→空默认 / 空配置→未配置节点与判官 / 解析报清晰错误 / 显式配置不受影响）；
+   `test_planner_validation_node_defaults_to_lightweight_judge` 由「断言 flash-lite」改为
+   「断言继承部署默认」。
+
+#### 验收标准
+
+- [x] 缺文件 / 空 `{}` 配置：`load_default_model_cfg() == {}`、节点与判官展开为未配置、
+      `get_default_deployment_llm()` 抛出带配置指引的 `RuntimeError`（单测覆盖，且在
+      GEMINI_API_KEY/GOOGLE_API_KEY 已设的环境变量下验证）
+- [x] 显式用户配置（openai + LM Studio 实测环境）行为不受影响；全量 `pytest tests/` 通过
+- [x] ruff 通过

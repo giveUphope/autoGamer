@@ -914,9 +914,9 @@ def get_provider_llm(
 class DefaultDeployment:
     """The endpoint every node that configures only a model name inherits.
 
-    Empty ``provider``/``model`` mean no deployment default: without Google
-    credentials the built-in Google endpoint is not assumed and configuration
-    is required.
+    Empty ``provider``/``model`` mean no deployment default: there is no
+    built-in endpoint of any kind, so nothing works until the user configures
+    one.
     """
 
     provider: str = ""
@@ -931,7 +931,7 @@ def get_default_deployment() -> DefaultDeployment:
 
     Reads the unmerged entry (not a specific node), so per-node overrides can
     never leak into the inheritance base. Returns an empty deployment when the
-    config provides no default and the factory default cannot work.
+    config provides no default — there is no built-in endpoint to fall back to.
     """
     try:
         from artemis.config.llm import load_default_model_cfg
@@ -963,8 +963,8 @@ def get_default_deployment_llm(
     if not deployment.provider or not deployment.model:
         raise RuntimeError(
             "No default model endpoint is configured. Set provider/model "
-            "(optionally api_base) under 'default' in config/artemis.jsonc, "
-            "or provide a provider API key such as GEMINI_API_KEY."
+            "(optionally api_base) under 'default' in config/artemis.jsonc — "
+            "there is no built-in endpoint, so nothing runs until it is set."
         )
     return get_provider_llm(
         model_name=model_name or deployment.model,
@@ -1021,8 +1021,8 @@ def _resolve_endpoint(
         raise RuntimeError(
             f"No model endpoint configured for '{name}'. Set provider/model "
             "(optionally api_base) for this node or 'default' in "
-            "config/artemis.jsonc, or provide a provider API key such as "
-            "GEMINI_API_KEY."
+            "config/artemis.jsonc — there is no built-in endpoint, so "
+            "nothing runs until it is set."
         )
 
     return ModelEndpoint(
