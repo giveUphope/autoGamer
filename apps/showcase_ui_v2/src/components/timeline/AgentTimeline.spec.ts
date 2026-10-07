@@ -171,7 +171,7 @@ describe('AgentTimeline (M2)', () => {
   it('renders the empty state when no session is selected', () => {
     const wrapper = mountTimeline();
     expect(wrapper.text()).toContain('未选择会话活动');
-    expect(wrapper.text()).toContain('请从右侧任务列表选择一个会话');
+    expect(wrapper.text()).toContain('在下方输入框描述任务即可开始');
   });
 
   it('renders step cards with action details from the steps snapshot', async () => {
@@ -291,6 +291,10 @@ describe('AgentTimeline (M3 实时流)', () => {
 
   it('renders the retrying banner assembled from retryInfo', async () => {
     const wrapper = mountTimeline();
+    // 重试警示条属于选中任务的轮身：先选中一个会话（多轮对话流信息架构）
+    const sessionStore = useSessionStore();
+    sessionStore.rawSessions = [SESSION];
+    sessionStore.selectSession('sess-1', false);
     mockStreamState.isRetrying = true;
     mockStreamState.retryInfo = { attempt: 2, max_retries: 5, delay: 2.5 };
     await vi.waitFor(() => expect(wrapper.text()).toContain('AI 服务暂时繁忙'));
@@ -305,14 +309,15 @@ describe('AgentTimeline (M3 实时流)', () => {
   it('renders the stream reset notice on a reset llm_stream block', async () => {
     const wrapper = mountTimeline();
     const sessionStore = useSessionStore();
-    sessionStore.selectSession('sess-empty', false);
-    // 等待会话装载完成（adoptSession 为异步 watch，先等空态稳定再注入 live 日志）
-    await vi.waitFor(() => expect(wrapper.text()).toContain('未选择会话活动'));
+    sessionStore.rawSessions = [SESSION];
+    sessionStore.selectSession('sess-1', false);
+    // 等待会话装载完成（adoptSession 为异步 watch，先等轮身稳定再注入 live 日志）
+    await vi.waitFor(() => expect(wrapper.text()).toContain('打开设置，查看电池电量'));
     const timelineStore = useTimelineStore();
     timelineStore.sessionLogs.push({
       type: 'llm_stream',
       timestamp: new Date().toISOString(),
-      session_id: 'sess-empty',
+      session_id: 'sess-1',
       data: {
         execution_id: 'e1',
         text: 'The model was interrupted mid answer',
@@ -325,5 +330,113 @@ describe('AgentTimeline (M3 实时流)', () => {
     await vi.waitFor(() =>
       expect(wrapper.text()).toContain('A request error occurred during output generation'),
     );
+  });
+});
+
+describe('AgentTimeline 回合级折叠', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    apiGetMock.mockReset();
+    mockBackend();
+  });
+
+  async function mountWithSession() {
+    const wrapper = mountTimeline();
+    const sessionStore = useSessionStore();
+    sessionStore.rawSessions = [SESSION];
+    sessionStore.selectSession('sess-1', false);
+    await vi.waitFor(() => expect(wrapper.text()).toContain('已执行'));
+    return wrapper;
+  }
+
+  /** v-show 的直接效果：收起态 body 带 display:none 内联样式（isVisible 在 jsdom
+   *  下依赖 getComputedStyle，跨文件行为不稳，断言落到实现解耦的 style/类上）。 */
+  function isBodyShown(container: ReturnType<VueWrapper<any>['find']>): boolean {
+    const style = container.find('.phase-body').attributes('style') ?? '';
+    return !style.includes('display: none');
+  }
+
+  it('历史会话（全部块完成）默认收起所有回合，头部显示步骤数', async () => {
+    const wrapper = await mountWithSession();
+    const containers = wrapper.findAll('.phase-container');
+    expect(containers.length).toBeGreaterThan(0);
+    for (const container of containers) {
+      expect(container.classes()).toContain('collapsed');
+      expect(isBodyShown(container)).toBe(false);
+    }
+    // 步骤计数（两个 step 块分属不同回合，各 1 步）
+    expect(wrapper.findAll('.phase-step-count').some((el) => el.text().includes('1 步'))).toBe(true);
+  });
+
+  it('点击回合头部手动展开，再次点击收起', async () => {
+    const wrapper = await mountWithSession();
+    const first = wrapper.findAll('.phase-container')[0]!;
+    expect(isBodyShown(first)).toBe(false);
+
+    await first.find('.phase-header').trigger('click');
+    expect(first.classes()).not.toContain('collapsed');
+    expect(isBodyShown(first)).toBe(true);
+
+    await first.find('.phase-header').trigger('click');
+    expect(first.classes()).toContain('collapsed');
+    expect(isBodyShown(first)).toBe(false);
+  });
+
+  it('输出中的回合自动展开：注入未完成的 live 块后新回合展开，旧回合保持收起', async () => {
+    const wrapper = await mountWithSession();
+    const timelineStore = useTimelineStore();
+    timelineStore.sessionLogs.push({
+      type: 'llm_stream',
+      timestamp: new Date().toISOString(),
+      session_id: 'sess-1',
+      data: {
+        execution_id: 'e-live',
+        text: '正在输出中的内容…',
+        stream_type: 'text',
+        isCompleted: false,
+      },
+    });
+    await vi.waitFor(() => {
+      const containers = wrapper.findAll('.phase-container');
+      // live 块归属最后一个回合；该回合的 body 处于展示状态（未带 display:none）
+      const last = containers[containers.length - 1]!;
+      expect(last.classes()).not.toContain('collapsed');
+    });
+    const containers = wrapper.findAll('.phase-container');
+    const last = containers[containers.length - 1]!;
+    expect(isBodyShown(last)).toBe(true);
+    // 旧回合保持收起
+    for (const container of containers.slice(0, -1)) {
+      expect(container.classes()).toContain('collapsed');
+      expect(isBodyShown(container)).toBe(false);
+    }
+  });
+
+  it('活动回合输出完毕后自动收起', async () => {
+    const wrapper = await mountWithSession();
+    const timelineStore = useTimelineStore();
+    timelineStore.sessionLogs.push({
+      type: 'llm_stream',
+      timestamp: new Date().toISOString(),
+      session_id: 'sess-1',
+      data: { execution_id: 'e-live', text: '一段输出', stream_type: 'text', isCompleted: false },
+    });
+    await vi.waitFor(() => {
+      const containers = wrapper.findAll('.phase-container');
+      expect(containers[containers.length - 1]!.classes()).not.toContain('collapsed');
+    });
+
+    // 流完成：补一条同 execution_id 的 isCompleted 日志
+    timelineStore.sessionLogs.push({
+      type: 'llm_stream',
+      timestamp: new Date().toISOString(),
+      session_id: 'sess-1',
+      data: { execution_id: 'e-live', text: ' 输出完毕。', stream_type: 'text', isCompleted: true },
+    });
+    await vi.waitFor(() => {
+      const containers = wrapper.findAll('.phase-container');
+      expect(containers[containers.length - 1]!.classes()).toContain('collapsed');
+    });
   });
 });

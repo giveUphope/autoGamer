@@ -380,16 +380,18 @@ export default {
       noDevice: '未指定',
     },
     dock: {
-      placeholder: '输入任务指令，回车提交',
+      placeholder: '输入任务指令，Enter 提交，Shift+Enter 换行',
       submit: '提交',
       submitFail: '提交失败：{reason}',
     },
     timeline: {
       loadingRunHistory: '正在加载运行记录…',
       emptyTitle: '未选择会话活动',
-      emptyHint: '请从右侧任务列表选择一个会话，查看其实时日志与执行轨迹。',
+      emptyHint: '在下方输入框描述任务即可开始；也可以从右侧列表选择历史会话，查看其实时日志与执行轨迹。',
       // 启动准备 / 阶段头
       workedFor: '已执行 {seconds}s',
+      stepsCount: '{n} 步',
+      roundEmpty: '该任务暂无执行记录。',
       checkedFor: '已核查 {seconds}s',
       waiting: '等待 {time}',
       waited: '已等待 {time}',

@@ -12,6 +12,7 @@ import {
   IconMindMapping,
   IconPauseCircle,
   IconPlayArrow,
+  IconRight,
   IconSync,
 } from '@arco-design/web-vue/es/icon';
 
@@ -19,6 +20,7 @@ import { usePlayerStore } from '@/stores/player';
 import { useSessionStore } from '@/stores/session';
 import { useStreamStore } from '@/stores/stream';
 import { useTimelineStore } from '@/stores/timeline';
+import { formatSessionTime, getTaskStatus, sessionStatusColor } from '@/utils/session-merge';
 import { buildStartupWorkItems } from '@/utils/startup-progress';
 import { checkPlanningLoader, formatTokenCount } from '@/utils/stream-aggregator';
 import { isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
@@ -36,6 +38,7 @@ import StepCard from './StepCard.vue';
  * 会话时间线容器（对应 Angular AgentStreamComponent 的 M2/M3 子集）：
  * - 选中会话变化时由 timeline store 重新拉取 steps/notes/checks 快照并渲染
  *   （快照回填语义见 stores/timeline.ts，§3.3 条款 2）；
+ * - 会话头：当前会话的目标 / 状态 / 设备（选中历史会话后时间线可自证「在看哪个会话」）；
  * - 阶段分组（Worked for Xs · tokens）+ StepCard / CheckerPanel 路由；
  * - 启动准备块（startup_progress）与任务报告卡（output.md）；
  * - 顶部工具条：架构 chip（RunInfoPopover）+ 笔记与计划（NotesPanel）；
@@ -52,6 +55,32 @@ timelineStore.start();
 
 const notesPopoverOpen = ref(false);
 const scrollContainer = ref<HTMLElement | null>(null);
+
+// ---- 多轮对话流：每个任务是一轮（轮头 = 用户目标气泡），选中任务的轮身内嵌
+// 其执行轨迹（步骤回合，惰性拉取）；未选中轮只显示摘要头，点击即选中展开。 ----
+
+/** 对话轮列表：旧 → 新（聊天顺序；store 的 sessions 是最新在前，翻转渲染）。 */
+const rounds = computed(() => {
+  const list = [...sessionStore.sessions].reverse();
+  return list.map((session) => {
+    const status = getTaskStatus(session, sessionStore.runningSessionId, sessionStore.agentStatus);
+    return {
+      id: session.session_id,
+      goal: session.initial_goal,
+      status,
+      statusText: t(`status.${status}`),
+      statusColor: sessionStatusColor(status),
+      time: formatSessionTime(session.start_time),
+      isSelected: session.session_id === sessionStore.currentSessionId,
+    };
+  });
+});
+
+function selectRound(sessionId: string): void {
+  if (sessionId !== sessionStore.currentSessionId) {
+    sessionStore.selectSession(sessionId, true);
+  }
+}
 
 // ---- B6 轨迹树 / 步骤回放抽屉（仅点击时打开，抽屉自行按需拉取） ----
 const treeDrawerVisible = ref(false);
@@ -130,6 +159,57 @@ const showPlanningRow = computed(() =>
     || startupPreparationIsComplete.value
     || timelineStore.consolidatedBlocks.length > 0),
 );
+
+// ---- 回合级折叠：输出中的回合自动展开，输出完毕自动收起；点击头部手动开合 ----
+// （放在 showPlanningLoader 之后：activePhaseId 的流间隙分支引用它，且下方 watch
+//   immediate 会在 setup 期间同步求值 getter，前置会踩 const TDZ。）
+
+/** 受控展开集合：回合 body 是否可见只由它决定，自动推进与手动点击都改写它。 */
+const expandedPhaseIds = ref(new Set<string>());
+
+/**
+ * 活动回合 = 可见回合中的最后一个，且尚未输出完毕（任一块 isCompleted === false）。
+ * 流间隙（运行中等待下一步，planning loader 可见）时回合尚未结束，仍视为活动。
+ */
+const activePhaseId = computed<string | null>(() => {
+  const phases = visiblePhases.value;
+  if (phases.length === 0) return null;
+  const last = phases[phases.length - 1];
+  if (last.blocks.some((block) => Boolean(block?.data) && block.data.isCompleted === false)) {
+    return last.id;
+  }
+  if (sessionStore.agentStatus === 'running' && showPlanningLoader.value) return last.id;
+  return null;
+});
+
+// 回合推进：新活动回合展开（旧回合随之收起）；活动结束（全部输出完毕）整体收起。
+watch(
+  activePhaseId,
+  (id, prev) => {
+    if (id) {
+      if (id !== prev) {
+        expandedPhaseIds.value = new Set([id]);
+      }
+    } else if (prev) {
+      expandedPhaseIds.value = new Set();
+    }
+  },
+  { immediate: true },
+);
+
+function isPhaseExpanded(phaseId: string): boolean {
+  return expandedPhaseIds.value.has(phaseId);
+}
+
+function togglePhase(phaseId: string): void {
+  const next = new Set(expandedPhaseIds.value);
+  if (next.has(phaseId)) {
+    next.delete(phaseId);
+  } else {
+    next.add(phaseId);
+  }
+  expandedPhaseIds.value = next;
+}
 
 // ---- B5 planning loader 轮换短语（平移自 PLANNING_LOADER_PHRASES 16 条 + 轮换 effect） ----
 
@@ -338,42 +418,44 @@ const isRecordBtnProcessing = computed(
 
 <template>
   <section class="agent-timeline">
-    <!-- 浮动工具条（有内容时显示）：架构 chip + 笔记与计划 -->
+    <!-- 会话工具行：操作按钮（属于选中的那轮任务） -->
     <div v-if="anyContent" class="timeline-toolbar">
-      <RunInfoPopover />
-      <a-popover v-model:popup-visible="notesPopoverOpen" position="bl" trigger="click">
-        <a-button size="small" class="notes-btn">
-          <template #icon><icon-file /></template>
-          {{ t('workspace.timeline.notes') }}
+      <div class="toolbar-actions">
+        <RunInfoPopover />
+        <a-popover v-model:popup-visible="notesPopoverOpen" position="bl" trigger="click">
+          <a-button size="small" class="notes-btn">
+            <template #icon><icon-file /></template>
+            {{ t('workspace.timeline.notes') }}
+          </a-button>
+          <template #content>
+            <div class="notes-popover-body">
+              <div class="notes-popover-title">{{ t('workspace.timeline.notes') }}</div>
+              <NotesPanel />
+            </div>
+          </template>
+        </a-popover>
+        <a-button
+          size="small"
+          class="record-btn"
+          :class="{ 'is-processing': isRecordBtnProcessing }"
+          :title="recordButtonTitle"
+          @click="playerStore.toggleVideoPlayer()"
+        >
+          <template #icon>
+            <component :is="recordButtonIcon" :class="{ 'record-spin': isRecordBtnProcessing }" />
+          </template>
+          {{ t('workspace.player.recordBtnDefault') }}
         </a-button>
-        <template #content>
-          <div class="notes-popover-body">
-            <div class="notes-popover-title">{{ t('workspace.timeline.notes') }}</div>
-            <NotesPanel />
-          </div>
-        </template>
-      </a-popover>
-      <a-button
-        size="small"
-        class="record-btn"
-        :class="{ 'is-processing': isRecordBtnProcessing }"
-        :title="recordButtonTitle"
-        @click="playerStore.toggleVideoPlayer()"
-      >
-        <template #icon>
-          <component :is="recordButtonIcon" :class="{ 'record-spin': isRecordBtnProcessing }" />
-        </template>
-        {{ t('workspace.player.recordBtnDefault') }}
-      </a-button>
-      <!-- B6：轨迹树 / 步骤回放入口（点击时才拉取数据） -->
-      <a-button size="small" class="tree-btn" @click="treeDrawerVisible = true">
-        <template #icon><icon-mind-mapping /></template>
-        {{ t('workspace.tree.button') }}
-      </a-button>
-      <a-button size="small" class="replay-btn" @click="replayDrawerVisible = true">
-        <template #icon><icon-history /></template>
-        {{ t('workspace.replay.button') }}
-      </a-button>
+        <!-- B6：轨迹树 / 步骤回放入口（点击时才拉取数据） -->
+        <a-button size="small" class="tree-btn" @click="treeDrawerVisible = true">
+          <template #icon><icon-mind-mapping /></template>
+          {{ t('workspace.tree.button') }}
+        </a-button>
+        <a-button size="small" class="replay-btn" @click="replayDrawerVisible = true">
+          <template #icon><icon-history /></template>
+          {{ t('workspace.replay.button') }}
+        </a-button>
+      </div>
     </div>
 
     <main ref="scrollContainer" class="timeline-content">
@@ -381,101 +463,144 @@ const isRecordBtnProcessing = computed(
         <div class="loading-inner">{{ t('workspace.timeline.loadingRunHistory') }}</div>
       </a-spin>
 
-      <div v-else-if="!hasListContent" class="empty-state">
+      <!-- 多轮对话流：一个任务一轮，轮头是用户目标气泡；选中轮的轮身内嵌其执行轨迹 -->
+      <div v-else-if="rounds.length === 0" class="empty-state">
         <a-empty :description="t('workspace.timeline.emptyTitle')" />
         <div class="empty-hint">{{ t('workspace.timeline.emptyHint') }}</div>
       </div>
 
-      <div v-else class="logs-list">
-        <!-- LLM 重试警示条（M3：stream store isRetrying 驱动，文案由 retryInfo 组装） -->
-        <div v-if="retryMessage" class="retry-banner" role="alert">
-          <icon-sync class="spin-icon" />
-          <span class="retry-text">{{ retryMessage }}</span>
-        </div>
-
-        <!-- 启动准备块 -->
-        <div v-if="startupWorkItems.length > 0" class="phase-container startup-phase">
-          <div class="phase-header">
-            <span class="phase-worked-time">{{ t('workspace.timeline.workedFor', { seconds: startupPreparationDuration }) }}</span>
+      <div v-else class="rounds-list">
+        <div
+          v-for="round in rounds"
+          :key="round.id"
+          class="round-block"
+          :class="{ active: round.isSelected }"
+        >
+          <div
+            class="round-head"
+            role="button"
+            :aria-expanded="round.isSelected"
+            @click="selectRound(round.id)"
+          >
+            <a-tag :color="round.statusColor" size="small" class="round-status">
+              {{ round.statusText }}
+            </a-tag>
+            <span class="round-goal" :title="round.goal">{{ round.goal }}</span>
+            <span class="round-time">{{ round.time }}</span>
           </div>
-          <div class="phase-body">
-            <div class="startup-rows">
-              <div v-for="item in startupWorkItems" :key="item.stage" class="startup-row">
-                <span class="startup-dot" :class="{ active: item.isActive }" />
-                <span>
-                  {{ item.message }}
-                  ·
-                  {{ item.isActive
-                    ? t('workspace.timeline.waiting', { time: item.elapsed })
-                    : t('workspace.timeline.waited', { time: item.elapsed }) }}
-                </span>
+
+          <div v-if="round.isSelected" class="round-body">
+            <template v-if="hasListContent">
+              <!-- LLM 重试警示条（M3：stream store isRetrying 驱动，文案由 retryInfo 组装） -->
+              <div v-if="retryMessage" class="retry-banner" role="alert">
+                <icon-sync class="spin-icon" />
+                <span class="retry-text">{{ retryMessage }}</span>
               </div>
-            </div>
-          </div>
-        </div>
 
-        <!-- 阶段分组（每块一个阶段头：Worked/Checked for Xs · tokens） -->
-        <div v-for="phase in visiblePhases" :key="phase.id" class="phase-container">
-          <div class="phase-header">
-            <span class="phase-worked-time">
-              {{ isCheckerPhase(phase)
-                ? t('workspace.timeline.checkedFor', { seconds: phase.durationSeconds })
-                : t('workspace.timeline.workedFor', { seconds: phase.durationSeconds }) }}
-            </span>
-            <span v-if="phase.tokens" class="phase-token-usage" :title="formatTokenCount(phase.tokens)">
-              · {{ formatTokenCount(phase.tokens) }}
-            </span>
-          </div>
-          <div class="phase-body">
-            <template v-for="block in phase.blocks" :key="block.id">
-              <CheckerPanel v-if="block.type === 'checker'" :block="block" />
-              <StepCard
-                v-else
-                :block="block"
-                :session-active="sessionStore.isCurrentSessionRunning"
-                @open-note="timelineStore.selectNoteKey($event)"
-              />
+              <!-- 启动准备块 -->
+              <div v-if="startupWorkItems.length > 0" class="phase-container startup-phase">
+                <div class="phase-header">
+                  <span class="phase-worked-time">{{ t('workspace.timeline.workedFor', { seconds: startupPreparationDuration }) }}</span>
+                </div>
+                <div class="phase-body">
+                  <div class="startup-rows">
+                    <div v-for="item in startupWorkItems" :key="item.stage" class="startup-row">
+                      <span class="startup-dot" :class="{ active: item.isActive }" />
+                      <span>
+                        {{ item.message }}
+                        ·
+                        {{ item.isActive
+                          ? t('workspace.timeline.waiting', { time: item.elapsed })
+                          : t('workspace.timeline.waited', { time: item.elapsed }) }}
+                      </span>
+                    </div>
+                  </div>
+                </div>
+              </div>
+
+              <!-- 阶段分组（回合块）：输出中的回合自动展开，完毕自动收起；点击头部手动开合 -->
+              <div
+                v-for="phase in visiblePhases"
+                :key="phase.id"
+                class="phase-container"
+                :class="{ collapsed: !isPhaseExpanded(phase.id) }"
+              >
+                <div
+                  class="phase-header"
+                  role="button"
+                  :aria-expanded="isPhaseExpanded(phase.id)"
+                  @click="togglePhase(phase.id)"
+                >
+                  <icon-right class="phase-chevron" :class="{ expanded: isPhaseExpanded(phase.id) }" />
+                  <span class="phase-worked-time">
+                    {{ isCheckerPhase(phase)
+                      ? t('workspace.timeline.checkedFor', { seconds: phase.durationSeconds })
+                      : t('workspace.timeline.workedFor', { seconds: phase.durationSeconds }) }}
+                  </span>
+                  <span v-if="phase.tokens" class="phase-token-usage" :title="formatTokenCount(phase.tokens)">
+                    · {{ formatTokenCount(phase.tokens) }}
+                  </span>
+                  <span class="phase-step-count">
+                    {{ t('workspace.timeline.stepsCount', { n: phase.blocks.length }) }}
+                  </span>
+                </div>
+                <div v-show="isPhaseExpanded(phase.id)" class="phase-body">
+                  <template v-for="block in phase.blocks" :key="block.id">
+                    <CheckerPanel v-if="block.type === 'checker'" :block="block" />
+                    <StepCard
+                      v-else
+                      :block="block"
+                      :session-active="sessionStore.isCurrentSessionRunning"
+                      @open-note="timelineStore.selectNoteKey($event)"
+                    />
+                  </template>
+                </div>
+              </div>
+
+              <!-- Planning loader（M3：运行中等待下一步，平移自 Angular html L1410 展示条件；
+                B5：文案为轮换短语之一，随机起点 + 2.8s 间隔，`planning` 键保留为兜底文案） -->
+              <div v-if="showPlanningRow" class="planning-loader" aria-live="polite">
+                <icon-sync class="spin-icon" />
+                <span>{{ currentPlanningText || t('workspace.timeline.planning') }}</span>
+              </div>
+
+              <!-- 任务暂停卡（M3：isViewingPausedTask，恢复按钮走 sessionStore.resumeTask） -->
+              <div v-if="isViewingPausedTask" class="paused-card" role="alert">
+                <div class="paused-header">
+                  <icon-pause-circle />
+                  <span class="paused-title">{{ t('workspace.timeline.pausedTitle') }}</span>
+                </div>
+                <div v-if="sessionStore.pausedError" class="paused-error">{{ sessionStore.pausedError }}</div>
+                <div class="paused-footer">
+                  <a-button size="small" type="primary" @click="resumePausedTask">
+                    <template #icon><icon-play-arrow /></template>
+                    {{ t('workspace.timeline.continueTask') }}
+                  </a-button>
+                  <span class="paused-hint">{{ t('workspace.timeline.resumeHint') }}</span>
+                </div>
+              </div>
+
+              <!-- 任务报告卡（output.md，渲染一次于时间线末尾） -->
+              <div v-if="parsedOutputReport" class="report-card">
+                <div class="report-header">
+                  <span class="report-title">
+                    <icon-check-circle />
+                    {{ t('workspace.timeline.taskReport') }}
+                  </span>
+                  <a-button size="mini" type="text" @click="openOutputterNote">
+                    <template #icon><icon-eye /></template>
+                    {{ t('workspace.timeline.viewInNotes') }}
+                  </a-button>
+                </div>
+                <div class="report-preview">
+                  <NoteDocument :parsed="parsedOutputReport" />
+                </div>
+              </div>
             </template>
-          </div>
-        </div>
 
-        <!-- Planning loader（M3：运行中等待下一步，平移自 Angular html L1410 展示条件；
-          B5：文案为轮换短语之一，随机起点 + 2.8s 间隔，`planning` 键保留为兜底文案） -->
-        <div v-if="showPlanningRow" class="planning-loader" aria-live="polite">
-          <icon-sync class="spin-icon" />
-          <span>{{ currentPlanningText || t('workspace.timeline.planning') }}</span>
-        </div>
-
-        <!-- 任务暂停卡（M3：isViewingPausedTask，恢复按钮走 sessionStore.resumeTask） -->
-        <div v-if="isViewingPausedTask" class="paused-card" role="alert">
-          <div class="paused-header">
-            <icon-pause-circle />
-            <span class="paused-title">{{ t('workspace.timeline.pausedTitle') }}</span>
-          </div>
-          <div v-if="sessionStore.pausedError" class="paused-error">{{ sessionStore.pausedError }}</div>
-          <div class="paused-footer">
-            <a-button size="small" type="primary" @click="resumePausedTask">
-              <template #icon><icon-play-arrow /></template>
-              {{ t('workspace.timeline.continueTask') }}
-            </a-button>
-            <span class="paused-hint">{{ t('workspace.timeline.resumeHint') }}</span>
-          </div>
-        </div>
-
-        <!-- 任务报告卡（output.md，渲染一次于时间线末尾） -->
-        <div v-if="parsedOutputReport" class="report-card">
-          <div class="report-header">
-            <span class="report-title">
-              <icon-check-circle />
-              {{ t('workspace.timeline.taskReport') }}
-            </span>
-            <a-button size="mini" type="text" @click="openOutputterNote">
-              <template #icon><icon-eye /></template>
-              {{ t('workspace.timeline.viewInNotes') }}
-            </a-button>
-          </div>
-          <div class="report-preview">
-            <NoteDocument :parsed="parsedOutputReport" />
+            <div v-else class="round-empty">
+              {{ t('workspace.timeline.roundEmpty') }}
+            </div>
           </div>
         </div>
       </div>
@@ -489,7 +614,9 @@ const isRecordBtnProcessing = computed(
 
 <style scoped>
 .agent-timeline {
-  height: 100%;
+  /* 占满 main 剩余高度（底部还有输入区 CommandDock），而非固定 100% 把它挤出可视区 */
+  flex: 1;
+  min-height: 0;
   display: flex;
   flex-direction: column;
   min-width: 0;
@@ -501,6 +628,13 @@ const isRecordBtnProcessing = computed(
   justify-content: flex-end;
   gap: 10px;
   padding: 0 0 10px;
+}
+
+.toolbar-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-shrink: 0;
 }
 
 .notes-btn {
@@ -535,7 +669,7 @@ const isRecordBtnProcessing = computed(
 }
 
 .empty-state {
-  padding: 60px 0;
+  padding: 44px 0;
   display: flex;
   flex-direction: column;
   align-items: center;
@@ -546,6 +680,81 @@ const isRecordBtnProcessing = computed(
   margin-top: 8px;
   color: var(--color-text-3);
   font-size: 13px;
+}
+
+/* ---- 多轮对话流 ---- */
+.rounds-list {
+  display: flex;
+  flex-direction: column;
+  gap: 16px;
+}
+
+.round-block {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+
+/* 轮头 = 用户目标气泡：底色区分「用户说」与「agent 做」 */
+.round-head {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  min-width: 0;
+  padding: 8px 12px;
+  border-radius: var(--border-radius-medium);
+  background-color: var(--color-fill-1);
+  cursor: pointer;
+  transition: background-color 0.15s;
+}
+
+.round-head:hover {
+  background-color: var(--color-fill-2);
+}
+
+.round-block.active .round-head {
+  background-color: var(--color-fill-2);
+}
+
+.round-status {
+  flex-shrink: 0;
+}
+
+.round-goal {
+  flex: 1;
+  min-width: 0;
+  font-weight: 600;
+  font-size: 13px;
+  color: var(--color-text-1);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.round-time {
+  flex-shrink: 0;
+  font-size: 12px;
+  color: var(--color-text-3);
+  font-variant-numeric: tabular-nums;
+}
+
+/* 轮身 = 选中任务的执行轨迹；左侧竖线表达「属于这一轮」 */
+.round-body {
+  display: flex;
+  flex-direction: column;
+  gap: 14px;
+  margin-left: 6px;
+  padding-left: 12px;
+  border-left: 2px solid var(--color-border-2);
+  min-width: 0;
+}
+
+.round-empty {
+  padding: 14px 12px;
+  border: 1px dashed var(--color-border-2);
+  border-radius: var(--border-radius-medium);
+  color: var(--color-text-3);
+  font-size: 12.5px;
 }
 
 .logs-list {
@@ -566,6 +775,35 @@ const isRecordBtnProcessing = computed(
   gap: 6px;
   font-size: 12px;
   color: var(--color-text-3);
+  cursor: pointer;
+  user-select: none;
+  border-radius: var(--border-radius-small);
+  padding: 2px 4px;
+  margin: -2px -4px;
+  transition: background-color 0.15s, color 0.15s;
+}
+
+.phase-header:hover {
+  background-color: var(--color-fill-2);
+  color: var(--color-text-2);
+}
+
+.phase-chevron {
+  flex-shrink: 0;
+  transition: transform 0.15s;
+}
+
+.phase-chevron.expanded {
+  transform: rotate(90deg);
+}
+
+.phase-step-count {
+  margin-left: auto;
+  flex-shrink: 0;
+}
+
+.phase-container.collapsed .phase-header {
+  padding-bottom: 4px;
 }
 
 .phase-worked-time {

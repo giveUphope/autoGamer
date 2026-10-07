@@ -307,16 +307,18 @@ export default {
       noDevice: 'Unassigned',
     },
     dock: {
-      placeholder: 'Type a task instruction, Enter to submit',
+      placeholder: 'Type a task instruction — Enter to submit, Shift+Enter for a new line',
       submit: 'Submit',
       submitFail: 'Submit failed: {reason}',
     },
     timeline: {
       loadingRunHistory: 'Loading run history...',
       emptyTitle: 'No stream activity selected',
-      emptyHint: 'Select a session from the task list on the right to view its log payloads and trace.',
+      emptyHint: 'Describe a task in the input box below to get started, or pick a past session from the list on the right to inspect its trace.',
       // Startup / phase headers
       workedFor: 'Worked for {seconds}s',
+      stepsCount: '{n} steps',
+      roundEmpty: 'No execution trace recorded for this task.',
       checkedFor: 'Checked for {seconds}s',
       waiting: 'Waiting {time}',
       waited: 'Waited {time}',
