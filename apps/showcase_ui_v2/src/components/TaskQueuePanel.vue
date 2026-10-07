@@ -1,9 +1,10 @@
 <script setup lang="ts">
 import { computed, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
+import { IconComputer } from '@arco-design/web-vue/es/icon';
 
 import { useSessionStore } from '@/stores/session';
-import { getTaskStatus, resolveDeviceSerial } from '@/utils/session-merge';
+import { getTaskStatus, resolveDeviceSerial, sessionStatusColor, formatSessionTime } from '@/utils/session-merge';
 import type { Session } from '@/types/session.model';
 
 /**
@@ -47,17 +48,8 @@ const historyTasks = computed<Session[]>(() =>
   }),
 );
 
-const STATUS_COLOR: Record<string, string> = {
-  running: 'arcoblue',
-  paused: 'orange',
-  pending: 'gray',
-  completed: 'green',
-  failed: 'red',
-  cancelled: 'gray',
-};
-
 function statusColor(s: Session): string {
-  return STATUS_COLOR[statusOf(s)] || 'gray';
+  return sessionStatusColor(statusOf(s));
 }
 
 function statusText(s: Session): string {
@@ -65,11 +57,12 @@ function statusText(s: Session): string {
 }
 
 function formatTime(startTime?: number): string {
-  if (!startTime) return '--:--';
-  return new Date(startTime * 1000).toLocaleTimeString([], {
-    hour: '2-digit',
-    minute: '2-digit',
-  });
+  return formatSessionTime(startTime);
+}
+
+/** 本次任务实际使用的模型（会话自报的 model_info.name；未下发则不展示）。 */
+function modelName(s: Session): string {
+  return s.model_info?.name || '';
 }
 
 async function withBusy(action: () => Promise<unknown>): Promise<void> {
@@ -104,6 +97,20 @@ function selectTask(sessionId: string): void {
 <template>
   <section class="task-queue-panel">
     <a-tabs v-model:active-key="activeTab" size="medium" class="queue-tabs">
+      <!-- 清空历史收进页签行右侧（历史 tab 才显示），不再独占一行 -->
+      <template #extra>
+        <a-popconfirm
+          v-if="activeTab === 'history'"
+          :content="t('workspace.queue.clearAllConfirm')"
+          type="warning"
+          @ok="clearHistory"
+        >
+          <a-button size="mini" status="danger" :disabled="historyTasks.length === 0 || busy">
+            {{ t('workspace.queue.clearAll') }}
+          </a-button>
+        </a-popconfirm>
+      </template>
+
       <a-tab-pane key="queue">
         <template #title>
           <a-badge :count="activeQueue.length" :max-count="99" :offset="[8, -3]">
@@ -123,14 +130,17 @@ function selectTask(sessionId: string): void {
             <div class="task-row">
               <div class="task-head">
                 <a-tag :color="statusColor(s)" size="small">{{ statusText(s) }}</a-tag>
-                <span class="task-goal" :title="s.initial_goal">{{ s.initial_goal }}</span>
+                <span class="task-time">{{ formatTime(s.start_time) }}</span>
               </div>
+              <div class="task-goal" :title="s.initial_goal">{{ s.initial_goal }}</div>
               <div class="task-meta">
                 <span class="task-device" :title="resolveDeviceSerial(s) || ''">
-                  {{ t('workspace.queue.device') }}:
+                  <icon-computer />
                   {{ resolveDeviceSerial(s) || t('workspace.queue.noDevice') }}
                 </span>
-                <span class="task-time">{{ formatTime(s.start_time) }}</span>
+                <span v-if="modelName(s)" class="task-model" :title="modelName(s)">
+                  {{ modelName(s) }}
+                </span>
                 <span class="task-actions" @click.stop>
                   <a-button
                     size="mini"
@@ -155,18 +165,6 @@ function selectTask(sessionId: string): void {
           </a-badge>
         </template>
 
-        <div class="history-toolbar">
-          <a-popconfirm
-            :content="t('workspace.queue.clearAllConfirm')"
-            type="warning"
-            @ok="clearHistory"
-          >
-            <a-button size="mini" status="danger" :disabled="historyTasks.length === 0 || busy">
-              {{ t('workspace.queue.clearAll') }}
-            </a-button>
-          </a-popconfirm>
-        </div>
-
         <a-empty v-if="historyTasks.length === 0" :description="t('workspace.queue.emptyHistory')" />
         <a-list v-else :bordered="false" :split="true" size="small">
           <a-list-item
@@ -179,14 +177,17 @@ function selectTask(sessionId: string): void {
             <div class="task-row">
               <div class="task-head">
                 <a-tag :color="statusColor(s)" size="small">{{ statusText(s) }}</a-tag>
-                <span class="task-goal" :title="s.initial_goal">{{ s.initial_goal }}</span>
+                <span class="task-time">{{ formatTime(s.start_time) }}</span>
               </div>
+              <div class="task-goal" :title="s.initial_goal">{{ s.initial_goal }}</div>
               <div class="task-meta">
                 <span class="task-device" :title="resolveDeviceSerial(s) || ''">
-                  {{ t('workspace.queue.device') }}:
+                  <icon-computer />
                   {{ resolveDeviceSerial(s) || t('workspace.queue.noDevice') }}
                 </span>
-                <span class="task-time">{{ formatTime(s.start_time) }}</span>
+                <span v-if="modelName(s)" class="task-model" :title="modelName(s)">
+                  {{ modelName(s) }}
+                </span>
                 <span class="task-actions" @click.stop>
                   <a-popconfirm
                     :content="t('workspace.queue.deleteConfirm')"
@@ -227,30 +228,26 @@ function selectTask(sessionId: string): void {
   padding-top: 4px;
 }
 
-.history-toolbar {
-  display: flex;
-  justify-content: flex-end;
-  padding: 0 4px 8px;
-}
-
 .task-item {
   cursor: pointer;
   border-radius: var(--border-radius-small);
-  transition: background-color 0.2s;
+  transition: background-color 0.2s, box-shadow 0.2s;
 }
 
 .task-item:hover {
   background-color: var(--color-fill-1);
 }
 
+/* 选中态：背景 + 左侧 accent 条，与左栏会话头互相印证 */
 .task-item.selected {
   background-color: var(--color-fill-2);
+  box-shadow: inset 2px 0 0 rgb(var(--arcoblue-6));
 }
 
 .task-row {
   display: flex;
   flex-direction: column;
-  gap: 6px;
+  gap: 5px;
   min-width: 0;
 }
 
@@ -262,36 +259,64 @@ function selectTask(sessionId: string): void {
 }
 
 .task-goal {
-  flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
   font-size: 13px;
   color: var(--color-text-1);
+  /* 目标是条目的主要信息，给两行空间而不是单行省略 */
+  display: -webkit-box;
+  -webkit-box-orient: vertical;
+  -webkit-line-clamp: 2;
+  line-clamp: 2;
+  overflow: hidden;
+  overflow-wrap: anywhere;
 }
 
 .task-meta {
   display: flex;
   align-items: center;
-  gap: 12px;
+  gap: 10px;
   font-size: 12px;
   color: var(--color-text-3);
+  min-width: 0;
 }
 
 .task-device {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
   min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
 }
 
+.task-model {
+  flex-shrink: 0;
+  padding: 0 6px;
+  border-radius: var(--border-radius-small);
+  background-color: var(--color-fill-2);
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  max-width: 45%;
+}
+
+/* 危险操作（停止/删除）hover 才出现：不干扰浏览，位置稳定不跳动 */
+.task-actions {
+  margin-left: auto;
+  flex-shrink: 0;
+  opacity: 0;
+  transition: opacity 0.15s;
+}
+
+.task-item:hover .task-actions,
+.task-item.selected .task-actions {
+  opacity: 1;
+}
+
 .task-time {
   margin-left: auto;
   flex-shrink: 0;
-}
-
-.task-actions {
-  flex-shrink: 0;
+  font-variant-numeric: tabular-nums;
 }
 </style>

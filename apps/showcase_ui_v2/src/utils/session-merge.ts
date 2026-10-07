@@ -292,3 +292,26 @@ export function resolveDeviceSerial(session: Session): string | null {
 export function statusSignature(value: unknown): string {
   return JSON.stringify(value ?? []);
 }
+
+/** 会话状态 → Arco tag 色彩（队列面板与会话头共用，避免两处映射漂移）。 */
+export const SESSION_STATUS_COLOR: Record<string, string> = {
+  running: 'arcoblue',
+  paused: 'orange',
+  pending: 'gray',
+  completed: 'green',
+  failed: 'red',
+  cancelled: 'gray',
+};
+
+export function sessionStatusColor(status: string): string {
+  return SESSION_STATUS_COLOR[status] || 'gray';
+}
+
+/** 会话开始时间的紧凑展示：今天显示 HH:MM，跨天带日期（MM/DD HH:MM）。 */
+export function formatSessionTime(startTime?: number): string {
+  if (!startTime) return '--:--';
+  const date = new Date(startTime * 1000);
+  const hm = date.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  if (date.toDateString() === new Date().toDateString()) return hm;
+  return `${date.toLocaleDateString([], { month: '2-digit', day: '2-digit' })} ${hm}`;
+}
