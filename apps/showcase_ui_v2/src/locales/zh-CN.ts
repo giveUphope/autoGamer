@@ -366,19 +366,6 @@ export default {
     title: '工作台',
     description: 'M2：任务队列、会话列表、命令条与会话时间线详情（步骤 / Notes / Checker / Usage）。实时流将在 M3 交付。',
     timelinePlaceholder: '会话时间线将在 M2 里程碑交付',
-    queue: {
-      tabQueue: '队列',
-      tabHistory: '历史',
-      emptyQueue: '暂无排队或运行中的任务',
-      emptyHistory: '暂无历史会话',
-      stop: '停止',
-      delete: '删除',
-      clearAll: '清空历史',
-      deleteConfirm: '确定删除该任务？此操作不可恢复。',
-      clearAllConfirm: '确定清空全部任务与历史？此操作不可恢复。',
-      device: '设备',
-      noDevice: '未指定',
-    },
     dock: {
       placeholder: '输入指令，Enter 提交，Shift+Enter 换行',
       submit: '提交',
@@ -393,6 +380,7 @@ export default {
       delete: '删除会话',
       deleteConfirm: '删除该会话及其全部轮次？此操作不可恢复。',
       stop: '停止',
+      running: '运行中',
     },
     timeline: {
       loadingRunHistory: '正在加载运行记录…',

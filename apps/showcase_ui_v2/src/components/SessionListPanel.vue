@@ -4,11 +4,7 @@ import { useI18n } from 'vue-i18n';
 import { IconComputer, IconPlus } from '@arco-design/web-vue/es/icon';
 
 import { useSessionStore } from '@/stores/session';
-import {
-  formatSessionTime,
-  getTaskStatus,
-  sessionStatusColor,
-} from '@/utils/session-merge';
+import { formatSessionTime, getTaskStatus } from '@/utils/session-merge';
 import type { Session } from '@/types/session.model';
 
 /**
@@ -25,9 +21,8 @@ const busy = ref(false);
 interface ConversationRow {
   id: string;
   name: string;
-  status: string;
-  statusText: string;
-  statusColor: string;
+  /** 线程内有运行中/暂停的轮（进行时信号；结果性状态属于右栏的轮次）。 */
+  isRunning: boolean;
   time: number;
   timeText: string;
   taskCount: number;
@@ -38,17 +33,14 @@ interface ConversationRow {
 
 const rows = computed<ConversationRow[]>(() =>
   sessionStore.conversationGroups.map((group) => {
-    const status = group.status;
-      const runningTask = group.rounds.find((round) => {
+    const runningTask = group.rounds.find((round) => {
       const s = getTaskStatus(round, sessionStore.runningSessionId, sessionStore.agentStatus);
       return s === 'running' || s === 'paused';
     });
     return {
       id: group.id,
       name: group.name || t('workspace.conversations.untitled'),
-      status,
-      statusText: t(`status.${status}`),
-      statusColor: sessionStatusColor(status),
+      isRunning: Boolean(runningTask),
       time: group.time,
       timeText: formatSessionTime(group.time),
       taskCount: group.rounds.length,
@@ -130,9 +122,7 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
         @click="selectConversationRow(row)"
       >
         <div class="conversation-head">
-          <a-tag :color="row.statusColor" size="small" class="conversation-status">
-            {{ row.statusText }}
-          </a-tag>
+          <span v-if="row.isRunning" class="live-dot" :title="t('workspace.conversations.running')" />
           <span class="conversation-time">{{ row.timeText }}</span>
         </div>
         <div class="conversation-name" :title="row.name">{{ row.name }}</div>
@@ -230,8 +220,24 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
   gap: 8px;
 }
 
-.conversation-status {
+/* 进行时指示：线程内有运行中的轮（结果性状态不在此展示） */
+.live-dot {
   flex-shrink: 0;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  background-color: rgb(var(--green-6));
+  animation: live-pulse 1.2s ease-in-out infinite;
+}
+
+@keyframes live-pulse {
+  0%,
+  100% {
+    opacity: 1;
+  }
+  50% {
+    opacity: 0.35;
+  }
 }
 
 .conversation-time {

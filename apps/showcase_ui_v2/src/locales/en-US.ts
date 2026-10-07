@@ -293,19 +293,6 @@ export default {
     title: 'Workspace',
     description: 'M2: task queue, session list, command dock and the session timeline detail (steps / Notes / Checker / Usage). Live stream arrives in M3.',
     timelinePlaceholder: 'The session timeline will arrive in milestone M2',
-    queue: {
-      tabQueue: 'Queue',
-      tabHistory: 'History',
-      emptyQueue: 'No queued or running tasks',
-      emptyHistory: 'No historical sessions',
-      stop: 'Stop',
-      delete: 'Delete',
-      clearAll: 'Clear history',
-      deleteConfirm: 'Delete this task? This cannot be undone.',
-      clearAllConfirm: 'Clear all tasks and history? This cannot be undone.',
-      device: 'Device',
-      noDevice: 'Unassigned',
-    },
     dock: {
       placeholder: 'Type an instruction — Enter to submit, Shift+Enter for a new line',
       submit: 'Submit',
@@ -320,6 +307,7 @@ export default {
       delete: 'Delete session',
       deleteConfirm: 'Delete this session and all its rounds? This cannot be undone.',
       stop: 'Stop',
+      running: 'Running',
     },
     timeline: {
       loadingRunHistory: 'Loading run history...',
