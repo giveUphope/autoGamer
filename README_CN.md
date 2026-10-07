@@ -106,6 +106,17 @@ cd artemis
 
 > **提示**：启动后将自动在默认浏览器中打开 Web 控制台（`http://localhost:8000`），提供设备连接向导、实时投屏、任务演练与状态回放面板。你也可以通过命令行直接运行：`uv run artemis run "打开系统设置，找到电池选项并告诉我当前电量" --profile flash`。
 
+### 开发模式（热更新）
+
+参与 Web 控制台开发？一条命令同时启动 FastAPI 后端与 Vite 前端，联动退出（Ctrl+C 一键全停）：
+
+```bash
+bash scripts/dev.sh   # 或者：make dev
+```
+
+- **前端（Vite，热更新）**：`http://127.0.0.1:5180`
+- **后端（FastAPI）**：`http://127.0.0.1:8000` —— 已有实例在运行时自动复用
+
 <a id="mcp-setup"></a>
 <a id="mcp"></a>
 <details>

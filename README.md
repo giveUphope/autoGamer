@@ -104,6 +104,17 @@ cd artemis
 
 > **Tip**: Opens `http://localhost:8000` in your default browser with a device connection wizard, live screen mirroring, prompt sandbox, and execution replays. You can also run directly from CLI: `uv run artemis run "Open Settings, find Battery and tell me current level" --profile flash`.
 
+### Development (hot reload)
+
+Contributing to the web console? One command starts the FastAPI backend and the Vite dev server together, with linked teardown (Ctrl+C stops both):
+
+```bash
+bash scripts/dev.sh   # or: make dev
+```
+
+- **Frontend (Vite, hot reload)**: `http://127.0.0.1:5180`
+- **Backend (FastAPI)**: `http://127.0.0.1:8000` — reused automatically when an instance is already running
+
 <a id="mcp-setup"></a>
 <a id="mcp"></a>
 <details>
