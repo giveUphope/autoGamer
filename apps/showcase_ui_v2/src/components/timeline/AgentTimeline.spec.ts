@@ -542,6 +542,9 @@ describe('AgentTimeline 动作卡展开图标语义', () => {
 
     const card = wrapper.find('.action-card');
     const icon = card.find('.expand-icon');
+    // 图标必须是已解析的 Arco SVG 组件（防止漏 import 退化为空的原生元素）
+    expect(icon.element.tagName.toLowerCase()).toBe('svg');
+    expect(icon.classes()).toContain('arco-icon');
     // 动作卡默认展开：chevron 向下（点击收起）
     expect(icon.classes()).toContain('expanded');
     await card.find('.card-header').trigger('click');

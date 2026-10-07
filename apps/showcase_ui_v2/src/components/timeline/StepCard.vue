@@ -8,6 +8,7 @@ import {
   IconExclamationCircle,
   IconFile,
   IconPlayArrow,
+  IconRight,
   IconSync,
 } from '@arco-design/web-vue/es/icon';
 
