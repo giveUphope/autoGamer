@@ -264,71 +264,6 @@ export function getActionTargetText(action: any): string {
 }
 
 /**
- * 硬件按键类动作：键名/按压时长属于设备层细节，由轨迹树载荷承担
- * （动作卡「轨迹」入口定位查看），时间线动作卡不再平铺「按键」输入行。
- */
-export function isKeyAction(action: any): boolean {
-  const act = getActionObject(action);
-  if (!act) return false;
-  const name = (act.name || act.action || '').toLowerCase();
-  return name === 'press_key' || name.includes('key');
-}
-
-/**
- * Get input label for Android action
- */
-export function getActionInputLabel(action: any): string {
-  const act = getActionObject(action);
-  if (!act) return tUtil('actions.inputLabel.input');
-  const name = (act.name || act.action || '').toLowerCase();
-  if (name.includes('delay') || name.includes('wait')) {
-    return tUtil('actions.inputLabel.duration');
-  }
-  if (name === 'swipe' || name === 'scroll' || name === 'drag' || name === 'drag_and_drop') {
-    const actObj = getActionObject(action);
-    const args = actObj?.args && typeof actObj.args === 'object' ? actObj.args : {};
-    const dir = actObj?.direction || actObj?.gesture || args.direction || args.gesture || (typeof args.action === 'string' ? args.action : '') || (typeof actObj?.action === 'string' && actObj.action !== name ? actObj.action : '');
-    if (dir && isPureDirectionString(dir)) {
-      return tUtil('actions.inputLabel.direction');
-    }
-    return tUtil('actions.inputLabel.input');
-  }
-  if (name === 'press_key' || name.includes('key')) {
-    return tUtil('actions.inputLabel.key');
-  }
-  if (name === 'input_text' || name.includes('input')) {
-    return tUtil('actions.inputLabel.inputText');
-  }
-  return tUtil('actions.inputLabel.input');
-}
-
-/**
- * Get input text or value for Android action
- */
-export function getActionInputText(action: any): string {
-  const act = getActionObject(action);
-  if (!act) return '';
-  const name = (act.name || act.action || '').toLowerCase();
-  const args = act.args && typeof act.args === 'object' ? act.args : {};
-
-  if (name === 'press_key' || name.includes('key')) {
-    return act.key || act.keycode || args.key || args.keycode || '';
-  }
-  if (name === 'swipe' || name === 'scroll' || name === 'drag' || name === 'drag_and_drop') {
-    const dir = act.direction || act.gesture || args.direction || args.gesture || (typeof args.action === 'string' ? args.action : '') || (typeof act.action === 'string' && act.action !== name ? act.action : '');
-    if (dir && isPureDirectionString(dir)) {
-      return String(dir).toUpperCase();
-    }
-    return '';
-  }
-  if (name.includes('delay') || name.includes('wait')) {
-    const ms = act.time_in_ms || act.delay_ms || act.delay_seconds || args.time_in_ms || args.delay_ms || args.delay_seconds || args.duration;
-    if (ms) return `${ms}ms`;
-  }
-  return act.text || act.input_text || args.text || args.input_text || '';
-}
-
-/**
  * Get coordinates string representation for Android action
  */
 export function getActionCoords(action: any): string {
@@ -469,38 +404,7 @@ export function getActionErrorMessage(action: any, stepData?: any): string {
 }
 
 /**
- * Get bounds string representation for Android action
- */
-export function getActionBounds(action: any): string {
-  const act = getActionObject(action);
-  if (!act) return '';
-  const bounds = act.target_bounds || act.bounds || (act.args && (act.args.target_bounds || act.args.bounds));
-  if (Array.isArray(bounds)) {
-    return bounds.join(', ');
-  }
-  return bounds ? String(bounds) : '';
-}
-
-/**
- * Get resource id for Android action target
- */
-export function getActionResourceId(action: any): string {
-  const act = getActionObject(action);
-  if (!act) return '';
-  return act.target_resource_id || act.resource_id || (act.args && (act.args.target_resource_id || act.args.resource_id)) || '';
-}
-
-/**
- * Get class name for Android action target
- */
-export function getActionClass(action: any): string {
-  const act = getActionObject(action);
-  if (!act) return '';
-  return act.target_class || act.class_name || (act.args && (act.args.target_class || act.args.class_name)) || '';
-}
-
-/**
- * Format image URL or path safely
+ * Extract an ordered array of visual StepReplayFrames from session logs or step blocks
  */
 export function formatImageUrl(candidate: any): string | null {
   if (!candidate || candidate === 'None' || candidate === 'null' || candidate === 'undefined') return null;

@@ -179,17 +179,18 @@ describe('AgentTimeline (M2)', () => {
     expect(wrapper.text()).toContain('在下方输入框描述要执行的操作即可开始');
   });
 
-  it('renders step cards with action details from the steps snapshot', async () => {
+  it('renders step cards whose expanded action card keeps only the screenshots', async () => {
     const wrapper = await mountWithSession();
-    // 动作卡与目标 / 坐标（来自 /steps 的 action_taken 实际字段；
-    // 动作标题由 util 生成——app 级 i18n 实例在本 spec 中固定 en-US，保持迁移前英文断言）
+    // 动作标题由 util 生成——app 级 i18n 实例在本 spec 中固定 en-US，保持迁移前英文断言
     await vi.waitFor(() => expect(wrapper.text()).toContain('Tapping Element'));
-    // 详情在展开网格内：点击动作卡头部展开后断言
+    // 展开区契约：只渲染动作前/后截图，目标/坐标等载荷细节一律由轨迹树承担
     const card = wrapper.find('.action-card');
     await card.find('.card-header').trigger('click');
     await vi.waitFor(() => expect(card.find('.card-expanded').exists()).toBe(true));
-    expect(card.text()).toContain('设置应用图标');
-    expect(card.text()).toContain('[319, 909]');
+    expect(card.text()).toContain('动作前（前）');
+    expect(card.text()).toContain('动作后（后）');
+    expect(card.text()).not.toContain('设置应用图标');
+    expect(card.text()).not.toContain('[319, 909]');
     // markdown 流文本（Work 段）
     expect(wrapper.text()).toContain('I see the home screen with Settings icon.');
   });

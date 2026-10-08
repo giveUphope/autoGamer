@@ -19,18 +19,11 @@ import { useTimelineStore } from '@/stores/timeline';
 import { DEFAULT_STREAM_RESET_MESSAGE } from '@/types/stream.model';
 import type { StepBlock, StepEvent, ActionParam } from '@/types/stream.model';
 import {
-  getActionBounds,
-  getActionClass,
-  getActionCoords,
   getActionErrorMessage,
   getActionIcon,
-  getActionInputLabel,
-  getActionInputText,
-  getActionTargetText,
   getActionTitle,
   isActionFailed,
   isAndroidAction,
-  isKeyAction,
   isReportStatusAction,
   getReportStatusValue,
   getReportStatusExplanation,
@@ -504,30 +497,7 @@ function resumePausedTask(): void {
             <icon-right class="expand-icon" :class="{ expanded: expandedCards.has(`action-${itemIdx}`) }" />
           </div>
           <div v-if="expandedCards.has(`action-${itemIdx}`)" class="card-expanded" @click.stop>
-            <div class="expanded-grid">
-              <div v-if="getActionTargetText(item.data)" class="grid-item">
-                <span class="grid-label">{{ t('workspace.timeline.target') }}</span>
-                <span class="grid-value">"{{ getActionTargetText(item.data) }}"</span>
-              </div>
-              <!-- 按键类动作的键名/按压时长收敛进轨迹树载荷，不在卡内平铺 -->
-              <div v-if="getActionInputText(item.data) && !isKeyAction(item.data)" class="grid-item">
-                <span class="grid-label">{{ getActionInputLabel(item.data) }}</span>
-                <span class="grid-value">"{{ getActionInputText(item.data) }}"</span>
-              </div>
-              <div v-if="getActionCoords(item.data)" class="grid-item">
-                <span class="grid-label">{{ t('workspace.timeline.coordinates') }}</span>
-                <span class="grid-value code-pill">{{ getActionCoords(item.data) }}</span>
-              </div>
-              <div v-if="getActionBounds(item.data)" class="grid-item">
-                <span class="grid-label">{{ t('workspace.timeline.bounds') }}</span>
-                <span class="grid-value code-pill">[{{ getActionBounds(item.data) }}]</span>
-              </div>
-              <div v-if="getActionClass(item.data)" class="grid-item">
-                <span class="grid-label">{{ t('workspace.timeline.targetClass') }}</span>
-                <span class="grid-value code-pill">{{ getActionClass(item.data) }}</span>
-              </div>
-              <!-- 其余载荷参数（coordinate_space/times 等）不再平铺：全量细节由动作卡「轨迹」入口在轨迹树载荷中查看 -->
-            </div>
+            <!-- 展开区只保留动作前/后截图；目标/坐标/输入等全部细节由「轨迹」入口在轨迹树载荷中查看 -->
             <div
               v-if="getStepPreImageUrl(props.block.data, item.data) || getStepPostImageUrl(props.block.data, item.data)"
               class="screenshots"

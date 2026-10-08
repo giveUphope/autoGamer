@@ -4,9 +4,7 @@ import i18n from '@/locales';
 import {
   extractStepReplayFrames,
   getActionErrorMessage,
-  getActionInputLabel,
   getActionTitle,
-  isKeyAction,
 } from './action-formatter';
 
 /**
@@ -40,15 +38,7 @@ describe('action-formatter display copy (en-US)', () => {
     expect(getActionTitle({ action: 'foo_bar' })).toBe('Foo Bar');
   });
 
-  it('keeps the legacy English input labels and error fallbacks', () => {
-    expect(getActionInputLabel(null)).toBe('Input');
-    expect(getActionInputLabel({ action: 'wait_for_delay' })).toBe('Duration');
-    expect(getActionInputLabel({ action: 'swipe', args: { direction: 'up' } })).toBe('Direction');
-    expect(getActionInputLabel({ action: 'swipe', args: { gesture: 'pinch zoom' } })).toBe('Input');
-    expect(getActionInputLabel({ action: 'press_key' })).toBe('Key');
-    expect(getActionInputLabel({ action: 'input_text' })).toBe('Input Text');
-    expect(getActionInputLabel({ action: 'foo_bar' })).toBe('Input');
-
+  it('keeps the legacy English error fallbacks', () => {
     expect(getActionErrorMessage({ action: 'click', args: {} })).toBe('Action Failed');
     expect(getActionErrorMessage({ action: 'click', error: 'Device unreachable' })).toBe('Device unreachable');
   });
@@ -63,13 +53,6 @@ describe('action-formatter display copy (en-US)', () => {
     expect(frames[0].actionText).toBe('Tapping Element (设置)');
     expect(frames[1].title).toBe('Step 2: Step 2');
     expect(frames[1].actionText).toBe('Step 2');
-  });
-
-  it('flags hardware key actions so the key row converges into the trace tree', () => {
-    expect(isKeyAction({ action: 'press_key', args: { key: 'APP_SWITCH' } })).toBe(true);
-    expect(isKeyAction({ name: 'press_home' })).toBe(false);
-    expect(isKeyAction({ action: 'input_text' })).toBe(false);
-    expect(isKeyAction(null)).toBe(false);
   });
 });
 
