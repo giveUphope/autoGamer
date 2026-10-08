@@ -19,7 +19,6 @@ import { useTimelineStore } from '@/stores/timeline';
 import { DEFAULT_STREAM_RESET_MESSAGE } from '@/types/stream.model';
 import type { StepBlock, StepEvent, ActionParam } from '@/types/stream.model';
 import {
-  extractActionExtraParams,
   getActionBounds,
   getActionClass,
   getActionCoords,
@@ -245,10 +244,6 @@ function compressionTitle(tool: any): string | null {
 
 function adbCommandValue(tool: any): string {
   return getAdbCommandLine(tool);
-}
-
-function actionParams(item: StepEvent): ActionParam[] {
-  return extractActionExtraParams(item.data);
 }
 
 function toolParams(item: StepEvent): ActionParam[] {
@@ -531,10 +526,7 @@ function resumePausedTask(): void {
                 <span class="grid-label">{{ t('workspace.timeline.targetClass') }}</span>
                 <span class="grid-value code-pill">{{ getActionClass(item.data) }}</span>
               </div>
-              <div v-for="param in actionParams(item)" :key="param.key" class="grid-item">
-                <span class="grid-label">{{ param.key }}</span>
-                <span class="grid-value code-pill">{{ param.value }}</span>
-              </div>
+              <!-- 其余载荷参数（coordinate_space/times 等）不再平铺：全量细节由动作卡「轨迹」入口在轨迹树载荷中查看 -->
             </div>
             <div
               v-if="getStepPreImageUrl(props.block.data, item.data) || getStepPostImageUrl(props.block.data, item.data)"

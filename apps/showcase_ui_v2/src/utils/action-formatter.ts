@@ -17,7 +17,7 @@
  * 从 Angular `apps/showcase_ui/src/app/utils/action-formatter.util.ts` 原样平移（M2，逻辑零改动，
  * 仅 import 路径调整；`extractStepReplayFrames` 一并平移供 M4 播放器复用）。
  */
-import type { ActionParam, StepReplayFrame } from '@/types/stream.model';
+import type { StepReplayFrame } from '@/types/stream.model';
 import { tUtil } from './i18n';
 import { extractNumbersFromCoordinateValue, isPureDirectionString, parseSequenceCoordinates, unwrapTraceAction } from './image-coords';
 import { cleanErrorMessage, joinTargetDescriptions } from './tool-formatter';
@@ -497,76 +497,6 @@ export function getActionClass(action: any): string {
   const act = getActionObject(action);
   if (!act) return '';
   return act.target_class || act.class_name || (act.args && (act.args.target_class || act.args.class_name)) || '';
-}
-
-/**
- * Extract extra parameter key-value pairs for Android actions
- */
-export function extractActionExtraParams(action: any, cache?: WeakMap<any, ActionParam[]>): ActionParam[] {
-  const act = getActionObject(action);
-  if (!act || typeof act !== 'object') return [];
-  if (cache && cache.has(act)) {
-    return cache.get(act)!;
-  }
-
-  const standardKeys = new Set([
-    'action', 'name', 'type', 'target_text', 'target_description', 'target_descriptions',
-    'text', 'input_text', 'target',
-    'coordinates', 'coords', 'target_bounds', 'bounds', 'target_resource_id',
-    'resource_id', 'target_class', 'class_name', 'normalized_coordinates',
-    'normalized_start_coordinates', 'normalized_end_coordinates',
-    'start_coordinates', 'end_coordinates', 'start', 'end', 'from', 'to',
-    'pre_image_name', 'post_image_name', 'pre_screenshot', 'post_screenshot',
-    'before_screenshot', 'after_screenshot', 'status', 'success', 'timestamp',
-    'created_at', 'start_time', 'execution_id', 'controller', 'agent', 'session_id', 'step_id',
-    'app_name', 'package_name', 'app', 'key', 'keycode', 'time_in_ms', 'delay_ms', 'delay_seconds', 'duration', 'duration_ms',
-    'args', 'kwargs', 'parameters', 'extra_params', 'direction', 'gesture',
-    // 调试字段与按键/按压时长等设备层细节均由轨迹树承担（动作卡「轨迹」入口定位查看），不在时间线平铺
-    'trace_id', 'parent_trace_id', 'payload', 'agent_name'
-  ]);
-
-  const result: ActionParam[] = [];
-
-  const rawArgs = act.args || act.Args || act.kwargs || act.parameters;
-  let parsedArgs: any = {};
-  if (rawArgs) {
-    if (typeof rawArgs === 'object') {
-      parsedArgs = rawArgs;
-    } else if (typeof rawArgs === 'string') {
-      try {
-        parsedArgs = JSON.parse(rawArgs);
-      } catch {
-        if (!rawArgs.includes('<') && !rawArgs.includes('object at')) {
-          parsedArgs = { details: rawArgs };
-        }
-      }
-    }
-  }
-
-  const mergedObj = { ...act, ...parsedArgs };
-
-  for (const [k, v] of Object.entries(mergedObj)) {
-    const lowerK = k.toLowerCase();
-    if (standardKeys.has(lowerK)) continue;
-    if (v === null || v === undefined || v === '') continue;
-
-    let valStr = String(v);
-    if (valStr.includes('object at 0x') || valStr.startsWith('<artemis.') || valStr.includes('<controller')) continue;
-
-    if (typeof v === 'object') {
-      try { valStr = JSON.stringify(v); } catch { valStr = String(v); }
-    }
-
-    let prettyKey = k.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase());
-    if (lowerK === 'time_in_ms' || lowerK === 'delay_ms') prettyKey = 'Delay';
-
-    result.push({ key: prettyKey, value: valStr });
-  }
-
-  if (cache) {
-    cache.set(act, result);
-  }
-  return result;
 }
 
 /**

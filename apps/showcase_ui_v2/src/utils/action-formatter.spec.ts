@@ -2,7 +2,6 @@ import { beforeEach, describe, expect, it } from 'vitest';
 
 import i18n from '@/locales';
 import {
-  extractActionExtraParams,
   extractStepReplayFrames,
   getActionErrorMessage,
   getActionInputLabel,
@@ -54,10 +53,7 @@ describe('action-formatter display copy (en-US)', () => {
     expect(getActionErrorMessage({ action: 'click', error: 'Device unreachable' })).toBe('Device unreachable');
   });
 
-  it('keeps the legacy English replay frame titles; duration converges into the trace tree', () => {
-    // 按压时长等设备层细节由轨迹树载荷承担，extra params 不再输出 Duration
-    expect(extractActionExtraParams({ action: 'wait_for_delay', duration: 500 })).toEqual([]);
-
+  it('keeps the legacy English replay frame titles', () => {
     const frames = extractStepReplayFrames([
       { step_id: 's1', step_number: 1, post_image_name: 'p1.jpg', action_taken: { action: 'click', args: { target_description: '设置' } } },
       { step_id: 's2', step_number: 2, post_image_name: 'p2.jpg' },
@@ -82,34 +78,10 @@ describe('action-formatter display copy (zh-CN spot checks)', () => {
     i18n.global.locale.value = 'zh-CN';
     expect(getActionTitle({ action: 'click' })).toBe('轻点元素');
     expect(getActionTitle({ action: 'swipe', args: { direction: 'up' } })).toBe('滑动屏幕（UP）');
-    expect(extractActionExtraParams({ action: 'wait_for_delay', duration: 500 })).toEqual([]);
     const frames = extractStepReplayFrames([
       { step_id: 's1', step_number: 1, post_image_name: 'p1.jpg', action_taken: { action: 'click' } },
     ]);
     expect(frames[0].title).toBe('步骤 1：轻点元素');
     i18n.global.locale.value = 'en-US';
-  });
-});
-
-describe('extractActionExtraParams — 调试字段由轨迹树承担', () => {
-  it('排除 trace_id / parent_trace_id / payload / agent_name / duration，不再平铺进时间线', () => {
-    i18n.global.locale.value = 'en-US';
-    const params = extractActionExtraParams({
-      action: 'click',
-      target_description: '返回按钮',
-      trace_id: 'trace-1',
-      parent_trace_id: 'trace-0',
-      payload: { args: { target: [36, 85] } },
-      agent_name: 'FlashRunner',
-      duration: 120,
-    });
-    const keys = params.map((p) => p.key);
-    expect(keys).not.toContain('Trace Id');
-    expect(keys).not.toContain('Parent Trace Id');
-    expect(keys).not.toContain('Payload');
-    expect(keys).not.toContain('Agent Name');
-    // 按压时长收敛进轨迹树载荷，不在时间线平铺
-    expect(keys).not.toContain('Duration');
-    i18n.global.locale.value = 'zh-CN';
   });
 });
