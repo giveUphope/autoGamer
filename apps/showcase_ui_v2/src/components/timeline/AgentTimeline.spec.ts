@@ -192,6 +192,54 @@ describe('AgentTimeline (M2)', () => {
     expect(wrapper.text()).not.toContain('打开设置，查看电池电量');
   });
 
+  it('动作后截图回填：无 post 的步骤以下一步动作前截图兜底', async () => {
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/api/sessions') return Promise.resolve([SESSION]);
+      if (url === '/api/sessions/sess-1/steps') {
+        return Promise.resolve([
+          {
+            step_id: 's1',
+            step_number: '1',
+            timestamp: 1756152001,
+            operator_raw_thinking: 'thinking one',
+            action_taken: { action: 'click', args: { target_description: '图标A' } },
+            pre_image_name: 'pre-1',
+            post_image_name: null,
+          },
+          {
+            step_id: 's2',
+            step_number: '2',
+            timestamp: 1756152010,
+            operator_raw_thinking: 'thinking two',
+            action_taken: { action: 'click', args: { target_description: '图标B' } },
+            pre_image_name: 'pre-2',
+            post_image_name: null,
+          },
+        ]);
+      }
+      return Promise.resolve({});
+    });
+
+    const wrapper = await mountWithSession();
+    await vi.waitFor(() => expect(wrapper.findAll('.action-card').length).toBe(2));
+    for (const card of wrapper.findAll('.action-card')) {
+      await card.find('.card-header').trigger('click');
+    }
+
+    // 步骤 1 无 post：动作前 pre-1 + 回填的动作后 pre-2
+    await vi.waitFor(() => {
+      expect(wrapper.findAll('.action-card')[0].findAll('.screenshot-col').length).toBe(2);
+    });
+    const firstCols = wrapper.findAll('.action-card')[0].findAll('.screenshot-col');
+    expect(firstCols[0].find('img').attributes('src')).toContain('pre-1');
+    expect(firstCols[1].find('img').attributes('src')).toContain('pre-2');
+
+    // 最后一步没有「下一步」可回填：只渲染动作前
+    const lastCols = wrapper.findAll('.action-card')[1].findAll('.screenshot-col');
+    expect(lastCols.length).toBe(1);
+    expect(lastCols[0].find('img').attributes('src')).toContain('pre-2');
+  });
+
   it('失败轮次透出会话级失败原因，解释断点在哪里', async () => {
     const wrapper = await mountWithSession();
     const sessionStore = useSessionStore();

@@ -112,3 +112,33 @@ def test_terminal_llm_payload_keeps_wait_and_retry_aggregation():
         "waited_seconds": 18.5,
         "retries": retries,
     }
+
+
+def test_has_steps_probes_the_real_schema(tmp_path):
+    """The circuit breaker's zero-step discriminator runs against live SQLite:
+    a wrong table/column name would silently disable the whole queue hold."""
+    from apps.admin_console.database.connection import db_session
+    from artemis.data_engine.storage import StorageManager
+
+    db_path = tmp_path / "engine.db"
+    StorageManager(db_path, tmp_path)  # bootstraps the sessions/steps schema
+
+    repository = StepRepository(db_path)
+    with db_session(db_path) as conn:
+        conn.execute(
+            "INSERT INTO sessions (session_id, initial_goal, start_time) VALUES (?, ?, ?)",
+            ("sess-1", "goal", 1.0),
+        )
+        conn.execute(
+            "INSERT INTO sessions (session_id, initial_goal, start_time) VALUES (?, ?, ?)",
+            ("sess-2", "goal", 2.0),
+        )
+        conn.execute(
+            "INSERT INTO steps (step_id, session_id, step_number, timestamp) VALUES (?, ?, ?, ?)",
+            ("step-1", "sess-1", 1, 1.0),
+        )
+        conn.commit()
+
+    assert repository.has_steps("sess-1") is True
+    assert repository.has_steps("sess-2") is False  # started but never executed a step
+    assert repository.has_steps("missing") is False

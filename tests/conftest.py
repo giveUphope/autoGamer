@@ -26,6 +26,24 @@ import pytest
 from artemis.drivers.mock.mock_driver import MockDeviceDriver
 
 
+@pytest.fixture(autouse=True)
+def _no_live_ipc_bridge(tmp_path, monkeypatch):
+    """Keep every test hermetic w.r.t. the desktop console's IPC bridge.
+
+    DataEngine auto-connects to the console server through the shared port
+    file under %TEMP% -- no environment variable required. Without this
+    guard, running the unit suites while a console server is up streams
+    every test session into the live daemon, which broadcasts them as
+    running sessions and permanently pollutes the console's session list.
+    IPC-specific tests re-patch these seams explicitly.
+    """
+    from artemis.data_engine import engine
+
+    monkeypatch.setattr(engine, "read_ipc_port", lambda: None)
+    monkeypatch.setattr(engine, "get_ipc_port_file", lambda: tmp_path / "no-ipc-port-file")
+    yield
+
+
 @pytest.fixture
 def mock_driver():
     """Provide an isolated mock mobile driver."""

@@ -82,6 +82,14 @@ commit right away**: `git add <touched files>` + a Conventional Commit message. 
 the user asks for pushes explicitly. Prefer one commit per coherent fix/feature over letting
 unrelated changes pile up in the working tree.
 
+**Test-sync review habit**: behavioral changes always ride together with their specs — every
+new behavior gets a locking test, and a test of removed behavior is removed in the same
+commit. After a batch of changes (or before wrapping up a longer session), dispatch review
+subagent(s) over the touched test suites (backend `tests/unit/...`, frontend `*.spec.ts`) to
+verify tests still match the implementation, close coverage gaps (especially regression
+guards for the bugs just fixed), and refactor stale/duplicated fixtures — then land the
+follow-up test commit.
+
 ## Environment notes
 
 - Primary dev OS is Windows (Git Bash): dev scripts handle msys-vs-win32 PID quirks; don't

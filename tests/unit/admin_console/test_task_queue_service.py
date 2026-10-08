@@ -80,6 +80,7 @@ def clean_state(tmp_path, monkeypatch):
     state.current_goal = None
     state.current_profile = None
     state.manually_stopped_run_ids.clear()
+    state.held_queues.clear()
     if hasattr(state, "recent_submissions"):
         state.recent_submissions.clear()
     if state.worker_task and not state.worker_task.done():
@@ -1266,16 +1267,28 @@ async def test_zero_step_failure_holds_device_queue_and_retains_messages(
         },
     )
 
-    failed_item = state.queue_items[0]
-    target = TaskQueueService._task_target(failed_item)
-    await TaskQueueService._maybe_hold_device_queue(
-        failed_item, target, failed_item["session_id"]
-    )
+    events = []
+    capture = lambda event_type, data: events.append((event_type, data))
+    state.ipc_subscribers.append(capture)
+    try:
+        failed_item = state.queue_items[0]
+        target = TaskQueueService._task_target(failed_item)
+        await TaskQueueService._maybe_hold_device_queue(
+            failed_item, target, failed_item["session_id"]
+        )
+    finally:
+        state.ipc_subscribers.remove(capture)
 
     hold = state.held_queues.get(target.lock_key)
     assert hold, "zero-step failure must hold the device queue"
     assert "not available" in hold["reason"]
     assert hold["session_id"] == failed_item["session_id"]
+
+    # 断点事件广播：前端/订阅方可感知队列因何挂起
+    held_events = [d for et, d in events if et == "queue_held"]
+    assert held_events and held_events[0]["lock_key"] == target.lock_key
+    assert held_events[0]["session_id"] == failed_item["session_id"]
+    assert "not available" in held_events[0]["reason"]
 
     # 熔断期间 dispatcher 不得派发该设备的任何 pending 消息（保留在队列中）
     with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
@@ -1293,6 +1306,11 @@ async def test_task_level_failure_never_holds_queue(monkeypatch, device_probe_ok
     target = TaskQueueService._task_target(item)
     await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
     assert state.held_queues == {}
+
+    # 探测失败不误伤：队列照常派发
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert state.queue_items[0]["status"] == "running"
 
     with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
         TaskQueueService._dispatch_pending_tasks()
@@ -1314,6 +1332,11 @@ async def test_step_probe_failure_keeps_queue_dispatching(monkeypatch, device_pr
     await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
     assert state.held_queues == {}
 
+    # 探测失败不误伤：队列照常派发
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert state.queue_items[0]["status"] == "running"
+
 
 @pytest.mark.asyncio
 async def test_held_queue_auto_resumes_when_device_comes_back(
@@ -1329,12 +1352,21 @@ async def test_held_queue_auto_resumes_when_device_comes_back(
     def statuses(*serials):
         return [DeviceStatus(serial=s, state="device") for s in serials]
 
-    # 设备重新出现在真实枚举里：熔断解除，队列可继续派发
-    monkeypatch.setattr(
-        device_pool, "try_list_devices_async", AsyncMock(return_value=statuses("EMULATOR1"))
-    )
-    await TaskQueueService._probe_held_queues()
-    assert target.lock_key not in state.held_queues
+    resumed_events = []
+    capture = lambda et, d: resumed_events.append((et, d))
+    state.ipc_subscribers.append(capture)
+    try:
+        # 设备重新出现在真实枚举里：熔断解除，队列可继续派发
+        monkeypatch.setattr(
+            device_pool, "try_list_devices_async", AsyncMock(return_value=statuses("EMULATOR1"))
+        )
+        await TaskQueueService._probe_held_queues()
+        assert target.lock_key not in state.held_queues
+    finally:
+        state.ipc_subscribers.remove(capture)
+    resumed = [d for et, d in resumed_events if et == "queue_resumed"]
+    assert resumed and resumed[0]["device_serial"] == "EMULATOR1"
+    assert resumed[0]["lock_key"] == target.lock_key
 
     # 枚举成功但该序列号不在其中：保持熔断
     seed_hold(target.lock_key, item)
@@ -1352,13 +1384,23 @@ async def test_held_queue_auto_resumes_when_device_comes_back(
     await TaskQueueService._probe_held_queues()
     assert target.lock_key in state.held_queues
 
-    # 节流：刚探测过（5s 内）即使设备在线也不重复探测/解除
+    # 枚举本身抛错（adb 崩溃）：保持熔断且不向外抛
     monkeypatch.setattr(
-        device_pool, "try_list_devices_async", AsyncMock(return_value=statuses("EMULATOR1"))
+        device_pool,
+        "try_list_devices_async",
+        AsyncMock(side_effect=RuntimeError("adb crashed")),
     )
+    state.held_queues[target.lock_key]["last_probe"] = 0.0
+    await TaskQueueService._probe_held_queues()
+    assert target.lock_key in state.held_queues
+
+    # 节流：刚探测过（5s 内）即使设备在线也不重复探测/解除
+    probe = AsyncMock(return_value=statuses("EMULATOR1"))
+    monkeypatch.setattr(device_pool, "try_list_devices_async", probe)
     state.held_queues[target.lock_key]["last_probe"] = time.monotonic()
     await TaskQueueService._probe_held_queues()
     assert target.lock_key in state.held_queues
+    probe.assert_not_called()
 
 
 @pytest.mark.asyncio
@@ -1385,6 +1427,34 @@ async def test_stop_all_clears_device_queue_holds(monkeypatch, device_probe_ok):
     with patch.object(TaskQueueService, "ensure_worker_running"):
         assert task_queue_service.stop_tasks(clear_all=True) is True
     assert state.held_queues == {}
+
+
+@pytest.mark.asyncio
+async def test_hold_is_per_device_other_device_keeps_dispatching(
+    monkeypatch, device_probe_ok
+):
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        await task_queue_service.enqueue_tasks(["设备A任务"], device_serial="EMULATOR1")
+        await task_queue_service.enqueue_tasks(["设备B任务"], device_serial="EMULATOR2")
+
+    monkeypatch.setattr(step_repo, "has_steps", lambda session_id: False)
+    monkeypatch.setattr(
+        session_repo,
+        "get_session_by_id",
+        lambda session_id: {"error_message": "Device EMULATOR1 is not available."},
+    )
+
+    a_item = state.queue_items[0]
+    a_target = TaskQueueService._task_target(a_item)
+    await TaskQueueService._maybe_hold_device_queue(a_item, a_target, a_item["session_id"])
+    assert a_target.lock_key in state.held_queues
+
+    # 熔断只针对故障设备：设备 B 的 pending 任务照常派发
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    statuses = {i["session_id"]: i["status"] for i in state.queue_items}
+    assert statuses[a_item["session_id"]] == "pending"
+    assert statuses[state.queue_items[1]["session_id"]] == "running"
 
 
 async def enqueue_two_tasks():

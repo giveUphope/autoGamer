@@ -320,6 +320,23 @@ describe('session store — 多轮会话线程（conversation）', () => {
     expect(store.submitConversationId).toBe('conv-draft');
     expect(store.isDraftConversation).toBe(true);
 
+    // 初始自动选中同样被草稿豁免：有历史会话也不得抢占草稿视图
+    mockApiRoutes({
+      '/api/status': statusPayload(),
+      '/api/sessions': [
+        {
+          session_id: 'old-sid',
+          initial_goal: '旧任务',
+          conversation_id: 'conv-old',
+          start_time: 1,
+          status: 'completed',
+        },
+      ],
+    });
+    await store.fetchStatus();
+    await store.fetchSessions();
+    expect(store.currentSessionId).toBeNull();
+
     // 有任务运行时，状态轮询不得把视图拽回运行会话（草稿豁免自动跟随）
     mockApiRoutes({
       '/api/status': statusPayload({ status: 'running', session_id: 'old-sid' }),

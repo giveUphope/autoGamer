@@ -136,6 +136,10 @@ describe('SessionTreeDrawer (可视化轨迹树)', () => {
     // 轮次头直接携带失败原因：树内调用全部 success 时也能对上轮次失败
     expect(bodyText()).toContain('第 2 轮 · 第二条 · 10:05 · Device is not available (adb does not list it)');
 
+    // 轮次头悬浮提示携带完整标题（含失败原因）：行内截断时仍可读
+    const name2 = document.querySelector('.tt-row[data-node-key="round:s2"] .tt-name');
+    expect(name2!.getAttribute('title')).toContain('adb does not list it');
+
     const head2 = document.querySelector('.tt-row[data-node-key="round:s2"] .tt-toggle') as HTMLElement;
     head2.click();
     await flushPromises();

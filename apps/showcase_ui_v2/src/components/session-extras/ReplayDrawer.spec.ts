@@ -274,3 +274,39 @@ describe('ReplayDrawer (B6)', () => {
     expect((document.body.textContent || '')).toContain('历史结果');
   });
 });
+
+describe('ReplayDrawer — 回放中心查看器（屏幕回放）', () => {
+  it('双图/单图布局、导航边界、灯箱键盘操作与步骤行联动', async () => {
+    // 此前用例的抽屉 teleport 残留会让 .viewer-figure 计数翻倍
+    document.body.innerHTML = '';
+    mockBackend();
+    mountDrawer();
+    await flushPromises();
+
+    // 步骤 3 有前+后截图：双图布局；首步时「上一张」禁用
+    expect(document.querySelectorAll('.viewer-figure')).toHaveLength(2);
+    expect(document.querySelector('.viewer-images')!.className).toContain('is-dual');
+    const navs = () => Array.from(document.querySelectorAll<HTMLButtonElement>('.viewer-nav'));
+    expect(navs()[0]!.disabled).toBe(true);
+    expect(navs()[1]!.disabled).toBe(false);
+
+    // 灯箱：点前图打开（动作前），→ 切到动作后，Esc 关闭
+    (document.querySelector('.viewer-figure') as HTMLElement).click();
+    await flushPromises();
+    expect(document.querySelector('.lightbox-label')?.textContent).toBe('动作前');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'ArrowRight' }));
+    await flushPromises();
+    expect(document.querySelector('.lightbox-label')?.textContent).toBe('动作后');
+    window.dispatchEvent(new KeyboardEvent('keydown', { key: 'Escape' }));
+    await flushPromises();
+    expect(document.querySelector('.lightbox')).toBeNull();
+
+    // 步骤行联动：点步骤 4 行 → 查看器切到第 2/2 步
+    // 步骤 4 无前截图：只渲染动作后一张图；上一张变为可用
+    (document.querySelector('.replay-step[data-step-number="4"]') as HTMLElement).click();
+    await flushPromises();
+    expect(document.body.textContent).toContain('第 2 / 2 步');
+    expect(document.querySelectorAll('.viewer-figure')).toHaveLength(1);
+    expect(navs()[0]!.disabled).toBe(false);
+  });
+});
