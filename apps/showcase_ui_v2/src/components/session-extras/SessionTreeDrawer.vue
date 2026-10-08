@@ -17,7 +17,7 @@ import { ApiError, apiGet } from '@/services/api';
 const props = defineProps<{
   visible: boolean;
   /** 当前线程的全部轮次（时间正序，来自 AgentTimeline 的 rounds）。 */
-  rounds: Array<{ id: string; roundNumber: number; goal: string; time: string }>;
+  rounds: Array<{ id: string; roundNumber: number; goal: string; time: string; error?: string | null }>;
   /** 需要定位高亮的轨迹节点 id（时间线动作卡「轨迹」入口传入）。 */
   focusTraceId?: string | null;
 }>();
@@ -172,7 +172,9 @@ async function fetchTrees(): Promise<void> {
         status: '',
         timestamp: 0,
         duration: null,
-        roundTitle: `${t('workspace.timeline.roundNumber', { n: round.roundNumber })} · ${goal} · ${round.time}`,
+        // 轮内调用可能全部 success 而轮次仍失败（如设备接入失败）：
+        // 把会话级失败原因带进轮次头，树内即可对上断点
+        roundTitle: `${t('workspace.timeline.roundNumber', { n: round.roundNumber })} · ${goal} · ${round.time}${round.error ? ` · ${round.error}` : ''}`,
         children: [],
       };
       const result = results[index];
@@ -188,7 +190,9 @@ async function fetchTrees(): Promise<void> {
             name:
               result.status === 'rejected'
                 ? `${t('workspace.tree.roundLoadFail')}：${detailOf(result.reason)}`
-                : t('workspace.tree.roundNoTrace'),
+                : round.error
+                  ? `${t('workspace.tree.roundNoTrace')}：${round.error}`
+                  : t('workspace.tree.roundNoTrace'),
             status: '',
             timestamp: 0,
             duration: null,

@@ -61,7 +61,7 @@ const ROUNDS = [
 
 function mountDrawer(props: {
   visible: boolean;
-  rounds: Array<{ id: string; roundNumber: number; goal: string; time: string }>;
+  rounds: Array<{ id: string; roundNumber: number; goal: string; time: string; error?: string | null }>;
   focusTraceId?: string | null;
 }) {
   return mount(SessionTreeDrawer, {
@@ -119,6 +119,27 @@ describe('SessionTreeDrawer (可视化轨迹树)', () => {
     head2.click();
     await flushPromises();
     expect(bodyText()).toContain('该轮暂无轨迹记录');
+  });
+
+  it('failed rounds without traces surface the session error as the breakpoint', async () => {
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve(url === '/api/sessions/s1/tree' ? TREE1 : []),
+    );
+    mountDrawer({
+      visible: true,
+      rounds: [
+        { id: 's1', roundNumber: 1, goal: '第一条', time: '10:00' },
+        { id: 's2', roundNumber: 2, goal: '第二条', time: '10:05', error: 'Device is not available (adb does not list it)' },
+      ],
+    });
+    await flushPromises();
+    // 轮次头直接携带失败原因：树内调用全部 success 时也能对上轮次失败
+    expect(bodyText()).toContain('第 2 轮 · 第二条 · 10:05 · Device is not available (adb does not list it)');
+
+    const head2 = document.querySelector('.tt-row[data-node-key="round:s2"] .tt-toggle') as HTMLElement;
+    head2.click();
+    await flushPromises();
+    expect(bodyText()).toContain('该轮暂无轨迹记录：Device is not available (adb does not list it)');
   });
 
   it('selecting a node shows the detail pane with metadata and inline payload', async () => {

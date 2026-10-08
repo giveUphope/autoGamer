@@ -60,6 +60,8 @@ export interface Session {
   /** 提交（入队）时刻。轮次排序/展示用它：start_time 是获得设备使用权后的
    * 引擎启动时刻，会让排队轮次在发射时乱序。旧数据为空则回退 start_time。 */
   submitted_at?: number | null;
+  /** 会话级失败原因（引擎写入）。轮次视图用它解释「失败但没有执行记录」的断点。 */
+  error_message?: string | null;
 }
 
 /** 单段屏幕录像：scrcpy 重启（转屏 / 崩溃恢复）时录像切分为多段（M4，平移自 agent.service.ts L30-40）。 */

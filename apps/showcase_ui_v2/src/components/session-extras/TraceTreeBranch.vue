@@ -115,7 +115,7 @@ function durationText(node: TraceNodeView): string {
           <component :is="iconOf(node.type)" v-if="node.type !== 'round'" />
           <span v-else class="tt-round-dot" aria-hidden="true"></span>
         </span>
-        <span class="tt-name" :title="node.name">
+        <span class="tt-name" :title="node.type === 'round' ? node.roundTitle : node.name">
           <template v-if="node.type === 'round'">{{ node.roundTitle }}</template>
           <template v-else>{{ node.name }}</template>
         </span>

@@ -5,6 +5,7 @@ import {
   IconCamera,
   IconCheckCircle,
   IconDown,
+  IconExclamationCircle,
   IconEye,
   IconFile,
   IconHistory,
@@ -110,6 +111,9 @@ const rounds = computed(() => {
       statusColor: sessionStatusColor(status),
       time: formatSessionTime(sessionChronoKey(session)),
       isSelected: session.session_id === sessionStore.currentSessionId,
+      // 会话级失败原因：设备不可用等在执行任何步骤前就失败的轮次没有
+      // 日志可看，只有它解释断点在哪里
+      error: session.error_message || null,
     };
   });
 });
@@ -714,6 +718,12 @@ const isRecordBtnProcessing = computed(
             <div v-else class="round-empty">
               {{ t('workspace.timeline.roundEmpty') }}
             </div>
+
+            <!-- 会话级失败原因：执行中断点（设备不可用 / 引擎错误），前后端打通的失败归因 -->
+            <div v-if="round.error" class="round-error-banner" role="alert">
+              <icon-exclamation-circle />
+              <span>{{ round.error }}</span>
+            </div>
           </div>
         </div>
       </div>
@@ -880,6 +890,29 @@ const isRecordBtnProcessing = computed(
   border-radius: var(--border-radius-medium);
   color: var(--color-text-3);
   font-size: 12.5px;
+}
+
+/* 会话级失败原因（error_message）：解释「轮次失败但无执行记录」的断点 */
+.round-error-banner {
+  display: flex;
+  align-items: flex-start;
+  gap: 6px;
+  margin-top: 8px;
+  padding: 8px 12px;
+  border: 1px solid rgb(var(--red-6) / 35%);
+  background-color: rgb(var(--red-1));
+  border-radius: var(--border-radius-medium);
+  color: rgb(var(--red-6));
+  font-size: 12.5px;
+  line-height: 1.5;
+  word-break: break-all;
+}
+
+.round-error-banner svg {
+  flex-shrink: 0;
+  margin-top: 2px;
+  width: 14px;
+  height: 14px;
 }
 
 .logs-list {

@@ -192,6 +192,21 @@ describe('AgentTimeline (M2)', () => {
     expect(wrapper.text()).not.toContain('打开设置，查看电池电量');
   });
 
+  it('失败轮次透出会话级失败原因，解释断点在哪里', async () => {
+    const wrapper = await mountWithSession();
+    const sessionStore = useSessionStore();
+    // 设备不可用类失败：没有任何执行记录，只有 error_message 解释断点
+    sessionStore.rawSessions = [
+      {
+        ...SESSION,
+        status: 'failed',
+        error_message: 'Error running automation: Device 127.0.0.1:16384 is not available (adb does not list it).',
+      },
+    ];
+    await vi.waitFor(() => expect(wrapper.find('.round-error-banner').exists()).toBe(true));
+    expect(wrapper.text()).toContain('adb does not list it');
+  });
+
   it('renders step cards whose expanded action card keeps only the screenshots', async () => {
     const wrapper = await mountWithSession();
     // 动作标题由 util 生成——app 级 i18n 实例在本 spec 中固定 en-US，保持迁移前英文断言
