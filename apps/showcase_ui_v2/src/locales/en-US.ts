@@ -458,6 +458,15 @@ export default {
       contentEmpty: 'This trace has no payload',
       contentFail: 'Failed to load payload',
       contentTruncated: 'Content too long — showing the first part only',
+      hideLogs: 'Hide runtime logs',
+      metaType: 'Type',
+      metaStatus: 'Status',
+      metaTime: 'Time',
+      metaDuration: 'Duration',
+      metaChildren: 'Children',
+      metaTraceId: 'Trace Id',
+      metaParent: 'Parent Trace Id',
+      detailEmpty: 'Select a node on the left to view details',
     },
     // B6 step replay debugging drawer (step summary / tool display_name are backend fields)
     replay: {

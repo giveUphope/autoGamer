@@ -7,11 +7,10 @@ import zhCN from '../../locales/zh-CN';
 import SessionTreeDrawer from './SessionTreeDrawer.vue';
 
 /**
- * 组件测试：SessionTreeDrawer（对话轨迹树，覆盖全部轮次）。
+ * 组件测试：SessionTreeDrawer（可视化轨迹树，双栏：层级树 + 节点详情）。
  * vi.mock('@/services/api')（保留真实 ApiError）。
- * 覆盖：按传入轮次并行拉取各轮 /tree、根层时间正序的轮分组、空轮兜底、
- * thinking 内联 payload 的内容子节点、llm_call 展开时懒加载请求内容。
- * 抽屉内容 teleport 到 body，断言走 document.body。
+ * 覆盖：按传入轮次并行拉取、根层时间正序、节点选中后详情面板（元数据+payload）、
+ * llm_call 选中时懒加载、hideLogs 过滤、focusTraceId 全树定位。
  */
 
 vi.mock('@/services/api', async (importOriginal) => {
@@ -29,18 +28,17 @@ const i18n = createI18n({
   messages: { 'zh-CN': zhCN },
 });
 
-// 节点形状对齐 trace_repo.get_trace_tree（trace_repository.py）。
-// 第 1 轮：thinking（内联 payload，直接展开内容）+ llm_call（懒加载请求内容）。
+// 第 1 轮：action（内联 payload）+ llm_call（懒加载）；第 2 轮：空。
 const TREE1 = [
   {
-    trace_id: 't1',
+    trace_id: 'act1',
     parent_trace_id: null,
-    type: 'thinking',
-    name: 'thinking',
+    type: 'action',
+    name: 'click',
     status: 'success',
     timestamp: 1756152001,
-    duration: 0.2,
-    payload: { thought: '先打开设置' },
+    duration: 0.865,
+    payload: { args: { target: '返回按钮' } },
     children: [],
   },
   {
@@ -78,24 +76,13 @@ function bodyText(): string {
   return document.body.textContent || '';
 }
 
-/** 展开指定 key 的树节点：直接在 Arco Tree 组件上 emit expand
- * （点击→emit 的接线由 Arco 自己的测试覆盖，这里驱动我们的处理逻辑）。 */
-async function expandNode(
-  tree: { vm: { $emit: (e: string, ...a: unknown[]) => void } },
-  keys: string[],
-): Promise<void> {
-  // Arco 的 expand 事件携带合并后的完整展开集（父链全展开）
-  tree.vm.$emit('expand', keys, {});
-  await flushPromises();
+function selectNode(key: string): void {
+  const row = document.querySelector(`.tt-row[data-node-key="${key}"]`) as HTMLElement | null;
+  expect(row, `tree row ${key}`).toBeTruthy();
+  row!.click();
 }
 
-function findTreeComponent(wrapper: ReturnType<typeof mount>) {
-  const tree = wrapper.findComponent({ name: 'Tree' });
-  expect(tree.exists(), 'arco tree component').toBe(true);
-  return tree;
-}
-
-describe('SessionTreeDrawer (对话轨迹树)', () => {
+describe('SessionTreeDrawer (可视化轨迹树)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiGetMock.mockReset();
@@ -114,40 +101,47 @@ describe('SessionTreeDrawer (对话轨迹树)', () => {
     expect(treeCalls).toEqual(['/api/sessions/s1/tree', '/api/sessions/s2/tree']);
   });
 
-  it('renders one chronological root per round with fallback leaves', async () => {
+  it('renders chronological round roots and an empty-round fallback', async () => {
     apiGetMock.mockImplementation((url: string) =>
       Promise.resolve(url === '/api/sessions/s1/tree' ? TREE1 : []),
     );
-    const wrapper = mountDrawer({ visible: true, rounds: ROUNDS });
+    mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
 
     const body = bodyText();
-    // 根层按轮次时间正序：第 1 轮在最前
     expect(body.indexOf('第 1 轮 · 第一条 · 10:00')).toBeGreaterThan(-1);
     expect(body.indexOf('第 2 轮 · 第二条 · 10:05')).toBeGreaterThan(
       body.indexOf('第 1 轮 · 第一条 · 10:00'),
     );
-    // 第 1 轮节点摘要；第 2 轮为空 → 兜底叶子（展开第 2 轮才渲染子节点）
-    expect(body).toContain('thinking · thinking · success · 200ms');
-    await expandNode(findTreeComponent(wrapper), ['round:s1', 'round:s2']);
+
+    // 第 2 轮为空：展开（点 toggle）后显示兜底叶子
+    const head2 = document.querySelector('.tt-row[data-node-key="round:s2"] .tt-toggle') as HTMLElement;
+    head2.click();
+    await flushPromises();
     expect(bodyText()).toContain('该轮暂无轨迹记录');
   });
 
-  it('renders inline payload content for thinking nodes on expand', async () => {
+  it('selecting a node shows the detail pane with metadata and inline payload', async () => {
     apiGetMock.mockImplementation((url: string) =>
       Promise.resolve(url === '/api/sessions/s1/tree' ? TREE1 : []),
     );
-    const wrapper = mountDrawer({ visible: true, rounds: ROUNDS });
+    mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
 
-    await expandNode(findTreeComponent(wrapper), ['round:s1', 't1']);
-    expect(bodyText()).toContain('请求内容');
-    expect(bodyText()).toContain('先打开设置');
+    selectNode('act1');
+    await flushPromises();
+
+    const body = bodyText();
+    expect(body).toContain('action');
+    expect(body).toContain('865ms');
+    expect(body).toContain('Trace Id');
+    expect(body).toContain('act1');
+    expect(body).toContain('返回按钮');
     // 内联 payload 不发额外请求
     expect(apiGetMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/traces/'))).toHaveLength(0);
   });
 
-  it('lazy-loads llm_call request payload only when expanded', async () => {
+  it('lazy-loads llm_call payload on selection', async () => {
     apiGetMock.mockImplementation((url: string) => {
       if (url === '/api/sessions/s1/tree') return Promise.resolve(TREE1);
       if (url === '/api/traces/llm1') {
@@ -155,17 +149,51 @@ describe('SessionTreeDrawer (对话轨迹树)', () => {
       }
       return Promise.resolve([]);
     });
-    const wrapper = mountDrawer({ visible: true, rounds: ROUNDS });
+    mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
     expect(apiGetMock.mock.calls.some((c) => String(c[0]).includes('/api/traces/'))).toBe(false);
 
-    await expandNode(findTreeComponent(wrapper), ['round:s1', 'llm1']);
+    selectNode('llm1');
+    await flushPromises();
     expect(apiGetMock).toHaveBeenCalledWith('/api/traces/llm1');
-    expect(bodyText()).toContain('"messages"');
     expect(bodyText()).toContain('你好');
   });
 
-  it('focusTraceId expands the ancestor chain, selects and lazy-loads the node', async () => {
+  it('hideLogs filters log nodes out of the tree', async () => {
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve(
+        url === '/api/sessions/s1/tree'
+          ? [
+              {
+                trace_id: 'log1',
+                parent_trace_id: null,
+                type: 'log',
+                name: 'noisy log',
+                status: 'success',
+                timestamp: 1756152000,
+                duration: 0.01,
+                payload: null,
+                children: [],
+              },
+              ...TREE1,
+            ]
+          : [],
+      ),
+    );
+    mountDrawer({ visible: true, rounds: ROUNDS });
+    await flushPromises();
+    expect(bodyText()).toContain('noisy log');
+
+    // 抽屉内容 teleport 到 body，用 document 查询勾选框
+    const checkbox = document.querySelector('.pane-toolbar input[type=\'checkbox\' i]') as HTMLInputElement;
+    expect(checkbox, 'hideLogs checkbox').toBeTruthy();
+    checkbox.click();
+    await flushPromises();
+    expect(bodyText()).not.toContain('noisy log');
+    expect(bodyText()).toContain('click');
+  });
+
+  it('focusTraceId selects the node and lazy-loads its content', async () => {
     apiGetMock.mockImplementation((url: string) => {
       if (url === '/api/sessions/s1/tree') return Promise.resolve(TREE1);
       if (url === '/api/traces/llm1') {
@@ -173,21 +201,19 @@ describe('SessionTreeDrawer (对话轨迹树)', () => {
       }
       return Promise.resolve([]);
     });
-    const wrapper = mountDrawer({
+    mountDrawer({
       visible: true,
       rounds: ROUNDS,
       focusTraceId: 'llm1',
     });
     await flushPromises();
 
-    // 祖先链展开、节点选中、懒加载内容就绪
     expect(apiGetMock).toHaveBeenCalledWith('/api/traces/llm1');
     const body = bodyText();
     expect(body).toContain('请求内容');
     expect(body).toContain('定位');
 
     // 再次定位同一节点：内容已缓存，不重复拉取
-    await wrapper.setProps({ focusTraceId: 'llm1' });
     await flushPromises();
     const traceCalls = apiGetMock.mock.calls.filter((c) => String(c[0]) === '/api/traces/llm1');
     expect(traceCalls).toHaveLength(1);

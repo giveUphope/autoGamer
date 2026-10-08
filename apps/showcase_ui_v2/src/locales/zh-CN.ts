@@ -531,6 +531,15 @@ export default {
       contentEmpty: '该轨迹没有内容',
       contentFail: '内容加载失败',
       contentTruncated: '内容过长，仅显示前一部分',
+      hideLogs: '隐藏运行日志',
+      metaType: '类型',
+      metaStatus: '状态',
+      metaTime: '时间',
+      metaDuration: '时长',
+      metaChildren: '子节点',
+      metaTraceId: 'Trace Id',
+      metaParent: '父 Trace Id',
+      detailEmpty: '点击左侧节点查看详情',
     },
     // B6 步骤回放调试抽屉（步骤 summary / 工具 display_name 等为后端字段）
     replay: {
