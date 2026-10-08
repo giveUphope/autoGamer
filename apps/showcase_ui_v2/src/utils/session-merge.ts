@@ -67,6 +67,16 @@ export type DisplayTaskStatus =
   | 'failed'
   | 'cancelled';
 
+/**
+ * tracking 条目在「状态载荷不再提及且 DB 也无行」之后的保留宽限期。
+ * 没有它，任何一次外部误报（例如测试进程误连桌面 IPC 桥广播的会话）都会
+ * 经第 4 步桥接永久驻留为 running 幽灵会话。
+ */
+const GHOST_TRACKING_TTL_MS = 60_000;
+
+/** 每个 tracking 条目最后一次被状态载荷提及的时刻（按对象弱引用，不污染类型）。 */
+const ghostSeenAt = new WeakMap<Session, number>();
+
 function isTerminalStatus(status: string | undefined): boolean {
   return (
     status === 'completed' || status === 'success' || status === 'failed' || status === 'cancelled'
@@ -231,13 +241,29 @@ export function mergeSessions(
   }
 
   // 4. 桥接「队列 → 运行」的瞬时过渡窗口
+  const statusMentioned = new Set<string>([
+    ...pending.map((p) => p.session_id),
+    ...activeList.map((at) => String(at.session_id || '')),
+    ...(runId ? [runId] : []),
+  ]);
   tracking.forEach((ts, sid) => {
-    if (!sessionMap.has(sid) && !dismissed.has(sid)) {
-      sessionMap.set(sid, {
-        ...ts,
-        status: 'running',
-      });
+    if (sessionMap.has(sid) || dismissed.has(sid)) return;
+    if (statusMentioned.has(sid)) {
+      // 载荷仍在提及：照常桥接，并把宽限期重置
+      ghostSeenAt.delete(ts);
+      sessionMap.set(sid, { ...ts, status: 'running' });
+      return;
     }
+    // 载荷不再提及、DB 也没有行：宽限期内照常桥接，过期即从 tracking 清除
+    const seenAt = ghostSeenAt.get(ts);
+    if (seenAt === undefined) {
+      ghostSeenAt.set(ts, nowMs);
+    } else if (nowMs - seenAt > GHOST_TRACKING_TTL_MS) {
+      tracking.delete(sid);
+      ghostSeenAt.delete(ts);
+      return;
+    }
+    sessionMap.set(sid, { ...ts, status: 'running' });
   });
 
   return Array.from(sessionMap.values()).sort((a, b) => b.start_time - a.start_time);

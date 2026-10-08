@@ -254,6 +254,43 @@ describe('mergeSessions — 4 步合并算法（§3.3 条款 3）', () => {
     expect(running.submitted_at).toBe(90);
     expect(sessionChronoKey(running)).toBe(90);
   });
+
+  it('step4: 状态载荷长期不再提及且无 DB 行的 tracking 条目过期清除，不再永久驻留', () => {
+    const tracking = new Map<string, Session>();
+    // 外部幽灵（如测试进程误连 IPC 桥广播的会话）进入 tracking
+    tracking.set('ghost-1', session({ session_id: 'ghost-1', initial_goal: 'summary versioning test', start_time: 900 }));
+    // 合法排队任务同样先经 tracking
+    tracking.set('queued-1', session({ session_id: 'queued-1', initial_goal: '真任务', start_time: 950 }));
+
+    // 第一次合并：幽灵在宽限期内照常桥接显示
+    const first = mergeSessions(ctx({ nowMs: 1_000_000 }), tracking);
+    expect(first.find((s) => s.session_id === 'ghost-1')!.status).toBe('running');
+    expect(first.find((s) => s.session_id === 'queued-1')).toBeTruthy();
+
+    // 61s 后状态载荷不再提及幽灵：从合并结果与 tracking 中一并清除；
+    // queued-1 每次轮询都被载荷提及（pending），不受影响
+    const second = mergeSessions(
+      ctx({
+        nowMs: 1_061_001,
+        pending: [session({ session_id: 'queued-1', initial_goal: '真任务', start_time: 950 })],
+      }),
+      tracking,
+    );
+    expect(second.find((s) => s.session_id === 'ghost-1')).toBeUndefined();
+    expect(tracking.has('ghost-1')).toBe(false);
+    expect(tracking.has('queued-1')).toBe(true);
+
+    // 载荷提及中的条目：超过 TTL 也不会被清除
+    const third = mergeSessions(
+      ctx({
+        nowMs: 1_200_000,
+        pending: [session({ session_id: 'queued-1', initial_goal: '真任务', start_time: 950 })],
+      }),
+      tracking,
+    );
+    expect(third.find((s) => s.session_id === 'queued-1')).toBeTruthy();
+    expect(tracking.has('queued-1')).toBe(true);
+  });
 });
 
 describe('mapPendingQueue — /api/status queue 映射', () => {
