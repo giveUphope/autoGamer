@@ -4,6 +4,7 @@ import { useI18n } from 'vue-i18n';
 import {
   IconCamera,
   IconCheckCircle,
+  IconDown,
   IconEye,
   IconFile,
   IconHistory,
@@ -514,27 +515,36 @@ const isRecordBtnProcessing = computed(
             </div>
           </template>
         </a-popover>
-        <a-button
-          size="small"
-          class="record-btn"
-          :class="{ 'is-processing': isRecordBtnProcessing }"
-          :title="recordButtonTitle"
-          @click="playerStore.toggleVideoPlayer()"
-        >
-          <template #icon>
-            <component :is="recordButtonIcon" :class="{ 'record-spin': isRecordBtnProcessing }" />
-          </template>
-          {{ t('workspace.player.recordBtnDefault') }}
-        </a-button>
-        <!-- B6：轨迹树 / 步骤回放入口（点击时才拉取数据） -->
+        <!-- 轨迹树入口（点击时才拉取数据） -->
         <a-button size="small" class="tree-btn" @click="openTreeWithoutFocus">
           <template #icon><icon-mind-mapping /></template>
           {{ t('workspace.tree.button') }}
         </a-button>
-        <a-button size="small" class="replay-btn" @click="replayDrawerVisible = true">
-          <template #icon><icon-history /></template>
-          {{ t('workspace.replay.button') }}
-        </a-button>
+        <!-- 回放入口合并：观看（屏幕录像/截图）与重放（重新执行步骤）收敛为一个入口 -->
+        <a-dropdown trigger="click" position="bl">
+          <a-button size="small" class="replay-btn">
+            <template #icon>
+              <component
+                :is="recordButtonIcon"
+                :class="{ 'record-spin': isRecordBtnProcessing }"
+              />
+            </template>
+            {{ t('workspace.replay.button') }}
+            <icon-down />
+          </a-button>
+          <template #content>
+            <a-doption @click="playerStore.toggleVideoPlayer()">
+              <template #icon>
+                <component :is="recordButtonIcon" :class="{ 'record-spin': isRecordBtnProcessing }" />
+              </template>
+              {{ recordButtonTitle }}
+            </a-doption>
+            <a-doption @click="replayDrawerVisible = true">
+              <template #icon><icon-history /></template>
+              {{ t('workspace.replay.rerunSteps') }}
+            </a-doption>
+          </template>
+        </a-dropdown>
       </div>
     </div>
 
@@ -727,10 +737,6 @@ const isRecordBtnProcessing = computed(
 }
 
 .notes-btn {
-  font-size: 12px;
-}
-
-.record-btn {
   font-size: 12px;
 }
 

@@ -470,7 +470,8 @@ export default {
     },
     // B6 step replay debugging drawer (step summary / tool display_name are backend fields)
     replay: {
-      button: 'Step replay',
+      button: 'Replay',
+      rerunSteps: 'Re-run steps',
       title: 'Step replay debugging',
       loadFail: 'Load failed',
       deviceLabel: 'Replay device',

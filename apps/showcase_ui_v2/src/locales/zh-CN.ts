@@ -543,7 +543,8 @@ export default {
     },
     // B6 步骤回放调试抽屉（步骤 summary / 工具 display_name 等为后端字段）
     replay: {
-      button: '步骤回放',
+      button: '回放',
+      rerunSteps: '重新执行步骤',
       title: '步骤回放调试',
       loadFail: '加载失败',
       deviceLabel: '回放设备',
