@@ -15,8 +15,19 @@ body,
   height: 100%;
 }
 
+html {
+  /*
+   * 100vh 应用壳层（滚动全部发生在内部容器）。弹层（popover/dropdown）挂到
+   * body，打开瞬间定位调整可能让文档瞬时溢出 1px：没有稳定槽位时 Windows
+   * 经典滚动条会即时插入又消失，把整页布局挤压得「高宽跳变」。
+   * 纵向永久预留滚动条槽位 + 横向禁止溢出，两个轴都不再可能闪现滚动条。
+   */
+  scrollbar-gutter: stable;
+}
+
 body {
   margin: 0;
+  overflow-x: hidden;
   background-color: var(--color-bg-1);
   color: var(--color-text-1);
   font-family:
