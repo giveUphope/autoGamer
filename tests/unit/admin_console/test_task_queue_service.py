@@ -1603,3 +1603,21 @@ async def test_manual_pause_gates_dispatch_and_resume_clears_holds(
     with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
         TaskQueueService._dispatch_pending_tasks()
     assert state.queue_items[0]["status"] == "running"
+
+
+def test_queue_router_registers_expected_routes():
+    """Router-level guard: a decorator misplacement once attached
+    ``GET /api/status`` to the pause handler, so every frontend status poll
+    paused the queue while the real status handler went unregistered."""
+    from apps.admin_console.routers.tasks import router
+
+    by_key = {}
+    for route in router.routes:
+        if hasattr(route, "methods"):
+            for method in route.methods:
+                by_key[(method, route.path)] = route.endpoint.__name__
+
+    assert by_key[("GET", "/api/status")] == "get_status"
+    assert by_key[("POST", "/api/queue/pause")] == "pause_queue"
+    assert by_key[("POST", "/api/queue/resume")] == "resume_queue"
+    assert by_key[("POST", "/api/run")] == "run_task"

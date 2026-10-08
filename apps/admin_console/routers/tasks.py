@@ -264,7 +264,6 @@ async def resume_task():
     return {"status": "not_paused"}
 
 
-@router.get("/api/status")
 @router.post("/api/queue/pause")
 async def pause_queue():
     """手动暂停队列：pending 消息保留在队列中不派发，运行中的任务不受影响。"""
@@ -279,6 +278,7 @@ async def resume_queue():
     return {"queue_paused": paused}
 
 
+@router.get("/api/status")
 async def get_status():
     # Watchdog check to ensure background worker is alive
     task_queue_service.ensure_worker_running()
