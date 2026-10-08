@@ -12,6 +12,7 @@ import {
   getToolInputText,
   getToolTitle,
   getVideoAnalysisView,
+  shouldShowTool,
 } from './tool-formatter';
 
 /**
@@ -215,5 +216,17 @@ describe('tool-formatter display copy (zh-CN spot checks)', () => {
     expect(getCompressionLabel(tool('compress_history', { start_step: 2, end_step: 5 }, { status: 'success' }))).toBe('第 2–5 步已压缩为短摘要');
     expect(getToolErrorMessage(null)).toBe('工具执行失败');
     i18n.global.locale.value = 'en-US';
+  });
+});
+
+describe('shouldShowTool — 时间线展示闸门', () => {
+  it('笔记类工具收敛进轨迹树，不再作为时间线工具行渲染', () => {
+    for (const name of ['save_note', 'read_note', 'list_notes', 'update_note', 'append_note']) {
+      expect(shouldShowTool(tool(name, { key: 'task_plan.md' }))).toBe(false);
+    }
+    // 其他工具不受影响
+    expect(shouldShowTool(tool('adb_shell', { command: 'ls' }))).toBe(true);
+    expect(shouldShowTool(tool('search_logs', {}))).toBe(true);
+    expect(shouldShowTool(null)).toBe(false);
   });
 });

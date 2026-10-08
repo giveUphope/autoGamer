@@ -29,7 +29,7 @@ import {
 } from '@/utils/session-merge';
 import { buildStartupWorkItems } from '@/utils/startup-progress';
 import { checkPlanningLoader, formatTokenCount } from '@/utils/stream-aggregator';
-import { isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
+import { getStepPreImageUrl, isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
 import { parseNote } from '@/utils/markdown';
 import type { PhaseBlock, StepBlock } from '@/types/stream.model';
 import type { Session } from '@/types/session.model';
@@ -209,6 +209,23 @@ function isCheckerPhase(phase: PhaseBlock): boolean {
 }
 
 const visiblePhases = computed(() => timelineStore.phases.filter(hasVisibleBlocks));
+
+/**
+ * 动作后截图回填映射：按展示顺序取每块的后继块的动作前截图 URL。
+ * 旧会话步骤行未记录 post 图时，动作卡用它兜底展示「动作后」（同一屏幕状态）；
+ * 显式记录了 post 的步骤在 StepCard 内优先走原取值，不受影响。
+ */
+const nextPreUrlByBlockId = computed(() => {
+  const stepBlocks = timelineStore.phases
+    .flatMap((phase) => phase.blocks)
+    .filter((block) => block.type !== 'checker');
+  const map = new Map<string, string | null>();
+  stepBlocks.forEach((block, index) => {
+    const next = stepBlocks[index + 1];
+    map.set(block.id, next ? getStepPreImageUrl(next.data) : null);
+  });
+  return map;
+});
 
 const anyContent = computed(
   () => visiblePhases.value.length > 0 || startupWorkItems.value.length > 0,
@@ -645,7 +662,7 @@ const isRecordBtnProcessing = computed(
                       v-else
                       :block="block"
                       :session-active="sessionStore.isCurrentSessionRunning"
-                      @open-note="timelineStore.selectNoteKey($event)"
+                      :next-pre-url="nextPreUrlByBlockId.get(block.id) ?? undefined"
                       @view-trace="openTraceInTree"
                     />
                   </template>

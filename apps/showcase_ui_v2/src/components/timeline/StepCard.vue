@@ -6,7 +6,6 @@ import {
   IconCheckCircle,
   IconCloseCircle,
   IconExclamationCircle,
-  IconFile,
   IconMindMapping,
   IconPlayArrow,
   IconRight,
@@ -15,7 +14,6 @@ import {
 
 import { usePlayerStore } from '@/stores/player';
 import { useSessionStore } from '@/stores/session';
-import { useTimelineStore } from '@/stores/timeline';
 import { DEFAULT_STREAM_RESET_MESSAGE } from '@/types/stream.model';
 import type { StepBlock, StepEvent, ActionParam } from '@/types/stream.model';
 import {
@@ -47,7 +45,6 @@ import {
   getToolInputLabel,
   getToolInputText,
   getToolIcon,
-  getToolKey,
   getToolTargetText,
   getToolTitle,
   getVideoAnalysisView,
@@ -55,11 +52,9 @@ import {
   isCompressionTool,
   isDeviceActionTool,
   isHumanThinking,
-  isNoteTool,
   isToolFailed,
   isVideoTool,
   shouldShowTool,
-  getUniqueGenericTools,
 } from '@/utils/tool-formatter';
 import { formatTokenCount, getSortedStepEvents, isBackendSwitchNote } from '@/utils/stream-aggregator';
 import { renderMarkdown } from '@/utils/markdown';
@@ -77,16 +72,16 @@ const props = defineProps<{
   block: StepBlock;
   /** 当前会话是否处于运行/暂停态（历史会话为 false，所有条目视为已完成）。 */
   sessionActive: boolean;
+  /** 顺序上下一步的动作前截图 URL：步骤行未记录动作后截图时的展示兜底。 */
+  nextPreUrl?: string | null;
 }>();
 
 const emit = defineEmits<{
-  (e: 'open-note', key: string): void;
   /** 在轨迹树抽屉中定位查看该动作的轨迹（全树展开定位）。 */
   (e: 'view-trace', traceId: string): void;
 }>();
 
 const sessionStore = useSessionStore();
-const timelineStore = useTimelineStore();
 const playerStore = usePlayerStore();
 
 // ---- 展开状态（标准手风琴：默认收起仅标题行，点击展开完整详情；流文本块同模式） ----
@@ -203,32 +198,7 @@ const rawStreamText = computed<string | null>(() => {
 
 // ---- 工具行辅助 ----
 function toolLabel(tool: any): string {
-  return getToolDisplayLabel(tool, isFirstSaveNote(tool));
-}
-
-/** 每个 note key 的第一次 save_note 显示为「创建笔记」（平移自 firstSaveNoteByKey，
- *  扫描范围是整个会话的 consolidatedBlocks，与 Angular 版一致）。 */
-function isFirstSaveNote(tool: any): boolean {
-  if (!tool || String(tool.name || '').toLowerCase() !== 'save_note') return false;
-  const key = getToolKey(tool);
-  if (!key) return true;
-  const firstByKey = new Map<string, any>();
-  for (const block of timelineStore.consolidatedBlocks) {
-    if (block.type !== 'step') continue;
-    for (const cand of getUniqueGenericTools(block.data?.generic_tools)) {
-      if (String(cand?.name || '').toLowerCase() === 'save_note') {
-        const candKey = getToolKey(cand);
-        if (candKey && !firstByKey.has(candKey)) {
-          firstByKey.set(candKey, cand);
-        }
-      }
-    }
-  }
-  const firstCall = firstByKey.get(key);
-  if (!firstCall) return true;
-  return tool.trace_id && firstCall.trace_id
-    ? tool.trace_id === firstCall.trace_id
-    : tool === firstCall;
+  return getToolDisplayLabel(tool);
 }
 
 function compressionTitle(tool: any): string | null {
@@ -237,6 +207,19 @@ function compressionTitle(tool: any): string | null {
 
 function adbCommandValue(tool: any): string {
   return getAdbCommandLine(tool);
+}
+
+/**
+ * 动作后截图：优先显式 post 图；旧会话步骤行未记录 post 时，
+ * 用顺序上下一步的动作前截图兜底（动作后的屏幕状态即下一步动作前的屏幕状态）；
+ * 与动作前同图时不重复展示。
+ */
+function resolvedPostUrl(item: StepEvent): string | null {
+  const post = getStepPostImageUrl(props.block.data, item.data);
+  if (post) return post;
+  const pre = getStepPreImageUrl(props.block.data, item.data);
+  if (props.nextPreUrl && props.nextPreUrl !== pre) return props.nextPreUrl;
+  return null;
 }
 
 function toolParams(item: StepEvent): ActionParam[] {
@@ -499,7 +482,7 @@ function resumePausedTask(): void {
           <div v-if="expandedCards.has(`action-${itemIdx}`)" class="card-expanded" @click.stop>
             <!-- 展开区只保留动作前/后截图；目标/坐标/输入等全部细节由「轨迹」入口在轨迹树载荷中查看 -->
             <div
-              v-if="getStepPreImageUrl(props.block.data, item.data) || getStepPostImageUrl(props.block.data, item.data)"
+              v-if="getStepPreImageUrl(props.block.data, item.data) || resolvedPostUrl(item)"
               class="screenshots"
             >
               <div v-if="getStepPreImageUrl(props.block.data, item.data)" class="screenshot-col">
@@ -511,10 +494,10 @@ function resumePausedTask(): void {
                   :alt="t('workspace.timeline.preAction')"
                 />
               </div>
-              <div v-if="getStepPostImageUrl(props.block.data, item.data)" class="screenshot-col">
+              <div v-if="resolvedPostUrl(item)" class="screenshot-col">
                 <span class="screenshot-label">{{ t('workspace.timeline.postAction') }}</span>
                 <a-image
-                  :src="getStepPostImageUrl(props.block.data, item.data) || ''"
+                  :src="resolvedPostUrl(item) || ''"
                   width="100%"
                   fit="contain"
                   :alt="t('workspace.timeline.postAction')"
@@ -599,25 +582,15 @@ function resumePausedTask(): void {
 
           <!-- 普通工具行 / 工具卡 -->
           <template v-else-if="shouldShowTool(item.data, props.block.data)">
-            <!-- 文本行：note 工具、视频分析与其他子 agent -->
+            <!-- 文本行：视频分析与其他子 agent（笔记类工具由轨迹树承担，不再平铺） -->
             <div
               v-if="!isDeviceActionTool(item.data)"
               class="tool-row"
-              :class="{ 'is-note-tool': isNoteTool(item.data) }"
               :title="compressionTitle(item.data) || undefined"
             >
               <span class="status-dot done" />
               <span class="tool-text">
-                {{ toolLabel(item.data) }}{{ isNoteTool(item.data) && getToolKey(item.data) ? ':' : '' }}
-                <a
-                  v-if="isNoteTool(item.data) && getToolKey(item.data)"
-                  class="tool-key-pill"
-                  :title="t('workspace.timeline.viewNote')"
-                  @click.stop="emit('open-note', getToolKey(item.data)!)"
-                >
-                  <icon-file />
-                  {{ getToolKey(item.data) }}
-                </a>
+                {{ toolLabel(item.data) }}
                 <!-- 视频分析区间 pill：点击打开录像回放并定位到请求区间（M4） -->
                 <a
                   v-if="isVideoTool(item.data)"
@@ -853,10 +826,6 @@ function resumePausedTask(): void {
   background-color: var(--color-fill-2);
   color: var(--color-text-1);
   font-size: 12.5px;
-}
-
-.tool-row.is-note-tool {
-  background-color: rgb(var(--arcoblue-1) / 50%);
 }
 
 .tool-text {

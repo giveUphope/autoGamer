@@ -285,6 +285,8 @@ export function shouldShowTool(tool: any, _stepData?: any): boolean {
   if (tool.type === 'agent') return false;
   if (tool.type === 'log') return false; // system notes render as quiet rows, not tool cards
   if (isInternalPlumbingTool(tool)) return false;
+  // 笔记类工具收敛进轨迹树（载荷含笔记全文），时间线不再平铺创建/保存行
+  if (isNoteTool(tool)) return false;
 
   return true;
 }
