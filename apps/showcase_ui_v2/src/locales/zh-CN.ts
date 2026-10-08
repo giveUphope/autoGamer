@@ -545,7 +545,12 @@ export default {
     replay: {
       button: '回放',
       rerunSteps: '重新执行步骤',
-      title: '步骤回放调试',
+      title: '回放中心',
+      viewerTitle: '屏幕回放',
+      playVideo: '播放完整录像',
+      stepOf: '第 {i} / {n} 步',
+      preImage: '动作前',
+      postImage: '动作后',
       loadFail: '加载失败',
       deviceLabel: '回放设备',
       devicePlaceholder: '选择设备',

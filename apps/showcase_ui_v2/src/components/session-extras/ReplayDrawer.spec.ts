@@ -2,6 +2,7 @@ import { flushPromises, mount } from '@vue/test-utils';
 import ArcoVue from '@arco-design/web-vue';
 import { beforeEach, describe, expect, it, vi, type Mock } from 'vitest';
 import { createI18n } from 'vue-i18n';
+import { createPinia } from 'pinia';
 
 import zhCN from '../../locales/zh-CN';
 import ReplayDrawer from './ReplayDrawer.vue';
@@ -18,6 +19,10 @@ vi.mock('@/services/api', async (importOriginal) => {
   const actual = await importOriginal<typeof import('@/services/api')>();
   return { ...actual, apiGet: vi.fn(), apiPost: vi.fn() };
 });
+vi.mock('@/stores/player', () => ({ usePlayerStore: () => ({ openVideoPlayer: vi.fn() }) }));
+vi.mock('@/stores/session', () => ({
+  useSessionStore: () => ({ currentSession: { video_url: '/videos/s1.mp4' } }),
+}));
 
 import { apiGet, apiPost } from '@/services/api';
 
@@ -78,6 +83,20 @@ function mockBackend(overrides: { steps?: unknown; devices?: unknown } = {}) {
     if (url === '/api/replay/tools') return Promise.resolve(TOOLS);
     if (url === '/api/replay/config') return Promise.resolve(TOOL_CONFIG);
     if (url === '/api/sessions/s1/replay_steps') return Promise.resolve(overrides.steps ?? STEPS);
+    if (url === '/api/sessions/s1/steps') {
+      const source = (overrides.steps ?? STEPS) as Array<{
+        step_number: unknown;
+        summary: unknown;
+      }>;
+      return Promise.resolve(
+        source.map((s, i) => ({
+          step_number: s.step_number,
+          summary: s.summary,
+          pre_image_name: i === 0 ? 'pre-hash-1' : null,
+          post_image_name: 'post-hash-1',
+        })),
+      );
+    }
     if (url === '/api/sessions/s1/steps/3/replay_traces') {
       return Promise.resolve({ success: true, live: [{ trace_id: 'r1', name: 'ask_explorer' }], preloaded: [] });
     }
@@ -88,9 +107,7 @@ function mockBackend(overrides: { steps?: unknown; devices?: unknown } = {}) {
 function mountDrawer() {
   return mount(ReplayDrawer, {
     props: { visible: true, sessionId: 's1' },
-    global: {
-      plugins: [ArcoVue, i18n],
-    },
+    global: { plugins: [ArcoVue, i18n, createPinia()] },
   });
 }
 
@@ -160,7 +177,8 @@ describe('ReplayDrawer (B6)', () => {
     await flushPromises();
 
     const body = document.body.textContent || '';
-    expect(body).toContain('步骤回放调试');
+    expect(body).toContain('回放中心');
+    expect(body).toContain('屏幕回放');
     expect(body).toContain('工具参数说明');
     expect(body).toContain('instruction');
     expect(body).toContain('textarea');

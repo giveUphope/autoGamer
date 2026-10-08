@@ -472,7 +472,12 @@ export default {
     replay: {
       button: 'Replay',
       rerunSteps: 'Re-run steps',
-      title: 'Step replay debugging',
+      title: 'Replay center',
+      viewerTitle: 'Screen playback',
+      playVideo: 'Play full recording',
+      stepOf: 'Step {i} / {n}',
+      preImage: 'Before',
+      postImage: 'After',
       loadFail: 'Load failed',
       deviceLabel: 'Replay device',
       devicePlaceholder: 'Select a device',

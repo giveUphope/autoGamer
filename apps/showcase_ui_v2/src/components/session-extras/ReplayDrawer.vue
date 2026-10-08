@@ -1,9 +1,11 @@
 <script setup lang="ts">
 import { computed, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
-import { IconLoading } from '@arco-design/web-vue/es/icon';
+import { IconLeft, IconLoading, IconRight } from '@arco-design/web-vue/es/icon';
 
 import { ApiError, apiGet, apiPost } from '@/services/api';
+import { usePlayerStore } from '@/stores/player';
+import { useSessionStore } from '@/stores/session';
 
 /**
  * 步骤回放调试抽屉（B6）：
@@ -55,6 +57,8 @@ interface ReplayResult {
 const props = defineProps<{ visible: boolean; sessionId: string | null }>();
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void }>();
 const { t } = useI18n();
+const playerStore = usePlayerStore();
+const sessionStore = useSessionStore();
 
 const globalError = ref<string | null>(null);
 const requestError = ref<string | null>(null);
@@ -77,6 +81,57 @@ const runningStep = ref<number | null>(null);
 const lastResultLoading = ref<number | null>(null);
 const pendingStep = ref<ReplayStep | null>(null);
 const result = ref<ReplayResult | null>(null);
+
+/** 屏幕回放查看器：/steps 的完整步骤记录（含前/后截图与摘要）。 */
+interface ViewerStep {
+  stepNumber: number;
+  summary: string;
+  preImage: string | null;
+  postImage: string | null;
+}
+const viewerSteps = ref<ViewerStep[]>([]);
+const viewerIndex = ref(0);
+
+const hasVideo = computed(() => Boolean(sessionStore.currentSession?.video_url));
+
+const currentViewer = computed<ViewerStep | null>(() =>
+  viewerSteps.value.length > 0
+    ? viewerSteps.value[Math.min(viewerIndex.value, viewerSteps.value.length - 1)]!
+    : null,
+);
+
+function viewerShift(delta: number): void {
+  if (viewerSteps.value.length === 0) return;
+  const next = viewerIndex.value + delta;
+  viewerIndex.value = Math.max(0, Math.min(next, viewerSteps.value.length - 1));
+}
+
+function openFullVideo(): void {
+  playerStore.openVideoPlayer();
+}
+
+async function fetchViewerSteps(sid: string): Promise<void> {
+  try {
+    const res = await apiGet<unknown[]>(`/api/sessions/${encodeURIComponent(sid)}/steps`);
+    viewerSteps.value = arrayNodes(res)
+      .map((item) => {
+        const n: Record<string, unknown> =
+          item && typeof item === 'object' ? (item as Record<string, unknown>) : {};
+        const num = Number(n.step_number);
+        return {
+          stepNumber: Number.isFinite(num) ? num : 0,
+          summary: typeof n.summary === 'string' ? n.summary : '',
+          preImage: typeof n.pre_image_name === 'string' && n.pre_image_name ? n.pre_image_name : null,
+          postImage:
+            typeof n.post_image_name === 'string' && n.post_image_name ? n.post_image_name : null,
+        };
+      })
+      .sort((a, b) => a.stepNumber - b.stepNumber);
+    viewerIndex.value = 0;
+  } catch {
+    viewerSteps.value = [];
+  }
+}
 
 const canReplay = computed(
   () =>
@@ -111,6 +166,12 @@ function toolLabel(tool: ToolItem): string {
 
 function stepSummary(step: ReplayStep): string {
   return typeof step?.summary === 'string' ? step.summary : '';
+}
+
+/** 步骤列表与顶部查看器联动：点行即查看该步截图。 */
+function selectViewerStep(stepNumberValue: number): void {
+  const idx = viewerSteps.value.findIndex((s) => s.stepNumber === stepNumberValue);
+  if (idx >= 0) viewerIndex.value = idx;
 }
 
 /** 从步骤的 param_defaults[tool] 取回放入参（后端已按工具签名解析好默认值）。 */
@@ -219,7 +280,7 @@ async function fetchAll(): Promise<void> {
   selectedDevice.value = '';
   selectedTool.value = '';
   // 工具列表就绪后 selectedTool 变化会经 watch 触发 fetchToolConfig。
-  await Promise.all([fetchDevices(), fetchTools(), fetchSteps(sid)]);
+  await Promise.all([fetchDevices(), fetchTools(), fetchSteps(sid), fetchViewerSteps(sid)]);
 }
 
 // 仅抽屉打开时拉取；会话切换后若仍打开则重拉。
@@ -319,6 +380,52 @@ function close(): void {
         {{ t('workspace.replay.requestFail', { reason: requestError }) }}
       </a-alert>
 
+      <!-- 屏幕回放查看器：选中步骤的前/后截图 + 导航 -->
+      <div v-if="viewerSteps.length > 0" class="viewer">
+        <div class="viewer-head">
+          <span class="viewer-title">{{ t('workspace.replay.viewerTitle') }}</span>
+          <a-button v-if="hasVideo" size="mini" type="outline" @click="openFullVideo">
+            {{ t('workspace.replay.playVideo') }}
+          </a-button>
+        </div>
+        <div class="viewer-stage">
+          <a-button
+            size="mini"
+            class="viewer-nav"
+            :disabled="viewerIndex <= 0"
+            @click="viewerShift(-1)"
+          >
+            <template #icon><icon-left /></template>
+          </a-button>
+          <div class="viewer-images">
+            <figure v-if="currentViewer?.preImage" class="viewer-figure">
+              <img :src="`/images/${currentViewer.preImage}`" alt="" />
+              <figcaption>{{ t('workspace.replay.preImage') }}</figcaption>
+            </figure>
+            <figure v-if="currentViewer?.postImage" class="viewer-figure">
+              <img :src="`/images/${currentViewer.postImage}`" alt="" />
+              <figcaption>{{ t('workspace.replay.postImage') }}</figcaption>
+            </figure>
+          </div>
+          <a-button
+            size="mini"
+            class="viewer-nav"
+            :disabled="viewerIndex >= viewerSteps.length - 1"
+            @click="viewerShift(1)"
+          >
+            <template #icon><icon-right /></template>
+          </a-button>
+        </div>
+        <div v-if="currentViewer" class="viewer-caption">
+          <span class="viewer-step-no">
+            {{ t('workspace.replay.stepOf', { i: viewerIndex + 1, n: viewerSteps.length }) }}
+          </span>
+          <span class="viewer-summary" :title="currentViewer.summary">{{ currentViewer.summary }}</span>
+        </div>
+      </div>
+
+      <a-divider v-if="viewerSteps.length > 0" class="replay-divider" />
+
       <!-- 设备 / 工具选择 -->
       <div class="replay-controls">
         <div class="control-row">
@@ -383,7 +490,14 @@ function close(): void {
       />
       <a-empty v-else-if="stepsState === 'ready' && steps.length === 0" :description="t('workspace.replay.stepsEmpty')" />
       <div v-else class="step-list">
-        <div v-for="(step, i) in steps" :key="stepNumber(step) || i" class="replay-step">
+        <div
+          v-for="(step, i) in steps"
+          :key="stepNumber(step) || i"
+          class="replay-step"
+          :class="{ 'is-viewing': currentViewer?.stepNumber === stepNumber(step) }"
+          role="button"
+          @click="selectViewerStep(stepNumber(step))"
+        >
           <div class="step-head">
             <span class="step-title">
               {{ t('workspace.replay.stepPrefix') }} {{ stepNumber(step) }}
@@ -397,7 +511,7 @@ function close(): void {
                 type="primary"
                 :disabled="!canReplay || runningStep === stepNumber(step)"
                 :loading="runningStep === stepNumber(step)"
-                @click="requestReplay(step)"
+                @click.stop="requestReplay(step)"
               >
                 {{ t('workspace.replay.replayBtn') }}
               </a-button>
@@ -405,7 +519,7 @@ function close(): void {
                 size="mini"
                 :disabled="!selectedTool || lastResultLoading !== null || runningStep !== null"
                 :loading="lastResultLoading === stepNumber(step)"
-                @click="loadLastResult(step)"
+                @click.stop="loadLastResult(step)"
               >
                 {{ t('workspace.replay.lastResultBtn') }}
               </a-button>
@@ -468,6 +582,91 @@ function close(): void {
 </template>
 
 <style scoped>
+.viewer {
+  border: 1px solid var(--color-border-2);
+  border-radius: var(--border-radius-medium);
+  padding: 10px;
+  background-color: var(--color-fill-1);
+}
+
+.viewer-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  margin-bottom: 8px;
+}
+
+.viewer-title {
+  font-size: 12.5px;
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.viewer-stage {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+
+.viewer-nav {
+  flex-shrink: 0;
+}
+
+.viewer-images {
+  flex: 1;
+  display: flex;
+  gap: 8px;
+  min-width: 0;
+}
+
+.viewer-figure {
+  flex: 1;
+  min-width: 0;
+  margin: 0;
+}
+
+.viewer-figure img {
+  width: 100%;
+  aspect-ratio: 9 / 19;
+  object-fit: contain;
+  background: #000;
+  border-radius: var(--border-radius-small);
+}
+
+.viewer-figure figcaption {
+  text-align: center;
+  font-size: 11px;
+  color: var(--color-text-3);
+  margin-top: 2px;
+}
+
+.viewer-caption {
+  margin-top: 8px;
+  font-size: 12px;
+  display: flex;
+  gap: 8px;
+  align-items: baseline;
+}
+
+.viewer-step-no {
+  flex-shrink: 0;
+  font-weight: 600;
+  color: var(--color-text-2);
+}
+
+.viewer-summary {
+  color: var(--color-text-3);
+  display: -webkit-box;
+  -webkit-line-clamp: 2;
+  -webkit-box-orient: vertical;
+  overflow: hidden;
+}
+
+.replay-step.is-viewing {
+  background-color: var(--color-fill-2);
+  box-shadow: inset 2px 0 0 rgb(var(--arcoblue-6));
+}
+
 .replay-body {
   display: flex;
   flex-direction: column;
