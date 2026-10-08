@@ -5,63 +5,169 @@ import { useI18n } from 'vue-i18n';
 import { ApiError, apiGet } from '@/services/api';
 
 /**
- * 会话轨迹树抽屉（B6）：
- * 打开时按当前会话拉取 `GET /api/sessions/{id}/tree`（后端 trace_repo.get_trace_tree
- * 返回节点数组：{trace_id, parent_trace_id, type, name, status, timestamp,
- * duration, payload, children[]}），经归一函数映射为 a-tree 的 key/title/children。
- * 仅在抽屉打开时拉取；会话切换后若抽屉仍打开则重拉。失败/空态用 a-empty。
+ * 对话轨迹树抽屉（重构版）：
+ * - 覆盖当前会话线程的**全部轮次**：按传入的 rounds（时间正序）并行拉取各轮
+ *   `GET /api/sessions/{id}/tree`，根层每轮一个分组节点（第 N 轮 · 目标 · 时间）。
+ * - 轮内节点按时间戳正序（后端 SQL 已 ASC，归一时再防御性排序）。
+ * - 内容可展开查看：thinking/raw_thinking 的内联 payload 直接生成「请求内容」
+ *   子节点；llm_call（payload 可达数百 KB，树响应不携带）挂懒加载子节点，
+ *   展开该节点时才请求 `GET /api/traces/{trace_id}` 取完整内容，成功后缓存。
  */
 interface TreeItem {
   key: string;
   title: string;
   children: TreeItem[];
+  /** 内容叶子：title 渲染为文本，contentText 渲染为可读块。 */
+  isContent?: boolean;
+  contentText?: string;
+  /** 懒加载内容标记（挂在 llm_call 等宿主节点上）。 */
+  lazyContent?: { sessionId: string; traceId: string; state: 'idle' | 'loading' | 'loaded' | 'error' };
 }
 
-const props = defineProps<{ visible: boolean; sessionId: string | null }>();
+const props = defineProps<{
+  visible: boolean;
+  /** 当前线程的全部轮次（时间正序，来自 AgentTimeline 的 rounds）。 */
+  rounds: Array<{ id: string; roundNumber: number; goal: string; time: string }>;
+}>();
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void }>();
 const { t } = useI18n();
 
 const loading = ref(false);
 const loadError = ref<string | null>(null);
 const treeData = ref<TreeItem[]>([]);
+const expandedKeys = ref<string[]>([]);
 
 function detailOf(err: unknown): string {
   if (err instanceof ApiError) return err.detail || `HTTP ${err.status}`;
   return err instanceof Error && err.message ? err.message : String(err);
 }
 
-/** 后端节点 → a-tree 数据。字段全部防御式读取；title 用 name/type/status/duration 拼摘要。 */
-function normalizeNodes(raw: unknown, depth = 0): TreeItem[] {
-  if (!Array.isArray(raw) || depth > 64) return [];
-  return raw.map((node, index) => {
-    const n: Record<string, unknown> =
-      node && typeof node === 'object' ? (node as Record<string, unknown>) : {};
-    const name = typeof n.name === 'string' && n.name ? n.name : '—';
-    const type = typeof n.type === 'string' ? n.type : '';
-    const status = typeof n.status === 'string' ? n.status : '';
-    const traceId = typeof n.trace_id === 'string' && n.trace_id ? n.trace_id : `${depth}-${index}-${name}`;
-    const parts = [name];
-    if (type) parts.push(type);
-    if (status) parts.push(status);
-    if (typeof n.duration === 'number' && Number.isFinite(n.duration)) {
-      parts.push(`${Math.round(n.duration * 1000)}ms`);
-    }
-    return {
-      key: traceId,
-      title: parts.join(' · '),
-      children: normalizeNodes(n.children, depth + 1),
-    };
-  });
+function formatPayload(payload: unknown): string {
+  if (payload === null || payload === undefined) return t('workspace.tree.contentEmpty');
+  if (typeof payload === 'string') return payload;
+  try {
+    return JSON.stringify(payload, null, 2);
+  } catch {
+    return String(payload);
+  }
 }
 
-async function fetchTree(): Promise<void> {
-  const sid = props.sessionId;
-  if (!sid) return;
+/** 后端节点 → a-tree 数据。防御式读取；子节点按 timestamp 正序。 */
+function normalizeNodes(raw: unknown, sessionId: string, depth = 0): TreeItem[] {
+  if (!Array.isArray(raw) || depth > 64) return [];
+  const items = raw
+    .map((node, index) => {
+      const n: Record<string, unknown> =
+        node && typeof node === 'object' ? (node as Record<string, unknown>) : {};
+      const name = typeof n.name === 'string' && n.name ? n.name : '—';
+      const type = typeof n.type === 'string' ? n.type : '';
+      const status = typeof n.status === 'string' ? n.status : '';
+      const traceId = typeof n.trace_id === 'string' && n.trace_id ? n.trace_id : `${depth}-${index}-${name}`;
+      const timestamp = typeof n.timestamp === 'number' && Number.isFinite(n.timestamp) ? n.timestamp : 0;
+      const parts = [name];
+      if (type) parts.push(type);
+      if (status) parts.push(status);
+      if (typeof n.duration === 'number' && Number.isFinite(n.duration)) {
+        parts.push(`${Math.round(n.duration * 1000)}ms`);
+      }
+      const children = normalizeNodes(n.children, sessionId, depth + 1);
+      const item: TreeItem = { key: traceId, title: parts.join(' · '), children };
+      if (type === 'llm_call') {
+        // 懒加载标记挂在宿主节点上：展开该节点时才拉取完整请求内容
+        item.lazyContent = { sessionId, traceId, state: 'idle' };
+        children.push({
+          key: `${traceId}::content`,
+          title: t('workspace.tree.content'),
+          children: [],
+          isContent: true,
+        });
+      } else if (n.payload !== null && n.payload !== undefined) {
+        children.push({
+          key: `${traceId}::content`,
+          title: t('workspace.tree.content'),
+          children: [],
+          isContent: true,
+          contentText: formatPayload(n.payload),
+        });
+      }
+      return { item, timestamp };
+    })
+    .sort((a, b) => a.timestamp - b.timestamp);
+  return items.map((entry) => entry.item);
+}
+
+function findNode(items: TreeItem[], key: string): TreeItem | null {
+  for (const item of items) {
+    if (item.key === key) return item;
+    const found = findNode(item.children, key);
+    if (found) return found;
+  }
+  return null;
+}
+
+async function loadLazyContent(node: TreeItem): Promise<void> {
+  const lazy = node.lazyContent;
+  if (!lazy || lazy.state !== 'idle') return;
+  lazy.state = 'loading';
+  const child = node.children.find((c) => c.isContent);
+  try {
+    const res = await apiGet<{ payload?: unknown }>(
+      `/api/traces/${encodeURIComponent(lazy.traceId)}`,
+    );
+    lazy.state = 'loaded';
+    if (child) child.contentText = formatPayload(res?.payload ?? null);
+  } catch (err) {
+    lazy.state = 'error';
+    if (child) child.contentText = `${t('workspace.tree.contentFail')}：${detailOf(err)}`;
+  }
+}
+
+async function onExpandedKeys(keys: (string | number)[]): Promise<void> {
+  expandedKeys.value = keys.map(String);
+  for (const key of expandedKeys.value) {
+    const node = findNode(treeData.value, key);
+    if (node?.lazyContent?.state === 'idle') {
+      await loadLazyContent(node);
+    }
+  }
+}
+
+async function fetchTrees(): Promise<void> {
   loading.value = true;
   loadError.value = null;
   try {
-    const res = await apiGet<unknown>(`/api/sessions/${encodeURIComponent(sid)}/tree`);
-    treeData.value = normalizeNodes(res);
+    const results = await Promise.allSettled(
+      props.rounds.map((round) =>
+        apiGet<unknown>(`/api/sessions/${encodeURIComponent(round.id)}/tree`),
+      ),
+    );
+    treeData.value = props.rounds.map((round, index) => {
+      const goal = round.goal || '—';
+      const head: TreeItem = {
+        key: `round:${round.id}`,
+        title: `${t('workspace.timeline.roundNumber', { n: round.roundNumber })} · ${goal} · ${round.time}`,
+        children: [],
+      };
+      const result = results[index];
+      if (result.status === 'fulfilled') {
+        head.children = normalizeNodes(result.value, round.id, 1);
+      }
+      if (head.children.length === 0) {
+        head.children = [
+          {
+            key: `round:${round.id}:empty`,
+            title:
+              result.status === 'rejected'
+                ? `${t('workspace.tree.roundLoadFail')}：${detailOf(result.reason)}`
+                : t('workspace.tree.roundNoTrace'),
+            children: [],
+          },
+        ];
+      }
+      return head;
+    });
+    // 默认展开最早的轮次，打开即有内容可见
+    expandedKeys.value = treeData.value.length ? [treeData.value[0]!.key] : [];
   } catch (err) {
     loadError.value = detailOf(err);
     treeData.value = [];
@@ -70,13 +176,13 @@ async function fetchTree(): Promise<void> {
   }
 }
 
-// 打开时拉取；打开状态下会话切换重拉（不可见时不触发任何请求）。
+// 打开时拉取；打开状态下轮次列表变化（新轮提交/线程切换）重拉。
 watch(
-  () => [props.visible, props.sessionId] as const,
+  () => [props.visible, props.rounds] as const,
   ([visible]) => {
-    if (visible) void fetchTree();
+    if (visible) void fetchTrees();
   },
-  { immediate: true },
+  { immediate: true, deep: false },
 );
 
 function close(): void {
@@ -87,7 +193,7 @@ function close(): void {
 <template>
   <a-drawer
     :visible="visible"
-    :width="420"
+    :width="560"
     :title="t('workspace.tree.title')"
     :footer="false"
     unmount-on-close
@@ -100,15 +206,35 @@ function close(): void {
       v-else-if="loadError"
       :description="`${t('workspace.tree.loadFail')}：${loadError}`"
     />
-    <a-empty v-else-if="treeData.length === 0" :description="t('workspace.tree.empty')" />
+    <a-empty
+      v-else-if="treeData.length === 0"
+      :description="t('workspace.tree.empty')"
+    />
     <a-tree
       v-else
       :data="treeData"
       :field-names="{ key: 'key', title: 'title', children: 'children' }"
+      :expanded-keys="expandedKeys"
       block-node
       size="small"
       class="trace-tree"
-    />
+      @expand="onExpandedKeys"
+    >
+      <template #title="scope">
+        <template v-if="scope.isContent">
+          <span class="content-label">{{ scope.title }}</span>
+          <pre
+            v-if="scope.contentText"
+            class="payload-pre"
+          >{{ scope.contentText.length > 200000 ? scope.contentText.slice(0, 200000) + '\n…' : scope.contentText }}</pre>
+          <span
+            v-if="scope.contentText && scope.contentText.length > 200000"
+            class="payload-truncated"
+          >{{ t('workspace.tree.contentTruncated') }}</span>
+        </template>
+        <span v-else>{{ scope.title }}</span>
+      </template>
+    </a-tree>
   </a-drawer>
 </template>
 
@@ -127,5 +253,31 @@ function close(): void {
 
 .trace-tree :deep(.arco-tree-node) {
   font-size: 12.5px;
+}
+
+.content-label {
+  color: var(--color-text-3);
+  font-size: 12px;
+}
+
+.payload-pre {
+  margin: 4px 0 8px;
+  padding: 8px;
+  max-height: 320px;
+  overflow: auto;
+  background-color: var(--color-fill-2);
+  border-radius: var(--border-radius-small);
+  font-size: 11.5px;
+  line-height: 1.5;
+  white-space: pre-wrap;
+  word-break: break-all;
+  color: var(--color-text-2);
+}
+
+.payload-truncated {
+  display: block;
+  margin: -4px 0 8px;
+  color: var(--color-text-3);
+  font-size: 11.5px;
 }
 </style>

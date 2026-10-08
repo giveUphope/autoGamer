@@ -679,7 +679,7 @@ const isRecordBtnProcessing = computed(
     </main>
 
     <!-- B6：轨迹树 / 步骤回放抽屉（数据由抽屉打开时按需拉取，不进 store） -->
-    <SessionTreeDrawer v-model:visible="treeDrawerVisible" :session-id="sessionStore.currentSessionId" />
+    <SessionTreeDrawer v-model:visible="treeDrawerVisible" :rounds="rounds" />
     <ReplayDrawer v-model:visible="replayDrawerVisible" :session-id="sessionStore.currentSessionId" />
   </section>
 </template>

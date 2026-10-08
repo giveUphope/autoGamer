@@ -7,10 +7,11 @@ import zhCN from '../../locales/zh-CN';
 import SessionTreeDrawer from './SessionTreeDrawer.vue';
 
 /**
- * 组件测试：SessionTreeDrawer（B6 轨迹树抽屉）。
- * vi.mock('@/services/api')（保留真实 ApiError），参照 DiagnosticsWizard.spec 风格。
- * 覆盖：关闭状态不拉取（仅点击时拉取）、节点摘要渲染、空态、加载失败（detail 透传）、
- * 会话切换重开重拉。抽屉内容 teleport 到 body，断言走 document.body。
+ * 组件测试：SessionTreeDrawer（对话轨迹树，覆盖全部轮次）。
+ * vi.mock('@/services/api')（保留真实 ApiError）。
+ * 覆盖：按传入轮次并行拉取各轮 /tree、根层时间正序的轮分组、空轮兜底、
+ * thinking 内联 payload 的内容子节点、llm_call 展开时懒加载请求内容。
+ * 抽屉内容 teleport 到 body，断言走 document.body。
  */
 
 vi.mock('@/services/api', async (importOriginal) => {
@@ -29,44 +30,41 @@ const i18n = createI18n({
 });
 
 // 节点形状对齐 trace_repo.get_trace_tree（trace_repository.py）。
-const TREE = [
+// 第 1 轮：thinking（内联 payload，直接展开内容）+ llm_call（懒加载请求内容）。
+const TREE1 = [
   {
     trace_id: 't1',
     parent_trace_id: null,
-    type: 'span',
-    name: 'operator',
+    type: 'thinking',
+    name: 'thinking',
     status: 'success',
     timestamp: 1756152001,
-    duration: 1.234,
-    payload: null,
-    children: [
-      {
-        trace_id: 't2',
-        parent_trace_id: 't1',
-        type: 'tool',
-        name: 'tap',
-        status: 'success',
-        timestamp: 1756152002,
-        duration: 0.5,
-        payload: { args: { target: '设置' } },
-        children: [],
-      },
-    ],
+    duration: 0.2,
+    payload: { thought: '先打开设置' },
+    children: [],
   },
   {
-    trace_id: 't3',
+    trace_id: 'llm1',
     parent_trace_id: null,
-    type: 'span',
-    name: 'validator',
-    status: 'failed',
-    timestamp: 1756152003,
-    duration: 0.25,
+    type: 'llm_call',
+    name: 'chat',
+    status: 'success',
+    timestamp: 1756152002,
+    duration: 1.5,
     payload: null,
     children: [],
   },
 ];
 
-function mountDrawer(props: { visible: boolean; sessionId: string | null }) {
+const ROUNDS = [
+  { id: 's1', roundNumber: 1, goal: '第一条', time: '10:00' },
+  { id: 's2', roundNumber: 2, goal: '第二条', time: '10:05' },
+];
+
+function mountDrawer(props: {
+  visible: boolean;
+  rounds: Array<{ id: string; roundNumber: number; goal: string; time: string }>;
+}) {
   return mount(SessionTreeDrawer, {
     props,
     global: {
@@ -75,64 +73,94 @@ function mountDrawer(props: { visible: boolean; sessionId: string | null }) {
   });
 }
 
-describe('SessionTreeDrawer (B6)', () => {
+function bodyText(): string {
+  return document.body.textContent || '';
+}
+
+/** 展开指定 key 的树节点：直接在 Arco Tree 组件上 emit expand
+ * （点击→emit 的接线由 Arco 自己的测试覆盖，这里驱动我们的处理逻辑）。 */
+async function expandNode(
+  tree: { vm: { $emit: (e: string, ...a: unknown[]) => void } },
+  keys: string[],
+): Promise<void> {
+  // Arco 的 expand 事件携带合并后的完整展开集（父链全展开）
+  tree.vm.$emit('expand', keys, {});
+  await flushPromises();
+}
+
+function findTreeComponent(wrapper: ReturnType<typeof mount>) {
+  const tree = wrapper.findComponent({ name: 'Tree' });
+  expect(tree.exists(), 'arco tree component').toBe(true);
+  return tree;
+}
+
+describe('SessionTreeDrawer (对话轨迹树)', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     apiGetMock.mockReset();
     document.body.innerHTML = '';
   });
 
-  it('does not fetch while closed (no auto fetch)', async () => {
-    const wrapper = mountDrawer({ visible: false, sessionId: 'sess-1' });
+  it('closed drawer does not fetch; open fetches every round tree once', async () => {
+    apiGetMock.mockResolvedValue([]);
+    const wrapper = mountDrawer({ visible: false, rounds: ROUNDS });
     await flushPromises();
     expect(apiGetMock).not.toHaveBeenCalled();
 
     await wrapper.setProps({ visible: true });
     await flushPromises();
-    expect(apiGetMock).toHaveBeenCalledTimes(1);
-    expect(apiGetMock).toHaveBeenCalledWith('/api/sessions/sess-1/tree');
+    const treeCalls = apiGetMock.mock.calls.map((c) => String(c[0])).filter((u) => u.endsWith('/tree'));
+    expect(treeCalls).toEqual(['/api/sessions/s1/tree', '/api/sessions/s2/tree']);
   });
 
-  it('renders normalized trace nodes as tree titles', async () => {
-    apiGetMock.mockResolvedValue(TREE);
-    mountDrawer({ visible: true, sessionId: 'sess-1' });
+  it('renders one chronological root per round with fallback leaves', async () => {
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve(url === '/api/sessions/s1/tree' ? TREE1 : []),
+    );
+    const wrapper = mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
 
-    const body = document.body.textContent || '';
-    // title 摘要 = name · type · status · duration
-    expect(body).toContain('会话轨迹树');
-    expect(body).toContain('operator · span · success · 1234ms');
-    expect(body).toContain('validator · span · failed · 250ms');
+    const body = bodyText();
+    // 根层按轮次时间正序：第 1 轮在最前
+    expect(body.indexOf('第 1 轮 · 第一条 · 10:00')).toBeGreaterThan(-1);
+    expect(body.indexOf('第 2 轮 · 第二条 · 10:05')).toBeGreaterThan(
+      body.indexOf('第 1 轮 · 第一条 · 10:00'),
+    );
+    // 第 1 轮节点摘要；第 2 轮为空 → 兜底叶子（展开第 2 轮才渲染子节点）
+    expect(body).toContain('thinking · thinking · success · 200ms');
+    await expandNode(findTreeComponent(wrapper), ['round:s1', 'round:s2']);
+    expect(bodyText()).toContain('该轮暂无轨迹记录');
   });
 
-  it('shows the empty state for an empty tree payload', async () => {
-    apiGetMock.mockResolvedValue([]);
-    mountDrawer({ visible: true, sessionId: 'sess-1' });
+  it('renders inline payload content for thinking nodes on expand', async () => {
+    apiGetMock.mockImplementation((url: string) =>
+      Promise.resolve(url === '/api/sessions/s1/tree' ? TREE1 : []),
+    );
+    const wrapper = mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
 
-    expect(document.body.textContent || '').toContain('该会话暂无轨迹数据');
+    await expandNode(findTreeComponent(wrapper), ['round:s1', 't1']);
+    expect(bodyText()).toContain('请求内容');
+    expect(bodyText()).toContain('先打开设置');
+    // 内联 payload 不发额外请求
+    expect(apiGetMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/traces/'))).toHaveLength(0);
   });
 
-  it('shows the backend detail when loading fails', async () => {
-    const { ApiError } = await import('@/services/api');
-    apiGetMock.mockRejectedValue(new ApiError(500, 'HTTP 500', { detail: 'db broken' }));
-    mountDrawer({ visible: true, sessionId: 'sess-1' });
+  it('lazy-loads llm_call request payload only when expanded', async () => {
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/api/sessions/s1/tree') return Promise.resolve(TREE1);
+      if (url === '/api/traces/llm1') {
+        return Promise.resolve({ payload: { messages: ['你好'], response: ['好的'] } });
+      }
+      return Promise.resolve([]);
+    });
+    const wrapper = mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
+    expect(apiGetMock.mock.calls.some((c) => String(c[0]).includes('/api/traces/'))).toBe(false);
 
-    const body = document.body.textContent || '';
-    expect(body).toContain('轨迹树加载失败');
-    expect(body).toContain('db broken');
-  });
-
-  it('re-fetches when the session changes while the drawer stays open', async () => {
-    apiGetMock.mockResolvedValue(TREE);
-    const wrapper = mountDrawer({ visible: true, sessionId: 'sess-1' });
-    await flushPromises();
-    expect(apiGetMock).toHaveBeenCalledTimes(1);
-
-    await wrapper.setProps({ sessionId: 'sess-2' });
-    await flushPromises();
-    expect(apiGetMock).toHaveBeenCalledTimes(2);
-    expect(apiGetMock).toHaveBeenLastCalledWith('/api/sessions/sess-2/tree');
+    await expandNode(findTreeComponent(wrapper), ['round:s1', 'llm1']);
+    expect(apiGetMock).toHaveBeenCalledWith('/api/traces/llm1');
+    expect(bodyText()).toContain('"messages"');
+    expect(bodyText()).toContain('你好');
   });
 });

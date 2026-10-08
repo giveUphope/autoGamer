@@ -518,10 +518,17 @@ export default {
     // B6 轨迹树抽屉（节点 name/type/status/duration 为后端 get_trace_tree 字段）
     tree: {
       button: '轨迹树',
-      title: '会话轨迹树',
+      title: '对话轨迹树（全部轮次）',
       loading: '正在加载轨迹…',
-      empty: '该会话暂无轨迹数据',
+      empty: '该对话暂无轨迹数据',
       loadFail: '轨迹树加载失败',
+      roundNoTrace: '该轮暂无轨迹记录',
+      roundLoadFail: '该轮轨迹加载失败',
+      content: '请求内容',
+      contentLoading: '内容加载中…',
+      contentEmpty: '该轨迹没有内容',
+      contentFail: '内容加载失败',
+      contentTruncated: '内容过长，仅显示前一部分',
     },
     // B6 步骤回放调试抽屉（步骤 summary / 工具 display_name 等为后端字段）
     replay: {

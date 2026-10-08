@@ -445,10 +445,17 @@ export default {
     // B6 trace tree drawer (node name/type/status/duration come from get_trace_tree)
     tree: {
       button: 'Trace tree',
-      title: 'Session trace tree',
+      title: 'Conversation trace tree (all rounds)',
       loading: 'Loading traces…',
-      empty: 'No trace data for this session',
+      empty: 'No trace data for this conversation',
       loadFail: 'Failed to load trace tree',
+      roundNoTrace: 'No traces recorded for this round',
+      roundLoadFail: 'Failed to load traces for this round',
+      content: 'Request payload',
+      contentLoading: 'Loading payload…',
+      contentEmpty: 'This trace has no payload',
+      contentFail: 'Failed to load payload',
+      contentTruncated: 'Content too long — showing the first part only',
     },
     // B6 step replay debugging drawer (step summary / tool display_name are backend fields)
     replay: {
