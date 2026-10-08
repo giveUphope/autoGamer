@@ -72,6 +72,29 @@ class TaskQueueService:
 
     DEFAULT_CANCEL_GRACE_SECONDS = 45.0
 
+    #: 环境级失败的错误特征（小写子串匹配）：设备层 / LLM 提供方 / 网络。
+    #: 命中即视为不可接受失败（熔断队列），与具体任务无关。
+    ENVIRONMENT_ERROR_MARKERS = (
+        "device",          # Device ... is not available / offline / no devices
+        "adb",
+        "helper",          # accessibility helper 安装/连接失败
+        "llm error",
+        "llm request",
+        "model",
+        "unavailable",
+        "rate limit",
+        "quota",
+        "api key",
+        "unauthorized",
+        "forbidden",
+        "timeout",
+        "timed out",
+        "connection",
+        "refused",
+        "503",
+        "502",
+    )
+
     @classmethod
     def _cancel_grace_seconds(cls) -> float:
         """How long a worker may finalize itself before it is killed.
@@ -424,9 +447,11 @@ class TaskQueueService:
         for lock_key, hold in due:
             hold["last_probe"] = now
             serial = hold.get("device_serial")
-            online = any(
-                s.serial == serial and s.state == "device" for s in statuses
-            )
+            if serial and serial != "auto":
+                online = any(s.serial == serial and s.state == "device" for s in statuses)
+            else:
+                # 自动分配设备的熔断：任何可用设备上线即可续跑
+                online = any(s.state == "device" for s in statuses)
             if online:
                 state.held_queues.pop(lock_key, None)
                 print(f"[QueueWorker] Device {serial} is back online; resuming its held queue.")
@@ -479,9 +504,10 @@ class TaskQueueService:
 
             device = item.get("device_serial")
             target = cls._task_target(item)
-            # 设备队列被熔断保持：该设备上的后续消息保留在队列中不派发，
-            # 直到设备恢复 / stop 全部 / 对该设备的新提交解除熔断。
-            if device is not None and target.lock_key in state.held_queues:
+            # 设备队列被熔断保持：该设备（含自动分配设备的端点默认队列）上的
+            # 后续消息保留在队列中不派发，直到设备恢复 / stop 全部 / 新提交
+            # 解除熔断。
+            if target.lock_key in state.held_queues:
                 continue
             if limit == 0:
                 # A task without a resolved device may bind to any serial, so it
@@ -975,26 +1001,39 @@ class TaskQueueService:
             cls._release_run_slot(sess_id, run_key, proc)
 
     @classmethod
+    def _classify_failure(cls, has_steps: bool, error_message: str | None) -> str:
+        """Classify a terminal failure as ``environment`` or ``task``.
+
+        - ``environment``（不可接受，熔断队列）：失败与具体任务无关——设备不可用、
+          adb 掉线、助手安装失败、LLM 提供方不可用、网络超时等。继续派发只会
+          让队列里每条消息重复同一个错误。
+        - ``task``（可接受，队列继续）：agent 真正执行了步骤但目标未达成
+          （验证失败/页面不符合预期等），与其他排队任务相互独立。
+        """
+        if not has_steps:
+            # 一步都没执行：断点必然在环境层（设备/驱动/助手安装/启动崩溃）。
+            return "environment"
+        text = (error_message or "").lower()
+        if any(marker in text for marker in cls.ENVIRONMENT_ERROR_MARKERS):
+            # 执行途中遭遇环境故障（设备掉线 / LLM 提供方不可用 / 网络超时）。
+            return "environment"
+        return "task"
+
+    @classmethod
     async def _maybe_hold_device_queue(
         cls,
         task_item: dict[str, Any],
         target: AdbTarget,
         sess_id: Any,
     ) -> None:
-        """Hold this device's queue when a task failed before executing anything.
+        """Hold this device's queue when a task hits an environment-level failure.
 
-        A ``failed`` terminal status with zero recorded steps means the worker
-        died during startup -- device unavailable, adb dropped, helper install
-        crashed -- an environment-level fault. Dispatching the rest of the
-        queue would just repeat the same error on every queued message, so the
-        remaining items stay ``pending`` (retained and visible) until the
-        device comes back, the user stops everything, or a new submission for
-        this device lifts the hold. Task-level failures (steps exist) never
-        hold the queue: each task is independent.
+        分类见 :meth:`_classify_failure`：environment（零步骤失败，或执行途中
+        命中设备/LLM/网络类错误特征）熔断该设备的队列，剩余消息保持 pending
+        （保留且可见），直到设备恢复、用户新提交或停止全部；task 级失败不影响
+        队列。自动分配设备（无显式序列号）的任务熔断端点默认队列键。
         """
-        device_serial = task_item.get("device_serial")
-        if not device_serial or not sess_id:
-            # Without a resolved device there is no device queue to hold.
+        if not sess_id:
             return
         try:
             has_steps = await asyncio.to_thread(step_repo.has_steps, str(sess_id))
@@ -1004,31 +1043,38 @@ class TaskQueueService:
                 "[QueueWorker] Could not probe steps for [%s]; skipping queue hold", sess_id
             )
             return
-        if has_steps:
+        row = await asyncio.to_thread(session_repo.get_session_by_id, sess_id) or {}
+        error_message = str(row.get("error_message") or "")
+        failure_class = cls._classify_failure(has_steps, error_message)
+        if failure_class != "environment":
+            print(
+                f"[QueueWorker] Task [{sess_id}] failed at task level (independent of the "
+                "queue); keeping the queue running."
+            )
             return
 
+        reason = error_message.strip() or "Task failed before executing any step."
+        device_serial = task_item.get("device_serial")
         lock_key = target.lock_key
-        row = await asyncio.to_thread(session_repo.get_session_by_id, sess_id) or {}
-        reason = str(row.get("error_message") or "").strip() or (
-            "Task failed before executing any step."
-        )
         state.held_queues[lock_key] = {
             "reason": reason,
+            "failure_class": failure_class,
             "session_id": str(sess_id),
-            "device_serial": str(device_serial),
+            "device_serial": str(device_serial) if device_serial else "auto",
             "last_probe": 0.0,
         }
         print(
-            f"[QueueWorker] Holding queue for device {device_serial} "
-            f"(task [{sess_id}] failed with no executed steps): {reason}"
+            f"[QueueWorker] Holding queue for {device_serial or 'auto device'} "
+            f"(task [{sess_id}] failed, class: {failure_class}): {reason}"
         )
         cls._broadcast_event(
             "queue_held",
             {
-                "device_serial": str(device_serial),
+                "device_serial": str(device_serial) if device_serial else "auto",
                 "lock_key": lock_key,
                 "session_id": str(sess_id),
                 "reason": reason,
+                "failure_class": failure_class,
             },
         )
 
@@ -1236,16 +1282,15 @@ class TaskQueueService:
                 device_serial = await device_pool.select_device_async()
             except Exception:
                 device_serial = None
-        if device_serial:
-            # A new submission is the user re-engaging this device: lift its
-            # queue hold so the retained messages (and the new one) can run.
-            # If the device is still broken, this task fails and re-holds.
-            hold_key = AdbTarget(endpoint=endpoint, serial=str(device_serial)).lock_key
-            if state.held_queues.pop(hold_key, None) is not None:
-                print(
-                    f"[QueueWorker] New submission for {device_serial} lifts its queue hold."
-                )
-                state.wake_event.set()
+        # A new submission is the user re-engaging this queue: lift its hold so
+        # the retained messages (and the new one) can run. If the environment is
+        # still broken, this task fails and re-holds.
+        hold_key = AdbTarget(
+            endpoint=endpoint, serial=str(device_serial) if device_serial else None
+        ).lock_key
+        if state.held_queues.pop(hold_key, None) is not None:
+            print(f"[QueueWorker] New submission lifts the queue hold for {hold_key}.")
+            state.wake_event.set()
         for i, goal in enumerate(goals):
             task_item = cls._create_queue_item(
                 goal,

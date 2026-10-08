@@ -1289,6 +1289,7 @@ async def test_zero_step_failure_holds_device_queue_and_retains_messages(
     assert held_events and held_events[0]["lock_key"] == target.lock_key
     assert held_events[0]["session_id"] == failed_item["session_id"]
     assert "not available" in held_events[0]["reason"]
+    assert held_events[0]["failure_class"] == "environment"
 
     # 熔断期间 dispatcher 不得派发该设备的任何 pending 消息（保留在队列中）
     with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
@@ -1455,6 +1456,93 @@ async def test_hold_is_per_device_other_device_keeps_dispatching(
     statuses = {i["session_id"]: i["status"] for i in state.queue_items}
     assert statuses[a_item["session_id"]] == "pending"
     assert statuses[state.queue_items[1]["session_id"]] == "running"
+
+
+def test_failure_classification_separates_environment_from_task():
+    classify = TaskQueueService._classify_failure
+    # 零步骤：断点必然在环境层
+    assert classify(False, None) == "environment"
+    assert classify(False, "Task failed: verification mismatch") == "environment"
+    # 有步骤 + 环境特征：执行途中遭遇环境故障（不可接受）
+    assert classify(True, "LLM Error: 503 UNAVAILABLE. High demand.") == "environment"
+    assert classify(True, "Device EMULATOR1 is not available (adb does not list it).") == "environment"
+    assert classify(True, "Connection to model provider timed out") == "environment"
+    # 有步骤 + 无环境特征：任务级失败（可接受，队列继续）
+    assert classify(True, None) == "task"
+    assert classify(True, "Task failed: expected output not found on screen") == "task"
+
+
+@pytest.mark.asyncio
+async def test_mid_run_environment_failure_holds_queue(monkeypatch, device_probe_ok):
+    """执行了步骤但错误是 LLM 提供方故障：环境级失败，同样熔断。"""
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        await task_queue_service.enqueue_tasks(["第一"], device_serial="EMULATOR1")
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+
+    monkeypatch.setattr(step_repo, "has_steps", lambda session_id: True)
+    monkeypatch.setattr(
+        session_repo,
+        "get_session_by_id",
+        lambda session_id: {"error_message": "LLM Error: 503 UNAVAILABLE. High demand."},
+    )
+    await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
+    assert target.lock_key in state.held_queues
+    assert state.held_queues[target.lock_key]["failure_class"] == "environment"
+
+
+@pytest.mark.asyncio
+async def test_task_level_failure_never_holds_queue_full(monkeypatch, device_probe_ok):
+    """任务级失败（有步骤且错误无环境特征）：不熔断且队列继续派发。"""
+    await enqueue_two_tasks()
+    monkeypatch.setattr(step_repo, "has_steps", lambda session_id: True)
+    monkeypatch.setattr(
+        session_repo,
+        "get_session_by_id",
+        lambda session_id: {"error_message": "Task failed: expected output not found on screen"},
+    )
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+    await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
+    assert state.held_queues == {}
+
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert state.queue_items[0]["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_auto_device_failure_holds_default_queue(monkeypatch, device_probe_ok):
+    """UI 提交通常不带序列号：auto 任务的环境失败熔断端点默认队列键。"""
+    monkeypatch.setattr(device_pool, "select_device_async", AsyncMock(return_value=None))
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        await task_queue_service.enqueue_tasks(["自动一", "自动二"])
+    auto_items = [i for i in state.queue_items if i.get("device_serial") is None]
+    assert len(auto_items) == 2
+
+    monkeypatch.setattr(step_repo, "has_steps", lambda session_id: False)
+    monkeypatch.setattr(
+        session_repo,
+        "get_session_by_id",
+        lambda session_id: {
+            "error_message": "Device 127.0.0.1:16384 is not available (adb does not list it)."
+        },
+    )
+    item = auto_items[0]
+    target = TaskQueueService._task_target(item)
+    await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
+    assert target.lock_key in state.held_queues
+    assert state.held_queues[target.lock_key]["device_serial"] == "auto"
+
+    # dispatcher 跳过 auto 队列的所有 pending 消息（保留在队列中）
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert all(i["status"] == "pending" for i in auto_items)
+
+    # auto 队列的新提交解除熔断
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        await task_queue_service.enqueue_tasks(["自动三"])
+    assert state.held_queues == {}
 
 
 async def enqueue_two_tasks():
