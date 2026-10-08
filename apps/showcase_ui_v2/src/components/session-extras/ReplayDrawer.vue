@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, ref, watch } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconLeft, IconLoading, IconRight } from '@arco-design/web-vue/es/icon';
 
@@ -105,6 +105,51 @@ function viewerShift(delta: number): void {
   const next = viewerIndex.value + delta;
   viewerIndex.value = Math.max(0, Math.min(next, viewerSteps.value.length - 1));
 }
+
+/** 灯箱预览：展开大图并携带图片定义（动作前/动作后）与步骤号。 */
+const lightboxIndex = ref<number | null>(null);
+
+const lightboxImages = computed(() => {
+  if (!currentViewer.value) return [];
+  const out: Array<{ url: string; label: string }> = [];
+  if (currentViewer.value.preImage) {
+    out.push({ url: `/images/${currentViewer.value.preImage}`, label: t('workspace.replay.preImage') });
+  }
+  if (currentViewer.value.postImage) {
+    out.push({ url: `/images/${currentViewer.value.postImage}`, label: t('workspace.replay.postImage') });
+  }
+  return out;
+});
+
+const lightboxCurrent = computed(() => {
+  const idx = lightboxIndex.value;
+  if (idx === null || idx < 0 || idx >= lightboxImages.value.length) return null;
+  return { ...lightboxImages.value[idx]!, index: idx };
+});
+
+function openLightbox(index: number): void {
+  lightboxIndex.value = index;
+}
+
+function closeLightbox(): void {
+  lightboxIndex.value = null;
+}
+
+function lightboxShift(delta: number): void {
+  const total = lightboxImages.value.length;
+  if (lightboxIndex.value === null || total === 0) return;
+  lightboxIndex.value = (lightboxIndex.value + delta + total) % total;
+}
+
+function onLightboxKeydown(e: KeyboardEvent): void {
+  if (lightboxIndex.value === null) return;
+  if (e.key === 'Escape') closeLightbox();
+  else if (e.key === 'ArrowLeft') lightboxShift(-1);
+  else if (e.key === 'ArrowRight') lightboxShift(1);
+}
+
+onMounted(() => window.addEventListener('keydown', onLightboxKeydown));
+onBeforeUnmount(() => window.removeEventListener('keydown', onLightboxKeydown));
 
 function openFullVideo(): void {
   playerStore.openVideoPlayer();
@@ -401,11 +446,21 @@ function close(): void {
             class="viewer-images"
             :class="currentViewer?.postImage ? 'is-dual' : 'is-single'"
           >
-            <figure v-if="currentViewer?.preImage" class="viewer-figure">
+            <figure
+              v-if="currentViewer?.preImage"
+              class="viewer-figure"
+              :title="t('workspace.replay.preImage')"
+              @click="openLightbox(0)"
+            >
               <img :src="`/images/${currentViewer.preImage}`" alt="" />
               <figcaption>{{ t('workspace.replay.preImage') }}</figcaption>
             </figure>
-            <figure v-if="currentViewer?.postImage" class="viewer-figure">
+            <figure
+              v-if="currentViewer?.postImage"
+              class="viewer-figure"
+              :title="t('workspace.replay.postImage')"
+              @click="openLightbox(1)"
+            >
               <img :src="`/images/${currentViewer.postImage}`" alt="" />
               <figcaption>{{ t('workspace.replay.postImage') }}</figcaption>
             </figure>
@@ -581,6 +636,33 @@ function close(): void {
         }}
       </div>
     </a-modal>
+
+    <!-- 灯箱预览：大图 + 图片定义（动作前/动作后）+ 步骤号 + 切换 -->
+    <div v-if="lightboxCurrent" class="lightbox" @click="closeLightbox">
+      <div class="lightbox-inner" @click.stop>
+        <div class="lightbox-top">
+          <span class="lightbox-label">{{ lightboxCurrent.label }}</span>
+          <span class="lightbox-step">
+            {{ t('workspace.replay.stepPrefix') }} {{ currentViewer?.stepNumber }}
+            · {{ lightboxCurrent.index + 1 }} / {{ lightboxImages.length }}
+          </span>
+          <button class="lightbox-close" aria-label="close" @click="closeLightbox">×</button>
+        </div>
+        <div class="lightbox-stage">
+          <button
+            v-if="lightboxImages.length > 1"
+            class="lightbox-nav"
+            @click="lightboxShift(-1)"
+          >‹</button>
+          <img class="lightbox-img" :src="lightboxCurrent.url" alt="" />
+          <button
+            v-if="lightboxImages.length > 1"
+            class="lightbox-nav"
+            @click="lightboxShift(1)"
+          >›</button>
+        </div>
+      </div>
+    </div>
   </a-drawer>
 </template>
 
@@ -677,6 +759,90 @@ function close(): void {
   -webkit-line-clamp: 2;
   -webkit-box-orient: vertical;
   overflow: hidden;
+}
+
+.viewer-figure {
+  cursor: zoom-in;
+}
+
+.viewer-figure:hover img {
+  opacity: 0.92;
+}
+
+.lightbox {
+  position: fixed;
+  inset: 0;
+  z-index: 2000;
+  background: rgba(0, 0, 0, 0.82);
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.lightbox-inner {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  max-width: 94vw;
+}
+
+.lightbox-top {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  width: 100%;
+  padding: 0 4px 10px;
+}
+
+.lightbox-label {
+  padding: 2px 10px;
+  border-radius: var(--border-radius-small);
+  background: rgb(var(--arcoblue-6));
+  color: #fff;
+  font-size: 12.5px;
+}
+
+.lightbox-step {
+  color: rgba(255, 255, 255, 0.85);
+  font-size: 12.5px;
+}
+
+.lightbox-close {
+  margin-left: auto;
+  border: none;
+  background: transparent;
+  color: rgba(255, 255, 255, 0.9);
+  font-size: 26px;
+  line-height: 1;
+  cursor: pointer;
+}
+
+.lightbox-stage {
+  display: flex;
+  align-items: center;
+  gap: 16px;
+}
+
+.lightbox-img {
+  max-width: 88vw;
+  max-height: 80vh;
+  object-fit: contain;
+  border-radius: var(--border-radius-small);
+}
+
+.lightbox-nav {
+  width: 36px;
+  height: 36px;
+  border: none;
+  border-radius: 50%;
+  background: rgba(255, 255, 255, 0.16);
+  color: #fff;
+  font-size: 20px;
+  cursor: pointer;
+}
+
+.lightbox-nav:hover {
+  background: rgba(255, 255, 255, 0.28);
 }
 
 .replay-step.is-viewing {
