@@ -131,6 +131,18 @@ export const useSessionStore = defineStore('session', () => {
     return null;
   });
 
+  /**
+   * 是否正处于「新建会话」的草稿线程：线程 id 已指派但还没有任何轮次落库/排队。
+   * 草稿态必须豁免自动跟随（状态轮询、初始自动选中），否则 2s/6s 轮询会把
+   * 视图拽回运行中或最新的历史会话，新建会话就“携带”了其他会话的内容。
+   * 首条消息提交后 pending 表示携带真实线程 id，本值自动翻 false。
+   */
+  const isDraftConversation = computed<boolean>(() => {
+    const thread = currentConversationId.value;
+    if (!thread || thread.startsWith('round:')) return false;
+    return !sessions.value.some((s) => s.conversation_id === thread);
+  });
+
   /** 当前查看的会话是否处于运行 / 暂停态（查看历史任务时为 false）。 */
   const isCurrentSessionRunning = computed<boolean>(() => {
     const curId = currentSessionId.value;
@@ -299,8 +311,8 @@ export const useSessionStore = defineStore('session', () => {
           playerStore.beginRecordingFinalization(oldRunningSessionId);
         }
 
-        // 用户未显式 pin 历史会话时，自动选中运行中的会话
-        if (isActive && data.session_id) {
+        // 用户未显式 pin 历史会话时，自动选中运行中的会话（草稿线程除外）
+        if (isActive && data.session_id && !isDraftConversation.value) {
           const currentId = currentSessionId.value;
           if (!currentId || (!userPinnedSessionId.value && currentId !== data.session_id)) {
             selectSession(data.session_id, false);
@@ -325,10 +337,11 @@ export const useSessionStore = defineStore('session', () => {
         dismissedNoRowSessions.delete(session.session_id);
       }
       persistSessionsCache(data);
-      // 初次加载：未选中、未 pin、无运行任务且有历史时，选中最新一条
+      // 初次加载：未选中、未 pin、无运行任务且有历史时，选中最新一条（草稿线程除外）
       if (
         !currentSessionId.value &&
         !userPinnedSessionId.value &&
+        !isDraftConversation.value &&
         agentStatus.value !== 'running' &&
         data.length > 0
       ) {
@@ -597,7 +610,7 @@ export const useSessionStore = defineStore('session', () => {
    * 选中会话。isUserAction 时维护 pin 语义：
    * 点当前运行中的任务 → 取消 pin 继续跟随；点其他任务 → pin 到该任务。
    */
-  function selectSession(sessionId: string, isUserAction = false): void {
+  function selectSession(sessionId: string | null, isUserAction = false): void {
     if (isUserAction) {
       if (sessionId && sessionId === runningSessionId.value && agentStatus.value === 'running') {
         userPinnedSessionId.value = null;
@@ -839,6 +852,7 @@ export const useSessionStore = defineStore('session', () => {
     conversationGroups,
     currentSession,
     submitConversationId,
+    isDraftConversation,
     currentConversationRunningTaskId,
     isCurrentSessionRunning,
     isRunningTask,

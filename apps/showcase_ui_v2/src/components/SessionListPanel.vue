@@ -61,6 +61,9 @@ function latestDevice(rounds: Session[]): string {
 
 function createConversation(): void {
   const id = crypto.randomUUID();
+  // 取消旧会话选中：时间线回到空态，提交目标回落到草稿线程 id，
+  // 否则旧会话仍处于选中态，视图与下一条消息都会“携带”旧线程内容
+  sessionStore.selectSession(null);
   sessionStore.selectConversation(id);
 }
 

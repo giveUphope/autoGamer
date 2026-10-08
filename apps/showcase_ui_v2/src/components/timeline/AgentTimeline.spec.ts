@@ -179,6 +179,19 @@ describe('AgentTimeline (M2)', () => {
     expect(wrapper.text()).toContain('在下方输入框描述要执行的操作即可开始');
   });
 
+  it('新建草稿线程不携带旧会话内容：时间线回到空态', async () => {
+    const wrapper = await mountWithSession();
+    expect(wrapper.text()).toContain('打开设置，查看电池电量');
+
+    // 模拟「新建会话」：切到无任何归属轮的草稿线程（旧会话保持选中也不得钉入）
+    const sessionStore = useSessionStore();
+    sessionStore.selectConversation('conv-draft');
+    await vi.waitFor(() => expect(wrapper.find('.rounds-list').exists()).toBe(false));
+
+    expect(wrapper.find('.rounds-list').exists()).toBe(false);
+    expect(wrapper.text()).not.toContain('打开设置，查看电池电量');
+  });
+
   it('renders step cards whose expanded action card keeps only the screenshots', async () => {
     const wrapper = await mountWithSession();
     // 动作标题由 util 生成——app 级 i18n 实例在本 spec 中固定 en-US，保持迁移前英文断言

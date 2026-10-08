@@ -295,6 +295,52 @@ describe('session store — 多轮会话线程（conversation）', () => {
     expect(store.submitConversationId).toBe('conv-fresh');
   });
 
+  it('新建草稿线程后取消旧会话选中：提交目标不再续到旧线程，且豁免自动跟随', async () => {
+    const store = useSessionStore();
+    store.$patch({
+      rawSessions: [
+        {
+          session_id: 'old-sid',
+          initial_goal: '旧任务',
+          conversation_id: 'conv-old',
+          start_time: 1,
+          status: 'completed',
+        },
+      ],
+    });
+    store.selectSession('old-sid');
+    expect(store.submitConversationId).toBe('conv-old');
+
+    // 模拟「新建会话」：取消选中 + 切到草稿线程
+    store.selectSession(null);
+    store.selectConversation('conv-draft');
+
+    // 提交目标回落到草稿线程，而不是续接旧线程
+    expect(store.currentSessionId).toBeNull();
+    expect(store.submitConversationId).toBe('conv-draft');
+    expect(store.isDraftConversation).toBe(true);
+
+    // 有任务运行时，状态轮询不得把视图拽回运行会话（草稿豁免自动跟随）
+    mockApiRoutes({
+      '/api/status': statusPayload({ status: 'running', session_id: 'old-sid' }),
+      '/api/sessions': [],
+    });
+    await store.fetchStatus();
+    expect(store.currentSessionId).toBeNull();
+
+    // 首条消息提交后 pending 表示带真实线程 id，草稿态自动解除
+    mockApiRoutes({
+      '/api/status': statusPayload({
+        status: 'pending',
+        session_id: null,
+        queue: [{ session_id: 'new-sid', conversation_id: 'conv-draft', goal: '新消息' }],
+      }),
+      '/api/sessions': [],
+    });
+    await store.fetchStatus();
+    expect(store.isDraftConversation).toBe(false);
+  });
+
   it('stopTask 清除未落库任务的 tracking 桥接，不留 running 幽灵', async () => {
     // 任务仅在 active_tasks 表示中存在（DB 行尚未落库）
     mockApiRoutes({

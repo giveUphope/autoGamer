@@ -95,8 +95,9 @@ const rounds = computed(() => {
     (session) =>
       !thread
       || threadKey(session) === thread
-      // 保险：当前选中的轮无论线程键如何演变都不从时间线消失
-      || session.session_id === sessionStore.currentSessionId,
+      // 保险：选中轮仅在线程已有归属轮时跟随（线程键演变中不消失）；
+      // 新建的空草稿线程绝不携带旧会话内容
+      || (session.session_id === sessionStore.currentSessionId && byThread.has(thread)),
   );
   return list.map((session) => {
     const status = getTaskStatus(session, sessionStore.runningSessionId, sessionStore.agentStatus);
