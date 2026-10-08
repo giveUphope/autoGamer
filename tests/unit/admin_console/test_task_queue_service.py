@@ -18,14 +18,18 @@ import json
 import os
 import subprocess
 import sys
+import time
 from unittest.mock import AsyncMock, MagicMock, patch
 import pytest
 
 from apps.admin_console.core.state import state
+from apps.admin_console.database.repositories.session_repository import session_repo
+from apps.admin_console.database.repositories.step_repository import step_repo
 from apps.admin_console.routers.tasks import get_status
 from apps.admin_console.services.task_queue_service import TaskQueueService, task_queue_service
 from artemis.runtime.device_lock import DeviceLockOwner
 from artemis.runtime.adb_endpoint import AdbEndpoint
+from artemis.runtime.device_pool import device_pool
 
 
 @pytest.fixture(autouse=True)
@@ -55,6 +59,7 @@ def clean_state(tmp_path, monkeypatch):
     state.clear_queue()
     state.queue_items.clear()
     state.submission_meta.clear()
+    state.held_queues.clear()
     state.current_process = None
     state.current_goal = None
     state.current_profile = None
@@ -1229,3 +1234,175 @@ async def test_enqueue_tasks_debounces_rapid_identical_submissions():
         )
         assert len(state.queue_items) == 1
         assert res2["enqueued_count"] == 0
+
+
+# ---- 设备队列熔断：零步骤失败保留队列，报错只落在断点 ----
+
+
+@pytest.fixture
+def device_probe_ok(monkeypatch):
+    """Fake device probes so enqueue accepts the fake serial outright."""
+    monkeypatch.setattr(
+        device_pool, "validate_explicit_serial_async", AsyncMock(return_value=None)
+    )
+    monkeypatch.setattr(
+        device_pool, "select_device_async", AsyncMock(return_value="EMULATOR1")
+    )
+
+
+@pytest.mark.asyncio
+async def test_zero_step_failure_holds_device_queue_and_retains_messages(
+    monkeypatch, device_probe_ok
+):
+    await enqueue_two_tasks()
+
+    # 环境级失败：worker 退出、状态 failed、一步都没执行
+    monkeypatch.setattr(step_repo, "has_steps", lambda session_id: False)
+    monkeypatch.setattr(
+        session_repo,
+        "get_session_by_id",
+        lambda session_id: {
+            "error_message": "Device EMULATOR1 is not available (adb does not list it)."
+        },
+    )
+
+    failed_item = state.queue_items[0]
+    target = TaskQueueService._task_target(failed_item)
+    await TaskQueueService._maybe_hold_device_queue(
+        failed_item, target, failed_item["session_id"]
+    )
+
+    hold = state.held_queues.get(target.lock_key)
+    assert hold, "zero-step failure must hold the device queue"
+    assert "not available" in hold["reason"]
+    assert hold["session_id"] == failed_item["session_id"]
+
+    # 熔断期间 dispatcher 不得派发该设备的任何 pending 消息（保留在队列中）
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert [i["status"] for i in state.queue_items] == ["pending", "pending"]
+
+
+@pytest.mark.asyncio
+async def test_task_level_failure_never_holds_queue(monkeypatch, device_probe_ok):
+    await enqueue_two_tasks()
+
+    # 任务级失败：已经执行过步骤（agent 跑过），队列必须继续
+    monkeypatch.setattr(step_repo, "has_steps", lambda session_id: True)
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+    await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
+    assert state.held_queues == {}
+
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert state.queue_items[0]["status"] == "running"
+
+
+@pytest.mark.asyncio
+async def test_step_probe_failure_keeps_queue_dispatching(monkeypatch, device_probe_ok):
+    await enqueue_two_tasks()
+
+    # 探测本身出错：宁可继续派发，也不误伤队列
+    monkeypatch.setattr(
+        step_repo,
+        "has_steps",
+        lambda session_id: (_ for _ in ()).throw(RuntimeError("db busy")),
+    )
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+    await TaskQueueService._maybe_hold_device_queue(item, target, item["session_id"])
+    assert state.held_queues == {}
+
+
+@pytest.mark.asyncio
+async def test_held_queue_auto_resumes_when_device_comes_back(
+    monkeypatch, device_probe_ok
+):
+    from artemis.runtime.device_pool import DeviceStatus
+
+    await enqueue_two_tasks()
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+    seed_hold(target.lock_key, item)
+
+    def statuses(*serials):
+        return [DeviceStatus(serial=s, state="device") for s in serials]
+
+    # 设备重新出现在真实枚举里：熔断解除，队列可继续派发
+    monkeypatch.setattr(
+        device_pool, "try_list_devices_async", AsyncMock(return_value=statuses("EMULATOR1"))
+    )
+    await TaskQueueService._probe_held_queues()
+    assert target.lock_key not in state.held_queues
+
+    # 枚举成功但该序列号不在其中：保持熔断
+    seed_hold(target.lock_key, item)
+    monkeypatch.setattr(
+        device_pool, "try_list_devices_async", AsyncMock(return_value=statuses("OTHER"))
+    )
+    await TaskQueueService._probe_held_queues()
+    assert target.lock_key in state.held_queues
+
+    # 枚举不确定（adb 本身不可达返回 None）：保持熔断，不误续跑
+    monkeypatch.setattr(
+        device_pool, "try_list_devices_async", AsyncMock(return_value=None)
+    )
+    state.held_queues[target.lock_key]["last_probe"] = 0.0
+    await TaskQueueService._probe_held_queues()
+    assert target.lock_key in state.held_queues
+
+    # 节流：刚探测过（5s 内）即使设备在线也不重复探测/解除
+    monkeypatch.setattr(
+        device_pool, "try_list_devices_async", AsyncMock(return_value=statuses("EMULATOR1"))
+    )
+    state.held_queues[target.lock_key]["last_probe"] = time.monotonic()
+    await TaskQueueService._probe_held_queues()
+    assert target.lock_key in state.held_queues
+
+
+@pytest.mark.asyncio
+async def test_new_submission_lifts_device_queue_hold(monkeypatch, device_probe_ok):
+    await enqueue_two_tasks()
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+    seed_hold(target.lock_key, item)
+
+    # 同设备新提交 = 用户重新介入：熔断解除，保留消息与新消息都在队列
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        await task_queue_service.enqueue_tasks(["第三条"], device_serial="EMULATOR1")
+    assert state.held_queues == {}
+    assert [i["goal"] for i in state.queue_items] == ["第一", "第二", "第三条"]
+
+
+@pytest.mark.asyncio
+async def test_stop_all_clears_device_queue_holds(monkeypatch, device_probe_ok):
+    await enqueue_two_tasks()
+    item = state.queue_items[0]
+    target = TaskQueueService._task_target(item)
+    seed_hold(target.lock_key, item)
+
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        assert task_queue_service.stop_tasks(clear_all=True) is True
+    assert state.held_queues == {}
+
+
+async def enqueue_two_tasks():
+    with (
+        patch.object(TaskQueueService, "ensure_worker_running"),
+        patch(
+            "apps.admin_console.services.task_queue_service.session_repo"
+        ),
+    ):
+        await task_queue_service.enqueue_tasks(
+            ["第一", "第二"], device_serial="EMULATOR1"
+        )
+
+
+def seed_hold(lock_key: str, item: dict):
+    state.held_queues[lock_key] = {
+        "reason": "Device EMULATOR1 is not available (adb does not list it).",
+        "session_id": item["session_id"],
+        "device_serial": "EMULATOR1",
+        "last_probe": 0.0,
+    }

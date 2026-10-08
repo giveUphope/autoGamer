@@ -35,6 +35,19 @@ class StepRepository:
             row = cursor.fetchone()
             return row["session_id"] if row else None
 
+    def has_steps(self, session_id: str) -> bool:
+        """Cheap existence probe: did this session record any executed step?
+
+        The queue service uses it to tell task-level failures (steps exist,
+        the agent actually ran) apart from environment-level failures that
+        died during startup (device unavailable, adb missing, ...), which
+        must not be retried across the rest of the queue.
+        """
+        with db_session(self.db_path) as conn:
+            cursor = conn.cursor()
+            cursor.execute("SELECT 1 FROM steps WHERE session_id = ? LIMIT 1", (session_id,))
+            return cursor.fetchone() is not None
+
     @staticmethod
     def _clean_value(val: Any) -> Any:
         """Recursively cleans values to remove non-serializable and internal

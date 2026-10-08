@@ -54,6 +54,14 @@ class ServerState:
 
         # Unified single source of truth for task queue
         self.queue_items: list[dict[str, Any]] = []
+
+        # 设备队列熔断（lock_key -> {"reason", "session_id", "device_serial",
+        # "last_probe"}）：某设备上一个任务「零步骤即失败」（环境级故障，如设备
+        # 掉线）时，该设备队列停止派发，剩余消息保留 pending，避免同一报错
+        # 重复打穿整个队列。设备重新上线（节流探测）、stop 全部或对该设备的
+        # 新提交会解除熔断。
+        self.held_queues: dict[str, dict[str, Any]] = {}
+
         # session_id -> 提交元数据（conversation_id / created_at）：worker 取走
         # 任务后 queue_items 里就查不到了，而设备锁票据视图不带这些字段；
         # /api/status 靠这张表把线程 id 与提交时刻回填到 pending/running 表示上，

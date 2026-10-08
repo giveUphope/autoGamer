@@ -27,11 +27,13 @@ import uuid
 try:
     from admin_console.core.state import state
     from admin_console.database.repositories.session_repository import session_repo
+    from admin_console.database.repositories.step_repository import step_repo
     from admin_console.services import worker_process_io
     from admin_console.services.media_service import media_service
 except ImportError:
     from apps.admin_console.core.state import state
     from apps.admin_console.database.repositories.session_repository import session_repo
+    from apps.admin_console.database.repositories.step_repository import step_repo
     from apps.admin_console.services import worker_process_io
     from apps.admin_console.services.media_service import media_service
 
@@ -370,6 +372,10 @@ class TaskQueueService:
         try:
             while True:
                 try:
+                    await cls._probe_held_queues()
+                except Exception as exc:
+                    print(f"[QueueWorker] Held-queue probe error: {exc}")
+                try:
                     cls._dispatch_pending_tasks()
                 except Exception as exc:
                     print(f"[QueueWorker] Dispatch error: {exc}")
@@ -385,6 +391,50 @@ class TaskQueueService:
                 if run_proc is not None and run_proc.returncode is None:
                     await cls._terminate_worker_process(run_proc)
             raise
+
+    @classmethod
+    async def _probe_held_queues(cls) -> None:
+        """Auto-resume a held device queue once its serial is attached again.
+
+        The resume decision comes from a real device enumeration — the strict
+        serial validator fails open on an empty bus (indeterminate), which is
+        exactly the "device gone" situation the hold exists for. Probes are
+        throttled per device (5s) so a held queue costs one adb enumeration
+        per interval, not one per dispatcher tick.
+        """
+        if not state.held_queues:
+            return
+        from artemis.runtime import device_pool
+
+        now = time.monotonic()
+        due = [
+            (lock_key, hold)
+            for lock_key, hold in state.held_queues.items()
+            if now - float(hold.get("last_probe") or 0.0) >= 5.0
+        ]
+        if not due:
+            return
+        try:
+            statuses = await device_pool.try_list_devices_async()
+        except Exception:
+            return
+        if statuses is None:
+            # Indeterminate enumeration (adb itself unreachable): keep holding.
+            return
+        for lock_key, hold in due:
+            hold["last_probe"] = now
+            serial = hold.get("device_serial")
+            online = any(
+                s.serial == serial and s.state == "device" for s in statuses
+            )
+            if online:
+                state.held_queues.pop(lock_key, None)
+                print(f"[QueueWorker] Device {serial} is back online; resuming its held queue.")
+                cls._broadcast_event(
+                    "queue_resumed",
+                    {"device_serial": serial, "lock_key": lock_key},
+                )
+                state.wake_event.set()
 
     @classmethod
     def _dispatch_pending_tasks(cls) -> None:
@@ -429,6 +479,10 @@ class TaskQueueService:
 
             device = item.get("device_serial")
             target = cls._task_target(item)
+            # 设备队列被熔断保持：该设备上的后续消息保留在队列中不派发，
+            # 直到设备恢复 / stop 全部 / 对该设备的新提交解除熔断。
+            if device is not None and target.lock_key in state.held_queues:
+                continue
             if limit == 0:
                 # A task without a resolved device may bind to any serial, so it
                 # only launches on an otherwise idle scheduler; the device lock
@@ -894,6 +948,8 @@ class TaskQueueService:
                 )
                 await cls._recover_or_fail_recording(sess_id)
                 cls._announce_session_end(task_item, sess_id, goal, new_status, manual_stop)
+                if new_status == "failed" and not manual_stop:
+                    await cls._maybe_hold_device_queue(task_item, target, sess_id)
 
         except asyncio.CancelledError:
             print(f"[QueueWorker] Task [{sess_id}] received cancellation signal.")
@@ -917,6 +973,64 @@ class TaskQueueService:
             await cls._finish_output_forwarder(output_task)
             # 5. Clean up the finished task and release this run's scheduling slot
             cls._release_run_slot(sess_id, run_key, proc)
+
+    @classmethod
+    async def _maybe_hold_device_queue(
+        cls,
+        task_item: dict[str, Any],
+        target: AdbTarget,
+        sess_id: Any,
+    ) -> None:
+        """Hold this device's queue when a task failed before executing anything.
+
+        A ``failed`` terminal status with zero recorded steps means the worker
+        died during startup -- device unavailable, adb dropped, helper install
+        crashed -- an environment-level fault. Dispatching the rest of the
+        queue would just repeat the same error on every queued message, so the
+        remaining items stay ``pending`` (retained and visible) until the
+        device comes back, the user stops everything, or a new submission for
+        this device lifts the hold. Task-level failures (steps exist) never
+        hold the queue: each task is independent.
+        """
+        device_serial = task_item.get("device_serial")
+        if not device_serial or not sess_id:
+            # Without a resolved device there is no device queue to hold.
+            return
+        try:
+            has_steps = await asyncio.to_thread(step_repo.has_steps, str(sess_id))
+        except Exception:
+            # A probe failure must never punish the queue: keep dispatching.
+            logger.exception(
+                "[QueueWorker] Could not probe steps for [%s]; skipping queue hold", sess_id
+            )
+            return
+        if has_steps:
+            return
+
+        lock_key = target.lock_key
+        row = await asyncio.to_thread(session_repo.get_session_by_id, sess_id) or {}
+        reason = str(row.get("error_message") or "").strip() or (
+            "Task failed before executing any step."
+        )
+        state.held_queues[lock_key] = {
+            "reason": reason,
+            "session_id": str(sess_id),
+            "device_serial": str(device_serial),
+            "last_probe": 0.0,
+        }
+        print(
+            f"[QueueWorker] Holding queue for device {device_serial} "
+            f"(task [{sess_id}] failed with no executed steps): {reason}"
+        )
+        cls._broadcast_event(
+            "queue_held",
+            {
+                "device_serial": str(device_serial),
+                "lock_key": lock_key,
+                "session_id": str(sess_id),
+                "reason": reason,
+            },
+        )
 
     @classmethod
     def _find_duplicate_submission(
@@ -1122,6 +1236,16 @@ class TaskQueueService:
                 device_serial = await device_pool.select_device_async()
             except Exception:
                 device_serial = None
+        if device_serial:
+            # A new submission is the user re-engaging this device: lift its
+            # queue hold so the retained messages (and the new one) can run.
+            # If the device is still broken, this task fails and re-holds.
+            hold_key = AdbTarget(endpoint=endpoint, serial=str(device_serial)).lock_key
+            if state.held_queues.pop(hold_key, None) is not None:
+                print(
+                    f"[QueueWorker] New submission for {device_serial} lifts its queue hold."
+                )
+                state.wake_event.set()
         for i, goal in enumerate(goals):
             task_item = cls._create_queue_item(
                 goal,
@@ -1258,6 +1382,7 @@ class TaskQueueService:
             if isinstance(item, dict) and item.get("status") != "running":
                 DeviceExecutionLock.cancel_reservation(item.get("queue_ticket"))
         state.clear_queue()
+        state.held_queues.clear()
 
         # 2. Terminate all active owners across all devices
         cls._terminate_all_device_owners()
