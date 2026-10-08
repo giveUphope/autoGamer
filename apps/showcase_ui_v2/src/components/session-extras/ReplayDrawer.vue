@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { computed, onBeforeUnmount, onMounted, ref, watch } from 'vue';
+import { computed, nextTick, onBeforeUnmount, onMounted, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { IconLeft, IconLoading, IconRight } from '@arco-design/web-vue/es/icon';
 
@@ -91,6 +91,20 @@ interface ViewerStep {
 }
 const viewerSteps = ref<ViewerStep[]>([]);
 const viewerIndex = ref(0);
+const stepListRef = ref<HTMLElement | null>(null);
+
+/** 步骤列表滚动：把查看器当前对应的步骤滚动置顶。 */
+async function scrollStepListToTop(stepNumberValue: number): Promise<void> {
+  await nextTick();
+  const list = stepListRef.value;
+  const row = list?.querySelector(`.replay-step[data-step-number="${stepNumberValue}"]`);
+  if (list && row) list.scrollTop = (row as HTMLElement).offsetTop - 2;
+}
+
+watch(viewerIndex, (idx) => {
+  const step = viewerSteps.value[idx];
+  if (step) void scrollStepListToTop(step.stepNumber);
+});
 
 const hasVideo = computed(() => Boolean(sessionStore.currentSession?.video_url));
 
@@ -173,6 +187,7 @@ async function fetchViewerSteps(sid: string): Promise<void> {
       })
       .sort((a, b) => a.stepNumber - b.stepNumber);
     viewerIndex.value = 0;
+    void scrollStepListToTop(0);
   } catch {
     viewerSteps.value = [];
   }
@@ -547,12 +562,13 @@ function close(): void {
         :description="`${t('workspace.replay.loadFail')}：${t('workspace.replay.stepsEmpty')}`"
       />
       <a-empty v-else-if="stepsState === 'ready' && steps.length === 0" :description="t('workspace.replay.stepsEmpty')" />
-      <div v-else class="step-list">
+      <div v-else ref="stepListRef" class="step-list">
         <div
           v-for="(step, i) in steps"
           :key="stepNumber(step) || i"
           class="replay-step"
           :class="{ 'is-viewing': currentViewer?.stepNumber === stepNumber(step) }"
+          :data-step-number="stepNumber(step)"
           role="button"
           @click="selectViewerStep(stepNumber(step))"
         >
@@ -854,6 +870,16 @@ function close(): void {
   display: flex;
   flex-direction: column;
   gap: 12px;
+  height: 100%;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.replay-alert,
+.viewer,
+.replay-controls,
+.replay-divider {
+  flex-shrink: 0;
 }
 
 .replay-alert {
@@ -939,6 +965,10 @@ function close(): void {
 }
 
 .step-list {
+  position: relative;
+  flex: 1 1 0;
+  min-height: 120px;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 8px;
@@ -983,6 +1013,9 @@ function close(): void {
 }
 
 .replay-result {
+  flex-shrink: 0;
+  max-height: 42%;
+  overflow-y: auto;
   display: flex;
   flex-direction: column;
   gap: 6px;
