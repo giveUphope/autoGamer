@@ -62,6 +62,10 @@ class ServerState:
         # 新提交会解除熔断。
         self.held_queues: dict[str, dict[str, Any]] = {}
 
+        # 用户手动暂停队列：dispatcher 停止派发新的 pending 任务（运行中的任务
+        # 不受影响），消息全部保留；resume_queue / stop 全部解除。
+        self.queue_manually_paused: bool = False
+
         # session_id -> 提交元数据（conversation_id / created_at）：worker 取走
         # 任务后 queue_items 里就查不到了，而设备锁票据视图不带这些字段；
         # /api/status 靠这张表把线程 id 与提交时刻回填到 pending/running 表示上，

@@ -293,6 +293,13 @@ export default {
     title: 'Workspace',
     description: 'M2: task queue, session list, command dock and the session timeline detail (steps / Notes / Checker / Usage). Live stream arrives in M3.',
     timelinePlaceholder: 'The session timeline will arrive in milestone M2',
+    queue: {
+      paused: 'Queue paused (running tasks are unaffected)',
+      held: 'Queue held: environment failure; resumes when the device is back',
+      resume: 'Resume queue',
+      pause: 'Pause queue',
+      remove: 'Remove from queue',
+    },
     dock: {
       placeholder: 'Type an instruction — Enter to submit, Shift+Enter for a new line',
       submit: 'Submit',

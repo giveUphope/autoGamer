@@ -723,3 +723,31 @@ describe('session store — 轮询节奏与缓存（§3.3 条款 6）', () => {
     expect(store2.rawSessions.map((s) => s.session_id)).toEqual(['cached-1']);
   });
 });
+
+describe('session store — 队列暂停 / 继续 / 排队消息管理', () => {
+  it('pauseQueue/resumeQueue 调用队列端点并刷新状态；threadPendingRounds 按线程过滤', async () => {
+    const store = useSessionStore();
+    store.$patch({
+      pendingQueue: [
+        { session_id: 'p1', initial_goal: 'A', conversation_id: 'conv-1', start_time: 1, status: 'pending' },
+        { session_id: 'p2', initial_goal: 'B', conversation_id: 'conv-2', start_time: 2, status: 'pending' },
+      ] as never,
+    });
+    store.selectConversation('conv-1');
+    expect(store.threadPendingRounds.map((r) => r.session_id)).toEqual(['p1']);
+
+    await store.pauseQueue();
+    expect(apiPostMock).toHaveBeenCalledWith('/api/queue/pause');
+    await store.resumeQueue();
+    expect(apiPostMock).toHaveBeenCalledWith('/api/queue/resume');
+  });
+
+  it('removeQueuedRound 走单任务停止路径移除排队消息', async () => {
+    const store = useSessionStore();
+    await store.removeQueuedRound('queued-1');
+    const stopCalls = apiPostMock.mock.calls.filter((c) => String(c[0]).includes('/api/stop'));
+    expect(
+      stopCalls.some((c) => String(c[0]).includes('session_id=queued-1')),
+    ).toBe(true);
+  });
+});

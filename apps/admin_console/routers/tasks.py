@@ -265,6 +265,20 @@ async def resume_task():
 
 
 @router.get("/api/status")
+@router.post("/api/queue/pause")
+async def pause_queue():
+    """手动暂停队列：pending 消息保留在队列中不派发，运行中的任务不受影响。"""
+    paused = task_queue_service.pause_queue()
+    return {"queue_paused": paused}
+
+
+@router.post("/api/queue/resume")
+async def resume_queue():
+    """继续队列：解除手动暂停与环境级熔断挂起，保留的消息按 FIFO 续跑。"""
+    paused = task_queue_service.resume_queue()
+    return {"queue_paused": paused}
+
+
 async def get_status():
     # Watchdog check to ensure background worker is alive
     task_queue_service.ensure_worker_running()
@@ -401,9 +415,23 @@ async def get_status():
             }
             queue_data.append(g_item)
 
+    queue_pause_state = {
+        "queue_paused": state.queue_manually_paused,
+        "queue_holds": [
+            {
+                "device_serial": hold.get("device_serial"),
+                "session_id": hold.get("session_id"),
+                "reason": hold.get("reason"),
+                "failure_class": hold.get("failure_class"),
+            }
+            for hold in state.held_queues.values()
+        ],
+    }
+
     if is_running:
         is_paused = state.is_paused
         return {
+            **queue_pause_state,
             "status": "paused" if is_paused else "running",
             "paused_error": state.paused_error if is_paused else None,
             "goal": running_goal,
@@ -427,6 +455,7 @@ async def get_status():
         conn_profile = conn_info.get("profile") or active_profile
         conn_model_info = model_service.get_active_model_info(conn_profile)
         return {
+            **queue_pause_state,
             "status": "paused" if is_paused else "running",
             "paused_error": state.paused_error if is_paused else None,
             "goal": conn_info.get("goal"),
@@ -440,6 +469,7 @@ async def get_status():
         }
 
     return {
+        **queue_pause_state,
         "status": "idle",
         "session_id": latest_session_id,
         "background_tasks": bg_tasks,

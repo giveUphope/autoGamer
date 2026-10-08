@@ -1564,3 +1564,42 @@ def seed_hold(lock_key: str, item: dict):
         "device_serial": "EMULATOR1",
         "last_probe": 0.0,
     }
+
+
+@pytest.mark.asyncio
+async def test_manual_pause_gates_dispatch_and_resume_clears_holds(
+    monkeypatch, device_probe_ok
+):
+    await enqueue_two_tasks()
+
+    # 手动暂停：pending 全部保留不派发
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        assert task_queue_service.pause_queue() is True
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert all(i["status"] == "pending" for i in state.queue_items)
+
+    # 继续队列 = 手动暂停与熔断挂起一并解除
+    item = state.queue_items[0]
+    state.held_queues[TaskQueueService._task_target(item).lock_key] = {
+        "reason": "env",
+        "session_id": item["session_id"],
+        "device_serial": "EMULATOR1",
+        "last_probe": 0.0,
+    }
+    events = []
+    capture = lambda et, d: events.append((et, d))
+    state.ipc_subscribers.append(capture)
+    try:
+        with patch.object(TaskQueueService, "ensure_worker_running"):
+            assert task_queue_service.resume_queue() is True
+    finally:
+        state.ipc_subscribers.remove(capture)
+    assert state.queue_manually_paused is False
+    assert state.held_queues == {}
+    assert [et for et, _ in events if et == "queue_resumed"]
+
+    # 继续后照常 FIFO 派发
+    with patch.object(TaskQueueService, "_execute_task_item", new=AsyncMock()):
+        TaskQueueService._dispatch_pending_tasks()
+    assert state.queue_items[0]["status"] == "running"

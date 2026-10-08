@@ -50,6 +50,14 @@ export interface RunTaskOptions {
   explorerMode?: string;
 }
 
+/** /api/status 的队列挂起条目（环境级熔断）。 */
+export interface QueueHoldInfo {
+  device_serial?: string | null;
+  session_id?: string | null;
+  reason?: string | null;
+  failure_class?: string | null;
+}
+
 interface StatusResponse {
   status: string;
   session_id?: string | null;
@@ -58,6 +66,8 @@ interface StatusResponse {
   active_tasks?: ActiveTaskInfo[];
   model_info?: ModelInfo | null;
   paused_error?: string | null;
+  queue_paused?: boolean;
+  queue_holds?: QueueHoldInfo[];
 }
 
 export const useSessionStore = defineStore('session', () => {
@@ -70,6 +80,10 @@ export const useSessionStore = defineStore('session', () => {
   const runningGoal = ref<string | null>(null);
   const isPaused = ref(false);
   const pausedError = ref<string | null>(null);
+  /** 用户手动暂停队列（pending 保留不派发，运行中的任务不受影响）。 */
+  const queueManuallyPaused = ref(false);
+  /** 环境级熔断挂起（按设备/端点队列键），设备恢复 / 继续队列 / 新提交解除。 */
+  const queueHolds = ref<QueueHoldInfo[]>([]);
   const activeModel = ref<ModelInfo | null>(null);
   /** 用户显式点选的非运行会话（pin），未 pin 时自动跟随运行中的任务。 */
   const userPinnedSessionId = ref<string | null>(null);
@@ -143,6 +157,16 @@ export const useSessionStore = defineStore('session', () => {
     return !sessions.value.some((s) => s.conversation_id === thread);
   });
 
+  /**
+   * 当前查看线程的排队中消息（dock 排队 chips 的数据源）：主流 agent 的队列
+   * 交互模式是「排队消息在输入框附近可见、可单独移除、按序发射」。
+   */
+  const threadPendingRounds = computed<Session[]>(() => {
+    const thread = submitConversationId.value;
+    if (!thread) return [];
+    return pendingQueue.value.filter((p) => p.conversation_id === thread);
+  });
+
   /** 当前查看的会话是否处于运行 / 暂停态（查看历史任务时为 false）。 */
   const isCurrentSessionRunning = computed<boolean>(() => {
     const curId = currentSessionId.value;
@@ -185,6 +209,7 @@ export const useSessionStore = defineStore('session', () => {
   // ---- 轮询签名（§3.3 条款 4）----
   let lastQueueSignature: string | null = null;
   let lastActiveTasksSignature: string | null = null;
+  let lastQueueHoldsSignature: string | null = null;
   // Angular 版每个轮询周期都无条件 set 新的 model_info 对象引用；为保证
   // 「payload 不变 → 零响应式更新」的 M1 验收标准，这里补一层内容签名。
   let lastModelInfoSignature: string | null = null;
@@ -291,6 +316,12 @@ export const useSessionStore = defineStore('session', () => {
         if (activeTasksSignature !== lastActiveTasksSignature) {
           lastActiveTasksSignature = activeTasksSignature;
           activeTasks.value = data.active_tasks || [];
+        }
+        queueManuallyPaused.value = data.queue_paused === true;
+        const holdsSignature = statusSignature(data.queue_holds || []);
+        if (holdsSignature !== lastQueueHoldsSignature) {
+          lastQueueHoldsSignature = holdsSignature;
+          queueHolds.value = data.queue_holds || [];
         }
 
         if (oldStatus !== data.status || oldRunningSessionId !== data.session_id) {
@@ -422,6 +453,23 @@ export const useSessionStore = defineStore('session', () => {
    * 签名失效确保下一个 2s 轮询即使 payload 未变也会重新应用后端数据
    * （§3.3 条款 4：防止旧状态回写）。
    */
+  /** 手动暂停队列：pending 保留不派发，运行中的任务不受影响。 */
+  async function pauseQueue(): Promise<void> {
+    await apiPost<void>('/api/queue/pause');
+    await fetchStatus();
+  }
+
+  /** 继续队列：解除手动暂停与环境级熔断挂起，保留的消息按 FIFO 续跑。 */
+  async function resumeQueue(): Promise<void> {
+    await apiPost<void>('/api/queue/resume');
+    await fetchStatus();
+  }
+
+  /** 从队列中移除一条尚未发射的消息（未开始运行的任务）。 */
+  async function removeQueuedRound(sessionId: string): Promise<void> {
+    await stopTask(sessionId, false);
+  }
+
   async function stopTask(targetOrStopAll?: string | boolean | null, stopAll = false): Promise<void> {
     let targetSessionId: string | null = null;
     let effectiveStopAll = stopAll;
@@ -853,6 +901,12 @@ export const useSessionStore = defineStore('session', () => {
     currentSession,
     submitConversationId,
     isDraftConversation,
+    queueManuallyPaused,
+    queueHolds,
+    threadPendingRounds,
+    pauseQueue,
+    resumeQueue,
+    removeQueuedRound,
     currentConversationRunningTaskId,
     isCurrentSessionRunning,
     isRunningTask,

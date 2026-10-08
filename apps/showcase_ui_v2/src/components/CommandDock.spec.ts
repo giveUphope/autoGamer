@@ -20,8 +20,14 @@ const mockSession = reactive({
   runTask: vi.fn(() => Promise.resolve({})),
   fetchStatus: vi.fn(() => Promise.resolve({})),
   stopTask: vi.fn(() => Promise.resolve()),
+  removeQueuedRound: vi.fn(() => Promise.resolve()),
+  pauseQueue: vi.fn(() => Promise.resolve()),
+  resumeQueue: vi.fn(() => Promise.resolve()),
   submitConversationId: null as string | null,
   currentConversationRunningTaskId: null as string | null,
+  threadPendingRounds: [] as Array<{ session_id: string; initial_goal: string }>,
+  queueManuallyPaused: false,
+  queueHolds: [] as Array<{ device_serial?: string; reason?: string; failure_class?: string; session_id?: string }>,
 });
 
 const mockSystem = reactive({
@@ -46,6 +52,9 @@ describe('CommandDock', () => {
     vi.clearAllMocks();
     mockSession.submitConversationId = null;
     mockSession.currentConversationRunningTaskId = null;
+    mockSession.threadPendingRounds = [];
+    mockSession.queueManuallyPaused = false;
+    mockSession.queueHolds = [];
     mockSystem.credentialRows = [];
     mockSystem.modelConfigEnv = null;
     localStorage.removeItem('artemis_selected_profile');
@@ -153,5 +162,66 @@ describe('CommandDock', () => {
 
     expect(mockSession.runTask).not.toHaveBeenCalled();
     expect((textarea.element as HTMLTextAreaElement).value).toBe('第一行');
+  });
+});
+
+describe('CommandDock — 队列状态条（排队 chips / 暂停 / 继续）', () => {
+  beforeEach(() => {
+    vi.clearAllMocks();
+    mockSession.submitConversationId = null;
+    mockSession.currentConversationRunningTaskId = null;
+    mockSession.threadPendingRounds = [];
+    mockSession.queueManuallyPaused = false;
+    mockSession.queueHolds = [];
+  });
+
+  it('排队消息以 chips 呈现且可单独移除', async () => {
+    mockSession.submitConversationId = 'conv-1';
+    mockSession.threadPendingRounds = [
+      { session_id: 'q1', initial_goal: '排队消息一' },
+      { session_id: 'q2', initial_goal: '排队消息二' },
+    ];
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const chips = wrapper.findAll('.queue-chip');
+    expect(chips.length).toBe(2);
+    expect(chips[0].text()).toContain('排队消息一');
+    await chips[0].find('.queue-chip-remove').trigger('click');
+    expect(mockSession.removeQueuedRound).toHaveBeenCalledWith('q1');
+  });
+
+  it('手动暂停显示暂停态与继续按钮；环境挂起显示挂起原因（悬浮可见）', async () => {
+    mockSession.submitConversationId = 'conv-1';
+    mockSession.queueManuallyPaused = true;
+    let wrapper = mountDock();
+    await flushPromises();
+    expect(wrapper.find('.queue-state.is-paused').exists()).toBe(true);
+    await wrapper.find('.queue-action').trigger('click');
+    expect(mockSession.resumeQueue).toHaveBeenCalled();
+    wrapper.unmount();
+
+    mockSession.queueManuallyPaused = false;
+    mockSession.queueHolds = [
+      { device_serial: 'auto', reason: 'Device is not available', failure_class: 'environment', session_id: 'x' },
+    ];
+    wrapper = mountDock();
+    await flushPromises();
+    const held = wrapper.find('.queue-state.is-held');
+    expect(held.exists()).toBe(true);
+    expect(held.attributes('title')).toContain('Device is not available');
+    await wrapper.find('.queue-action').trigger('click');
+    expect(mockSession.resumeQueue).toHaveBeenCalled();
+  });
+
+  it('有任务运行时提供「暂停队列」入口（不影响运行中的任务）', async () => {
+    mockSession.currentConversationRunningTaskId = 'run-1';
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const pauseButton = wrapper.find('.queue-action');
+    expect(pauseButton.exists()).toBe(true);
+    await pauseButton.trigger('click');
+    expect(mockSession.pauseQueue).toHaveBeenCalled();
   });
 });

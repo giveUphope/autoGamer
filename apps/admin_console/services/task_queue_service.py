@@ -464,6 +464,10 @@ class TaskQueueService:
     @classmethod
     def _dispatch_pending_tasks(cls) -> None:
         """Launch every pending task admissible under the current concurrency limit."""
+        # 手动暂停：pending 消息全部保留在队列中不派发（运行中的任务不受影响），
+        # resume_queue 解除。
+        if state.queue_manually_paused:
+            return
         limit = cls._concurrency_limit()
         state.prune_finished_runs()
         if limit == 1 and state.is_running:
@@ -1428,6 +1432,7 @@ class TaskQueueService:
                 DeviceExecutionLock.cancel_reservation(item.get("queue_ticket"))
         state.clear_queue()
         state.held_queues.clear()
+        state.queue_manually_paused = False
 
         # 2. Terminate all active owners across all devices
         cls._terminate_all_device_owners()
@@ -1809,6 +1814,36 @@ class TaskQueueService:
 
         cls._clear_pause_file()
 
+        cls.ensure_worker_running()
+        state.wake_event.set()
+        return True
+
+    @classmethod
+    def pause_queue(cls) -> bool:
+        """Manually pause the queue: pending messages are retained, the running
+        task is unaffected, and the dispatcher skips new launches until
+        :meth:`resume_queue`."""
+        if not state.queue_manually_paused:
+            state.queue_manually_paused = True
+            print("[QueueWorker] Queue manually paused; pending messages are retained.")
+            cls._broadcast_event("queue_paused", {"reason": "manual"})
+        cls.ensure_worker_running()
+        state.wake_event.set()
+        return True
+
+    @classmethod
+    def resume_queue(cls) -> bool:
+        """Resume the queue: lift the manual pause AND clear the auto
+        circuit-breaker holds (环境级失败后的挂起)，then wake the dispatcher.
+        Retained pending messages dispatch in FIFO order."""
+        state.queue_manually_paused = False
+        had_holds = bool(state.held_queues)
+        state.held_queues.clear()
+        print(
+            "[QueueWorker] Queue resumed by user"
+            + (" (circuit-breaker holds cleared)." if had_holds else ".")
+        )
+        cls._broadcast_event("queue_resumed", {"reason": "manual"})
         cls.ensure_worker_running()
         state.wake_event.set()
         return True

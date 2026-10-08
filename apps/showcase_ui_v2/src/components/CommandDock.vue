@@ -32,6 +32,33 @@ let errorTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isThreadRunning = computed(() => !!sessionStore.currentConversationRunningTaskId);
 
+// ---- 队列状态条（主流 agent 模式：排队消息可见、可单独移除；暂停/继续） ----
+const threadPending = computed(() => sessionStore.threadPendingRounds);
+const queuePaused = computed(() => sessionStore.queueManuallyPaused);
+const queueHolds = computed(() => sessionStore.queueHolds);
+/** 挂起原因汇总（悬浮提示）。 */
+const holdReasons = computed(() =>
+  sessionStore.queueHolds.map((h) => h.reason).filter(Boolean).join('；'),
+);
+/** 有任务在跑或排队时提供「暂停队列」入口（暂停只停新派发，不影响运行中）。 */
+const showPauseAction = computed(
+  () => (isThreadRunning.value || threadPending.value.length > 0)
+    && !queuePaused.value
+    && queueHolds.value.length === 0,
+);
+
+function removeQueued(sessionId: string): void {
+  void sessionStore.removeQueuedRound(sessionId);
+}
+
+function pauseQueue(): void {
+  void sessionStore.pauseQueue();
+}
+
+function resumeQueue(): void {
+  void sessionStore.resumeQueue();
+}
+
 // 与 Angular 版一致：记住上一次选择的架构 profile
 if (typeof localStorage !== 'undefined') {
   const saved = localStorage.getItem('artemis_selected_profile');
@@ -129,6 +156,44 @@ async function stopCurrentConversation(): Promise<void> {
   <div class="command-dock">
     <div class="dock-card">
       <a-alert v-if="errorMessage" type="error" class="dock-error">{{ errorMessage }}</a-alert>
+      <!-- 排队消息 chips + 队列状态（暂停 / 环境熔断挂起）+ 暂停/继续 -->
+      <div
+        v-if="threadPending.length || queuePaused || queueHolds.length || showPauseAction"
+        class="dock-queue-strip"
+      >
+        <span
+          v-for="round in threadPending"
+          :key="round.session_id"
+          class="queue-chip"
+          :title="round.initial_goal"
+        >
+          <span class="queue-chip-goal">{{ round.initial_goal }}</span>
+          <button
+            class="queue-chip-remove"
+            :title="t('workspace.queue.remove')"
+            @click="removeQueued(round.session_id)"
+          >×</button>
+        </span>
+        <template v-if="queuePaused">
+          <span class="queue-state is-paused">{{ t('workspace.queue.paused') }}</span>
+          <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
+            {{ t('workspace.queue.resume') }}
+          </a-button>
+        </template>
+        <template v-else-if="queueHolds.length">
+          <span class="queue-state is-held" :title="holdReasons">
+            {{ t('workspace.queue.held') }}
+          </span>
+          <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
+            {{ t('workspace.queue.resume') }}
+          </a-button>
+        </template>
+        <template v-else-if="showPauseAction">
+          <a-button size="mini" type="text" class="queue-action" @click="pauseQueue">
+            {{ t('workspace.queue.pause') }}
+          </a-button>
+        </template>
+      </div>
       <div class="dock-main-row">
         <a-textarea
           ref="inputRef"
@@ -186,6 +251,70 @@ async function stopCurrentConversation(): Promise<void> {
 .dock-main-row {
   display: flex;
   align-items: flex-start;
+}
+
+/* 队列状态条：排队 chips（可移除）+ 暂停/挂起状态 + 暂停/继续动作 */
+.dock-queue-strip {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 6px;
+  margin-bottom: 8px;
+}
+
+.queue-chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 2px;
+  max-width: 220px;
+  padding: 1px 4px 1px 8px;
+  border: 1px solid var(--color-border-2);
+  border-radius: 999px;
+  background-color: var(--color-fill-1);
+  font-size: 12px;
+  color: var(--color-text-2);
+}
+
+.queue-chip-goal {
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-chip-remove {
+  flex-shrink: 0;
+  border: none;
+  background: none;
+  color: var(--color-text-3);
+  font-size: 13px;
+  line-height: 1;
+  padding: 2px 4px;
+  cursor: pointer;
+  border-radius: 999px;
+}
+
+.queue-chip-remove:hover {
+  color: rgb(var(--red-6));
+  background-color: var(--color-fill-2);
+}
+
+.queue-state {
+  font-size: 12px;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+
+.queue-state.is-paused {
+  color: rgb(var(--orange-6));
+}
+
+.queue-state.is-held {
+  color: rgb(var(--red-6));
+}
+
+.queue-action {
+  flex-shrink: 0;
 }
 
 .dock-input {
