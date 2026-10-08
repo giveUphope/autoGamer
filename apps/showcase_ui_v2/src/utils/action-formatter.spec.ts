@@ -7,6 +7,7 @@ import {
   getActionErrorMessage,
   getActionInputLabel,
   getActionTitle,
+  isKeyAction,
 } from './action-formatter';
 
 /**
@@ -53,10 +54,9 @@ describe('action-formatter display copy (en-US)', () => {
     expect(getActionErrorMessage({ action: 'click', error: 'Device unreachable' })).toBe('Device unreachable');
   });
 
-  it('keeps the legacy English extra param labels and replay frame titles', () => {
-    expect(extractActionExtraParams({ action: 'wait_for_delay', duration: 500 })).toEqual([
-      { key: 'Duration', value: '500ms' },
-    ]);
+  it('keeps the legacy English replay frame titles; duration converges into the trace tree', () => {
+    // 按压时长等设备层细节由轨迹树载荷承担，extra params 不再输出 Duration
+    expect(extractActionExtraParams({ action: 'wait_for_delay', duration: 500 })).toEqual([]);
 
     const frames = extractStepReplayFrames([
       { step_id: 's1', step_number: 1, post_image_name: 'p1.jpg', action_taken: { action: 'click', args: { target_description: '设置' } } },
@@ -68,6 +68,13 @@ describe('action-formatter display copy (en-US)', () => {
     expect(frames[1].title).toBe('Step 2: Step 2');
     expect(frames[1].actionText).toBe('Step 2');
   });
+
+  it('flags hardware key actions so the key row converges into the trace tree', () => {
+    expect(isKeyAction({ action: 'press_key', args: { key: 'APP_SWITCH' } })).toBe(true);
+    expect(isKeyAction({ name: 'press_home' })).toBe(false);
+    expect(isKeyAction({ action: 'input_text' })).toBe(false);
+    expect(isKeyAction(null)).toBe(false);
+  });
 });
 
 describe('action-formatter display copy (zh-CN spot checks)', () => {
@@ -75,9 +82,7 @@ describe('action-formatter display copy (zh-CN spot checks)', () => {
     i18n.global.locale.value = 'zh-CN';
     expect(getActionTitle({ action: 'click' })).toBe('轻点元素');
     expect(getActionTitle({ action: 'swipe', args: { direction: 'up' } })).toBe('滑动屏幕（UP）');
-    expect(extractActionExtraParams({ action: 'wait_for_delay', duration: 500 })).toEqual([
-      { key: '时长', value: '500ms' },
-    ]);
+    expect(extractActionExtraParams({ action: 'wait_for_delay', duration: 500 })).toEqual([]);
     const frames = extractStepReplayFrames([
       { step_id: 's1', step_number: 1, post_image_name: 'p1.jpg', action_taken: { action: 'click' } },
     ]);
@@ -87,7 +92,7 @@ describe('action-formatter display copy (zh-CN spot checks)', () => {
 });
 
 describe('extractActionExtraParams — 调试字段由轨迹树承担', () => {
-  it('排除 trace_id / parent_trace_id / payload / agent_name，不再平铺进时间线', () => {
+  it('排除 trace_id / parent_trace_id / payload / agent_name / duration，不再平铺进时间线', () => {
     i18n.global.locale.value = 'en-US';
     const params = extractActionExtraParams({
       action: 'click',
@@ -103,8 +108,8 @@ describe('extractActionExtraParams — 调试字段由轨迹树承担', () => {
     expect(keys).not.toContain('Parent Trace Id');
     expect(keys).not.toContain('Payload');
     expect(keys).not.toContain('Agent Name');
-    // 人类可读字段不受影响（target_description 由 StepCard 专用渲染器展示，此处本就不输出）
-    expect(keys).toContain('Duration');
+    // 按压时长收敛进轨迹树载荷，不在时间线平铺
+    expect(keys).not.toContain('Duration');
     i18n.global.locale.value = 'zh-CN';
   });
 });

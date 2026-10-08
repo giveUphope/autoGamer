@@ -31,6 +31,7 @@ import {
   getActionTitle,
   isActionFailed,
   isAndroidAction,
+  isKeyAction,
   isReportStatusAction,
   getReportStatusValue,
   getReportStatusExplanation,
@@ -513,7 +514,8 @@ function resumePausedTask(): void {
                 <span class="grid-label">{{ t('workspace.timeline.target') }}</span>
                 <span class="grid-value">"{{ getActionTargetText(item.data) }}"</span>
               </div>
-              <div v-if="getActionInputText(item.data)" class="grid-item">
+              <!-- 按键类动作的键名/按压时长收敛进轨迹树载荷，不在卡内平铺 -->
+              <div v-if="getActionInputText(item.data) && !isKeyAction(item.data)" class="grid-item">
                 <span class="grid-label">{{ getActionInputLabel(item.data) }}</span>
                 <span class="grid-value">"{{ getActionInputText(item.data) }}"</span>
               </div>

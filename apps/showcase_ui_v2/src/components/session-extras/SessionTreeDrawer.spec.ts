@@ -38,7 +38,7 @@ const TREE1 = [
     status: 'success',
     timestamp: 1756152001,
     duration: 0.865,
-    payload: { args: { target: '返回按钮' } },
+    payload: { args: { target: '返回按钮', duration: 0.8063035011291504 } },
     children: [],
   },
   {
@@ -137,6 +137,9 @@ describe('SessionTreeDrawer (可视化轨迹树)', () => {
     expect(body).toContain('Trace Id');
     expect(body).toContain('act1');
     expect(body).toContain('返回按钮');
+    // 载荷内时长数值四舍五入到两位小数，不展示原始全精度浮点
+    expect(body).toContain('0.81');
+    expect(body).not.toContain('0.8063035011291504');
     // 内联 payload 不发额外请求
     expect(apiGetMock.mock.calls.map((c) => String(c[0])).filter((u) => u.includes('/api/traces/'))).toHaveLength(0);
   });

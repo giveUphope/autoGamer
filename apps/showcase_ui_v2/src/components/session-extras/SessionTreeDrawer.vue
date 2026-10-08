@@ -36,11 +36,27 @@ function detailOf(err: unknown): string {
   return err instanceof Error && err.message ? err.message : String(err);
 }
 
+/** 时长类载荷数值统一四舍五入到两位小数（0.8063035… → 0.81），完整精度由 DB 留存。 */
+const DURATION_PAYLOAD_KEYS = new Set(['duration', 'duration_ms']);
+
+function roundDurationValues(value: unknown): unknown {
+  if (Array.isArray(value)) return value.map(roundDurationValues);
+  if (value === null || typeof value !== 'object') return value;
+  const out: Record<string, unknown> = {};
+  for (const [key, val] of Object.entries(value)) {
+    out[key] =
+      DURATION_PAYLOAD_KEYS.has(key.toLowerCase()) && typeof val === 'number' && Number.isFinite(val)
+        ? Number(val.toFixed(2))
+        : roundDurationValues(val);
+  }
+  return out;
+}
+
 function formatPayload(payload: unknown): string {
   if (payload === null || payload === undefined) return t('workspace.tree.contentEmpty');
   if (typeof payload === 'string') return payload;
   try {
-    return JSON.stringify(payload, null, 2);
+    return JSON.stringify(roundDurationValues(payload), null, 2);
   } catch {
     return String(payload);
   }

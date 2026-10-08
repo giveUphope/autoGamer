@@ -264,6 +264,17 @@ export function getActionTargetText(action: any): string {
 }
 
 /**
+ * 硬件按键类动作：键名/按压时长属于设备层细节，由轨迹树载荷承担
+ * （动作卡「轨迹」入口定位查看），时间线动作卡不再平铺「按键」输入行。
+ */
+export function isKeyAction(action: any): boolean {
+  const act = getActionObject(action);
+  if (!act) return false;
+  const name = (act.name || act.action || '').toLowerCase();
+  return name === 'press_key' || name.includes('key');
+}
+
+/**
  * Get input label for Android action
  */
 export function getActionInputLabel(action: any): string {
@@ -508,9 +519,9 @@ export function extractActionExtraParams(action: any, cache?: WeakMap<any, Actio
     'pre_image_name', 'post_image_name', 'pre_screenshot', 'post_screenshot',
     'before_screenshot', 'after_screenshot', 'status', 'success', 'timestamp',
     'created_at', 'start_time', 'execution_id', 'controller', 'agent', 'session_id', 'step_id',
-    'app_name', 'package_name', 'app', 'key', 'keycode', 'time_in_ms', 'delay_ms', 'delay_seconds', 'duration',
+    'app_name', 'package_name', 'app', 'key', 'keycode', 'time_in_ms', 'delay_ms', 'delay_seconds', 'duration', 'duration_ms',
     'args', 'kwargs', 'parameters', 'extra_params', 'direction', 'gesture',
-    // 调试字段由轨迹树承担（动作卡「轨迹」入口定位查看），不在时间线平铺
+    // 调试字段与按键/按压时长等设备层细节均由轨迹树承担（动作卡「轨迹」入口定位查看），不在时间线平铺
     'trace_id', 'parent_trace_id', 'payload', 'agent_name'
   ]);
 
@@ -533,12 +544,6 @@ export function extractActionExtraParams(action: any, cache?: WeakMap<any, Actio
   }
 
   const mergedObj = { ...act, ...parsedArgs };
-
-  // Explicitly check duration if available and not already formatted
-  const dur = mergedObj.duration || mergedObj.duration_ms;
-  if (dur !== undefined && dur !== null && dur !== '') {
-    result.push({ key: tUtil('actions.duration'), value: typeof dur === 'number' ? `${dur}ms` : String(dur) });
-  }
 
   for (const [k, v] of Object.entries(mergedObj)) {
     const lowerK = k.toLowerCase();
