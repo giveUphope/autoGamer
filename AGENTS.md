@@ -28,7 +28,13 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
   linked teardown)
 - Run the app: `uv run python -m artemis ui` serves API + built console on
   `http://localhost:8000` (auto-rebuilds the Vue bundle at startup when sources changed);
-  `ARTEMIS_MOCK_DRIVER=1` forces the offline mock device driver (no real device required)
+  `ARTEMIS_MOCK_DRIVER=1` forces the offline mock device driver (no real device required);
+  `make mock-ui` is the packaged shortcut for exactly that. The server **never auto-opens a
+  browser** (`--open` is opt-in; end-user launchers pass it explicitly)
+- Dev-environment startup habit: start the server in the background with
+  `ARTEMIS_MOCK_DRIVER=1 uv run python -m artemis ui --no-open`, then open
+  `http://localhost:8000` in the **agent's in-app browser** (browser-use IAB tab) — never
+  wait for or trigger the system browser, and don't pass `--open`
 - Lint: `uv run ruff check` / `uv run ruff format --check` (line length 100); pre-commit also
   runs `scripts/quality_ratchet.py` — don't regress baselines in `.quality-baseline.json`
 

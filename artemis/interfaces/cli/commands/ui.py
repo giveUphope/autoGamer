@@ -280,9 +280,13 @@ def ui_command(
         bool,
         typer.Option(
             "--open/--no-open",
-            help="Automatically open the Showcase UI in default web browser.",
+            help=(
+                "Automatically open the Showcase UI in the system web browser. Off by "
+                "default: development flows open the page themselves (agent in-app "
+                "browser, make dev...). End-user launchers pass --open explicitly."
+            ),
         ),
-    ] = True,
+    ] = False,
     reload: Annotated[
         bool,
         typer.Option(

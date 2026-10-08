@@ -29,6 +29,9 @@ start: ## One-click start Artemis Showcase UI and auto-open browser
 ui: ## Launch the unified Showcase UI & Admin Console in browser
 	@uv run artemis ui --open
 
+mock-ui: ## Start the UI against the mock device driver (offline, no browser auto-open)
+	@ARTEMIS_MOCK_DRIVER=1 uv run python -m artemis ui --no-open
+
 restart: ## Restart running Artemis Web UI & server
 	@uv run artemis restart
 

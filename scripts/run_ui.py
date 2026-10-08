@@ -216,6 +216,10 @@ def main() -> None:
         ]
         if args.no_open:
             cmd.append("--no-open")
+        else:
+            # ui_command defaults to no browser auto-open; the quick launcher
+            # keeps its historical open-a-browser behavior explicitly.
+            cmd.append("--open")
         if args.reload:
             cmd.append("--reload")
     else:
@@ -228,6 +232,8 @@ def main() -> None:
         cmd = [python_bin, "-m", "artemis", "ui", "--port", str(args.port), "--host", args.host]
         if args.no_open:
             cmd.append("--no-open")
+        else:
+            cmd.append("--open")
         if args.reload:
             cmd.append("--reload")
 
