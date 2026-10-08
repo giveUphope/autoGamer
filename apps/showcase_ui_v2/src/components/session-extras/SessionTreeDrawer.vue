@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { nextTick, ref, watch } from 'vue';
+import { computed, nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { ApiError, apiGet } from '@/services/api';
@@ -207,10 +207,11 @@ async function applyFocus(): Promise<void> {
 }
 
 // 打开时拉取；打开状态下轮次集合变化（新轮提交/线程切换）重拉。
-// 按轮次 id 集合比较而非数组引用：sessions 每 6s 重算产生新引用，
-// 按引用比较会让打开着的抽屉每 6s 重拉全部轮次的树。
+// watch 源必须是稳定基本量：getter 返回新数组时 Vue 按引用比较，
+// AgentTimeline 每个轮询周期重渲染都会触发回调，把刚展开的内容重置掉。
+const roundsKey = computed(() => props.rounds.map((round) => round.id).join(','));
 watch(
-  () => [props.visible, props.rounds.map((round) => round.id).join(',')] as const,
+  [() => props.visible, roundsKey],
   ([visible]) => {
     if (visible) void fetchTrees();
   },
