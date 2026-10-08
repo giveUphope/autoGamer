@@ -29,7 +29,9 @@ const loadError = ref<string | null>(null);
 const treeData = ref<TraceNodeView[]>([]);
 const expandedKeys = ref(new Set<string>());
 const selectedKey = ref<string | null>(null);
-const hideLogs = ref(false);
+// 默认隐藏 log 节点：用户关注的是可读的 agent 调用与工具调用，
+// 框架运行日志噪声大，需要时用工具条复选框展开
+const hideLogs = ref(true);
 
 function detailOf(err: unknown): string {
   if (err instanceof ApiError) return err.detail || `HTTP ${err.status}`;

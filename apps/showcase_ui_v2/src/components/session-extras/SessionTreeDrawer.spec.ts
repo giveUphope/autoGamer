@@ -162,7 +162,7 @@ describe('SessionTreeDrawer (可视化轨迹树)', () => {
     expect(bodyText()).toContain('你好');
   });
 
-  it('hideLogs filters log nodes out of the tree', async () => {
+  it('runtime logs are hidden by default and can be expanded via the checkbox', async () => {
     apiGetMock.mockImplementation((url: string) =>
       Promise.resolve(
         url === '/api/sessions/s1/tree'
@@ -185,15 +185,17 @@ describe('SessionTreeDrawer (可视化轨迹树)', () => {
     );
     mountDrawer({ visible: true, rounds: ROUNDS });
     await flushPromises();
-    expect(bodyText()).toContain('noisy log');
+    // 默认隐藏运行日志：log 节点不渲染，可读的 agent/tool 调用保留
+    expect(bodyText()).not.toContain('noisy log');
+    expect(bodyText()).toContain('click');
 
     // 抽屉内容 teleport 到 body，用 document 查询勾选框
     const checkbox = document.querySelector('.pane-toolbar input[type=\'checkbox\' i]') as HTMLInputElement;
     expect(checkbox, 'hideLogs checkbox').toBeTruthy();
+    expect(checkbox.checked).toBe(true);
     checkbox.click();
     await flushPromises();
-    expect(bodyText()).not.toContain('noisy log');
-    expect(bodyText()).toContain('click');
+    expect(bodyText()).toContain('noisy log');
   });
 
   it('focusTraceId selects the node and lazy-loads its content', async () => {
