@@ -105,6 +105,7 @@ function durationText(node: TraceNodeView): string {
           v-if="hasChildren(node)"
           class="tt-toggle"
           :class="{ 'is-open': expandedKeys.has(node.key) }"
+          :aria-expanded="expandedKeys.has(node.key)"
           @click.stop="emit('toggle', node)"
         >
           <icon-caret-down />
@@ -189,11 +190,15 @@ function durationText(node: TraceNodeView): string {
   height: 14px;
   color: var(--color-text-3);
   font-size: 12px;
+}
+
+/* 语义一致：收起 = 朝右 ▶，展开 = 朝下 ▼ */
+.tt-toggle svg {
   transition: transform 0.15s;
 }
 
-.tt-toggle.is-open {
-  transform: rotate(0deg);
+.tt-toggle:not(.is-open) svg {
+  transform: rotate(-90deg);
 }
 
 .tt-toggle :deep(svg),
