@@ -397,7 +397,10 @@ function close(): void {
           >
             <template #icon><icon-left /></template>
           </a-button>
-          <div class="viewer-images">
+          <div
+            class="viewer-images"
+            :class="currentViewer?.postImage ? 'is-dual' : 'is-single'"
+          >
             <figure v-if="currentViewer?.preImage" class="viewer-figure">
               <img :src="`/images/${currentViewer.preImage}`" alt="" />
               <figcaption>{{ t('workspace.replay.preImage') }}</figcaption>
@@ -612,24 +615,38 @@ function close(): void {
   flex-shrink: 0;
 }
 
+/* 按双图结构编排：双图两等列；单图只占一列宽并居中，避免拉伸满行。
+   图片保持自然宽高比（不锁定 9/19、不加黑底），横竖屏均自适应无黑边。 */
 .viewer-images {
   flex: 1;
-  display: flex;
+  display: grid;
   gap: 8px;
   min-width: 0;
 }
 
+.viewer-images.is-dual {
+  grid-template-columns: repeat(2, minmax(0, 1fr));
+}
+
+.viewer-images.is-single {
+  grid-template-columns: minmax(0, 1fr);
+  justify-items: center;
+}
+
+.viewer-images.is-single .viewer-figure {
+  width: 100%;
+  max-width: calc(50% - 4px);
+}
+
 .viewer-figure {
-  flex: 1;
   min-width: 0;
   margin: 0;
 }
 
 .viewer-figure img {
+  display: block;
   width: 100%;
-  aspect-ratio: 9 / 19;
-  object-fit: contain;
-  background: #000;
+  height: auto;
   border-radius: var(--border-radius-small);
 }
 
