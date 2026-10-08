@@ -35,13 +35,18 @@ const isSubmitting = ref(false);
 const errorMessage = ref<string | null>(null);
 
 const summary = computed(() => {
-  const list = sessionStore.sessions;
-  const running = list.filter((s) => s.status === 'running' || s.status === 'paused').length;
-  const pending = list.filter((s) => s.status === 'pending').length;
-  const done = list.filter((s) =>
-    ['completed', 'failed', 'cancelled'].includes(s.status || ''),
-  ).length;
-  return { total: list.length, running, pending, done };
+  // 与工作台左栏同一口径：按对话线程（conversationGroups）计数。
+  // sessions 是任务轮次列表——一个线程可含多轮，直接数它会把
+  // 「全部会话」夸成轮次数。
+  const groups = sessionStore.conversationGroups;
+  const running = groups.filter((g) => g.status === 'running' || g.status === 'paused').length;
+  const pending = groups.filter((g) => g.status === 'pending').length;
+  return {
+    total: groups.length,
+    running,
+    pending,
+    done: groups.length - running - pending,
+  };
 });
 
 async function submitTask(): Promise<void> {

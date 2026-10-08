@@ -1,12 +1,13 @@
 import { mount } from '@vue/test-utils';
 import ArcoVue from '@arco-design/web-vue';
 import { describe, expect, it, vi } from 'vitest';
-import { createPinia } from 'pinia';
+import { createPinia, setActivePinia } from 'pinia';
 import { reactive } from 'vue';
 import { createI18n } from 'vue-i18n';
 import { createMemoryHistory, createRouter } from 'vue-router';
 
 import zhCN from '../locales/zh-CN';
+import { useSessionStore } from '@/stores/session';
 import LauncherView from './LauncherView.vue';
 
 /**
@@ -134,6 +135,32 @@ describe('LauncherView (M1)', () => {
     expect(wrapper.text()).toContain('进行中');
     expect(wrapper.text()).toContain('排队中');
     expect(wrapper.text()).toContain('已完成');
+  });
+
+  it('counts conversations (threads), not task rounds, in the summary', async () => {
+    // 自建 pinia 以便在挂载前激活、挂载后拿到同一份 session store
+    const pinia = createPinia();
+    setActivePinia(pinia);
+    const wrapper = mount(LauncherView, {
+      global: { plugins: [ArcoVue, i18n, pinia, router] },
+    });
+    // 3 个轮次、2 个线程：一个多轮线程（1 完成 + 1 运行）+ 一个单轮完成线程。
+    const sessionStore = useSessionStore();
+    sessionStore.$patch({
+      rawSessions: [
+        { session_id: 'r1', initial_goal: '多轮线程', start_time: 1, status: 'completed', conversation_id: 'conv-1' },
+        { session_id: 'r2', initial_goal: '追问', start_time: 2, status: 'running', conversation_id: 'conv-1' },
+        { session_id: 'r3', initial_goal: '单轮线程', start_time: 3, status: 'failed', conversation_id: 'conv-2' },
+      ],
+    });
+    await wrapper.vm.$nextTick();
+
+    const values = [...wrapper.element.querySelectorAll('.summary-row .arco-statistic')].map(
+      (el) => el.textContent,
+    );
+    // 全部会话 = 线程数 2（不是轮次数 3）；多轮线程取最高优先级状态记为进行中；
+    // 已完成 = 其余线程 1。（Arco 统计元素文本 = 标签 + 数值）
+    expect(values).toEqual(['全部会话2', '进行中1', '排队中0', '已完成1']);
   });
 });
 
