@@ -773,13 +773,49 @@ export const useSessionStore = defineStore('session', () => {
     });
   });
 
-  /** 删除整个会话线程：级联删除线程内全部轮次。 */
-  async function deleteConversation(group: ConversationGroup): Promise<void> {
-    for (const round of group.rounds) {
-      await deleteSession(round.session_id);
+  /** 删除整个会话线程：一次批量请求删掉线程内全部轮次（不再逐条串行）。 */
+  async function deleteConversation(group: ConversationGroup): Promise<unknown> {
+    // 1. 一次乐观移除全部轮次（本地状态与后端解耦：请求只有一次）
+    invalidateStatusSignatures();
+    const sids = new Set(group.rounds.map((round) => round.session_id));
+    rawSessions.value = rawSessions.value.filter((s) => !sids.has(s.session_id));
+    persistSessionsCache(rawSessions.value);
+    pendingQueue.value = pendingQueue.value.filter((s) => !sids.has(s.session_id));
+    for (const sid of sids) {
+      dismissedNoRowSessions.delete(sid);
+      dropTrackedSession(sid);
+    }
+
+    if (userPinnedSessionId.value && sids.has(userPinnedSessionId.value)) {
+      userPinnedSessionId.value = null;
+    }
+    if (currentSessionId.value && sids.has(currentSessionId.value)) {
+      selectSession('', false);
+      // M4：被删会话正打开视频窗口时关闭播放器（平移自 Angular L639-641）。
+      const playerStore = usePlayerStore();
+      if (playerStore.isVideoWindowOpen) {
+        playerStore.closeVideoPlayer();
+      }
     }
     if (currentConversationId.value === group.id) {
       selectConversation(null);
+    }
+
+    // 2. 单次批量请求 + 单次刷新（此前每轮一次请求、一次列表刷新）
+    try {
+      const res = await apiPost<{
+        status?: string;
+        deleted_count?: number;
+        failed?: Array<{ session_id: string; error: string }>;
+      }>('/api/sessions/delete-batch', { session_ids: [...sids] });
+      void fetchSessions();
+      void fetchStatus();
+      return res;
+    } catch (err) {
+      console.error(`Failed to delete conversation ${group.id}:`, err);
+      void fetchSessions();
+      void fetchStatus();
+      throw err;
     }
   }
 

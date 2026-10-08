@@ -17,6 +17,7 @@ import json
 import time
 from uuid import UUID
 from fastapi import APIRouter, HTTPException
+from pydantic import BaseModel
 
 from artemis.config import DB_PATH, TRACES_PATH
 from artemis.runtime import trace_store
@@ -252,3 +253,53 @@ async def delete_session_endpoint(session_id: str):
         }
     except Exception as e:
         raise HTTPException(status_code=500, detail=str(e))
+
+
+class SessionBatchDeleteRequest(BaseModel):
+    session_ids: list[str]
+
+
+MAX_BATCH_DELETE = 500
+
+
+@router.post("/api/sessions/delete-batch")
+async def delete_sessions_batch_endpoint(request: SessionBatchDeleteRequest):
+    """Delete many sessions in one request.
+
+    The console deletes a conversation thread as a unit; per-session round
+    trips made N-round threads delete N-times slower and each round trip
+    refetched the whole list. One batch request keeps that a single exchange:
+    the loop runs server-side (off the event loop — sqlite + trace-dir/file
+    removal per session), invalid ids degrade to per-item failures instead of
+    failing the whole batch.
+    """
+    if not request.session_ids:
+        raise HTTPException(status_code=400, detail="session_ids must not be empty")
+    if len(request.session_ids) > MAX_BATCH_DELETE:
+        raise HTTPException(
+            status_code=400,
+            detail=f"At most {MAX_BATCH_DELETE} sessions per batch (got {len(request.session_ids)})",
+        )
+
+    from artemis.data_engine.storage import StorageManager
+
+    def _delete_all() -> tuple[list[str], list[dict[str, str]]]:
+        storage = StorageManager(DB_PATH, TRACES_PATH)
+        deleted: list[str] = []
+        failed: list[dict[str, str]] = []
+        for raw_id in request.session_ids:
+            try:
+                storage.delete_session(UUID(raw_id))
+                deleted.append(raw_id)
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                failed.append({"session_id": raw_id, "error": str(exc)})
+        return deleted, failed
+
+    deleted, failed = await asyncio.to_thread(_delete_all)
+    return {
+        "status": "success" if not failed else "partial",
+        "deleted_count": len(deleted),
+        "failed": failed,
+        "message": f"Deleted {len(deleted)} session(s)"
+        + (f", {len(failed)} failed" if failed else ""),
+    }

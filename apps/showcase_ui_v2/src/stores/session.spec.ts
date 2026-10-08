@@ -559,6 +559,39 @@ describe('session store — 删除 / 清空（乐观更新）', () => {
     expect(store.userPinnedSessionId).toBeNull();
     expect(apiPostMock).toHaveBeenCalledWith('/api/cleanup', {});
   });
+
+  it('deleteConversation 单次批量请求删除线程内全部轮次（不再逐条串行）', async () => {
+    const store = useSessionStore();
+    const b1 = { session_id: 'b1', initial_goal: '线程B', start_time: 3, status: 'completed', conversation_id: 'conv-B' };
+    store.$patch({
+      rawSessions: [
+        { session_id: 'a1', initial_goal: '线程A', start_time: 1, status: 'completed', conversation_id: 'conv-A' },
+        { session_id: 'a2', initial_goal: '追问', start_time: 2, status: 'failed', conversation_id: 'conv-A' },
+        b1,
+      ],
+      currentSessionId: 'a1',
+    });
+    apiPostMock.mockResolvedValue({ status: 'success', deleted_count: 2 });
+    // 删除后的真实服务端状态：只剩线程 B
+    mockApiRoutes({ '/api/sessions': [b1], '/api/status': statusPayload() });
+
+    const group = store.conversationGroups.find((g) => g.id === 'conv-A')!;
+    await store.deleteConversation(group);
+    for (let i = 0; i < 5; i += 1) await Promise.resolve();
+
+    // 有且仅有一次删除请求，走批量端点、携带线程内全部轮次 id
+    const deleteCalls = apiPostMock.mock.calls.filter((c) => String(c[0]).includes('delete'));
+    expect(deleteCalls).toHaveLength(1);
+    expect(deleteCalls[0]![0]).toBe('/api/sessions/delete-batch');
+    expect([...(deleteCalls[0]![1] as { session_ids: string[] }).session_ids].sort()).toEqual([
+      'a1',
+      'a2',
+    ]);
+    // 乐观移除生效（刷新回写后同样只剩线程 B；被删的是当前选中线程，
+    // 会话列表的初始自动选中逻辑会选上仅剩的线程 B）
+    expect(store.rawSessions.map((s) => s.session_id)).toEqual(['b1']);
+    expect(store.currentSessionId).toBe('b1');
+  });
 });
 
 describe('session store — 轮询节奏与缓存（§3.3 条款 6）', () => {
