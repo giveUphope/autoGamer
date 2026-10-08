@@ -20,6 +20,20 @@ export interface ActiveTaskInfo {
   pid?: number | null;
   ingress?: string | null;
   acquired_at?: string | number | null;
+  conversation_id?: string | null;
+  created_at?: number | null;
+}
+
+/**
+ * 轮次排序 / 展示的统一时间锚点：提交（入队）时刻优先，缺失（旧数据）回退
+ * start_time。任务的 start_time 会随生命周期漂移（排队时是入队时刻，引擎
+ * 启动后变成获得设备使用权的时刻），用它排序会让发射的轮次"顶"到队尾。
+ */
+export function sessionChronoKey(session: {
+  submitted_at?: number | null;
+  start_time?: number | null;
+}): number {
+  return session.submitted_at || session.start_time || 0;
 }
 
 export interface MergeSessionsContext {
@@ -154,6 +168,7 @@ export function mergeSessions(
       const sid = at.session_id || `active-${at.device_id}`;
       const existing = sessionMap.get(sid);
       if (!existing) {
+        const bridged = tracking.get(sid);
         const newSession: Session = {
           session_id: sid,
           initial_goal: at.goal || goal || '',
@@ -161,6 +176,10 @@ export function mergeSessions(
           status: 'running',
           model_info: activeModel || undefined,
           device_serial: at.device_id || null,
+          conversation_id: at.conversation_id || bridged?.conversation_id || null,
+          // 提交时刻优先取 active_tasks 的回填；任务从未在本页见过排队时
+          // （外部入口）回退 tracking 桥接，再退 null。
+          submitted_at: at.created_at || bridged?.submitted_at || null,
         };
         sessionMap.set(sid, newSession);
         tracking.set(sid, newSession);
@@ -169,21 +188,34 @@ export function mergeSessions(
           ...existing,
           status: 'running',
           device_serial: at.device_id || existing.device_serial,
+          conversation_id: existing.conversation_id || at.conversation_id || null,
+          submitted_at: existing.submitted_at || at.created_at || null,
         };
         sessionMap.set(sid, updated);
         tracking.set(sid, updated);
       }
     });
   } else if ((status === 'running' || status === 'paused') && runId && !sessionMap.has(runId)) {
-    const activeSession: Session = {
-      session_id: runId,
-      initial_goal: goal || '',
-      start_time: nowMs / 1000,
-      status,
-      model_info: activeModel || undefined,
-    };
-    sessionMap.set(runId, activeSession);
-    tracking.set(runId, activeSession);
+    // 队列与 active_tasks 都还没带上运行任务的短暂窗口（取走→持锁间隙）。
+    // tracking 里若已有该任务（本页见过它的排队表示），必须复用它的锚点；
+    // 若在这里用 now 现造一个，会遮蔽 tracking 的正确 submitted_at，
+    // 运行轮次就会"顶"到后面排队轮次的下方。
+    const bridged = tracking.get(runId);
+    if (bridged) {
+      const revived: Session = { ...bridged, status };
+      sessionMap.set(runId, revived);
+      tracking.set(runId, revived);
+    } else {
+      const activeSession: Session = {
+        session_id: runId,
+        initial_goal: goal || '',
+        start_time: nowMs / 1000,
+        status,
+        model_info: activeModel || undefined,
+      };
+      sessionMap.set(runId, activeSession);
+      tracking.set(runId, activeSession);
+    }
   }
 
   // 4. 桥接「队列 → 运行」的瞬时过渡窗口
@@ -208,15 +240,21 @@ export function mapPendingQueue(
   nowMs: number,
 ): Session[] {
   return (queue || []).map((item, index) => {
-    if (typeof item === 'object' && item !== null) {
-      return {
-        session_id: item.session_id || `pending-task-${index}`,
-        initial_goal: item.goal || '',
-        start_time: item.start_time || item.created_at || nowMs / 1000 + index,
-        status: item.status || 'pending',
-        device_serial: item.device_serial || item.device_id || null,
-      };
-    }
+      if (typeof item === 'object' && item !== null) {
+        return {
+          session_id: item.session_id || `pending-task-${index}`,
+          initial_goal: item.goal || '',
+          start_time: item.start_time || item.created_at || nowMs / 1000 + index,
+          status: item.status || 'pending',
+          device_serial: item.device_serial || item.device_id || null,
+          // 队列条目自带线程 id（/api/run 指派）：pending/running 表示必须带着它，
+          // 否则新轮在落库前会以 `round:<sid>` 合成键成一个「幽灵会话」，
+          // 且此刻提交下一条消息会拿不到线程 id 而另起新线程。
+          conversation_id: item.conversation_id || null,
+          // 提交时刻：轮次排序锚点（见 sessionChronoKey）。
+          submitted_at: item.created_at || null,
+        };
+      }
     return {
       session_id: `task-queued-${index}`,
       initial_goal: String(item),

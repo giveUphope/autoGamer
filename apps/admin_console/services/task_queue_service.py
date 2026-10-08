@@ -531,6 +531,12 @@ class TaskQueueService:
         conversation_id = task_item.get("conversation_id")
         if conversation_id:
             env["ARTEMIS_CONVERSATION_ID"] = str(conversation_id)
+        # Enqueue wall-clock time: the console orders chat rounds by submission
+        # moment, which stays stable while the task waits for its device turn
+        # (engine start_time would reshuffle the queue as rounds launch).
+        submitted_at = task_item.get("created_at")
+        if submitted_at:
+            env["ARTEMIS_SUBMITTED_AT"] = str(submitted_at)
         # Pin the model for this task's whole life: the worker's config layer
         # resolves every node through the named endpoint-library record.
         model_endpoint = task_item.get("model_endpoint")
@@ -1088,6 +1094,15 @@ class TaskQueueService:
         now = time.time()
         endpoint = current_adb_endpoint()
 
+        # Conversation thread id: the caller continues an existing chat by
+        # passing its conversation_id; without one this submission starts a
+        # thread of its own. Assigning it here (never left NULL) makes every
+        # session row carry a real thread id, so the console can group rounds
+        # and continue multi-turn chats without client-side synthetic keys.
+        conversation_id = str(conversation_id).strip() if conversation_id else ""
+        if not conversation_id:
+            conversation_id = str(uuid.uuid4())
+
         duplicate_response = cls._find_duplicate_submission(
             goals, session_id, device_serial, endpoint, now
         )
@@ -1127,6 +1142,12 @@ class TaskQueueService:
                 model_endpoint=model_endpoint,
             )
             state.queue_items.append(task_item)
+            state.remember_submission(
+                str(task_item["session_id"]),
+                conversation_id=task_item.get("conversation_id"),
+                created_at=task_item.get("created_at"),
+                goal=task_item.get("goal"),
+            )
             enqueued_tasks.append(task_item)
             cls._broadcast_startup_progress(
                 task_item["session_id"], "queued", "Task received and queued"

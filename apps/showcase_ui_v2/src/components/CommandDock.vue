@@ -81,9 +81,10 @@ async function submitTask(): Promise<void> {
   isSubmitting.value = true;
   errorMessage.value = null;
   try {
-    // 提交进当前选中的会话线程（新建会话后首条提交即线程的第一条消息）
+    // 续上当前查看的对话线程（仅真实 conversation_id；后端也会在未带线程 id
+    // 时为本次提交新建线程并回传）。首条消息之后，后续提交自动成为同一线程的新轮。
     await sessionStore.runTask(goal, selectedProfile.value, {
-      conversationId: sessionStore.currentConversationId ?? undefined,
+      conversationId: sessionStore.submitConversationId ?? undefined,
     });
     taskInput.value = '';
     // 与 Angular 版一致：提交成功后立即刷新状态，让队列/运行状态尽快上屏

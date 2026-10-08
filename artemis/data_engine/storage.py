@@ -283,6 +283,10 @@ class StorageManager:
                 conn.execute("ALTER TABLE sessions ADD COLUMN conversation_id TEXT")
             except sqlite3.OperationalError:
                 pass
+            try:
+                conn.execute("ALTER TABLE sessions ADD COLUMN submitted_at REAL")
+            except sqlite3.OperationalError:
+                pass
             conn.commit()
         logger.info(f"Database initialized at {self.db_path}")
 
@@ -291,8 +295,8 @@ class StorageManager:
         with self._get_connection() as conn:
             conn.execute(
                 """
-                INSERT OR REPLACE INTO sessions (session_id, initial_goal, start_time, end_time, status, device_info, pid, video_filepath, model_endpoint, conversation_id)
-                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                INSERT OR REPLACE INTO sessions (session_id, initial_goal, start_time, end_time, status, device_info, pid, video_filepath, model_endpoint, conversation_id, submitted_at)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
                     str(session.session_id),
@@ -305,6 +309,7 @@ class StorageManager:
                     session.video_filepath,
                     session.model_endpoint,
                     session.conversation_id,
+                    session.submitted_at,
                 ),
             )
             conn.commit()
@@ -917,6 +922,8 @@ class StorageManager:
                     pid=row_dict.get("pid"),
                     video_filepath=row_dict.get("video_filepath"),
                     model_endpoint=row_dict.get("model_endpoint"),
+                    conversation_id=row_dict.get("conversation_id"),
+                    submitted_at=row_dict.get("submitted_at"),
                 )
         return None
 

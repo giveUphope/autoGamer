@@ -228,6 +228,117 @@ describe('session store — 停止 / 恢复 / 提交（用例平移自 agent.ser
   });
 });
 
+describe('session store — 多轮会话线程（conversation）', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    localStorage.clear();
+    vi.clearAllMocks();
+    mockApiRoutes({});
+    apiPostMock.mockResolvedValue({});
+  });
+
+  it('runTask 把 /api/run 响应里的线程 id 回写为当前线程', async () => {
+    const store = useSessionStore();
+    apiPostMock.mockResolvedValue({
+      status: 'started',
+      tasks: [{ session_id: 'sid-1', conversation_id: 'conv-1' }],
+    });
+
+    await store.runTask('第一条消息');
+
+    // 新会话行尚未经 6s 轮询回填进 rawSessions 时，selectSession 只能拿到
+    // 合成 round 键；响应里的真实线程 id 必须最后回写胜出，下一条消息才
+    // 能续上同一线程而不是各起新线程。
+    expect(store.currentConversationId).toBe('conv-1');
+    expect(store.submitConversationId).toBe('conv-1');
+  });
+
+  it('首条消息不带线程 id，后端指派后连续提交沿用同一线程', async () => {
+    const store = useSessionStore();
+    apiPostMock.mockResolvedValue({
+      status: 'started',
+      tasks: [{ session_id: 'sid-1', conversation_id: 'conv-new' }],
+    });
+
+    await store.runTask('第一条', 'flash', { conversationId: undefined });
+    expect(apiPostMock.mock.calls[0]![1]).not.toHaveProperty('conversation_id');
+
+    apiPostMock.mockResolvedValue({
+      status: 'queued',
+      tasks: [{ session_id: 'sid-2', conversation_id: 'conv-new' }],
+    });
+    await store.runTask('第二条', 'flash', {
+      conversationId: store.submitConversationId ?? undefined,
+    });
+
+    expect(apiPostMock.mock.calls[1]![1]).toHaveProperty('conversation_id', 'conv-new');
+  });
+
+  it('submitConversationId 不暴露合成 round 键（旧会话无真实线程时为 null）', () => {
+    const store = useSessionStore();
+    store.$patch({
+      rawSessions: [
+        { session_id: 'legacy-sid', initial_goal: '旧任务', start_time: 1, status: 'completed' },
+      ],
+    });
+
+    store.selectSession('legacy-sid');
+
+    // 合成键仅用于线程过滤展示，绝不能作为提交参数发给后端
+    expect(store.currentConversationId).toBe('round:legacy-sid');
+    expect(store.submitConversationId).toBeNull();
+  });
+
+  it('「新建会话」生成的空线程 id 可以作为提交线程', () => {
+    const store = useSessionStore();
+    store.selectConversation('conv-fresh');
+    expect(store.submitConversationId).toBe('conv-fresh');
+  });
+
+  it('选中行未回填且带真实线程 id 的 pending 表示时，提交线程取自合并后的会话', () => {
+    const store = useSessionStore();
+    store.selectConversation('conv-current');
+
+    // 刚提交的任务行还没落库，但 /api/status 的 queue 映射已带着真实线程 id
+    store.$patch({
+      pendingQueue: [
+        {
+          session_id: 'fresh-submitted-sid',
+          initial_goal: '刚提交',
+          start_time: Date.now() / 1000,
+          status: 'pending',
+          conversation_id: 'conv-current',
+        },
+      ],
+    });
+    store.selectSession('fresh-submitted-sid');
+
+    // 多轮连发场景：SSE 自动跟随在行落库前切换选中，线程 id 必须取自
+    // pending/active 表示，而不是退化成合成 round 键把时间线过滤成空
+    expect(store.currentConversationId).toBe('conv-current');
+    expect(store.submitConversationId).toBe('conv-current');
+  });
+
+  it('选中的 pending 表示无线程 id 且行未回填时，才退化成合成过滤键', () => {
+    const store = useSessionStore();
+    store.$patch({
+      pendingQueue: [
+        {
+          session_id: 'legacy-queued',
+          initial_goal: '无线程任务',
+          start_time: Date.now() / 1000,
+          status: 'pending',
+        },
+      ],
+    });
+
+    store.selectSession('legacy-queued');
+
+    expect(store.currentConversationId).toBe('round:legacy-queued');
+    expect(store.submitConversationId).toBeNull();
+  });
+});
+
 describe('session store — 状态轮询与签名去重（§3.3 条款 4）', () => {
   beforeEach(() => {
     setActivePinia(createPinia());

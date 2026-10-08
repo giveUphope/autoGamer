@@ -29,6 +29,7 @@ import {
   getTaskStatus,
   mapPendingQueue,
   mergeSessions,
+  sessionChronoKey,
   statusSignature,
 } from '@/utils/session-merge';
 import type { ActiveTaskInfo } from '@/utils/session-merge';
@@ -104,6 +105,22 @@ export const useSessionStore = defineStore('session', () => {
     const curId = currentSessionId.value;
     if (!curId) return null;
     return sessions.value.find((s) => s.session_id === curId) || null;
+  });
+
+  /**
+   * 下一条消息要续上的对话线程 id（仅真实 conversation_id）。
+   *
+   * 优先取当前查看会话所属的线程；「新建会话」刚生成的空线程（还没有任何
+   * 轮次落库）由 currentConversationId 补充。合成的 `round:<sid>` 键只用于
+   * 线程过滤展示，绝不能作为提交参数发给后端——否则会被当成真实线程 id 落库，
+   * 之后永远无法与其它轮次聚合。
+   */
+  const submitConversationId = computed<string | null>(() => {
+    const fromSession = currentSession.value?.conversation_id;
+    if (fromSession) return fromSession;
+    const threadKey = currentConversationId.value;
+    if (threadKey && !threadKey.startsWith('round:')) return threadKey;
+    return null;
   });
 
   /** 当前查看的会话是否处于运行 / 暂停态（查看历史任务时为 false）。 */
@@ -329,7 +346,9 @@ export const useSessionStore = defineStore('session', () => {
       payload.explorer_mode = proTuning.explorerMode;
     }
     clearUserPinnedSession();
-    const res = await apiPost<{ tasks?: Array<{ session_id?: string }> }>('/api/run', payload);
+    const res = await apiPost<{
+      tasks?: Array<{ session_id?: string; conversation_id?: string | null }>;
+    }>('/api/run', payload);
     if (res && res.tasks && res.tasks.length > 0) {
       const newSessionId = res.tasks[0].session_id;
       if (newSessionId) {
@@ -345,6 +364,13 @@ export const useSessionStore = defineStore('session', () => {
         if (!isCurrentlyRunning || activeSessionId === newSessionId) {
           selectSession(newSessionId, false);
         }
+      }
+      // 以 /api/run 响应里的线程 id 为准回写：请求未带 conversation_id 时
+      // 后端会为本次提交新建线程，必须在下一轮 6s 会话轮询回填前就知道它，
+      // 否则 selectSession 会用合成 round 键覆盖，导致下一条消息另起新线程。
+      const newConversationId = res.tasks[0].conversation_id;
+      if (newConversationId) {
+        selectConversation(newConversationId);
       }
     }
     return res;
@@ -552,8 +578,20 @@ export const useSessionStore = defineStore('session', () => {
     currentSessionId.value = sessionId;
     // 选中任务即选中其所属会话线程（左栏入口与右栏轮过滤共用该键）：
     // 初始自动选中、SSE 自动跟随、用户点击等所有来源都在这里联动。
+    // 线程 id 依次取 raw 行 / pending 队列 / active 表示——后两者是刚提交、
+    // DB 行未落库任务的唯一载体且带真实线程 id；多轮连发时 SSE 自动跟随
+    // 会走到这里，若退化成合成 round 键，时间线按线程过滤会整体落空，
+    // 表现为「会话消息被移除」。合成键只作无任何线索时的过滤兜底，
+    // 提交侧由 submitConversationId 负责挡掉。
     const selected = rawSessions.value.find((s) => s.session_id === sessionId);
-    selectConversation(selected?.conversation_id || `round:${sessionId}`);
+    const fromQueue = pendingQueue.value.find((s) => s.session_id === sessionId);
+    const fromActive = activeTasks.value.find((at) => at.session_id === sessionId);
+    selectConversation(
+      selected?.conversation_id
+        || fromQueue?.conversation_id
+        || fromActive?.conversation_id
+        || `round:${sessionId}`,
+    );
     // 切会话重置暂停状态（平移自 Angular selectSession L742-743）。
     isPaused.value = false;
     pausedError.value = null;
@@ -658,8 +696,10 @@ export const useSessionStore = defineStore('session', () => {
     }
     const result: ConversationGroup[] = [];
     for (const [key, rounds] of groups) {
-      // 线程内轮次按提交顺序排列；会话名 = 第一条消息（最早一轮的 goal）
-      rounds.sort((a, b) => (a.start_time || 0) - (b.start_time || 0));
+      // 线程内轮次按提交顺序排列；会话名 = 第一条消息（最早一轮的 goal）。
+      // 排序锚点是提交时刻（sessionChronoKey）：start_time 会随任务发射漂移，
+      // 用它排序会让排队轮次在运行开始时乱序"上顶"。
+      rounds.sort((a, b) => sessionChronoKey(a) - sessionChronoKey(b));
       const latest = rounds[rounds.length - 1]!;
       const statusRank: Record<string, number> = { running: 0, paused: 1, pending: 2 };
       const status = rounds
@@ -671,7 +711,7 @@ export const useSessionStore = defineStore('session', () => {
         rounds,
         latest,
         status,
-        time: Math.max(...rounds.map((round) => round.start_time || 0)),
+        time: Math.max(...rounds.map((round) => sessionChronoKey(round))),
       });
     }
     // 运行/暂停的线程置顶，其余按最近活动倒序
@@ -712,6 +752,7 @@ export const useSessionStore = defineStore('session', () => {
     sessions,
     conversationGroups,
     currentSession,
+    submitConversationId,
     isCurrentSessionRunning,
     isRunningTask,
     // lifecycle

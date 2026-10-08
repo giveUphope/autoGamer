@@ -185,6 +185,35 @@ def test_create_image_duplicate_handling(tmp_path):
     assert record.image_name == "test_image_hash"
 
 
+def test_create_session_persists_submitted_at(tmp_path):
+    """Chat rounds order by submission time: the column must survive a round trip
+    even on a DB created before the column existed (migration path)."""
+    from uuid import uuid4
+    from artemis.data_engine.storage import StorageManager
+    from artemis.data_engine.models import SessionMetadata
+
+    storage = StorageManager(tmp_path / "data_engine.db", tmp_path)
+    session = SessionMetadata(
+        session_id=uuid4(),
+        initial_goal="排队轮次",
+        start_time=1791456001.0,
+        submitted_at=1791456000.0,
+        conversation_id="conv-1",
+    )
+    storage.create_session(session)
+
+    row = storage.get_session(str(session.session_id))
+    assert row is not None
+    assert row.submitted_at == 1791456000.0
+    assert row.conversation_id == "conv-1"
+
+    # 无提交时刻（旧任务）时为 NULL，前端回退到 start_time 排序
+    legacy = SessionMetadata(session_id=uuid4(), initial_goal="旧任务", start_time=1.0)
+    storage.create_session(legacy)
+    legacy_row = storage.get_session(str(legacy.session_id))
+    assert legacy_row.submitted_at is None
+
+
 def test_video_recording_persistence(tmp_path):
     from uuid import uuid4
     from artemis.data_engine.storage import StorageManager

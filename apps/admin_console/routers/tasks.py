@@ -285,17 +285,44 @@ async def get_status():
         )
 
     active_owners = DeviceExecutionLock.get_active_owners()
-    active_tasks = [
-        {
-            "device_id": owner.device_id,
-            "session_id": owner.session_id,
-            "goal": owner.description,
-            "pid": owner.pid,
-            "ingress": owner.ingress,
-            "acquired_at": owner.acquired_at,
-        }
-        for owner in active_owners.values()
-    ]
+    active_tasks = []
+    for owner in active_owners.values():
+        # Conversation thread + submission time for the pending/running
+        # representation: the console merges these rows into visible sessions
+        # before the DB row exists. Without them a just-submitted round would
+        # flash as its own conversation, jump the queue order when it launches,
+        # or let a quick follow-up message start a new thread. The queue item
+        # is the primary source; the submission registry covers tasks the
+        # worker already dequeued.
+        owner_item = next(
+            (
+                t
+                for t in state.queue_items
+                if isinstance(t, dict) and str(t.get("session_id")) == str(owner.session_id)
+            ),
+            None,
+        )
+        owner_meta = state.submission_for(owner.session_id)
+        active_tasks.append(
+            {
+                "device_id": owner.device_id,
+                "session_id": owner.session_id,
+                # Raw user goal: the lock description is formatted as
+                # "frontend task: <goal>" and truncated — showing it as the
+                # round title would make the chat history differ from what
+                # the user actually sent while the round is running.
+                "goal": owner_meta.get("goal")
+                or (owner_item or {}).get("goal")
+                or owner.description,
+                "pid": owner.pid,
+                "ingress": owner.ingress,
+                "acquired_at": owner.acquired_at,
+                "conversation_id": (owner_item or {}).get("conversation_id")
+                or owner_meta.get("conversation_id"),
+                "created_at": (owner_item or {}).get("created_at")
+                or owner_meta.get("created_at"),
+            }
+        )
 
     running_sid = (
         (global_owner.session_id if global_owner else None)
@@ -357,6 +384,21 @@ async def get_status():
         sid = str(g_item.get("session_id"))
         if sid not in seen_ids:
             seen_ids.add(sid)
+            # Ticket views lack the true submission time and raw goal — their
+            # created_at is the lock-queue file's mtime (when the worker picked
+            # the task up) and their goal is the formatted lock description.
+            # Either would push the round below later-submitted ones or pollute
+            # its title in the console. The submission registry records the
+            # real enqueue wall-clock and raw goal, so they win; the ticket
+            # fields only back external entries.
+            g_meta = state.submission_for(g_item.get("session_id"))
+            g_item = {
+                **g_item,
+                "conversation_id": g_item.get("conversation_id")
+                or g_meta.get("conversation_id"),
+                "created_at": g_meta.get("created_at") or g_item.get("created_at"),
+                "goal": g_meta.get("goal") or g_item.get("goal"),
+            }
             queue_data.append(g_item)
 
     if is_running:

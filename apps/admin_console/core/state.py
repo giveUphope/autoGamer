@@ -54,9 +54,49 @@ class ServerState:
 
         # Unified single source of truth for task queue
         self.queue_items: list[dict[str, Any]] = []
+        # session_id -> 提交元数据（conversation_id / created_at）：worker 取走
+        # 任务后 queue_items 里就查不到了，而设备锁票据视图不带这些字段；
+        # /api/status 靠这张表把线程 id 与提交时刻回填到 pending/running 表示上，
+        # 保证前端在 DB 行落库前也能把新轮归入正确线程并按提交顺序排序。
+        self.submission_meta: dict[str, dict[str, Any]] = {}
         self._wake_event: asyncio.Event | None = None
         self._shutdown_event: asyncio.Event | None = None
         self.worker_task: asyncio.Task | None = None
+
+    def remember_submission(
+        self,
+        session_id: str | None,
+        conversation_id: str | None = None,
+        created_at: float | None = None,
+        goal: str | None = None,
+    ) -> None:
+        """Record one task's submission metadata, bounded to recent submissions."""
+        if not session_id:
+            return
+        meta = self.submission_meta.setdefault(str(session_id), {})
+        if conversation_id:
+            meta["conversation_id"] = str(conversation_id)
+        if created_at is not None:
+            meta["created_at"] = float(created_at)
+        if goal:
+            meta["goal"] = str(goal)
+        while len(self.submission_meta) > 500:
+            oldest = next(iter(self.submission_meta))
+            self.submission_meta.pop(oldest, None)
+
+    def submission_for(self, session_id: str | None) -> dict[str, Any]:
+        """Look up the recorded submission metadata of a queued/running task."""
+        if session_id is None:
+            return {}
+        return self.submission_meta.get(str(session_id), {})
+
+    def remember_conversation(self, session_id: str | None, conversation_id: str | None) -> None:
+        """Backward-compatible wrapper around remember_submission."""
+        self.remember_submission(session_id, conversation_id=conversation_id)
+
+    def conversation_for(self, session_id: str | None) -> str | None:
+        """Look up the conversation thread of a queued/running task."""
+        return self.submission_for(session_id).get("conversation_id")
 
     @property
     def wake_event(self) -> asyncio.Event:

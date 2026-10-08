@@ -20,7 +20,12 @@ import { usePlayerStore } from '@/stores/player';
 import { useSessionStore } from '@/stores/session';
 import { useStreamStore } from '@/stores/stream';
 import { useTimelineStore } from '@/stores/timeline';
-import { formatSessionTime, getTaskStatus, sessionStatusColor } from '@/utils/session-merge';
+import {
+  formatSessionTime,
+  getTaskStatus,
+  sessionChronoKey,
+  sessionStatusColor,
+} from '@/utils/session-merge';
 import { buildStartupWorkItems } from '@/utils/startup-progress';
 import { checkPlanningLoader, formatTokenCount } from '@/utils/stream-aggregator';
 import { isAndroidAction, isReportStatusAction } from '@/utils/action-formatter';
@@ -68,8 +73,11 @@ function threadKey(session: Session): string {
  * 会话内 1 起始的轮序号（与 store 的线程分组同一排序规则）。 */
 const rounds = computed(() => {
   const thread = sessionStore.currentConversationId;
+  // 排序锚点 = 提交时刻（sessionChronoKey）：start_time 随任务发射漂移
+  // （排队时是入队时刻，引擎启动后变成获得设备使用权的时刻），会让
+  // 队列里轮到谁执行谁就"顶"到输入框旁。
   const chronological = [...sessionStore.sessions].sort(
-    (a, b) => (a.start_time || 0) - (b.start_time || 0),
+    (a, b) => sessionChronoKey(a) - sessionChronoKey(b),
   );
   const roundOrderBySession = new Map<string, number>();
   const byThread = new Map<string, Session[]>();
@@ -83,7 +91,11 @@ const rounds = computed(() => {
     bucket.forEach((session, index) => roundOrderBySession.set(session.session_id, index + 1));
   }
   const list = chronological.filter(
-    (session) => !thread || threadKey(session) === thread,
+    (session) =>
+      !thread
+      || threadKey(session) === thread
+      // 保险：当前选中的轮无论线程键如何演变都不从时间线消失
+      || session.session_id === sessionStore.currentSessionId,
   );
   return list.map((session) => {
     const status = getTaskStatus(session, sessionStore.runningSessionId, sessionStore.agentStatus);
@@ -94,7 +106,7 @@ const rounds = computed(() => {
       status,
       statusText: t(`status.${status}`),
       statusColor: sessionStatusColor(status),
-      time: formatSessionTime(session.start_time),
+      time: formatSessionTime(sessionChronoKey(session)),
       isSelected: session.session_id === sessionStore.currentSessionId,
     };
   });

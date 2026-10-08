@@ -54,6 +54,7 @@ def clean_state(tmp_path, monkeypatch):
     )
     state.clear_queue()
     state.queue_items.clear()
+    state.submission_meta.clear()
     state.current_process = None
     state.current_goal = None
     state.current_profile = None
@@ -567,6 +568,92 @@ async def test_status_reports_external_global_owner_without_ipc_connection():
 
 
 @pytest.mark.asyncio
+async def test_status_backfills_conversation_id_from_registry():
+    """Ticket view and active_tasks carry the thread id even after the worker
+    dequeued the task: without it the console renders a just-submitted round as
+    its own phantom conversation until the DB row lands."""
+    state.remember_submission(
+        "dequeued-session",
+        conversation_id="conv-registry",
+        created_at=1791456000.0,
+        goal="复现测试",
+    )
+    external_owner = DeviceLockOwner(
+        pid=13579,
+        process_created_at=1234.5,
+        token="queued-owner-token",
+        device_id="emulator-5554",
+        description="frontend task: 复现测试",
+        acquired_at="2026-10-08T00:00:00+00:00",
+        session_id="dequeued-session",
+        ingress="frontend",
+    )
+    ticket_view = {
+        "session_id": "dequeued-session",
+        "goal": "frontend task: 复现测试",
+        "device_id": "pending",
+        "status": "pending",
+        # 票据视图自带 created_at（取号文件 mtime，晚于真实提交时刻）——
+        # 注册表的真实提交时刻必须优先，否则轮次会"顶"到后面排队轮次下方
+        "created_at": 1791456999.0,
+    }
+    with (
+        patch.object(TaskQueueService, "ensure_worker_running"),
+        patch(
+            "apps.admin_console.routers.tasks.DeviceExecutionLock.get_active_owner",
+            return_value=external_owner,
+        ),
+        patch(
+            "apps.admin_console.routers.tasks.DeviceExecutionLock.get_active_owners",
+            return_value={"default": external_owner},
+        ),
+        patch(
+            "apps.admin_console.routers.tasks.DeviceExecutionLock.get_queued_tasks",
+            return_value=[ticket_view],
+        ),
+        patch("apps.admin_console.routers.tasks.session_repo") as repo,
+        patch("apps.admin_console.routers.tasks.model_service") as models,
+    ):
+        repo.get_latest_session.return_value = None
+        repo.get_session_by_id.return_value = None
+        models.get_active_model_info.return_value = None
+        result = await get_status()
+
+    assert result["active_tasks"][0]["conversation_id"] == "conv-registry"
+    assert result["active_tasks"][0]["created_at"] == 1791456000.0
+    # 轮次标题必须是用户的原始消息，而不是 "frontend task: …" 格式的锁描述
+    assert result["active_tasks"][0]["goal"] == "复现测试"
+    queued = [q for q in result["queue"] if str(q.get("session_id")) == "dequeued-session"]
+    assert queued and queued[0]["conversation_id"] == "conv-registry"
+    assert queued[0]["created_at"] == 1791456000.0
+    assert queued[0]["goal"] == "复现测试"
+
+
+@pytest.mark.asyncio
+async def test_worker_env_carries_submitted_at_for_round_ordering():
+    """The worker exports the enqueue moment so the engine can persist it as
+    submitted_at: chat rounds order by submission time, not device-turn time."""
+    task_item = {
+        "session_id": "sess-order",
+        "goal": "g",
+        "profile": "flash",
+        "created_at": 1791456000.5,
+        "conversation_id": "conv-1",
+        "queue_ticket": None,
+    }
+    target = MagicMock()
+    target.endpoint.apply_to_environment = MagicMock()
+    target.lock_scope = "scope"
+
+    _cmd, env = TaskQueueService._build_worker_invocation(
+        task_item, "run-key", "sess-order", "g", "flash", target
+    )
+
+    assert env["ARTEMIS_SUBMITTED_AT"] == "1791456000.5"
+    assert env["ARTEMIS_CONVERSATION_ID"] == "conv-1"
+
+
+@pytest.mark.asyncio
 async def test_cancel_task_triggers_next_pending_task():
     executed_goals = []
 
@@ -763,6 +850,37 @@ async def test_enqueue_tasks_unified_ingress():
         assert task["ingress"] == "mcp"
         assert task["conversation_id"] == "conv-456"
         assert task["goal"] == "Test unified goal"
+
+
+@pytest.mark.asyncio
+async def test_enqueue_tasks_assigns_conversation_id_when_absent():
+    """Without a caller-supplied thread id, each submission gets its own real
+    conversation_id (never NULL) so the console can group and continue chats."""
+    with (
+        patch.object(TaskQueueService, "ensure_worker_running"),
+        patch(
+            "apps.admin_console.services.task_queue_service.DeviceExecutionLock.reserve",
+            return_value="mock-ticket-unified",
+        ),
+    ):
+        res = await task_queue_service.enqueue_tasks(["Solo goal"], profile="flash")
+        assert res["tasks"][0]["conversation_id"]
+        # 注册表同步记录线程 id 与提交时刻，供 /api/status 在任务被取走后回填
+        sid = res["tasks"][0]["session_id"]
+        assert state.conversation_for(sid) == res["tasks"][0]["conversation_id"]
+        assert state.submission_for(sid).get("created_at") == res["tasks"][0]["created_at"]
+
+        res2 = await task_queue_service.enqueue_tasks(["Another goal"], profile="flash")
+        first = res["tasks"][0]["conversation_id"]
+        second = res2["tasks"][0]["conversation_id"]
+        # 两次独立提交各得一个线程 id，且不会拿到空值或互相串线程
+        assert second and second != first
+
+        # 显式传入空白值同样按未提供处理
+        res3 = await task_queue_service.enqueue_tasks(
+            ["Blank thread goal"], profile="flash", conversation_id="   "
+        )
+        assert res3["tasks"][0]["conversation_id"]
 
 
 @pytest.mark.asyncio

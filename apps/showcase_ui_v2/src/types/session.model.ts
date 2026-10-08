@@ -37,6 +37,8 @@ export interface TaskQueueItem {
   device_serial?: string | null;
   device_id?: string | null;
   model_endpoint?: string | null;
+  /** 提交时指派的对话线程 id（pending/running 表示据此并入正确会话线程）。 */
+  conversation_id?: string | null;
 }
 
 export interface Session {
@@ -55,6 +57,9 @@ export interface Session {
   device_info?: any;
   /** 所属对话线程（提交时带 conversation_id 的任务才有）；会话列表按它聚合。 */
   conversation_id?: string | null;
+  /** 提交（入队）时刻。轮次排序/展示用它：start_time 是获得设备使用权后的
+   * 引擎启动时刻，会让排队轮次在发射时乱序。旧数据为空则回退 start_time。 */
+  submitted_at?: number | null;
 }
 
 /** 单段屏幕录像：scrcpy 重启（转屏 / 崩溃恢复）时录像切分为多段（M4，平移自 agent.service.ts L30-40）。 */

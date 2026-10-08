@@ -57,6 +57,17 @@ _CURRENT_DATA_ENGINE = None
 _FOREGROUND_APP_IGNORED = {"com.android.systemui"}
 
 
+def _parse_submitted_at(raw: str | None) -> float | None:
+    """Submission wall-clock time handed over by the queue worker (best effort)."""
+    if not raw or not raw.strip():
+        return None
+    try:
+        value = float(raw.strip())
+    except ValueError:
+        return None
+    return value if value > 0 else None
+
+
 def _derive_foreground_app(ui_tree: Any | None) -> str | None:
     """Best-effort foreground package from a perception UI tree (M5).
 
@@ -616,6 +627,10 @@ class DataEngine:
             # Conversation thread this submission continues (set by the queue
             # worker for consecutive submissions of one console conversation).
             conversation_id=os.environ.get("ARTEMIS_CONVERSATION_ID", "").strip() or None,
+            # Enqueue wall-clock time (set by the queue worker). The console
+            # orders chat rounds by it: the engine start moment reflects this
+            # task's device turn, not when the user actually sent the message.
+            submitted_at=_parse_submitted_at(os.environ.get("ARTEMIS_SUBMITTED_AT")),
         )
         self.storage.create_session(session)
         try:

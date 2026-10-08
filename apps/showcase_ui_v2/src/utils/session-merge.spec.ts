@@ -6,6 +6,7 @@ import {
   mapPendingQueue,
   mergeSessions,
   resolveDeviceSerial,
+  sessionChronoKey,
   statusSignature,
 } from './session-merge';
 import type { ActiveTaskInfo, MergeSessionsContext } from './session-merge';
@@ -219,6 +220,40 @@ describe('mergeSessions — 4 步合并算法（§3.3 条款 3）', () => {
     expect(third[0].status).toBe('completed');
     expect(tracking.has('s1')).toBe(false);
   });
+
+  it('step3→4 窗口: 任务被取走、状态已 running 且 active/queue 都没有它时，提交锚点沿用 tracking，不被 now 现造的条目遮蔽', () => {
+    const tracking = new Map<string, Session>();
+    // 第一次轮询：任务在队列中，带提交时刻
+    mergeSessions(
+      ctx({
+        pending: [
+          session({
+            session_id: 's-run',
+            initial_goal: '排队轮次',
+            start_time: 100,
+            submitted_at: 90,
+            status: 'pending',
+          }),
+        ],
+      }),
+      tracking,
+    );
+    // 第二次轮询：worker 已取走（queue 空）、DB 行未落库，但状态轮询已观察到
+    // runner —— 现造条目的 start_time 会是 now；排序锚点必须仍是 90，
+    // 否则运行轮次会跳到提交更晚的排队轮次下方。
+    const second = mergeSessions(
+      ctx({
+        agentStatus: 'running',
+        runningSessionId: 's-run',
+        nowMs: 5_000_000,
+      }),
+      tracking,
+    );
+    const running = second.find((s) => s.session_id === 's-run')!;
+    expect(running.status).toBe('running');
+    expect(running.submitted_at).toBe(90);
+    expect(sessionChronoKey(running)).toBe(90);
+  });
 });
 
 describe('mapPendingQueue — /api/status queue 映射', () => {
@@ -238,6 +273,26 @@ describe('mapPendingQueue — /api/status queue 映射', () => {
       device_serial: 'dev-1',
     });
     expect(mapped[1]).toMatchObject({ session_id: 'pending-task-1', initial_goal: 'G2', start_time: 200 });
+  });
+
+  it('对象元素携带 conversation_id：pending 表示并入正确线程，不成幽灵会话', () => {
+    const mapped = mapPendingQueue(
+      [
+        { session_id: 'q1', goal: 'G1', status: 'pending', conversation_id: 'conv-1' },
+        { session_id: 'q2', goal: 'G2', status: 'pending' },
+      ],
+      1_000_000,
+    );
+    expect(mapped[0]).toMatchObject({ session_id: 'q1', conversation_id: 'conv-1' });
+    expect(mapped[1]).toMatchObject({ session_id: 'q2', conversation_id: null });
+  });
+
+  it('对象元素携带 created_at 作为 submitted_at：轮次排序锚点在发射前后保持不变', () => {
+    const mapped = mapPendingQueue(
+      [{ session_id: 'q1', goal: 'G1', status: 'pending', created_at: 555.5 }],
+      1_000_000,
+    );
+    expect(mapped[0]).toMatchObject({ session_id: 'q1', submitted_at: 555.5 });
   });
 
   it('对象元素缺省字段时回退到 pending-task-N 与 nowMs/1000 + index', () => {
@@ -302,6 +357,14 @@ describe('resolveDeviceSerial — 展示用设备序列号', () => {
     const s = session({ session_id: 'cache', device_serial: 'dev-cache' });
     expect(resolveDeviceSerial(s)).toBe('dev-cache');
     expect(resolveDeviceSerial(s)).toBe('dev-cache');
+  });
+});
+
+describe('sessionChronoKey — 轮次排序锚点', () => {
+  it('优先 submitted_at；旧数据回退 start_time', () => {
+    expect(sessionChronoKey({ submitted_at: 555, start_time: 999 })).toBe(555);
+    expect(sessionChronoKey({ start_time: 999 })).toBe(999);
+    expect(sessionChronoKey({})).toBe(0);
   });
 });
 

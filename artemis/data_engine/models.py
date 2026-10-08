@@ -38,6 +38,11 @@ class SessionMetadata(BaseModel):
     # submissions inherit prior context from the thread, so it behaves as
     # one continuing conversation instead of isolated one-shot tasks.
     conversation_id: str | None = None
+    # Submission (enqueue) wall-clock time. Round ordering in the console uses
+    # this instead of start_time: the engine only starts when the task gets its
+    # device turn, which is later than the enqueue moment of rounds still queued
+    # behind it — ordering by start_time reshuffles the chat as rounds launch.
+    submitted_at: float | None = None
 
 
 class ImageRecord(BaseModel):

@@ -19,6 +19,7 @@ import CommandDock from './CommandDock.vue';
 const mockSession = reactive({
   runTask: vi.fn(() => Promise.resolve({})),
   fetchStatus: vi.fn(() => Promise.resolve({})),
+  submitConversationId: null as string | null,
 });
 
 const mockSystem = reactive({
@@ -41,6 +42,7 @@ function mountDock(attachTo?: HTMLElement) {
 describe('CommandDock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
+    mockSession.submitConversationId = null;
     mockSystem.credentialRows = [];
     mockSystem.modelConfigEnv = null;
     localStorage.removeItem('artemis_selected_profile');
@@ -94,6 +96,21 @@ describe('CommandDock', () => {
     });
     expect(mockSession.fetchStatus).toHaveBeenCalled();
     expect((wrapper.find('.dock-input textarea').element as HTMLTextAreaElement).value).toBe('');
+  });
+
+  it('continues the current conversation thread when one is active', async () => {
+    mockSession.submitConversationId = 'conv-abc';
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const textarea = wrapper.find('.dock-input textarea');
+    await textarea.setValue('再看看电量');
+    await textarea.trigger('keydown', { key: 'Enter' });
+    await flushPromises();
+
+    expect(mockSession.runTask).toHaveBeenCalledWith('再看看电量', 'flash', {
+      conversationId: 'conv-abc',
+    });
   });
 
   it('keeps Shift+Enter and IME-composing Enter from submitting', async () => {
