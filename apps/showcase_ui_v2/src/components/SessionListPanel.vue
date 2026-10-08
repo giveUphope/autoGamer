@@ -11,8 +11,8 @@ import type { Session } from '@/types/session.model';
  * 会话列表（左栏，重构自队列/历史双页签面板）：
  * 任务按对话线程（conversation_id）聚合为会话，一行一个会话——名字是线程里
  * 第一条消息，状态徽标取线程内最高优先级状态（运行/暂停置顶）。顶部「新建会话」
- * 生成新线程并选中；点击行选中该会话（右栏时间线随之切换）；行内 hover 提供删除
- * （级联删除线程内全部任务）与停止（线程内有运行中任务时）。
+ * 生成新线程并选中；点击行选中该会话（右栏时间线随之切换）；行内 hover 提供
+ * 删除（级联删除线程内全部任务）。停止能力内置于命令条的提交按钮（多态为停止）。
  */
 const { t } = useI18n();
 const sessionStore = useSessionStore();
@@ -28,7 +28,6 @@ interface ConversationRow {
   taskCount: number;
   deviceSerial: string;
   isSelected: boolean;
-  runningTaskId: string | null;
 }
 
 const rows = computed<ConversationRow[]>(() =>
@@ -48,7 +47,6 @@ const rows = computed<ConversationRow[]>(() =>
       isSelected: group.rounds.some(
         (task) => task.session_id === sessionStore.currentSessionId,
       ),
-      runningTaskId: runningTask?.session_id ?? null,
     };
   }),
 );
@@ -74,14 +72,6 @@ function selectConversationRow(row: ConversationRow): void {
   if (latest) {
     sessionStore.selectSession(latest.session_id, true);
   }
-}
-
-function stopRunning(row: ConversationRow): Promise<void> {
-  if (!row.runningTaskId) return Promise.resolve();
-  busy.value = true;
-  return sessionStore
-    .stopTask(row.runningTaskId, false)
-    .finally(() => setTimeout(() => (busy.value = false), 400));
 }
 
 async function deleteConversationRow(row: ConversationRow): Promise<void> {
@@ -135,16 +125,6 @@ async function deleteConversationRow(row: ConversationRow): Promise<void> {
             {{ t('workspace.conversations.roundsCount', { n: row.taskCount }) }}
           </span>
           <span class="conversation-actions" @click.stop>
-            <a-button
-              v-if="row.runningTaskId"
-              size="mini"
-              type="text"
-              status="warning"
-              :loading="busy"
-              @click="stopRunning(row)"
-            >
-              {{ t('workspace.conversations.stop') }}
-            </a-button>
             <a-popconfirm
               :content="t('workspace.conversations.deleteConfirm')"
               type="warning"

@@ -51,6 +51,12 @@ export interface MergeSessionsContext {
   activeModel: ModelInfo | null;
   /** 当前时间（毫秒），用于 start_time 兜底，便于测试注入。 */
   nowMs: number;
+  /**
+   * 已停止且从未落库的会话 id：它们没有可展示的持久数据，而停止后的补偿
+   * 轮询（旧载荷）会把它们重新写回 active/tracking——合并时必须跳过，
+   * 否则运行态幽灵永远不清除。DB 行一旦出现即由调用方移出本集合。
+   */
+  dismissedNoRowSessions?: Set<string>;
 }
 
 export type DisplayTaskStatus =
@@ -90,6 +96,7 @@ export function mergeSessions(
     runningGoal: goal,
     activeModel,
     nowMs,
+    dismissedNoRowSessions: dismissed = new Set<string>(),
   } = ctx;
 
   const sessionMap = new Map<string, Session>();
@@ -148,7 +155,7 @@ export function mergeSessions(
 
   // 2. 补充尚未出现在 raw sessions 里的 pending 队列会话
   pending.forEach((p) => {
-    if (!sessionMap.has(p.session_id)) {
+    if (!sessionMap.has(p.session_id) && !dismissed.has(p.session_id)) {
       const activeMatch = activeById.get(p.session_id);
       const isCurrentRunning =
         ((status === 'running' || status === 'paused') && runId === p.session_id) || !!activeMatch;
@@ -166,6 +173,7 @@ export function mergeSessions(
   if (activeList.length > 0) {
     activeList.forEach((at) => {
       const sid = at.session_id || `active-${at.device_id}`;
+      if (dismissed.has(sid)) return;
       const existing = sessionMap.get(sid);
       if (!existing) {
         const bridged = tracking.get(sid);
@@ -200,27 +208,31 @@ export function mergeSessions(
     // tracking 里若已有该任务（本页见过它的排队表示），必须复用它的锚点；
     // 若在这里用 now 现造一个，会遮蔽 tracking 的正确 submitted_at，
     // 运行轮次就会"顶"到后面排队轮次的下方。
-    const bridged = tracking.get(runId);
-    if (bridged) {
-      const revived: Session = { ...bridged, status };
-      sessionMap.set(runId, revived);
-      tracking.set(runId, revived);
-    } else {
-      const activeSession: Session = {
-        session_id: runId,
-        initial_goal: goal || '',
-        start_time: nowMs / 1000,
-        status,
-        model_info: activeModel || undefined,
-      };
-      sessionMap.set(runId, activeSession);
-      tracking.set(runId, activeSession);
+    // 已停止且未落库的任务（dismissed）不现造——状态轮询的旧载荷会短暂
+    // 报告它运行，现造会让停止按钮永远不复原。
+    if (!dismissed.has(runId)) {
+      const bridged = tracking.get(runId);
+      if (bridged) {
+        const revived: Session = { ...bridged, status };
+        sessionMap.set(runId, revived);
+        tracking.set(runId, revived);
+      } else {
+        const activeSession: Session = {
+          session_id: runId,
+          initial_goal: goal || '',
+          start_time: nowMs / 1000,
+          status,
+          model_info: activeModel || undefined,
+        };
+        sessionMap.set(runId, activeSession);
+        tracking.set(runId, activeSession);
+      }
     }
   }
 
   // 4. 桥接「队列 → 运行」的瞬时过渡窗口
   tracking.forEach((ts, sid) => {
-    if (!sessionMap.has(sid)) {
+    if (!sessionMap.has(sid) && !dismissed.has(sid)) {
       sessionMap.set(sid, {
         ...ts,
         status: 'running',

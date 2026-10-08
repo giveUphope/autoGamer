@@ -82,6 +82,13 @@ export const useSessionStore = defineStore('session', () => {
    */
   const activeSessionTracking = new Map<string, Session>();
 
+  /**
+   * 已停止且从未落库的会话 id。它们的旧载荷（停止瞬间的补偿轮询）会短暂地
+   * 把它们重新写回 active/tracking；合并器按本集合跳过，运行态幽灵才清得掉。
+   * DB 行一旦出现（fetchSessions）即移出，恢复常规展示。
+   */
+  const dismissedNoRowSessions = new Set<string>();
+
   // ---- computed ----
 
   /** 合并后的完整会话列表（4 步算法），按 start_time 倒序。 */
@@ -96,6 +103,7 @@ export const useSessionStore = defineStore('session', () => {
         runningGoal: runningGoal.value,
         activeModel: activeModel.value,
         nowMs: Date.now(),
+        dismissedNoRowSessions: dismissedNoRowSessions,
       },
       activeSessionTracking,
     ),
@@ -145,6 +153,21 @@ export const useSessionStore = defineStore('session', () => {
   const isRunningTask = computed<boolean>(() => {
     if (agentStatus.value === 'running' || agentStatus.value === 'paused') return true;
     return sessions.value.some((s) => s.status === 'running' || s.status === 'paused');
+  });
+
+  /**
+   * 当前查看线程内运行中/暂停的轮次 id（无则 null）。
+   * 命令条据此把提交按钮多态为「提交 / 停止」：切到有任务在跑的会话即显示停止。
+   */
+  const currentConversationRunningTaskId = computed<string | null>(() => {
+    const thread = currentConversationId.value;
+    if (!thread) return null;
+    const group = conversationGroups.value.find((g) => g.id === thread);
+    const running = group?.rounds.find((round) => {
+      const s = getTaskStatus(round, runningSessionId.value, agentStatus.value);
+      return s === 'running' || s === 'paused';
+    });
+    return running?.session_id ?? null;
   });
 
   // ---- 轮询签名（§3.3 条款 4）----
@@ -297,6 +320,10 @@ export const useSessionStore = defineStore('session', () => {
     try {
       const data = await apiGet<Session[]>('/api/sessions');
       rawSessions.value = data;
+      // DB 行已出现的会话不再是「未落库已停止」：恢复正常展示
+      for (const session of data) {
+        dismissedNoRowSessions.delete(session.session_id);
+      }
       persistSessionsCache(data);
       // 初次加载：未选中、未 pin、无运行任务且有历史时，选中最新一条
       if (
@@ -406,7 +433,21 @@ export const useSessionStore = defineStore('session', () => {
     // 若先清空全局运行器状态，合并器会从仍陈旧的 DB 行推断出 completed，
     // 造成短暂的 completed → cancelled 闪烁。
     if (targetSessionId) {
-      setSessionStatus(targetSessionId, 'cancelled');
+      const hasRow = rawSessions.value.some((s) => s.session_id === targetSessionId);
+      if (hasRow) {
+        setSessionStatus(targetSessionId, 'cancelled');
+      } else {
+        // 从未落库（DB 行产生前就被停止）：没有任何可展示的持久数据，
+        // 直接撤掉 tracking 桥接，否则第 4 步会把它永远复活成 running 幽灵，
+        // 命令条的停止按钮也永远不会复原。
+        pendingQueue.value = pendingQueue.value.map((session) =>
+          session.session_id === targetSessionId
+            ? { ...session, status: 'cancelled' as const }
+            : session,
+        );
+        dropTrackedSession(targetSessionId);
+        dismissedNoRowSessions.add(targetSessionId);
+      }
     }
 
     // 判断是否还有其他会话在多设备上执行
@@ -533,6 +574,7 @@ export const useSessionStore = defineStore('session', () => {
     rawSessions.value = [];
     clearSessionsCache();
     pendingQueue.value = [];
+    dismissedNoRowSessions.clear();
     selectSession('', false);
 
     // 2. 发送请求
@@ -606,6 +648,14 @@ export const useSessionStore = defineStore('session', () => {
   /** 清除用户的 pin，后续运行恢复自动跟随。 */
   function clearUserPinnedSession(): void {
     userPinnedSessionId.value = null;
+  }
+
+  /**
+   * 撤掉 tracking 桥接条目。用于会话终局且 DB 行不存在（落库前被停止）的
+   * 任务：tracking 是它唯一的表示，不清除会被第 4 步永远复活成 running。
+   */
+  function dropTrackedSession(sessionId: string): void {
+    activeSessionTracking.delete(sessionId);
   }
 
   // ---- 内部工具 ----
@@ -753,6 +803,7 @@ export const useSessionStore = defineStore('session', () => {
     conversationGroups,
     currentSession,
     submitConversationId,
+    currentConversationRunningTaskId,
     isCurrentSessionRunning,
     isRunningTask,
     // lifecycle
@@ -773,5 +824,6 @@ export const useSessionStore = defineStore('session', () => {
     // 供 stores/stream.ts（M3）延迟调用的内部方法
     setSessionStatus,
     invalidateStatusSignatures,
+    dropTrackedSession,
   };
 });

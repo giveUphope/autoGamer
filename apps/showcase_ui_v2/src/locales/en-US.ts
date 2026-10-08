@@ -296,6 +296,7 @@ export default {
     dock: {
       placeholder: 'Type an instruction — Enter to submit, Shift+Enter for a new line',
       submit: 'Submit',
+      stop: 'Stop',
       submitFail: 'Submit failed: {reason}',
     },
     conversations: {

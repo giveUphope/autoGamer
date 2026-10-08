@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { onBeforeUnmount, onMounted, ref } from 'vue';
+import { computed, onBeforeUnmount, onMounted, ref } from 'vue';
 import { useI18n } from 'vue-i18n';
 import { Textarea } from '@arco-design/web-vue';
 
@@ -13,7 +13,9 @@ import { useSessionStore } from '@/stores/session';
  * 并在左栏会话时间线底部（聊天式「会话流 + 底部输入」）；Ctrl+K / ⌘K 仍然聚焦它。
  * 多行输入框独占主体，下方控件行从左到右：架构 profile（flash/pro）→ 模型选择器
  * → 运行信息（选中任务的耗时/tokens 内联指标，点击看详情）→ 提交按钮。
- * Enter 提交任务（`/api/run`）、Shift+Enter 换行、输入法组词中的 Enter 不触发。
+ * 提交按钮多态：当前会话线程有运行/暂停中的任务时变为「停止」（点击停掉该轮，
+ * 吸收自左栏停止按钮），否则为「提交」。Enter 提交任务（`/api/run`）、
+ * Shift+Enter 换行、输入法组词中的 Enter 不触发。
  * profile 持久化到 localStorage；模型选择器与启动器、诊断向导共用 ModelSelect，
  * 状态在 system store 里只有一份。
  */
@@ -22,10 +24,13 @@ const sessionStore = useSessionStore();
 
 const taskInput = ref('');
 const isSubmitting = ref(false);
+const isStopping = ref(false);
 const errorMessage = ref<string | null>(null);
 const selectedProfile = ref<'flash' | 'pro'>('flash');
 const inputRef = ref<InstanceType<typeof Textarea> | null>(null);
 let errorTimer: ReturnType<typeof setTimeout> | null = null;
+
+const isThreadRunning = computed(() => !!sessionStore.currentConversationRunningTaskId);
 
 // 与 Angular 版一致：记住上一次选择的架构 profile
 if (typeof localStorage !== 'undefined') {
@@ -102,6 +107,22 @@ async function submitTask(): Promise<void> {
     isSubmitting.value = false;
   }
 }
+
+async function stopCurrentConversation(): Promise<void> {
+  const target = sessionStore.currentConversationRunningTaskId;
+  if (!target || isStopping.value) {
+    return;
+  }
+  isStopping.value = true;
+  try {
+    await sessionStore.stopTask(target, false);
+  } finally {
+    // 与左栏停止按钮一致：留出后端状态收敛时间，防止按钮抖回
+    setTimeout(() => {
+      isStopping.value = false;
+    }, 400);
+  }
+}
 </script>
 
 <template>
@@ -133,8 +154,13 @@ async function submitTask(): Promise<void> {
         <ModelSelect class="dock-model-select" />
         <!-- 运行信息：选中任务的耗时/tokens 内联指标，点击弹详情——发射前凭据 → 发射后账单 -->
         <RunInfoPopover class="dock-run-info" />
-        <a-button type="primary" :loading="isSubmitting" @click="submitTask">
-          {{ t('workspace.dock.submit') }}
+        <a-button
+          type="primary"
+          :status="isThreadRunning ? 'danger' : undefined"
+          :loading="isThreadRunning ? isStopping : isSubmitting"
+          @click="isThreadRunning ? stopCurrentConversation() : submitTask()"
+        >
+          {{ isThreadRunning ? t('workspace.dock.stop') : t('workspace.dock.submit') }}
         </a-button>
       </div>
     </div>

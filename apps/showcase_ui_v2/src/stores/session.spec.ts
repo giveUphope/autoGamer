@@ -295,6 +295,36 @@ describe('session store — 多轮会话线程（conversation）', () => {
     expect(store.submitConversationId).toBe('conv-fresh');
   });
 
+  it('stopTask 清除未落库任务的 tracking 桥接，不留 running 幽灵', async () => {
+    // 任务仅在 active_tasks 表示中存在（DB 行尚未落库）
+    mockApiRoutes({
+      '/api/status': statusPayload({
+        status: 'running',
+        session_id: 'ghost',
+        active_tasks: [{ session_id: 'ghost' }],
+      }),
+      '/api/sessions': [],
+    });
+    const store = useSessionStore();
+    await store.fetchStatus();
+    expect(store.sessions.some((s) => s.session_id === 'ghost')).toBe(true);
+
+    await store.stopTask('ghost', false);
+    // 冲刷 stopTask 内部未 await 的补偿轮询（仍用旧载荷），避免与下一步竞态
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+
+    // 下一次轮询：worker 已停（idle、active 清空）——幽灵不得复活，
+    // 否则命令条会永远停在「停止」态
+    mockApiRoutes({
+      '/api/status': statusPayload(),
+      '/api/sessions': [],
+    });
+    await store.fetchStatus();
+    for (let i = 0; i < 10; i += 1) await Promise.resolve();
+    expect(store.sessions.some((s) => s.session_id === 'ghost')).toBe(false);
+    expect(store.currentConversationRunningTaskId).toBeNull();
+  });
+
   it('选中行未回填且带真实线程 id 的 pending 表示时，提交线程取自合并后的会话', () => {
     const store = useSessionStore();
     store.selectConversation('conv-current');
@@ -336,6 +366,33 @@ describe('session store — 多轮会话线程（conversation）', () => {
 
     expect(store.currentConversationId).toBe('round:legacy-queued');
     expect(store.submitConversationId).toBeNull();
+  });
+
+  it('currentConversationRunningTaskId 取当前线程内运行中的轮次', () => {
+    const store = useSessionStore();
+    store.$patch({
+      rawSessions: [
+        { session_id: 'done-round', initial_goal: '已完成轮', start_time: 1, status: 'completed', conversation_id: 'conv-1' },
+        { session_id: 'live-round', initial_goal: '运行轮', start_time: 2, status: 'running', conversation_id: 'conv-1' },
+        { session_id: 'other-live', initial_goal: '别的线程', start_time: 3, status: 'running', conversation_id: 'conv-2' },
+      ],
+    });
+
+    store.selectSession('done-round');
+    // 选中已完成轮，但同线程有运行轮 → 暴露它（提交按钮多态为停止）
+    expect(store.currentConversationRunningTaskId).toBe('live-round');
+
+    store.selectSession('other-live');
+    expect(store.currentConversationRunningTaskId).toBe('other-live');
+
+    // 无运行轮的线程 → null
+    store.$patch({
+      rawSessions: [
+        { session_id: 'quiet', initial_goal: '安静线程', start_time: 4, status: 'completed', conversation_id: 'conv-3' },
+      ],
+    });
+    store.selectSession('quiet');
+    expect(store.currentConversationRunningTaskId).toBeNull();
   });
 });
 

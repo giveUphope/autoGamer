@@ -19,7 +19,9 @@ import CommandDock from './CommandDock.vue';
 const mockSession = reactive({
   runTask: vi.fn(() => Promise.resolve({})),
   fetchStatus: vi.fn(() => Promise.resolve({})),
+  stopTask: vi.fn(() => Promise.resolve()),
   submitConversationId: null as string | null,
+  currentConversationRunningTaskId: null as string | null,
 });
 
 const mockSystem = reactive({
@@ -43,6 +45,7 @@ describe('CommandDock', () => {
   beforeEach(() => {
     vi.clearAllMocks();
     mockSession.submitConversationId = null;
+    mockSession.currentConversationRunningTaskId = null;
     mockSystem.credentialRows = [];
     mockSystem.modelConfigEnv = null;
     localStorage.removeItem('artemis_selected_profile');
@@ -111,6 +114,31 @@ describe('CommandDock', () => {
     expect(mockSession.runTask).toHaveBeenCalledWith('再看看电量', 'flash', {
       conversationId: 'conv-abc',
     });
+  });
+
+  it('turns the submit button into stop while the thread has a live task', async () => {
+    mockSession.currentConversationRunningTaskId = 'live-sid';
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const submitBtn = wrapper.find('.dock-bottom-row button.arco-btn-primary');
+    expect(submitBtn.text()).toContain('停止');
+    expect(submitBtn.classes()).toContain('arco-btn-status-danger');
+
+    // 点击按钮 = 停掉线程内运行中的轮次（而非提交）
+    await submitBtn.trigger('click');
+    await flushPromises();
+    expect(mockSession.stopTask).toHaveBeenCalledWith('live-sid', false);
+    expect(mockSession.runTask).not.toHaveBeenCalled();
+  });
+
+  it('shows the submit button when the current thread has no live task', async () => {
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const submitBtn = wrapper.find('.dock-bottom-row button.arco-btn-primary');
+    expect(submitBtn.text()).toContain('提交');
+    expect(submitBtn.classes()).not.toContain('arco-btn-status-danger');
   });
 
   it('keeps Shift+Enter and IME-composing Enter from submitting', async () => {

@@ -369,6 +369,7 @@ export default {
     dock: {
       placeholder: '输入指令，Enter 提交，Shift+Enter 换行',
       submit: '提交',
+      stop: '停止',
       submitFail: '提交失败：{reason}',
     },
     conversations: {

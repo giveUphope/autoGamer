@@ -359,6 +359,9 @@ export const useStreamStore = defineStore('stream', () => {
       sessionStore.activeTasks = sessionStore.activeTasks.filter(
         (at) => at.session_id !== String(sessionId),
       );
+      // 落库前就结束的任务（DB 行不存在）以 tracking 桥接为唯一表示：
+      // 终局后必须撤掉，否则第 4 步会把它永远复活成 running 幽灵。
+      sessionStore.dropTrackedSession(String(sessionId));
     }
   }
 
