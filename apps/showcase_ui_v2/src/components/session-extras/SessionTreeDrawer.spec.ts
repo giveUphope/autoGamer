@@ -64,6 +64,7 @@ const ROUNDS = [
 function mountDrawer(props: {
   visible: boolean;
   rounds: Array<{ id: string; roundNumber: number; goal: string; time: string }>;
+  focusTraceId?: string | null;
 }) {
   return mount(SessionTreeDrawer, {
     props,
@@ -162,5 +163,33 @@ describe('SessionTreeDrawer (对话轨迹树)', () => {
     expect(apiGetMock).toHaveBeenCalledWith('/api/traces/llm1');
     expect(bodyText()).toContain('"messages"');
     expect(bodyText()).toContain('你好');
+  });
+
+  it('focusTraceId expands the ancestor chain, selects and lazy-loads the node', async () => {
+    apiGetMock.mockImplementation((url: string) => {
+      if (url === '/api/sessions/s1/tree') return Promise.resolve(TREE1);
+      if (url === '/api/traces/llm1') {
+        return Promise.resolve({ payload: { messages: ['定位'], response: [] } });
+      }
+      return Promise.resolve([]);
+    });
+    const wrapper = mountDrawer({
+      visible: true,
+      rounds: ROUNDS,
+      focusTraceId: 'llm1',
+    });
+    await flushPromises();
+
+    // 祖先链展开、节点选中、懒加载内容就绪
+    expect(apiGetMock).toHaveBeenCalledWith('/api/traces/llm1');
+    const body = bodyText();
+    expect(body).toContain('请求内容');
+    expect(body).toContain('定位');
+
+    // 再次定位同一节点：内容已缓存，不重复拉取
+    await wrapper.setProps({ focusTraceId: 'llm1' });
+    await flushPromises();
+    const traceCalls = apiGetMock.mock.calls.filter((c) => String(c[0]) === '/api/traces/llm1');
+    expect(traceCalls).toHaveLength(1);
   });
 });

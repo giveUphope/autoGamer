@@ -390,6 +390,8 @@ export default {
       // 启动准备 / 阶段头
       workedFor: '已执行 {seconds}s',
       roundNumber: '第 {n} 轮',
+      viewTrace: '轨迹',
+      viewTraceTitle: '在轨迹树中查看该步骤',
       roundEmpty: '该轮暂无执行记录。',
       checkedFor: '已核查 {seconds}s',
       waiting: '等待 {time}',

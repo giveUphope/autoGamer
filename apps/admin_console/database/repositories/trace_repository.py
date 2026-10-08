@@ -37,10 +37,13 @@ class TraceRepository:
     def get_trace_tree(self, session_id: str) -> list[dict[str, Any]]:
         with db_session(self.db_path) as conn:
             cursor = conn.cursor()
+            # Payload inlined for small content types (thinking notes, action
+            # args, tool args) so the console tree can show them inline; the
+            # big llm_call payloads stay lazy (fetched per-trace on demand).
             cursor.execute(
                 "SELECT trace_id, parent_trace_id, type, name, status, timestamp,"
-                " duration, CASE WHEN type IN ('raw_thinking', 'thinking') THEN"
-                " payload ELSE NULL END AS payload FROM traces WHERE session_id = ?"
+                " duration, CASE WHEN type IN ('raw_thinking', 'thinking', 'action', 'tool')"
+                " THEN payload ELSE NULL END AS payload FROM traces WHERE session_id = ?"
                 " ORDER BY timestamp ASC",
                 (session_id,),
             )

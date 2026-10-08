@@ -85,3 +85,26 @@ describe('action-formatter display copy (zh-CN spot checks)', () => {
     i18n.global.locale.value = 'en-US';
   });
 });
+
+describe('extractActionExtraParams — 调试字段由轨迹树承担', () => {
+  it('排除 trace_id / parent_trace_id / payload / agent_name，不再平铺进时间线', () => {
+    i18n.global.locale.value = 'en-US';
+    const params = extractActionExtraParams({
+      action: 'click',
+      target_description: '返回按钮',
+      trace_id: 'trace-1',
+      parent_trace_id: 'trace-0',
+      payload: { args: { target: [36, 85] } },
+      agent_name: 'FlashRunner',
+      duration: 120,
+    });
+    const keys = params.map((p) => p.key);
+    expect(keys).not.toContain('Trace Id');
+    expect(keys).not.toContain('Parent Trace Id');
+    expect(keys).not.toContain('Payload');
+    expect(keys).not.toContain('Agent Name');
+    // 人类可读字段不受影响（target_description 由 StepCard 专用渲染器展示，此处本就不输出）
+    expect(keys).toContain('Duration');
+    i18n.global.locale.value = 'zh-CN';
+  });
+});

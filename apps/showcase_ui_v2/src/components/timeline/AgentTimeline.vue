@@ -149,6 +149,18 @@ function toggleRound(round: { id: string; isSelected: boolean }): void {
 
 // ---- B6 轨迹树 / 步骤回放抽屉（仅点击时打开，抽屉自行按需拉取） ----
 const treeDrawerVisible = ref(false);
+/** 轨迹树打开时需要定位高亮的轨迹节点（动作卡「轨迹」入口设置）。 */
+const treeFocusTraceId = ref<string | null>(null);
+
+function openTraceInTree(traceId: string): void {
+  treeFocusTraceId.value = traceId;
+  treeDrawerVisible.value = true;
+}
+
+function openTreeWithoutFocus(): void {
+  treeFocusTraceId.value = null;
+  treeDrawerVisible.value = true;
+}
 const replayDrawerVisible = ref(false);
 
 // ---- 启动准备（平移自 startupWorkItems computed） ----
@@ -515,7 +527,7 @@ const isRecordBtnProcessing = computed(
           {{ t('workspace.player.recordBtnDefault') }}
         </a-button>
         <!-- B6：轨迹树 / 步骤回放入口（点击时才拉取数据） -->
-        <a-button size="small" class="tree-btn" @click="treeDrawerVisible = true">
+        <a-button size="small" class="tree-btn" @click="openTreeWithoutFocus">
           <template #icon><icon-mind-mapping /></template>
           {{ t('workspace.tree.button') }}
         </a-button>
@@ -624,6 +636,7 @@ const isRecordBtnProcessing = computed(
                       :block="block"
                       :session-active="sessionStore.isCurrentSessionRunning"
                       @open-note="timelineStore.selectNoteKey($event)"
+                      @view-trace="openTraceInTree"
                     />
                   </template>
                 </div>
@@ -679,7 +692,11 @@ const isRecordBtnProcessing = computed(
     </main>
 
     <!-- B6：轨迹树 / 步骤回放抽屉（数据由抽屉打开时按需拉取，不进 store） -->
-    <SessionTreeDrawer v-model:visible="treeDrawerVisible" :rounds="rounds" />
+    <SessionTreeDrawer
+      v-model:visible="treeDrawerVisible"
+      :rounds="rounds"
+      :focus-trace-id="treeFocusTraceId"
+    />
     <ReplayDrawer v-model:visible="replayDrawerVisible" :session-id="sessionStore.currentSessionId" />
   </section>
 </template>

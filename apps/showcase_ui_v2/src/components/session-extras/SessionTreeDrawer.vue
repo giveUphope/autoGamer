@@ -1,5 +1,5 @@
 <script setup lang="ts">
-import { ref, watch } from 'vue';
+import { nextTick, ref, watch } from 'vue';
 import { useI18n } from 'vue-i18n';
 
 import { ApiError, apiGet } from '@/services/api';
@@ -28,6 +28,8 @@ const props = defineProps<{
   visible: boolean;
   /** 当前线程的全部轮次（时间正序，来自 AgentTimeline 的 rounds）。 */
   rounds: Array<{ id: string; roundNumber: number; goal: string; time: string }>;
+  /** 需要定位高亮的轨迹节点 id（时间线动作卡「轨迹」入口传入）。 */
+  focusTraceId?: string | null;
 }>();
 const emit = defineEmits<{ (e: 'update:visible', value: boolean): void }>();
 const { t } = useI18n();
@@ -36,6 +38,7 @@ const loading = ref(false);
 const loadError = ref<string | null>(null);
 const treeData = ref<TreeItem[]>([]);
 const expandedKeys = ref<string[]>([]);
+const selectedKeys = ref<string[]>([]);
 
 function detailOf(err: unknown): string {
   if (err instanceof ApiError) return err.detail || `HTTP ${err.status}`;
@@ -166,8 +169,9 @@ async function fetchTrees(): Promise<void> {
       }
       return head;
     });
-    // 默认展开最早的轮次，打开即有内容可见
+    // 默认展开最早的轮次，打开即有内容可见；带定位目标时改为定位该节点
     expandedKeys.value = treeData.value.length ? [treeData.value[0]!.key] : [];
+    await applyFocus();
   } catch (err) {
     loadError.value = detailOf(err);
     treeData.value = [];
@@ -176,13 +180,49 @@ async function fetchTrees(): Promise<void> {
   }
 }
 
-// 打开时拉取；打开状态下轮次列表变化（新轮提交/线程切换）重拉。
+/** 从根到目标节点的祖先链（用于展开定位），找不到返回 null。 */
+function findPathToNode(items: TreeItem[], key: string, chain: TreeItem[] = []): TreeItem[] | null {
+  for (const item of items) {
+    const next = [...chain, item];
+    if (item.key === key) return next;
+    const found = findPathToNode(item.children, key, next);
+    if (found) return found;
+  }
+  return null;
+}
+
+/** 全树展开定位：展开目标节点及其祖先链、选中并滚动到该节点；懒加载内容随之就绪。 */
+async function applyFocus(): Promise<void> {
+  const target = props.focusTraceId;
+  if (!target) return;
+  const path = findPathToNode(treeData.value, target);
+  if (!path) return;
+  // 展开目标自身 + 全部祖先（目标展开会触发其懒加载内容）
+  await onExpandedKeys(path.map((n) => n.key));
+  selectedKeys.value = [target];
+  await nextTick();
+  document
+    .querySelector(`.arco-drawer .arco-tree-node[data-key="${CSS.escape(target)}"]`)
+    ?.scrollIntoView?.({ block: 'center' });
+}
+
+// 打开时拉取；打开状态下轮次集合变化（新轮提交/线程切换）重拉。
+// 按轮次 id 集合比较而非数组引用：sessions 每 6s 重算产生新引用，
+// 按引用比较会让打开着的抽屉每 6s 重拉全部轮次的树。
 watch(
-  () => [props.visible, props.rounds] as const,
+  () => [props.visible, props.rounds.map((round) => round.id).join(',')] as const,
   ([visible]) => {
     if (visible) void fetchTrees();
   },
-  { immediate: true, deep: false },
+  { immediate: true },
+);
+
+// 抽屉已开时定位目标变化（连续点击不同动作卡的「轨迹」）→ 重新定位
+watch(
+  () => props.focusTraceId,
+  (target) => {
+    if (props.visible && target && !loading.value) void applyFocus();
+  },
 );
 
 function close(): void {
@@ -215,6 +255,7 @@ function close(): void {
       :data="treeData"
       :field-names="{ key: 'key', title: 'title', children: 'children' }"
       :expanded-keys="expandedKeys"
+      :selected-keys="selectedKeys"
       block-node
       size="small"
       class="trace-tree"

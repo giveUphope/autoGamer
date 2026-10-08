@@ -7,6 +7,7 @@ import {
   IconCloseCircle,
   IconExclamationCircle,
   IconFile,
+  IconMindMapping,
   IconPlayArrow,
   IconRight,
   IconSync,
@@ -85,7 +86,11 @@ const props = defineProps<{
   sessionActive: boolean;
 }>();
 
-const emit = defineEmits<{ (e: 'open-note', key: string): void }>();
+const emit = defineEmits<{
+  (e: 'open-note', key: string): void;
+  /** 在轨迹树抽屉中定位查看该动作的轨迹（全树展开定位）。 */
+  (e: 'view-trace', traceId: string): void;
+}>();
 
 const sessionStore = useSessionStore();
 const timelineStore = useTimelineStore();
@@ -491,6 +496,15 @@ function resumePausedTask(): void {
             <a-tag v-if="isActionFailed(item.data, props.block.data)" size="small" color="red">
               {{ t('workspace.timeline.failed') }}
             </a-tag>
+            <button
+              v-if="item.data?.trace_id"
+              class="trace-link"
+              :title="t('workspace.timeline.viewTraceTitle')"
+              @click.stop="emit('view-trace', String(item.data.trace_id))"
+            >
+              <icon-mind-mapping />
+              {{ t('workspace.timeline.viewTrace') }}
+            </button>
             <icon-right class="expand-icon" :class="{ expanded: expandedCards.has(`action-${itemIdx}`) }" />
           </div>
           <div v-if="expandedCards.has(`action-${itemIdx}`)" class="card-expanded" @click.stop>
@@ -671,6 +685,15 @@ function resumePausedTask(): void {
                 </span>
                 <span class="action-title">{{ getToolTitle(item.data) }}</span>
                 <a-tag v-if="isToolFailed(item.data)" size="small" color="red">{{ t('workspace.timeline.failed') }}</a-tag>
+                <button
+                  v-if="item.data?.trace_id"
+                  class="trace-link"
+                  :title="t('workspace.timeline.viewTraceTitle')"
+                  @click.stop="emit('view-trace', String(item.data.trace_id))"
+                >
+                  <icon-mind-mapping />
+                  {{ t('workspace.timeline.viewTrace') }}
+                </button>
                 <icon-right v-if="hasToolDetails(item)" class="expand-icon" :class="{ expanded: expandedCards.has(`tool-${itemIdx}`) }" />
               </div>
               <div v-if="expandedCards.has(`tool-${itemIdx}`)" class="card-expanded" @click.stop>
@@ -923,6 +946,32 @@ function resumePausedTask(): void {
   align-items: center;
   gap: 8px;
   padding: 8px 10px;
+}
+
+/* 轨迹入口：默认低存在感，hover 卡片时浮现；点击打开轨迹树并定位本步骤 */
+.trace-link {
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+  margin-left: auto;
+  padding: 2px 8px;
+  border: none;
+  border-radius: var(--border-radius-small);
+  background: transparent;
+  color: var(--color-text-3);
+  font-size: 12px;
+  cursor: pointer;
+  opacity: 0;
+  transition: opacity 0.15s, color 0.15s, background-color 0.15s;
+}
+
+.action-card:hover .trace-link {
+  opacity: 1;
+}
+
+.trace-link:hover {
+  color: rgb(var(--arcoblue-6));
+  background-color: var(--color-fill-2);
 }
 
 .action-icon {

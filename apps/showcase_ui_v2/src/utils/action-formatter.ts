@@ -509,7 +509,9 @@ export function extractActionExtraParams(action: any, cache?: WeakMap<any, Actio
     'before_screenshot', 'after_screenshot', 'status', 'success', 'timestamp',
     'created_at', 'start_time', 'execution_id', 'controller', 'agent', 'session_id', 'step_id',
     'app_name', 'package_name', 'app', 'key', 'keycode', 'time_in_ms', 'delay_ms', 'delay_seconds', 'duration',
-    'args', 'kwargs', 'parameters', 'extra_params', 'direction', 'gesture'
+    'args', 'kwargs', 'parameters', 'extra_params', 'direction', 'gesture',
+    // 调试字段由轨迹树承担（动作卡「轨迹」入口定位查看），不在时间线平铺
+    'trace_id', 'parent_trace_id', 'payload', 'agent_name'
   ]);
 
   const result: ActionParam[] = [];
