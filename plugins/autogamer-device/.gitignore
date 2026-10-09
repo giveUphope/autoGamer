@@ -12,3 +12,6 @@ spike/auth-page.html
 spike/web-server*.log
 spike/mock.stdout
 spike/mock.stdout
+spike/spike-token.txt
+spike/web-server*.log
+spike/run*.ndjson
