@@ -1,0 +1,16 @@
+# AutoGamer device tools for DSH.
+# The `name` of each entry is the module specifier the cordis loader imports
+# (resolved against the profile node_modules after `dsh plugin add`).
+# Child-entry shape of the agent preset is a P0 spike item (see README).
+- id: autogamer-device
+  name: autogamer-device
+
+- id: preset-autogamer
+  name: "@deepseek-ai/dsh-agent-preset"
+  config:
+    id: autogamer
+    name: AutoGamer
+    description: Single-layer device execution agent (flash/pro merged, S11 router).
+    plugins:
+      - name: autogamer-device
+      - name: "@deepseek-ai/dsh-tool-jobs"

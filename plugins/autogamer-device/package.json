@@ -1,0 +1,32 @@
+{
+  "name": "autogamer-device",
+  "version": "0.1.0",
+  "private": true,
+  "description": "AutoGamer device-execution content plugin for DSH: run_device_action router tool, device gate/breaker, and the autogamer agent preset.",
+  "type": "module",
+  "main": "./dist/index.js",
+  "scripts": {
+    "build": "tsc -p tsconfig.json",
+    "test": "vitest run"
+  },
+  "dependencies": {
+    "@modelcontextprotocol/client": "2.0.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/dsh-agent-preset": "0.2.0-rc.2",
+    "@deepseek-ai/dsh-tools": "0.2.0-rc.2"
+  },
+  "peerDependenciesMeta": {
+    "@deepseek-ai/dsh-tools": {
+      "optional": true
+    },
+    "@deepseek-ai/dsh-agent-preset": {
+      "optional": true
+    }
+  },
+  "devDependencies": {
+    "@types/node": "^24.19.1",
+    "typescript": "^5.6.0",
+    "vitest": "^2.1.0"
+  }
+}
