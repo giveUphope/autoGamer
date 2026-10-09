@@ -1,5 +1,7 @@
 # 迁移盘点 · 前端控制台与外部集成面
 
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+
 > 范围：`apps/showcase_ui_v2/src/**`（stores / utils / components / locales / co-located specs / vite.config）、`mcp_server/**`（工具面 + 7 通知通道）、`packages/artemis-client/**`（Python SDK）、SSE `/api/stream` 的服务端桥（`apps/admin_console/services/ipc_service.py` + `routers/tasks.py` 的 stream 端点，注意：仓库中**不存在** `artemis/ipc_service` 目录）、`tests/integration|e2e`、`scripts/`（dev.sh、quality_ratchet.py）、Makefile、start.sh/start.bat、pyproject/pre-commit 根配置；基线：cc6b20c；日期：2026-10-09
 > 目的：记录 docs/todo.md **未写明、迁移中若无人记录即会丢失**的行为、不变量与契约。todo.md / 草稿 01–03 已覆盖的只标注出处、不展开。本文是 P4（外部接入方迁移清单）/ G7（过渡边界）/ P0（契约测试）的输入。
 > 与既有草稿的分工：**01** 已覆盖后端 `/api/run` 准入管线、`/api/status` 四源、SSE 服务端事件名全集（含 `queue_held`/`queue_paused`/`queue_resumed`/`server_shutdown`）与订阅回放；**02** 已覆盖 worker env 全集；**03** 已覆盖媒体路由与诊断。本文从**前端消费方与外部调用方**视角补齐：每个事件前端怎么消费/忽略、控制台交互不变量、MCP 工具协议承诺、通知通道矩阵、SDK 公开面、开发/构建链。

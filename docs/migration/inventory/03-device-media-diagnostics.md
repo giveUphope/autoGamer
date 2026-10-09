@@ -1,5 +1,7 @@
 # 迁移盘点 · 设备驱动、媒体与诊断
 
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+
 > 范围: `artemis/drivers/**`、`artemis/mcp/**`、`artemis/controllers/**`、`artemis/clients/**`、`artemis/core/diagnostics/**`、`artemis/utils/**`(概述)、`apps/admin_console/services/media_service.py` + `routers/media.py`(媒体对外面)、相关测试。基线: **cc6b20c**; 日期: **2026-10-09**。
 > 目的: 找出 docs/todo.md 没写、但迁移中若无人记录就会丢失的行为、不变量与契约。已覆盖项只标注决策号/表格行, 不展开重复。
 

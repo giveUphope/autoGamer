@@ -29,6 +29,9 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 |---|---|
 | `docs/todo.md` | 任何 DSH 侧改动之前。方案本体：D1-D17 决策表、S1-S11 对接语义、差距清单 G*、P0-P4 checklist 与「P0 执行状态」 |
 | `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R19，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器** |
+| `docs/migration/registry.md` | **要引用或新增任何编号（D/S/G/R）之前**。编号唯一权威，含 `inventory/*` 与 `todo.md` 的 G 编号撞车冲突表；`scripts/check_doc_registry.py` 机械守着 |
+| `docs/migration/glossary.md` | 读方案时卡住词了：`realm`、`parking`、`PTC`、`roster`，尤其是 **`inject` 有两个意思**（服务依赖 vs 不唤醒的上下文追加） |
+| `docs/migration/README.md` | 第一次接触本迁移时的入口页；也是「哪几处别当真」的清单（旧 py 智能栈 prompt 文档、旧控制台研究、docker 材料等） |
 | `docs/migration/upstream-plugin-forms.md` | 需要知道官方到底怎么说插件与工具形态时。调研正文、逐条口径标注（文档/源码/实测）、出处链接，以及被撤回的错误归因 |
 | `docs/migration/dsh-verification.md` | 查 rc.2 各子系统结论时。注意其中 37 处包内代码行引用属 D15 之前的 asar 口径，沿用前须按声明面重验 |
 | `docs/migration/feature-inventory.md` 与 `inventory/01-05` | 担心丢 fork 现有能力时；设备与智能栈部分是上游 canonical 契约 |

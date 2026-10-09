@@ -1,7 +1,20 @@
 # TODO · DSH 插件化迁移方案（R2' 定稿）
 
 > 活文档：已完成条目直接删除，演进依据查 git 历史。
-> 本方案于 2026-10-09 经七轮源码核实与两次方向重构后定稿：**基线 = google/artemis 上游实现**（本仓库为其 fork，领先 92 提交但智能栈基本未动），路径 = **直通插件**。论证过程与历史版本：git log + [upstream-rethink](migration/upstream-rethink.md) + [dsh-verification](migration/dsh-verification.md) + [feature-inventory](migration/feature-inventory.md)（含 inventory/01-05 明细）。
+> 本方案于 2026-10-09 经七轮源码核实与两次方向重构后定稿：**基线 = google/artemis 上游实现**（本仓库为其 fork，智能栈基本未动；领先提交数**别写死**，复测：`gh api repos/giveUphope/autoGamer/compare/google:artemis:main...main --jq .ahead_by`，2026-10-10 实测 83，另有本会话未推送的提交），路径 = **直通插件**。论证过程与历史版本：git log + [upstream-rethink](migration/upstream-rethink.md) + [dsh-verification](migration/dsh-verification.md) + [feature-inventory](migration/feature-inventory.md)（含 inventory/01-05 明细）。
+
+## 零、当前状态（先读这一页，细节在后面的节）
+
+| 项 | 现状 |
+|---|---|
+| 阶段 | **P0 未完**（骨架、离线 spike、安装流、conformance 已过；live 复验未过） |
+| 唯一阻塞 | **G30**：`run_device_action` / `report_task_status` 注册成功却不进 agent 工具面。形态特征已定性——会话请求里**连 `tools` 键都不存在** = 按 R8 整个 preset 被拒挂，而不是少一个工具 |
+| 头号候选 | `inject: ["tools"]` 里的服务在该 realm 未必可解析。practices 原文要求可选服务走 `ctx.inject([...])`，让插件「不激活而不是抛错」 |
+| 下一步（按序） | ① `inject` 改可选注入 → ② preset 挂 `tool-plugin-manager`（D17）→ ③ 用 roster 诊断与 `cordis_inspect_query` 的 `Tool` 分流 → ④ 若 `leakedServices` 非空则按 R8 包 `cordis:group` + `isolate` |
+| 每步的前置 | R6（`--dump-config` exit 0 且无 unmatched）＋ R7（**开新会话**再验，旧会话不重读声明） |
+| 已顺手修掉 | `coord.ts` 的 `byteAt` 无限递归（截图取尺寸整条路死）；`screenSize` 的真值 `[undefined, undefined]` 陷阱（默认配置会把 `NaN` 坐标发给 action server 还报成功）。都有锁死测试＋删除实验 |
+| 测试面 | vitest 36/36；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
+| 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md) |
 
 ## 一、最终形态
 
@@ -153,6 +166,9 @@
 
 | 文档 | 内容 |
 |---|---|
+| [README](migration/README.md) | **入口页**：按「你要做什么」给阅读顺序，并列出哪几处文档别当真 |
+| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G34（含 14 条已关闭）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
+| [glossary](migration/glossary.md) | 术语翻译表：宿主黑话、Cordis 概念、本项目自造词，以及 **`inject` 的两个意思** |
 | [upstream-rethink](migration/upstream-rethink.md) | 上游 google/artemis 三张调用面研究 + R2' 基线论证 |
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |
 | [feature-inventory](migration/feature-inventory.md) | fork 现状防丢失盘点（inventory/01-05 明细；队列控制台部分已随 R2' 降级为 fork 场景遗产，设备/智能栈部分为上游 canonical 契约） |

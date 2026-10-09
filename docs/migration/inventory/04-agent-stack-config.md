@@ -1,5 +1,7 @@
 # 迁移盘点 · 智能栈与配置
 
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+
 > 范围: worker 进程入口/启动退出契约、`artemis/agents/**`、`artemis/graph/**`、`artemis/llm/**` + `services/llm.py` + `token_meter`、`artemis/memory/**`、`artemis/tools/**`、`artemis/config/**` + `admin_console/services/model_service.py` + `task_preset_catalog.py`。
 > 基线: cc6b20c；日期: 2026-10-09。
 > 覆盖标注约定:【已覆盖 D#/S#/G#】= todo.md 已记录，此处不展开；【缺失】= todo.md 未写、无人记录即丢；【矛盾】= 与 todo.md 现有条目冲突，需修订；【部分】= 有条目但语义细节缺。
