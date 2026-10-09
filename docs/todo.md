@@ -119,12 +119,14 @@
 - ✅ **S1**：外部 SessionId 源码核实（幂等 adopt）+ live 组合验证（preset 注册、新任务默认标记、选择器可见）
 - ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
 - ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
-- 🔴 **S10 四点 live 复验（2026-10-10 执行，① 未通过）**：同实例配对差分给出定位——AutoGamer 会话发给模型的请求体里**根本没有 `tools` 键**（wire 实录两次：本地 01:33:43、01:41:11），模型转而幻觉出一个 `os` 工具并把调用写成文本 JSON；而**标准模式在同实例、同模型、同 provider 下 `tools=26` 且真跑了 pwsh**（1 轮 2 步列出目录）。所以不是宿主、不是 LM Studio、不是模型能力，是我们 preset 的工具面没组装起来。
-  - 插件自身侧全部就绪（探针实测后已撤）：`apply()` 会被调用、注册到 2 个 tool disposer、Config 七个键全生效（含 preset inline 的 `actionServerCommand`）、`dsh plugin --profile web list` 显示 link 已装、`dsh --dump-config` 合成形态正确。
+- 🔴 **S10 四点 live 复验（2026-10-10 执行，① 未通过；归属已定）**：同实例配对差分给出定位——AutoGamer 会话发给模型的请求体里**根本没有 `tools` 键**（wire 实录两次：本地 01:33:43、01:41:11），模型转而幻觉出一个 `os` 工具并把调用写成文本 JSON；而**标准模式在同实例、同模型、同 provider 下 `tools=26` 且真跑了 pwsh**（1 轮 2 步列出目录）。所以不是宿主、不是 LM Studio、不是模型能力，是我们 preset 的工具面没组装起来。
+  - **二分实验已做完（01:51）**：把 `preset-autogamer` 的 plugins 抄成 standard 的同一批顶层工具插件（Windows 腿 tool-pwsh，不含 tool-bash）**再加我们的 inner**，会话请求从 `tools=0` 变成 **`tools=16`，16 个全是内置工具，`run_device_action` 与 `report_task_status` 一个都不在**。三态里命中的正是中间那态 ⇒ 内置 `@deepseek-ai/dsh-*` 插件作为 preset 子项能解析，**而 profile 级 link 安装的外部插件名 `autogamer-device` 写在 preset 子项里不被解析**。
+  - **顺带抓到一条硬约束**：旧形态那项 `- name: "@deepseek-ai/dsh-tool-jobs"`（**只有 name、没有 id**）产不出任何工具；补上 `- id: tool-jobs` 之后 job_list/job_output/job_kill 才出现在 wire 里。⇒ **preset 的 plugins 子项必须带自己的 id**，裸 `- name:` 项会被丢掉。
+  - 插件自身侧全部就绪（临时探针实测后已撤）：`apply()` 会被调用、注册到 2 个 tool disposer、Config 七个键全生效（含 preset inline 的 `actionServerCommand`）、`dsh plugin --profile web list` 显示 link 已装、`dsh --dump-config` 合成形态正确（`--dump-config` exit 0、无 unmatched-patch 警告）。
   - 声明面否掉两个猜测：`dsh --dump-config-schema` 的 `$defs/config97`（`@deepseek-ai/dsh-agent-preset` 的 config）**确实声明了 `plugins`**，且 `required: [id, plugins]` —— 我们的子挂载形态合法，不是「字段不认识」。
-  - **未定归属**：把 root 行从 `disabled: true` 改为启用后，`apply()` 会为会话恢复跑 2 次，但那一轮没能把新的会话请求发出去（内置浏览器对 Lexical 输入框的驱动受阻：`fill` 无效、`execCommand` 只在真实 click 建立选区后生效且会累加文本），所以「工具落在 root plane 还是 preset plane」这条还没判成。10-09 那句「root 工具不进会话」属 asar 历史口径，按 D15 要重立。
+  - **取证方法（下次直接用）**：web UI 那个输入框是 Lexical，`fill` 无效；真实 click 建立选区后 `execCommand('insertText')` 才写入，且**不要在写入的同一次调用里回读 textContent**（会误判成没写进而重复注入）。发送用 `evaluate_script` 里按 aria-label 找按钮 `.click()` 最可靠——`click(uid)` 的 uid 会被同批改 DOM 的操作弄过期，我们因此白丢过两次发送。
   - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）；mock action server 的 PNG 截图被插件解析成 1080x2400（坐标修复的 live 证据）。
-  - ②效果验证 / ③闸门阻塞 / ④Inbox 连发 **均未测**——它们都以「工具真被调用」为前提，被 ① 挡住。
+  - ②效果验证 / ③闸门阻塞 / ④Inbox 连发 **仍未测**——它们都以「我们的工具真在面上」为前提，被上面这条外部插件解析缺口挡住。
 - ✅ **本轮 live 连带的两个缺陷修复**（都先实测再修，配锁死测试）：`coord.ts` 的 `byteAt` 自己调自己，`parseImageSize` 对任何输入都栈溢出，截图取尺寸这条路本来就是死的；`apply()` 里 `if (config.screenSize)` 被判据骗过——Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，于是默认配置下的坐标一路 `NaN` 发给 action server 还报成功。修法是把判定导出成 `configuredScreenSize()` 纯函数并在 `tests/apply.spec.ts` 里断言 action server 真收到的坐标（删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload）。
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时

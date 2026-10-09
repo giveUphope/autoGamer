@@ -1,10 +1,20 @@
 # Live web-profile overlay for the S10 spike (applies last via --patch).
-# Declared contract (dsh --dump-config): each web session mounts its tools
-# FROM ITS AGENT PRESET — every shipped preset row owns the tool entries its
-# agent sees, and root-plane tool rows are invisible to sessions. So the
-# plugin must be a plugin of preset-autogamer with its config INLINE on the
-# preset's plugins entry (same shape as shipped preset-standard rows), and
-# the root bundle copy is disabled here to avoid a duplicate instance.
+#
+# Single-variable experiment for "our session sends no tools field at all":
+# preset-autogamer now carries the same top-level tool set preset-standard
+# declares (Windows leg only: tool-pwsh, not tool-bash) PLUS our own
+# autogamer-device-inner. Three outcomes discriminate cleanly:
+#   tools=0        -> the whole preset-autogamer row is not being adopted
+#                     (registry/entry linkage problem, not the inner row)
+#   tools=standard -> the built-in set resolves but our inner row does not
+#   tools=+2       -> both work; the earlier empty tool plane was caused by
+#                     the preset declaring only [inner, dsh-tool-jobs]
+# The root bundle copy stays disabled so exactly one instance can register.
+#
+# NOTE on the older claim "root-plane tool rows are invisible to sessions":
+# that came from reading the packaged app.asar and is NOT re-proven here. This
+# run only shows the root-plane copy does instantiate apply() (2 disposers)
+# while the session still received no tools.
 - id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"
   config:
@@ -28,10 +38,7 @@
     default: autogamer
 
 - id: autogamer-device
-  config:
-    actionServerCommand:
-      - node
-      - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs
+  disabled: true
 
 - id: preset-autogamer
   name: "@deepseek-ai/dsh-agent-preset"
@@ -39,7 +46,44 @@
     id: autogamer
     name: AutoGamer
     description: Single-layer device execution agent (flash/pro merged, S11 router).
+    order: 50
     plugins:
+      - id: persona
+        name: "@deepseek-ai/dsh-persona"
+        config:
+          suffix: Your working directory is {{cwd}}.
+          prefix: You are a coding agent powered by the {{model}} model.
+      - id: agent-instructions
+        name: "@deepseek-ai/dsh-agent-instructions"
+        config:
+          maxBytes: 65536
+      - id: tool-pwsh
+        name: "@deepseek-ai/dsh-tool-pwsh"
+      - id: tool-fs
+        name: "@deepseek-ai/dsh-tool-fs"
+      - id: tool-fs-search
+        name: "@deepseek-ai/dsh-tool-fs-search"
+        config:
+          sampleOverCapGlobResults: false
+      - id: tool-jobs
+        name: "@deepseek-ai/dsh-tool-jobs"
+      - id: skill-filesystem
+        name: "@deepseek-ai/dsh-skill-filesystem"
+      - id: tool-skill
+        name: "@deepseek-ai/dsh-tool-skill"
+      - id: tool-ask-user
+        name: "@deepseek-ai/dsh-tool-ask-user"
+      - id: tool-todo
+        name: "@deepseek-ai/dsh-tool-todo"
+        config:
+          allowParallelInProgress: true
+      - id: tool-web
+        name: "@deepseek-ai/dsh-tool-web"
+        config:
+          fetch: true
+          searchTimeoutMs: 60000
+      - id: present
+        name: "@deepseek-ai/dsh-tool-present"
       - id: autogamer-device-inner
         name: autogamer-device
         config:
