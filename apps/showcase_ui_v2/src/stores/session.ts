@@ -342,10 +342,17 @@ export const useSessionStore = defineStore('session', () => {
           playerStore.beginRecordingFinalization(oldRunningSessionId);
         }
 
-        // 用户未显式 pin 历史会话时，自动选中运行中的会话（草稿线程除外）
+        // 用户未显式 pin 历史会话时，自动跟随**当前线程内**的运行轮次
+        // （草稿线程除外）。准入与 SSE 跟随（stores/stream.ts）共用
+        // mayAutoFollowSession：自动跟随绝不跨线程，否则用户正在对话的
+        // 线程被抢占后，下一条消息会借 submitConversationId 误入那个
+        // 线程的队列（跨线程竞态）。
         if (isActive && data.session_id && !isDraftConversation.value) {
           const currentId = currentSessionId.value;
-          if (!currentId || (!userPinnedSessionId.value && currentId !== data.session_id)) {
+          if (
+            mayAutoFollowSession(data.session_id)
+            && (!currentId || (!userPinnedSessionId.value && currentId !== data.session_id))
+          ) {
             selectSession(data.session_id, false);
           }
         }
@@ -368,7 +375,10 @@ export const useSessionStore = defineStore('session', () => {
         dismissedNoRowSessions.delete(session.session_id);
       }
       persistSessionsCache(data);
-      // 初次加载：未选中、未 pin、无运行任务且有历史时，选中最新一条（草稿线程除外）
+      // 初次加载：未选中、未 pin、无运行任务且有历史时选中最新一条（草稿线程除外）。
+      // 选中目标优先取**当前线程**的最新一轮：视图被其他线程的会话抢占后，
+      // 下一条消息会借 submitConversationId 误入那个线程的队列；当前线程
+      // 还有在场（排队/运行）表示时也不抢——等它发射时由状态轮询跟随选中。
       if (
         !currentSessionId.value &&
         !userPinnedSessionId.value &&
@@ -376,7 +386,23 @@ export const useSessionStore = defineStore('session', () => {
         agentStatus.value !== 'running' &&
         data.length > 0
       ) {
-        selectSession(data[0].session_id, false);
+        const thread = currentConversationId.value;
+        const inThread =
+          thread && !thread.startsWith('round:')
+            ? data.filter((s) => s.conversation_id === thread)
+            : [];
+        const threadHasLiveRound =
+          !!thread &&
+          sessions.value.some(
+            (s) =>
+              s.conversation_id === thread &&
+              ['pending', 'running', 'paused'].includes(
+                getTaskStatus(s, runningSessionId.value, agentStatus.value),
+              ),
+          );
+        if (!threadHasLiveRound) {
+          selectSession((inThread[0] || data[0]).session_id, false);
+        }
       }
     } catch (err) {
       console.error('Failed to fetch sessions from backend:', err);
@@ -712,6 +738,22 @@ export const useSessionStore = defineStore('session', () => {
   }
 
   /**
+   * 自动跟随准入：目标会话属于当前查看的线程（或当前没有任何线程视图）时
+   * 才允许把视图切过去。状态轮询与 SSE（stores/stream.ts）的自动跟随共用
+   * 本守卫——跨线程的自动跟随会换掉用户正在对话的线程，下一条消息就会借
+   * submitConversationId 误入那个线程的队列（跨线程竞态）。
+   * 目标线程暂不可解析（合并表示尚未到位）时同样拒绝：等下一轮轮询解析
+   * 出线程后再跟随，也不迟。
+   */
+  function mayAutoFollowSession(sessionId: string): boolean {
+    const currentThread = currentConversationId.value;
+    if (!currentThread) return true;
+    const targetThread =
+      sessions.value.find((s) => s.session_id === sessionId)?.conversation_id ?? null;
+    return targetThread !== null && targetThread === currentThread;
+  }
+
+  /**
    * 撤掉 tracking 桥接条目。用于会话终局且 DB 行不存在（落库前被停止）的
    * 任务：tracking 是它唯一的表示，不清除会被第 4 步永远复活成 running。
    */
@@ -925,6 +967,7 @@ export const useSessionStore = defineStore('session', () => {
     clearAllHistory,
     selectSession,
     clearUserPinnedSession,
+    mayAutoFollowSession,
     // 供 stores/stream.ts（M3）延迟调用的内部方法
     setSessionStatus,
     invalidateStatusSignatures,

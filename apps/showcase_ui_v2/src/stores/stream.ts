@@ -411,7 +411,14 @@ export const useStreamStore = defineStore('stream', () => {
         void sessionStore.fetchSessions();
 
         // 自动跟随：用户未显式 pin 历史会话时，切换视图到新运行会话。
-        if (!sessionStore.userPinnedSessionId && parsedData?.session_id) {
+        // 与状态轮询共用 mayAutoFollowSession 准入：绝不跨线程——他线程的
+        // 会话启动不得换走用户正在对话的线程，否则下一条消息会借
+        // submitConversationId 误入那个线程的队列（跨线程竞态）。
+        if (
+          !sessionStore.userPinnedSessionId
+          && parsedData?.session_id
+          && sessionStore.mayAutoFollowSession(String(parsedData.session_id))
+        ) {
           sessionStore.selectSession(parsedData.session_id, false);
         }
         return;
@@ -475,6 +482,8 @@ export const useStreamStore = defineStore('stream', () => {
             !sessionStore.userPinnedSessionId
             && (!curId
               || String(targetSid).trim().toLowerCase() !== String(curId).trim().toLowerCase())
+            // 与 session_started 同一准入：跨线程的启动进度不得换走当前线程
+            && sessionStore.mayAutoFollowSession(String(targetSid))
           ) {
             sessionStore.agentStatus = 'running';
             sessionStore.runningSessionId = targetSid;

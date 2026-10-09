@@ -358,6 +358,134 @@ describe('session store — 多轮会话线程（conversation）', () => {
     expect(store.isDraftConversation).toBe(false);
   });
 
+  it('自动跟随不跨线程：他线程任务运行不得抢占草稿线程视图，下一条消息仍进当前线程', async () => {
+    // 复现「消息进入错误会话队列」：新建会话（草稿 D）→ 消息1 提交进 D
+    // （他线程 X 运行中，不选中 pending 表示）→ 草稿态随 pending 解除 →
+    // 状态轮询不得借「无选中会话」把视图拽到 X，否则下一条消息会误入 X。
+    const store = useSessionStore();
+    store.selectSession(null);
+    store.selectConversation('conv-draft');
+    mockApiRoutes({
+      '/api/status': statusPayload({
+        status: 'running',
+        session_id: 'other-run-sid',
+        active_tasks: [
+          { session_id: 'other-run-sid', conversation_id: 'conv-other', goal: '他线程任务' },
+        ],
+        queue: [{ session_id: 'draft-sid', conversation_id: 'conv-draft', goal: '消息1' }],
+      }),
+      '/api/sessions': [],
+    });
+
+    await store.fetchStatus();
+
+    // 视图未被拽到他线程：草稿线程仍是提交目标
+    expect(store.currentSessionId).toBeNull();
+    expect(store.currentConversationId).toBe('conv-draft');
+    expect(store.submitConversationId).toBe('conv-draft');
+
+    // 草稿线程自己的任务发射后：同线程运行轮照常跟随选中
+    mockApiRoutes({
+      '/api/status': statusPayload({
+        status: 'running',
+        session_id: 'draft-run-sid',
+        active_tasks: [
+          { session_id: 'draft-run-sid', conversation_id: 'conv-draft', goal: '消息1' },
+        ],
+        queue: [],
+      }),
+      '/api/sessions': [],
+    });
+    await store.fetchStatus();
+    expect(store.currentSessionId).toBe('draft-run-sid');
+    expect(store.submitConversationId).toBe('conv-draft');
+  });
+
+  it('未 pin 查看历史线程时他线程任务运行不抢占视图（提交目标不被换走）', async () => {
+    const store = useSessionStore();
+    store.$patch({
+      rawSessions: [
+        {
+          session_id: 'a-sid',
+          initial_goal: 'A 的历史轮',
+          conversation_id: 'conv-a',
+          start_time: 1,
+          status: 'completed',
+        },
+      ],
+    });
+    // 无 pin（runTask 提交后也会清 pin）：纯查看状态
+    store.selectSession('a-sid', false);
+    mockApiRoutes({
+      '/api/status': statusPayload({
+        status: 'running',
+        session_id: 'x-run-sid',
+        active_tasks: [{ session_id: 'x-run-sid', conversation_id: 'conv-x', goal: 'X 任务' }],
+      }),
+      '/api/sessions': [
+        {
+          session_id: 'a-sid',
+          initial_goal: 'A 的历史轮',
+          conversation_id: 'conv-a',
+          start_time: 1,
+          status: 'completed',
+        },
+      ],
+    });
+
+    await store.fetchStatus();
+
+    expect(store.currentSessionId).toBe('a-sid');
+    expect(store.currentConversationId).toBe('conv-a');
+    expect(store.submitConversationId).toBe('conv-a');
+  });
+
+  it('fetchSessions 兜底选中优先当前线程；线程在场（排队）时不抢占视图', async () => {
+    // 队列被熔断挂起：草稿线程的消息停在 pending，runner 空闲。
+    // 此时兜底选中不得把视图拽到其他线程的最新历史会话。
+    const store = useSessionStore();
+    store.selectSession(null);
+    store.selectConversation('conv-draft');
+    mockApiRoutes({
+      '/api/status': statusPayload({
+        status: 'idle',
+        session_id: null,
+        queue: [{ session_id: 'draft-sid', conversation_id: 'conv-draft', goal: '消息1' }],
+      }),
+      '/api/sessions': [
+        {
+          session_id: 'x-row',
+          initial_goal: 'X 的历史轮',
+          conversation_id: 'conv-x',
+          start_time: 5,
+          status: 'failed',
+        },
+      ],
+    });
+    await store.fetchStatus();
+    await store.fetchSessions();
+    expect(store.currentSessionId).toBeNull();
+    expect(store.submitConversationId).toBe('conv-draft');
+  });
+
+  it('无在场表示时兜底选中回落到当前线程的最新一轮（而非全局最新）', async () => {
+    const store = useSessionStore();
+    store.selectConversation('conv-a');
+    mockApiRoutes({
+      '/api/status': statusPayload({ status: 'idle' }),
+      '/api/sessions': [
+        { session_id: 'x-new', initial_goal: 'X 最新', conversation_id: 'conv-x', start_time: 9, status: 'completed' },
+        { session_id: 'a-new', initial_goal: 'A 较新', conversation_id: 'conv-a', start_time: 5, status: 'completed' },
+        { session_id: 'a-old', initial_goal: 'A 最早', conversation_id: 'conv-a', start_time: 1, status: 'completed' },
+      ],
+    });
+
+    await store.fetchSessions();
+
+    expect(store.currentSessionId).toBe('a-new');
+    expect(store.submitConversationId).toBe('conv-a');
+  });
+
   it('stopTask 清除未落库任务的 tracking 桥接，不留 running 幽灵', async () => {
     // 任务仅在 active_tasks 表示中存在（DB 行尚未落库）
     mockApiRoutes({

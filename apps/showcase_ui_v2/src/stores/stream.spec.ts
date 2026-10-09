@@ -347,6 +347,64 @@ describe('stream store — session_started / session_ended', () => {
     expect(session.currentSessionId).toBe('pinned');
   });
 
+  it('session_started：他线程的任务启动不得换走当前线程视图（提交目标不被换走）', () => {
+    // 「消息进入错误会话队列」的 SSE 路径：用户正在 conv-a 对话，他线程 X 的
+    // 任务启动把视图（含 currentConversationId）拽到 X，下一条消息就会误入 X。
+    const session = useSessionStore();
+    session.$patch({
+      rawSessions: [
+        {
+          session_id: 'a-row',
+          initial_goal: 'A 的历史轮',
+          conversation_id: 'conv-a',
+          start_time: 1,
+          status: 'completed',
+        },
+      ],
+    });
+    session.selectSession('a-row', false); // 未 pin：纯查看状态
+    const { es } = startStream();
+
+    es.emit('session_started', { session_id: 'x-run-sid', initial_goal: 'X 任务' });
+
+    // 运行状态照常同步，但视图与提交目标留在原线程
+    expect(session.runningSessionId).toBe('x-run-sid');
+    expect(session.currentSessionId).toBe('a-row');
+    expect(session.currentConversationId).toBe('conv-a');
+    expect(session.submitConversationId).toBe('conv-a');
+  });
+
+  it('session_started：当前线程内的任务启动照常跟随', () => {
+    const session = useSessionStore();
+    session.$patch({
+      rawSessions: [
+        {
+          session_id: 'a-row',
+          initial_goal: 'A 的历史轮',
+          conversation_id: 'conv-a',
+          start_time: 1,
+          status: 'completed',
+        },
+      ],
+      pendingQueue: [
+        {
+          session_id: 'a-run-sid',
+          initial_goal: 'A 的新轮',
+          start_time: 2,
+          status: 'pending',
+          conversation_id: 'conv-a',
+        },
+      ],
+    });
+    session.selectSession('a-row', false);
+    const { es } = startStream();
+
+    es.emit('session_started', { session_id: 'a-run-sid', initial_goal: 'A 的新轮' });
+
+    expect(session.currentSessionId).toBe('a-run-sid');
+    expect(session.submitConversationId).toBe('conv-a');
+  });
+
   it('session_ended：status 映射三态（cancelled / failed / completed），未知状态不映射', () => {
     const session = useSessionStore();
     session.$patch({
@@ -546,6 +604,9 @@ function startEnv(): void {
   setActivePinia(createPinia());
   vi.clearAllMocks();
   mockApiRoutes({});
+  // 线程键持久化在 localStorage：前序用例的 selectSession 会写入 'round:s1'，
+  // 泄漏进后续用例会让自动跟随守卫把它当成"正在查看的线程"
+  localStorage.clear();
   FakeEventSource.instances = [];
   (globalThis as Record<string, unknown>).EventSource = FakeEventSource;
   vi.useFakeTimers();
