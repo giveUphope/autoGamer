@@ -174,3 +174,26 @@
 - **A 兜底**：preset 极简 instructions + spawn 工具（每轮一次廉价 LLM 调用）。B1/B2 spike 失败才退到这里；无 tool_choice 是固有跑偏风险。
 
 **任一路线通用**：composition 必须挂 dsh-tool-jobs（武装 job 启动）；`maxConcurrentJobsPerOwner` 默认 10；autogamer preset 的 approval 对 spawn 工具应为 never（它就是产品动作本身）。
+
+## 七、主流 agent harness 任务调用范式调研（2026-10-09，web 调研）
+
+> 动机：§六的 S10-B1（自定义 Agent factory driver）疑点=逆主流、维护面大。调研四个主流样本验证。
+
+| 样本 | 任务调用方式 | 会话连续性 | 队列在哪 | turn 能否绕过模型 |
+|---|---|---|---|---|
+| Claude Code | `claude -p "goal" --output-format stream-json`（headless=任务单元） | `--resume <sid>` / `--continue` | **harness 外**（CI/调用方） | ❌ 无此概念 |
+| Codex CLI | `codex exec "goal"`（"bounded agent workflow" 出结构化结果+确定性退出码） | session 参数 | harness 外 | ❌ |
+| Gemini CLI | `gemini -p "goal"` | session flag | harness 外 | ❌ |
+| ACP（编辑器↔agent） | client 启动 agent 子进程 → `session/new` → `session/prompt` 流式 | session 对象 | client 侧 | ❌（agent=LLM loop 是定义） |
+| OpenClaw 网关 | Gateway（WS server）收消息（聊天平台/webhook/cron）→ 路由给 Agent runtime | 会话由 runtime 管 | **Gateway 层**（网关自带队列/路由） | ❌ |
+| DSH | `dsh --profile headless "task"`（NDJSON 事件、exit 0/1）/ SDK stdio / web Inbox | `--session-id` resume | Inbox（harness 内，异类但可用） | ⚠️ 仅经 factory slot 自定义 driver（内部缝） |
+
+**铁律**：主流世界从不改造 harness 的 turn 模型——把「一次 harness 调用」当任务，队列/调度/重试全部在调用方或网关层。`dsh headless` 与 `claude -p`/`codex exec` 完全同构，且 DSH 已自带。
+
+**对 S10 的影响（路线重排）**：
+1. **甲·headless-per-task（主流对齐首选）**：autogamer-queue 收提交 → 自建 durable 队列（storageDomain）+ 设备闸门 → spawn `dsh --profile headless --session-id <conversation> "goal"` 为 job → NDJSON 进 output ring → 退出码判终态。会话记忆原生延续；**运行中信息面 = job roster+progress+output ring，与一期 py worker 黑盒完全同构**（G2 降级已是接受项）；QueueDock/Inbox 不承担排队（排队在插件队列）。
+2. **乙·tool-mediated（UI 体验完整选）**：即 §六路线 A——Inbox+QueueDock 原生排队 UI、turn/时间线全原生，代价每轮一次廉价本地 LLM 调用。
+3. **丙·B1 自定义 driver 降级为最后手段**（零 LLM 成本但逆主流、贴内部缝、rc.2 升级脆弱）。
+4. **二期换壳洞察**：甲方案下 **py worker ⇆ dsh headless 是对等可换壳物**——同一 job 命令从 py worker 换成 dsh headless agent（带 autogamer-device MCP 工具）即模式 a 的最平滑渐进入口，先换壳再拆逻辑。
+
+来源：[Codex as a platform](https://developers.openai.com/blog/codex-as-a-platform)、[Unlocking the Codex harness](https://openai.com/index/unlocking-the-codex-harness)、[Harness Engineering: Headless mode](https://www.zyte.com/blog/harness-engineering-3-headless-mode-the-minimal-agent-harness)、[ACP Architecture](https://agentclientprotocol.com/get-started/architecture)、[OpenClaw Architecture](https://ppaolo.substack.com/p/openclaw-system-architecture-overview)、[Claude Code headless](https://mcpmarket.com/tools/skills/headless-mode-for-claude-code)

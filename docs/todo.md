@@ -80,7 +80,8 @@
 | SDK | TS=dsh-sdk-client / Python=PyPI deepseek-harness（0.3.1>本地 rc.2，接入前对齐协议）；SDK/ACP 均 stdio 子进程——外部 HTTP 调用方需薄桥 |
 | 二期 | ➕ `dsh-mcp-client` 可直连 ARTEMIS mcp_server 作零代码工具源（与 autogamer-device 重写并行评估） |
 | 二轮·防重复自建 | **QueueDock 原生**（排队 chips/edit/remove/steer——dock 等价物已有，G19 缩 70%）；凭据管理原生（自建仅剩连通性测试）；工具超时=`ToolDefinition.timeoutMs`+exec.signal 契约；插件状态持久化=`ctx.storageDomain`；媒体展示面=`present` 卡片；二期闸门/审批缝=`tools/pre-execute` Decision；持久终端=`ctx.terminals`（persistent shell 工具不支持交互 stdin） |
-| 三轮·turn shim | **S10 新增（P0 最优先）**：用户消息→job 的触发路径三选一——自定义 Agent factory 直派【推荐，零 LLM 成本】/ `agent/pre-step` 拒绝 / tool-mediated 兜底；`ctx.jobs.start` 需挂 tool-jobs；创建 agent 不强制 model；一期范围修剪：autogamer-device 骨架推迟到 P2、G21 通知适配推迟到 P4 |
+| 三轮·turn shim | **S10 新增（P0 最优先）**：用户消息→job 的触发路径——初版三选一（自定义 Agent factory 直派/pre-step 拒绝/tool-mediated） |
+| 四轮·主流范式调研 | **S10 重排**：主流铁律=harness 调用单元即任务、队列在 harness 外（claude -p/codex exec/ACP/OpenClaw 五样本一致）——**甲·headless-per-task**（主流对齐，spawn `dsh headless` 为 job，运行中信息面与 py worker 黑盒同构，且给模式 a 换壳路径）与**乙·tool-mediated**（QueueDock 时间线完整，每轮一次廉价 LLM）成双主选；B1 自定义 driver 降级最后手段；P0 spike=甲/乙对比 |
 
 ### 对接语义（py worker ⇆ DSH 宿主契约，S1–S8）
 
@@ -128,11 +129,14 @@
 - `<trace_dir>/injected_instruction.json` `{instruction, release_loop}` 读后即删——运行中唯一指导注入通道；`release_loop` 是 `[Loop:continuous]` 里程碑唯一合法结束信号（自然语言「停下」不触发停止）
 - DSH 侧对应物（followup + control 标志？）待 spike
 
-**S10 轮次执行 shim（盘点新增，P0 最优先 spike——用户消息如何变成 job 而非普通 LLM 对话轮）**
-- 候选路线（详见 dsh-verification §六）：**B1 插件直派（推荐）**——autogamer-queue 经 Agent factory slot（`dsh-agent` 的 AgentRegistry factory provider，官方 ReactLoopAgent 同源挂法）注册自定义 driver：claim 到 next-turn 不调模型，直接闸门→spawn job→await settle→结果写回会话（tool/call+result 对）；零 LLM 成本，turn/step/tool 事件由我们发（toolview/时间线天然有数据）
-- **B2 备选**：标准 loop + preset 不配 model + `agent/pre-step` 一律拒绝（✅ 已核实：拒绝=不开 step=不调模型）——自定义代码最少，claim 后无 step 的消息归属需 spike 核实
-- **A 兜底**：preset 极简 instructions + spawn 工具（tool-mediated）——每轮付一次廉价 LLM 调用；无 tool_choice（已核实采样面无强制）有跑偏风险，B1/B2 失败才退到这里
-- ✅ 通用核实：创建 agent **不强制 model**（dispatch 前才要求，`agent/request` 可补）；composition **必须挂 `dsh-tool-jobs`**（武装 `ctx.jobs.start()`；`completionDelivery: quiet` 关模型通知）；inbox 事件 `agent/inbox/inserted/claimed/discarded` host 侧可订阅；autogamer preset 对 spawn 工具的 approval 应为 never（它就是产品动作）
+**S10 轮次执行 shim（主流范式调研后重排——B1 自定义 driver 降级，dsh-verification §七）**
+
+> 主流铁律（Claude Code `-p` / Codex `exec` / Gemini `-p` / ACP / OpenClaw 五样本一致）：**harness 调用单元 = 任务本身，队列/调度永远在 harness 外部，turn = LLM 调用天经地义**。DSH 的 `dsh --profile headless` 与 `claude -p` 完全同构且已自带。
+
+- **甲·headless-per-task（主流对齐首选）**：autogamer-queue 收提交（SDK/webhook）→ 自建 durable 队列（`ctx.storageDomain`）+ 设备闸门 → spawn `dsh --profile headless --session-id <conversation> "goal"` 为 DSH job → NDJSON 进 output ring → 退出码/结构化输出判终态；会话记忆原生延续（--session-id resume）；运行中信息面=job roster+progress+output ring（与一期 py worker 黑盒同构，G2 降级已是接受项）；QueueDock/Inbox 不承担排队。**二期换壳路径**：同一 job 命令从 py worker 换成 dsh headless agent——模式 a 的最平滑渐进入口（先换壳再拆逻辑）
+- **乙·tool-mediated（UI 体验完整选）**：消息进 Inbox（QueueDock 原生排队 UI）+ preset 极简 instructions + spawn 工具 await settle——turn/时间线/notice 全原生；代价每轮一次廉价本地 LLM 调用 + 跑偏风险（pre-execute 把该 preset 工具白名单限到 spawn 可缓解）
+- **丙·B1 自定义 Agent factory driver = 最后手段**（零 LLM 成本但逆主流、贴内部缝、rc.2 升级脆弱）——仅当甲乙均被 spike 证伪
+- P0 S10 spike = **甲/乙对比**：甲验证 headless job 全链路（session resume/NDJSON/退出码/kill）；乙验证 preset+guard 约束下模型是否稳定首调 spawn 工具（本地廉价模型实测）
 
 ### 落地差距核查（G1–G29，按此方案实际落地还须调整；G8+ 来自 2026-10-09 盘点审计）
 
