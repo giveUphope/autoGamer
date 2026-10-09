@@ -99,7 +99,7 @@
 
 1. ~~allowed_fails 默认值~~ → **工程默认 = 1**（保持现状「单次环境级失败即挂」），P1 落地时若要改再提。
 2. ~~job 侧终态判定方式~~ → **推荐采纳：读同一 SQLite**（S10 spike 时顺带验证插件侧只读连接可行性）。
-3. 队列状态信源（G18）→ **随 S10 spike 结果定**（甲=roster+progress，乙=QueueDock 原生）。
+3. ~~队列状态信源（G18）~~ → ✅ 已随 S10 裁定关闭：乙路线（插件只提供内容）=QueueDock/时间线原生 + job roster 看设备级进度。
 4. ~~二期是否复刻 helper~~ → ✅ **用户决策：复刻 helper**（保留 Mobly/Appium 共存差异化能力）。
 5. LLM 暂停的 DSH 呈现（G12）→ 运维手册成文（删文件=resume），一期不建 UI；低优先级。
 6. ~~run_adb_command 审批方式~~ → ✅ **用户决策：整工具 ask**（allowed-once）起步，只读白名单二期再评估。
