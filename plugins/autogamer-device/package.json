@@ -3,6 +3,11 @@
   "version": "0.1.0",
   "private": true,
   "description": "AutoGamer device-execution content plugin for DSH: run_device_action router tool, device gate/breaker, and the autogamer agent preset.",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
   "type": "module",
   "main": "./dist/index.js",
   "scripts": {

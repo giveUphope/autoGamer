@@ -31,10 +31,10 @@ Config热重载：改 `cordis.patch.yml` 免重启；改本包代码后需重启
 
 ## P0 spike checklist
 
-- [ ] **安装流**：`dsh plugin add` 成功 + `--dump-config` 出现本包层 + preset child-entry 形状验证（`cordis.patch.yml` 的 preset 声明是按 README 推写的，需对照真实加载结果）
-- [ ] **S10 四点**：①本地廉价模型 + 白名单下首调 `run_device_action` 稳定性；②动作效果验证信号（当前以 ActionResult ok 为准，截图差分待接）；③pending kick；④Inbox 连发串行在 QueueDock 可见
-- [ ] **MCP 直连质量**：`actionServerCommand` 指向 py action server（`ARTEMIS_MOCK_DRIVER=1` 可离线先跑）→ flash skill 跑 2-3 个真实任务对比上游 flash 质量——**spike 过 = 直通，不过 = 回退三段式（git 历史）**
-- [ ] **参数面核对**：`src/tools/runDeviceAction.ts` 的 PY_TOOL 映射与 py action server 实际参数名逐个核对（来源：盘点 03 §1.8，未逐一实测）
+- [x] **安装流（已通过，含三处实测修正）**：`dsh plugin add link:...` 成功 + 层进 `dsh.profile.bundles` + `--dump-config` 出现本包层（`# == autogamer-device`）、exit 0。实测修正：①package.json 必须声明 `dsh.bundle.patch`（缺→装成普通依赖不进层）；②bundle patch 是 **`- insert:` 列表**语法（id 定向写法会 unmatched）；③`dsh plugin add` 的 file:/link: 路径要给 **Windows 形态**（pnpm 是原生进程）；④remove→add 才会触发 manifest 重评估
+- [x] **MCP 直连（离线段已通过）**：ActionClient ↔ `uv run artemis mcp --type adb` 全链路——13 工具面精确匹配、结果归一化（字符串 Success/Failed/Error、`Error executing tool` 变体）、adb-down 场景正确分类为 environment。真实设备质量对比待跑（需 adb+设备）
+- [x] **参数面核对（已完成，以 py 源码为准）**：真实工具名 tap/long_press_on/focus_and_input_text（非 click/input_text）；**legacy 像素坐标契约**——0-1000→px 换算在 TS 侧（`src/coord.ts` + 探针截图取尺寸）；press_key 用 `KEYCODE_*` 全名
+- [ ] **S10 四点**：①本地廉价模型 + 白名单下首调 `run_device_action` 稳定性；②动作效果验证信号（当前以 ActionResult ok 为准，截图差分待接）；③pending kick；④Inbox 连发串行在 QueueDock 可见（需 live profile + 模型）
 - [ ] **Config schema**：当前为 plain-merge 默认值；接入 schemastery 后补 `Config` 导出
 
 ## Notes
