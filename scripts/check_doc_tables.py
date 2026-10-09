@@ -17,6 +17,7 @@ import re
 import sys
 
 DEFAULTS = [
+    r"D:/DEV/autoGamer/AGENTS.md",
     r"D:/DEV/autoGamer/docs/todo.md",
     r"D:/DEV/autoGamer/docs/migration/upstream-plugin-forms.md",
     r"D:/DEV/autoGamer/docs/migration/plugin-contract-rules.md",
