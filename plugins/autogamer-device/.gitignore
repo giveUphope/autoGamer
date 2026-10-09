@@ -7,3 +7,6 @@ spike/sandbox/
 spike/proxy-dump.log
 spike-run*.ndjson
 scripts/proxy-dump.log
+spike/cookies.txt
+spike/auth-page.html
+spike/web-server*.log
