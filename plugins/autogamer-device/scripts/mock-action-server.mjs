@@ -39,12 +39,16 @@ function handle(message) {
     case "tools/call": {
       const name = params?.name ?? "unknown";
       console.error(`[mock] tools/call ${name} ${JSON.stringify(params?.arguments ?? {})}`);
-      return {
-        id,
-        result: {
-          content: [{ type: "text", text: "Success" }],
-        },
-      };
+      const delay = Number(process.env.MOCK_DELAY_MS ?? 0);
+      if (delay <= 0) {
+        return { id, result: { content: [{ type: "text", text: "Success" }] } };
+      }
+      // Async reply after the delay: exercises gate blocking and concurrent
+      // turns (S10-③) without a real device.
+      setTimeout(() => {
+        write({ id, result: { content: [{ type: "text", text: "Success" }] } });
+      }, delay);
+      return undefined;
     }
     case "ping":
       return { id, result: {} };

@@ -12,42 +12,42 @@ import { unwrapText } from "./mcpText.js";
 import type { DshContext } from "./dsh-types.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction } from "./tools/runDeviceAction.js";
+import { z } from "zod";
 
 export const name = "autogamer-device";
+
+/**
+ * Declaring Config is REQUIRED for the loader to apply our patch row's
+ * config: without a schema the row's config is treated as absent
+ * (Config.listConfigs status=absent) and the preset-scope child mount
+ * silently skips it — the root cause of the missing-tools spike finding.
+ */
+export const Config = z.object({
+  actionServerCommand: z
+    .array(z.string())
+    .default(["python", "-m", "artemis.interfaces.cli.main", "mcp", "--type", "adb"]),
+  actionServerEnv: z.record(z.string(), z.string()).default({}),
+  defaultDeviceKey: z.string().default("default"),
+  allowedFails: z.number().default(1),
+  breakerCooldownMs: z.number().default(30_000),
+  actionCallTimeoutMs: z.number().default(30_000),
+  screenSize: z.tuple([z.number(), z.number()]).optional(),
+});
 
 /** ctx.tools is the only hard dependency; everything else is ours. */
 export const inject = ["tools"];
 
-export interface PluginConfig {
-  /** argv of the upstream py action server (spike-adjustable). */
+export type PluginConfig = {
   actionServerCommand: string[];
   actionServerEnv: Record<string, string>;
   defaultDeviceKey: string;
   allowedFails: number;
   breakerCooldownMs: number;
   actionCallTimeoutMs: number;
-  /** Optional static override; probed from a screenshot when absent. */
-  screenSize: [number, number] | undefined;
-}
-
-const DEFAULTS: PluginConfig = {
-  // `--type adb` is the real flag name (verified via `artemis mcp --help`;
-  // earlier notes said `--server`).
-  actionServerCommand: ["python", "-m", "artemis.interfaces.cli.main", "mcp", "--type", "adb"],
-  actionServerEnv: {},
-  defaultDeviceKey: "default",
-  allowedFails: 1,
-  breakerCooldownMs: 30_000,
-  actionCallTimeoutMs: 30_000,
-  screenSize: undefined,
+  screenSize?: [number, number];
 };
 
-export function mergeConfig(input?: Partial<PluginConfig>): PluginConfig {
-  return { ...DEFAULTS, ...(input ?? {}) };
-}
-
-export async function apply(ctx: DshContext, input?: Partial<PluginConfig>): Promise<void> {
-  const config = mergeConfig(input);
+export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
   const gate = new DeviceGate();
   const breaker = new DeviceBreaker({
     allowedFails: config.allowedFails,

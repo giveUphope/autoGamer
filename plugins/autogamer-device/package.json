@@ -15,7 +15,9 @@
     "test": "vitest run"
   },
   "dependencies": {
-    "@modelcontextprotocol/client": "2.0.0"
+    "@deepseek-ai/schemastery": "~3.18.4",
+    "@modelcontextprotocol/client": "2.0.0",
+    "zod": "^4.6.5"
   },
   "peerDependencies": {
     "@deepseek-ai/dsh-agent-preset": "0.2.0-rc.2",
