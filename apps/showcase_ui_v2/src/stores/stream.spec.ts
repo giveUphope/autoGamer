@@ -458,21 +458,28 @@ describe('stream store — session_started / session_ended', () => {
     expect(apiGetMock).toHaveBeenCalledWith('/api/sessions/s1/checks');
   });
 
-  it('session_ended：无剩余 activeTasks 时从 pending 队列队首提升；全空回 idle', () => {
+  it('session_ended：无剩余 activeTasks 时回 idle，排队轮不得被提升为运行态', () => {
+    // 队列被熔断挂起时（本轮结束、下一轮尚未派发），把队首 pending 轮标成
+    // running 会让它所属的其他会话平白显示「运行中」，还会把排队轮渲染成
+    // 空运行轮。运行态只属于真正在跑的 activeTasks。
     const session = useSessionStore();
     session.$patch({
       activeTasks: [{ session_id: 's1', goal: 'g1' }],
       pendingQueue: [{ session_id: 'q1', initial_goal: 'queued goal', start_time: 1, status: 'pending' }],
       runningSessionId: 's1',
+      agentStatus: 'running',
     });
     const { es } = startStream();
 
     es.emit('session_ended', { session_id: 's1', status: 'completed' });
-    expect(session.agentStatus).toBe('running');
-    expect(session.runningSessionId).toBe('q1');
-    expect(session.runningGoal).toBe('queued goal');
+    // pending 队列虽非空，但没有真正在跑的任务 → 全局回 idle
+    expect(session.agentStatus).toBe('idle');
+    expect(session.runningSessionId).toBeNull();
+    expect(session.runningGoal).toBeNull();
+    // pending 轮保持排队态，不被标成 running
+    expect(session.sessions.find((s) => s.session_id === 'q1')?.status).toBe('pending');
 
-    // pending 队列为空 → 回 idle
+    // 全空同样回 idle
     session.$patch({ pendingQueue: [] });
     es.emit('session_ended', { session_id: 'q1', status: 'completed' });
     expect(session.agentStatus).toBe('idle');

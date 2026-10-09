@@ -433,17 +433,15 @@ export const useStreamStore = defineStore('stream', () => {
             (at) => at.session_id !== endedId,
           );
         }
-        // 按剩余 activeTasks / pending 队列推导全局运行状态。
+        // 按剩余 activeTasks 推导全局运行状态。pending ≠ running：排队中的
+        // 轮次（尤其队列被熔断挂起、暂无派发时）不得被提升为运行态——那会
+        // 让队首所属的其他会话平白显示「运行中」，还会把排队轮渲染成空
+        // 运行轮。真正派发时 session_started / 状态轮询会立即接手。
         const remaining = sessionStore.activeTasks;
         if (remaining.length > 0) {
           sessionStore.agentStatus = 'running';
           sessionStore.runningSessionId = remaining[0].session_id || null;
           sessionStore.runningGoal = remaining[0].goal || null;
-        } else if (sessionStore.pendingQueue.length > 0) {
-          const nextPending = sessionStore.pendingQueue[0];
-          sessionStore.agentStatus = 'running';
-          sessionStore.runningSessionId = nextPending.session_id;
-          sessionStore.runningGoal = nextPending.initial_goal || null;
         } else {
           sessionStore.agentStatus = 'idle';
           sessionStore.runningSessionId = null;
