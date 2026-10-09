@@ -118,7 +118,7 @@
 - ✅ **S1**：外部 SessionId 源码核实（幂等 adopt）+ live 组合验证（preset 注册、新任务默认标记、选择器可见）
 - ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
 - ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
-- ⏳ **S10 四点 live 复验（唯一剩余）**：Config schema 根因修复已就位（插件无 Config 声明时 patch 行 config=absent、preset 子挂载被跳过——creator 模式 cordis_inspect 实锤），启动 `dsh --profile web --patch spike/web-live.patch.yml` → 新会话（默认 AutoGamer）→ 发设备任务 → 确认 run_device_action 触发（mock action server 已带延迟）→ 顺带观察 Inbox 连发（④）与并发闸门（③）
+- ⏳ **S10 四点 live 复验（唯一剩余）**：Config schema 根因修复已就位（插件无 Config 声明时 patch 行 config=absent、preset 子挂载被跳过——creator 模式 cordis_inspect 实锤），启动 `dsh --profile web --patch spike/web-live.patch.yml` → 新会话（默认 AutoGamer）→ 发设备任务 → 确认 run_device_action 触发（mock action server 已带延迟）→ 顺带观察 Inbox 连发（④）与并发闸门（③）。注：ZCode IAB 自动化浏览器已卡死（对健康服务导航超时），此步需用系统浏览器执行或重启 ZCode 后再试
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
