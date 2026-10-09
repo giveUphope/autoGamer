@@ -12,7 +12,7 @@
 - **py 复用**（零重写）：`mcp_server` 动作面（13 工具）+ 驱动栈（adb/uiautomator2）+ 诊断栈 + clients/controllers + utils CV；录屏后补（D12）
 - **不迁移**：py 智能栈（langgraph 多 agent——由 S11 单层替代）、旧控制台（原地只读保留）、artemis-client（无外部调用方）
 
-## 二、决策记录（现行有效，D1-D16）
+## 二、决策记录（现行有效，D1-D17）
 
 | # | 决策点 | 结论 |
 |---|---|---|
@@ -22,7 +22,7 @@
 | D4 | 积压策略 | Inbox 无上限原生，零自建 |
 | D5 | 重启恢复 | Inbox pending 原生恢复待派 + 插件启动显式 kick（已核实的唯一缺口）；动作无断点续跑（与上游一致） |
 | D6 | 版本管控 | peerDependencies 声明 + runtime 强制校验 + conformance 契约测试；自研包精确 pin |
-| D7 | 引入形态 | **bundle 经 `plugin_manager install_bundle` 安装**（官方明令禁止手写 profile 的 package.json / cordis.patch.yml，也不许在 profile 目录跑 pnpm）；preset 声明由 bundle 补丁承载；CLI `--patch` 只当临时实验层；**配置层热重载、代码层冷重启**（`patchReload` 字段 rc.2 无实现）；**preset 改动只影响之后创建的 Agent**——现有会话保留其启动时的 revision，复验必须开新会话 |
+| D7 | 引入形态 | **三层分开**（守则 R2）：① 禁——手写 profile 目录内的 `package.json` / `cordis.patch.yml` 或在 profile 目录跑 pnpm；② 允许且为开发期主路径——`dsh --patch <path>`（`dsh --help` 明列的官方 overlay，可重复）；③ 交付形态——`plugin_manager install_bundle` 或 Web 侧边栏「插件」面板（面板具备 install/enable/disable/retry/compose 能力）。preset 声明由 bundle 补丁承载（注册表不扫目录、不接受路径）；**配置层热重载、代码层冷重启**（`patchReload` 字段 rc.2 无实现）；**声明只影响之后创建的 Agent**，复验必须开新会话（守则 R7） |
 | D8 | 技术栈 | 插件 TS；py 复用动作面/驱动/诊断/helper/录屏(后补)；**langgraph 智能栈不迁移**（由 S11 单层替代） |
 | D9 | 迁移路径 | **R2' 直通插件**（P0 即插件形态，质量 spike 把关；不过→回退三段式双跑，历史方案见 git）；一期红线=旧控制台**原地只读保留**（不删除） |
 | D10 | 产品形态 | 项目=DSH 插件，**无独立外部 HTTP API 面**：不建 HTTP→SDK 桥、artemis-client 直接删、webhook 通知按需再建 |
@@ -32,6 +32,7 @@
 | D14 | 智能层 | **单层执行路由（S11）**：单 agent + 代码强制路由器 + validator/checker 只读 subagent；pro 一期内实现、调用逻辑保真；不做反思式自检（业界 SOTA 立场） |
 | D15 | 契约核实口径 | **只用声明面**：`dsh --dump-config-schema` / `--help` / 随包 README / 已安装 npm 包产物；**禁止解包 app.asar** 去读宿主内部代码（2026-10-10 用户裁定）。既有 [dsh-verification](migration/dsh-verification.md) 里 37 处包内代码行引用属旧口径，沿用前须按声明面重验；README 与 CLI 旗标类证据（28 处）本已合规 |
 | D16 | 插件分层与 realm | 官方口径（[upstream-plugin-forms](migration/upstream-plugin-forms.md) 二.6）：Host 插件提供共享服务（tools registry、agent loop、sessions 等），**preset 插件只向这些 registry 贡献 scoped tools / persona / prompt 片段 / policy**；preset 内提供服务的插件**必须与其全部消费方同处一个 `cordis:group` + `isolate` realm**，条目局部隔离不沿 Agent 注册 scope 传播；注册表 `mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**直接拒绝整个 preset 挂载**（源码口径 `mount.ts:193,212-213`） |
+| D17 | 自举引入 | 给 `preset-autogamer` 挂 `@deepseek-ai/dsh-plugin-manager/tools`（官方 shipped preset 里该行的 disabled 写作 `!!js '!ctx.get('profileContext')'`，即 UI 会话中可用），让 AutoGamer agent 能对自己执行 `install_bundle`。这是上游「让 Agent 给自己造插件」的现成路径，也是把引入流从手工迁到自动的落点；执行细节与红线见 [守则 R2 / R9](migration/plugin-contract-rules.md) |
 
 ## 三、对接语义（S1-S11，R2' 最终版）
 
@@ -102,7 +103,8 @@
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
 | G28 | parking + 全局并发 N | 保留：闸门工具内部语义 |
-| G30 | preset 工具可见性（P0 当前阻塞点） | 新开：两个工具在 `register()` 成功之后仍不进 Agent 工具面。定性次序按官方诊断走——roster 的 `enabled`/`fiberPhase`/诊断文本，`cordis_inspect_query` 的 `Tool` 项，`inspectCompositions()` 的 leakedServices；命中「服务泄漏进 root realm」就按 D16 把插件包进 `cordis:group` + `isolate`，命中「行激活失败」则整个 preset 本就被拒绝挂载 |
+| G30 | preset 工具可见性（P0 当前阻塞点） | 新开：两个工具在 `register()` 成功之后仍不进 Agent 工具面。按守则 R8 的形态特征先分流——「连 `tools` 键都没有」= preset 整体被拒绝挂载（`mount.ts:193,212-213` 的 fail-fast），而「面上少我们两个」= 单个子项问题；定性次序按官方诊断（R9）：roster 的 `enabled`/`fiberPhase`/诊断文本 → `cordis_inspect_query` 的 `Tool` → `inspectCompositions()` 的 leakedServices。**每轮复验前必须先证会话晚于本次生效（R7），否则该轮不作数** |
+| G31 | 引入流仍靠手工 | 新开：现在用 `dsh plugin add file:`（= pnpm 转发，只证明装了没证明生效）+ `--patch` overlay 起步。交付形态要迁到 `install_bundle`，落点见 D17（让 agent 自己装）；`dsh-plugin-manager` 自称 shared by dsh CLI 但本机 `dsh --help` 只列 `dsh` 与 `dsh plugin` 两种用法，**这条尚未定论**（守则待补 2） |
 | 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -132,6 +134,8 @@
   - ②效果验证 / ③闸门阻塞 / ④Inbox 连发 **仍未测**——它们都以「我们的工具真在面上」为前提，被上面这条外部插件解析缺口挡住。
 - ✅ **本轮 live 连带的两个缺陷修复**（都先实测再修，配锁死测试）：`coord.ts` 的 `byteAt` 自己调自己，`parseImageSize` 对任何输入都栈溢出，截图取尺寸这条路本来就是死的；`apply()` 里 `if (config.screenSize)` 被判据骗过——Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，于是默认配置下的坐标一路 `NaN` 发给 action server 还报成功。修法是把判定导出成 `configuredScreenSize()` 纯函数并在 `tests/apply.spec.ts` 里断言 action server 真收到的坐标（删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload）。
 - ✅ **联网调研上游插件形态（2026-10-10，正文见 [upstream-plugin-forms](migration/upstream-plugin-forms.md)）**：逐字读了 `editing-cordis-compositions` / `cordis-plugin-development` / `cordis-composition-reference` 三个官方 skill、`agent-preset` 与 `agent-preset-registry` 的 README、`core/scope` README、`mount.ts` 源码，以及 shipped `presets/minimal.patch.yml` 与 `standard.patch.yml`。对本方案有决定作用的三条：①preset 只能由 **bundle 补丁**承载且要经 `plugin_manager install_bundle`（官方明令禁止手写 profile 的 package.json / cordis.patch.yml）；②**声明只影响之后创建的 Agent**，现有会话保留其启动时的 revision；③`mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**拒绝整个 preset 挂载**（源码 `mount.ts:193,212-213`）。据此修订 D7、新增 D16 与 G30，补 S5 注册可见性与 S8 版本差。`capability-seams` / `cookbook/adding-a-tool` / `references/practices.md`（官方列为「选扩展点前必读」）等已取回**未读**，下一轮先读它。
+- ✅ **守则已成文（[plugin-contract-rules](migration/plugin-contract-rules.md) R1-R12）**：把这次调研与踩坑换成「每条都带出处口径和可执行判据」的红线。其中三条专门防我再次自伤——R6 每次改 patch 必须 `--dump-config` exit 0 且 grep 不到 unmatched；R7 复验前必须证明会话创建时刻晚于本次生效，否则该轮不作数；R9 判「生效」只认官方检查器（install 的 `application`/`warnings`、`list_plugins` 的 `enabled`/`fiberPhase`、roster 诊断、`cordis_inspect_query`、`inspectCompositions`），**不认**日志、进程列表、`dsh plugin list`、也不认 wire 反推。据此把 D7 重写为三层（并纠正上一轮两处误判：`--patch` 其实是 `dsh --help` 明列的官方 overlay；侧边栏「插件」面板能 install/enable/disable/retry，不是只读页），另加 D17 与 G31
+- 🔶 **G30 定性的下一步（全程按守则，不再碰浏览器输入框）**：① 在 `preset-autogamer` 的 plugins 里加 `tool-plugin-manager`（照官方 shipped 写法 `disabled: !!js '!ctx.get('profileContext')'`），让 agent 能自装、能自查；② 用 roster 诊断与 `cordis_inspect_query` 的 `Tool` 分流「preset 整体被拒」还是「inner 单项问题」；③ 若 `inspectCompositions()` 的 leakedServices 非空，按 R8 把插件包进 `cordis:group` + `isolate`。每步前置都是 R6 + R7
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
@@ -143,3 +147,4 @@
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |
 | [feature-inventory](migration/feature-inventory.md) | fork 现状防丢失盘点（inventory/01-05 明细；队列控制台部分已随 R2' 降级为 fork 场景遗产，设备/智能栈部分为上游 canonical 契约） |
 | [upstream-plugin-forms](migration/upstream-plugin-forms.md) | 上游公开文档与源码调研：插件 / preset / 工具形态的官方口径（D7 改写、D16、G30 的依据），含本轮收回的两条错误归因、官方活门禁判据清单与「已取回未读」清单 |
+| [plugin-contract-rules](migration/plugin-contract-rules.md) | **插件契约守则 R1-R12**：每条带出处口径与可执行判据，动手改插件 / preset / patch 前先对照；R2 分三层看改配置、R7 复验必须新会话、R8 realm 与 fail-fast、R9 只认官方检查器，并记录了两处对本文档早期判断的自我纠正 |
