@@ -31,9 +31,9 @@
    - **pro 模式一期内实现（用户已决）**：checker/validator 以 DSH subagent 承接，**调用逻辑保真**——上游语义 = Operator 产出动作 → validator 执行前安全网 → blocked/failed 终态动作作为 `open_incident` 回 Operator 自行恢复 → checker 零副作用只读判定 → verify 失败回流（预算内）、assert 失败只记 tests.failed 不回流（盘点 04 §2.4/2.5 为保真清单）
    - 诊断/模拟器：上游 `core/diagnostics`（emulator_manager 管本地 AVD 生命周期——playground 的 Cuttlefish 编排在单机版对应物）→ admission 工具
 2. **DSH 原生承接**：Inbox 队列、调度、web UI、jobs 监管、审批（run_adb_command 整工具 ask）、凭据、超时、沙箱、present
-3. **设备模型分叉（待用户决策，影响闸门复杂度）**：
-   - **共享真机**（本地单机现状）→ 完整闸门+熔断+准入（保留盘点 01 §1.2 全部语义）
-   - **每会话专属模拟器**（上游 playground 模型；emulator_manager 原生管 AVD）→ 闸门退化为薄校验，复杂度大幅下降
+3. **设备模型分叉（✅ 已决策：共享真机+完整闸门）**：
+   - **共享真机**（一期选定）：本地单机现状——run_device_task 内保留完整闸门+熔断+准入（盘点 01 §1.2 全部语义，工具内部承载）
+   - 每会话专属模拟器（上游 playground 模型；emulator_manager 原生管 AVD）→ 二期演进项，届时闸门退化为薄校验
 4. **录屏**：后续补齐（用户已决）
 5. **旧控制台**：原地只读保留（一期红线不变）；showcase_ui_v2 的近 6 提交行为断言不再需要接棒者（队列 UI 由 QueueDock 原生）
 

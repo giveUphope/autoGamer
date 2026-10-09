@@ -85,7 +85,7 @@
 | 四轮·主流范式调研 | 五样本铁律：harness 调用单元即任务、队列在 harness 外（claude -p/codex exec/ACP/OpenClaw）——**但该结论只适用于无常驻 UI/durable inbox 的 CLI 工具** |
 | 五轮·架构裁定 | ✅ 用户裁定：**插件只提供内容供 DSH 调用**（队列/调度归 DSH，永远适配版本迭代）——S10 定为**乙·tool-mediated**（Inbox=队列、agent loop=调度、QueueDock/时间线原生）；甲·headless-per-task 否决（自建队列违背 D2）；B1 维持最后手段；插件保留=设备闸门/熔断/准入探测（工具内部资源管理）+ 启动 pending kick（领域粘合） |
 | 六轮·内容化收缩 | 按五轮原则复扫剩余自建：**autogamer-queue 插件取消**（队列=Inbox，闸门/熔断并入 autogamer-device 工具内）；**autogamer-media 独立插件取消**（present/deliverables 原生承载，webServer 路由按需再建）；G13 幂等/防抖→工具内可选几十行；G19 自定义轮次视图→取消；孤儿对账/pending kick 定位=py 时代粘合（随 py worker 退役）；**一期插件 = 仅 autogamer-device 一个包**（工具 + 设备资源管理 + preset） |
-| 七轮·上游重构 | ✅ 用户触发：从 google/artemis 上游（fork 领先 92 提交，智能栈基本未动）重新思考——**上游三张调用面**：MCP（README 主打「给 AI 助手的设备工具集」，与 DSH 插件内容定位同构）/ playground 云端（**每会话一容器+专属 Cuttlefish，无共享队列**）/ 本地控制台（fork 强化的共享真机形态）；容器 env 契约仅 4 项；**方案基线切换见 [upstream-rethink](migration/upstream-rethink.md)**：R2'直通插件（MCP 复用 py 执行层 + flash=loop+skills + pro=subagent 保真调用逻辑一期实现 + 录屏后补），设备模型（共享真机 vs 每会话专属模拟器）待决策 |
+| 七轮·上游重构 | ✅ 用户触发：从 google/artemis 上游（fork 领先 92 提交，智能栈基本未动）重新思考——**上游三张调用面**：MCP（README 主打「给 AI 助手的设备工具集」，与 DSH 插件内容定位同构）/ playground 云端（**每会话一容器+专属 Cuttlefish，无共享队列**）/ 本地控制台（fork 强化的共享真机形态）；容器 env 契约仅 4 项；**方案基线切换见 [upstream-rethink](migration/upstream-rethink.md)**：R2'直通插件（MCP 复用 py 执行层 + flash=loop+skills + pro=subagent 保真调用逻辑一期实现 + 录屏后补）；✅ 用户决策：**设备模型=共享真机+完整闸门**（一期保留盘点 01 §1.2 全部闸门/熔断/准入语义，工具内部承载），每会话专属模拟器（上游 playground 模型）列为二期演进项 |
 
 ### 对接语义（py worker ⇆ DSH 宿主契约，S1–S8）
 
