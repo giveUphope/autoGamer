@@ -22,6 +22,21 @@ export function defineReportTaskStatus(): ToolDefinitionInput {
       tests_failed: { type: "number", description: "Count of assertion failures observed during the task." },
     },
     timeoutMs: 5_000,
+    output: {
+      schema: {
+        type: "object",
+        properties: {
+          status: { type: "string" },
+          tests_failed: { type: "number" },
+          outcome: { type: "string" },
+        },
+        required: ["status", "outcome"],
+      },
+      render: (_args, value) => {
+        const record = (value ?? {}) as Record<string, unknown>;
+        return `task outcome recorded: ${String(record.outcome ?? record.status ?? "unknown")}`;
+      },
+    },
     async execute(args) {
       const status = args.status as string;
       const testsFailed = typeof args.tests_failed === "number" ? args.tests_failed : 0;

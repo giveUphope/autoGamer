@@ -40,6 +40,11 @@ export interface ToolDefinitionInput {
   parameters: Record<string, ToolParameterSpec>;
   timeoutMs?: number;
   execute(args: Record<string, unknown>, exec: ToolExec): Promise<unknown>;
+  /** Required by dsh-tools: declared result shape + model-facing rendering. */
+  output: {
+    schema: Record<string, unknown>;
+    render(args: Record<string, unknown>, value: unknown): string;
+  };
 }
 
 /** Subset of defineTool we rely on; imported from @deepseek-ai/dsh-tools at runtime. */

@@ -1,0 +1,44 @@
+# S10 spike overlay for the headless profile (applies last via --patch).
+# Root-level inserts activate but are NOT visible to the headless agent —
+# its tool scope is the dsh-base group. So the registry/preset/plugin rows
+# are inserted INTO that group; the root copy of the plugin is disabled to
+# avoid duplicate ids.
+- id: llm-pi-ai
+  name: "@deepseek-ai/dsh-llm-pi-ai"
+  config:
+    providers:
+      local:
+        apiKeyEnv: LOCAL_API_KEY
+        api: openai-completions
+        baseURL: http://127.0.0.1:1235/v1
+        models:
+          - id: qwen3.6-35b-a3b-mtp
+
+- id: agent-default-model
+  name: "@deepseek-ai/dsh-agent-default-model"
+  config:
+    provider: local
+    model: qwen3.6-35b-a3b-mtp
+
+- id: autogamer-device
+  disabled: true
+
+- id: "@deepseek-ai/dsh-base"
+  insert:
+    - id: agent-preset-registry
+      name: "@deepseek-ai/dsh-agent-preset-registry"
+      config:
+        default: autogamer
+    - id: preset-autogamer
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: autogamer
+        plugins:
+          - name: autogamer-device-inner
+          - name: "@deepseek-ai/dsh-tool-jobs"
+    - id: autogamer-device-inner
+      name: autogamer-device
+      config:
+        actionServerCommand:
+          - node
+          - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs

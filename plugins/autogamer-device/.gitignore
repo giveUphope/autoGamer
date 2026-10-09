@@ -1,2 +1,9 @@
 node_modules/
 dist/
+spike/run*.ndjson
+spike/run*.stderr
+spike/proxy.stdout
+spike/sandbox/
+spike/proxy-dump.log
+spike-run*.ndjson
+scripts/proxy-dump.log

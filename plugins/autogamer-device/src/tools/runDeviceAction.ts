@@ -150,6 +150,24 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       reason: { type: "string", required: true, description: "One sentence on why this action moves the task forward." },
     },
     timeoutMs: 45_000,
+    output: {
+      schema: {
+        type: "object",
+        properties: {
+          result: { type: "string", description: "Executor output text." },
+          ok: { type: "boolean" },
+          code: { type: "string" },
+          message: { type: "string" },
+        },
+      },
+      render: (_args, value) => {
+        const record = (value ?? {}) as Record<string, unknown>;
+        const parts = Object.entries(record)
+          .filter(([, v]) => v !== undefined)
+          .map(([k, v]) => `${k}=${typeof v === "string" ? v.slice(0, 200) : JSON.stringify(v)}`);
+        return parts.length > 0 ? parts.join("; ") : "action completed";
+      },
+    },
     async execute(args, exec) {
       const action = args.action as DeviceAction;
       const key = (args.device_serial as string | undefined) ?? options.defaultDeviceKey;
