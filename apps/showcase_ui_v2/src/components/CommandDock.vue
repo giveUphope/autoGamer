@@ -156,12 +156,13 @@ async function stopCurrentConversation(): Promise<void> {
   <div class="command-dock">
     <div class="dock-card">
       <a-alert v-if="errorMessage" type="error" class="dock-error">{{ errorMessage }}</a-alert>
-      <!-- 排队消息 chips + 队列状态（暂停 / 环境熔断挂起）+ 暂停/继续 -->
+      <!-- 排队消息列表（FIFO，最新提交的在最下方，可单独移除）
+           + 队列状态（暂停 / 环境熔断挂起）+ 暂停/继续 -->
       <div
         v-if="threadPending.length || queuePaused || queueHolds.length || showPauseAction"
         class="dock-queue-strip"
       >
-        <span
+        <div
           v-for="round in threadPending"
           :key="round.session_id"
           class="queue-chip"
@@ -173,26 +174,28 @@ async function stopCurrentConversation(): Promise<void> {
             :title="t('workspace.queue.remove')"
             @click="removeQueued(round.session_id)"
           >×</button>
-        </span>
-        <template v-if="queuePaused">
-          <span class="queue-state is-paused">{{ t('workspace.queue.paused') }}</span>
-          <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
-            {{ t('workspace.queue.resume') }}
-          </a-button>
-        </template>
-        <template v-else-if="queueHolds.length">
-          <span class="queue-state is-held" :title="holdReasons">
-            {{ t('workspace.queue.held') }}
-          </span>
-          <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
-            {{ t('workspace.queue.resume') }}
-          </a-button>
-        </template>
-        <template v-else-if="showPauseAction">
-          <a-button size="mini" type="text" class="queue-action" @click="pauseQueue">
-            {{ t('workspace.queue.pause') }}
-          </a-button>
-        </template>
+        </div>
+        <div v-if="queuePaused || queueHolds.length || showPauseAction" class="queue-state-row">
+          <template v-if="queuePaused">
+            <span class="queue-state is-paused">{{ t('workspace.queue.paused') }}</span>
+            <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
+              {{ t('workspace.queue.resume') }}
+            </a-button>
+          </template>
+          <template v-else-if="queueHolds.length">
+            <span class="queue-state is-held" :title="holdReasons">
+              {{ t('workspace.queue.held') }}
+            </span>
+            <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
+              {{ t('workspace.queue.resume') }}
+            </a-button>
+          </template>
+          <template v-else-if="showPauseAction">
+            <a-button size="mini" type="text" class="queue-action" @click="pauseQueue">
+              {{ t('workspace.queue.pause') }}
+            </a-button>
+          </template>
+        </div>
       </div>
       <div class="dock-main-row">
         <a-textarea
@@ -253,29 +256,35 @@ async function stopCurrentConversation(): Promise<void> {
   align-items: flex-start;
 }
 
-/* 队列状态条：排队 chips（可移除）+ 暂停/挂起状态 + 暂停/继续动作 */
+/* 队列状态区：排队消息按列表纵向排列（FIFO，最新提交的在最下方），
+   容器高度随条目增长撑开，超过上限后内部滚动。 */
 .dock-queue-strip {
   display: flex;
-  align-items: center;
-  flex-wrap: wrap;
-  gap: 6px;
+  flex-direction: column;
+  align-items: stretch;
+  gap: 4px;
+  max-height: 176px;
+  overflow-y: auto;
   margin-bottom: 8px;
 }
 
 .queue-chip {
-  display: inline-flex;
+  display: flex;
   align-items: center;
   gap: 2px;
-  max-width: 220px;
-  padding: 1px 4px 1px 8px;
+  min-width: 0;
+  flex-shrink: 0;
+  padding: 3px 4px 3px 10px;
   border: 1px solid var(--color-border-2);
-  border-radius: 999px;
+  border-radius: var(--border-radius-small);
   background-color: var(--color-fill-1);
   font-size: 12px;
   color: var(--color-text-2);
 }
 
 .queue-chip-goal {
+  flex: 1;
+  min-width: 0;
   overflow: hidden;
   text-overflow: ellipsis;
   white-space: nowrap;
@@ -298,7 +307,18 @@ async function stopCurrentConversation(): Promise<void> {
   background-color: var(--color-fill-2);
 }
 
+/* 队列状态行：暂停/挂起文案 + 继续动作，紧跟在排队消息列表之后 */
+.queue-state-row {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-shrink: 0;
+  padding-top: 2px;
+}
+
 .queue-state {
+  flex: 1;
+  min-width: 0;
   font-size: 12px;
   overflow: hidden;
   text-overflow: ellipsis;

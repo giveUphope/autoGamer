@@ -1252,6 +1252,167 @@ def device_probe_ok(monkeypatch):
 
 
 @pytest.mark.asyncio
+async def test_worker_death_before_session_row_persists_failed_round(
+    monkeypatch, device_probe_ok
+):
+    """零步骤失败且 worker 从未落库（start_session 前就崩溃）：队列服务补写
+    failed 行。没有它，该轮在时间线上消失、队列消息与轮次顺序无法对应，
+    报错也只能落在队列状态区而非消息区。"""
+    with patch.object(TaskQueueService, "ensure_worker_running"):
+        await task_queue_service.enqueue_tasks(
+            ["失败轮"], device_serial="EMULATOR1", conversation_id="conv-fail"
+        )
+    item = state.queue_items[0]
+
+    async def fake_exec(*args, **kwargs):
+        proc = MagicMock()
+        proc.pid = 424242
+        proc.stdout = None
+        proc.wait = AsyncMock(return_value=1)
+        proc.returncode = 1
+        return proc
+
+    events = []
+
+    def capture(et, d):
+        events.append((et, d))
+
+    state.ipc_subscribers.append(capture)
+    try:
+        with (
+            patch("asyncio.create_subprocess_exec", side_effect=fake_exec),
+            patch("apps.admin_console.services.task_queue_service.session_repo") as mock_repo,
+            patch("apps.admin_console.services.task_queue_service.media_service"),
+            patch("mcp_server.notifiers.notify"),
+            patch.object(step_repo, "has_steps", lambda session_id: False),
+        ):
+            mock_repo.get_session_status.return_value = None  # 从未落库
+            mock_repo.update_session_status.return_value = False
+            mock_repo.get_video_recording_for_session.return_value = {"status": "ready"}
+            mock_repo.get_session_by_id.return_value = None
+            mock_repo.create_failed_session.return_value = True
+            await TaskQueueService._execute_task_item(item)
+    finally:
+        state.ipc_subscribers.remove(capture)
+
+    mock_repo.create_failed_session.assert_called_once()
+    kwargs = mock_repo.create_failed_session.call_args.kwargs
+    assert kwargs["session_id"] == item["session_id"]
+    assert kwargs["initial_goal"] == "失败轮"
+    assert kwargs["conversation_id"] == "conv-fail"
+    # 提交时刻锚点随行落库：时间线按它排序，轮次顺序才与队列一致
+    assert kwargs["submitted_at"] == item["created_at"]
+    assert kwargs["start_time"] == item["created_at"]
+    # 真实错误（worker stdout 末行）或兜底文案，必须带原因
+    assert kwargs["error_message"]
+
+    # 熔断仍创建；repo 为 mock 时 reason 走兜底文案（真实 reason 取自补写行的
+    # error_message，见下方仓储层用例）
+    hold = state.held_queues.get(TaskQueueService._task_target(item).lock_key)
+    assert hold and hold["reason"]
+    ended = [d for et, d in events if et == "session_ended"]
+    assert ended and ended[0]["status"] == "failed"
+
+
+@pytest.mark.asyncio
+async def test_terminal_status_update_success_never_inserts_failed_row():
+    """worker 已落库（行存在）时，终态走常规 UPDATE，不补插失败行。"""
+    with patch("apps.admin_console.services.task_queue_service.session_repo") as mock_repo:
+        mock_repo.get_session_status.return_value = "running"
+        mock_repo.update_session_status.return_value = True
+        await TaskQueueService._persist_terminal_session_status(
+            "sess-x", 1, False, {"session_id": "sess-x", "goal": "g", "created_at": 1.0}
+        )
+    mock_repo.update_session_status.assert_called_once()
+    mock_repo.create_failed_session.assert_not_called()
+
+
+@pytest.mark.asyncio
+async def test_manual_stop_without_row_never_inserts_failed_row():
+    """手动停止未落库的任务（从队列移除）：按既有语义直接消失，
+    不得补插 failed 行把它复活成一条失败轮次。"""
+    with patch("apps.admin_console.services.task_queue_service.session_repo") as mock_repo:
+        mock_repo.get_session_status.return_value = None  # 从未落库
+        mock_repo.update_session_status.return_value = False
+        await TaskQueueService._persist_terminal_session_status(
+            "sess-stop", 1, True, {"session_id": "sess-stop", "goal": "g", "created_at": 1.0}
+        )
+    mock_repo.create_failed_session.assert_not_called()
+
+
+def test_create_failed_session_inserts_minimal_row(tmp_path):
+    """仓储层：补写最小 failed 行；已有行不被覆盖（INSERT OR IGNORE）。"""
+    from apps.admin_console.database.repositories.session_repository import SessionRepository
+
+    repo = SessionRepository(db_path=tmp_path / "test.db")
+    now = time.time()
+    assert repo.create_failed_session(
+        session_id="sid-fail",
+        initial_goal="失败轮",
+        start_time=now,
+        end_time=now + 1,
+        conversation_id="conv-1",
+        submitted_at=now,
+        error_message="DeviceNotFoundError: No device found. Exiting.",
+    ) is True
+
+    row = repo.get_session_by_id("sid-fail")
+    assert row["status"] == "failed"
+    assert row["initial_goal"] == "失败轮"
+    assert row["conversation_id"] == "conv-1"
+    assert row["submitted_at"] == now
+    assert "No device found" in row["error_message"]
+
+    # 幂等：同一会话不覆盖
+    assert repo.create_failed_session(
+        session_id="sid-fail", initial_goal="other", start_time=now, end_time=now + 2
+    ) is False
+    assert repo.get_session_by_id("sid-fail")["initial_goal"] == "失败轮"
+
+
+def test_worker_error_tail_reads_last_stdout_line(tmp_path, monkeypatch):
+    """从 worker 遗留的 stdout.log 末行提取错误，并剥掉 traceback 的模块路径。"""
+    from artemis.runtime import trace_store
+
+    trace_dir = tmp_path / "trace-sid"
+    trace_dir.mkdir()
+    (trace_dir / "stdout.log").write_text(
+        "Traceback (most recent call last):\n"
+        "  File \"x.py\", line 1, in <module>\n"
+        "third_party.mobile_use.sdk.types.exceptions.DeviceNotFoundError: "
+        "No device found. Exiting.\n",
+        encoding="utf-8",
+    )
+    monkeypatch.setattr(
+        trace_store,
+        "get_trace_stdout_log_path",
+        lambda trace_id: str(trace_dir / "stdout.log"),
+    )
+
+    tail = TaskQueueService._worker_error_tail("trace-sid")
+    assert tail == "DeviceNotFoundError: No device found. Exiting."
+
+    # 日志缺失 → None（调用方落到兜底文案）
+    monkeypatch.setattr(
+        trace_store,
+        "get_trace_stdout_log_path",
+        lambda trace_id: str(tmp_path / "missing" / "stdout.log"),
+    )
+    assert TaskQueueService._worker_error_tail("trace-sid") is None
+
+    # 非 traceback 行原样保留
+    monkeypatch.setattr(
+        trace_store,
+        "get_trace_stdout_log_path",
+        lambda trace_id: str(trace_dir / "stdout.log"),
+    )
+    (trace_dir / "stdout.log").write_text(
+        "Task execution failed: timeout\n", encoding="utf-8"
+    )
+    assert TaskQueueService._worker_error_tail("trace-sid") == "Task execution failed: timeout"
+
+
+@pytest.mark.asyncio
 async def test_zero_step_failure_holds_device_queue_and_retains_messages(
     monkeypatch, device_probe_ok
 ):

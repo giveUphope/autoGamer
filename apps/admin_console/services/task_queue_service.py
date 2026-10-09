@@ -744,9 +744,20 @@ class TaskQueueService:
 
     @classmethod
     async def _persist_terminal_session_status(
-        cls, sess_id: Any, returncode: int, manual_stop: bool
+        cls,
+        sess_id: Any,
+        returncode: int,
+        manual_stop: bool,
+        task_item: dict[str, Any] | None = None,
     ) -> str:
-        """Resolve and persist the session's terminal status in the DB and trace store."""
+        """Resolve and persist the session's terminal status in the DB and trace store.
+
+        When the worker never created a DB row (died before
+        ``DataEngine.start_session``) and the resolved status is a failure, a
+        minimal failed row is inserted instead: without it the round vanishes
+        from the console timeline and the queue no longer matches the visible
+        rounds.
+        """
         current_status = session_repo.get_session_status(sess_id)
         new_status, should_persist = cls._resolve_terminal_status(
             current_status,
@@ -756,6 +767,28 @@ class TaskQueueService:
         if should_persist:
             if session_repo.update_session_status(sess_id, new_status, time.time()):
                 print(f"[QueueWorker] Updated session {sess_id} status to '{new_status}'")
+            elif new_status == "failed" and task_item:
+                created = session_repo.create_failed_session(
+                    session_id=str(sess_id),
+                    initial_goal=str(task_item.get("goal") or ""),
+                    start_time=float(task_item.get("created_at") or time.time()),
+                    end_time=time.time(),
+                    conversation_id=task_item.get("conversation_id"),
+                    submitted_at=task_item.get("created_at"),
+                    error_message=cls._worker_error_tail(sess_id)
+                    or "Task failed before executing any step.",
+                )
+                if created:
+                    print(f"[QueueWorker] Recorded never-started session {sess_id} as failed")
+                else:
+                    # The DB row is the fallback MCP pollers reconcile
+                    # against when status.json is stale, so a failed DB
+                    # write must not pass silently.
+                    logger.error(
+                        "[QueueWorker] Could not persist terminal DB status '%s' for session %s",
+                        new_status,
+                        sess_id,
+                    )
             else:
                 # The DB row is the fallback MCP pollers reconcile
                 # against when status.json is stale, so a failed DB
@@ -793,6 +826,35 @@ class TaskQueueService:
                     exc,
                 )
         return new_status
+
+    @staticmethod
+    def _worker_error_tail(sess_id: Any, tail_bytes: int = 4096) -> str | None:
+        """Best-effort human-readable error from the worker's teed stdout.log.
+
+        Used for sessions that never reached ``start_session`` (no DB row and
+        no worker-written error_message): the last non-empty stdout line is
+        the exception the worker died with. Never raises.
+        """
+        try:
+            log_path = Path(trace_store.get_trace_stdout_log_path(str(sess_id)))
+            if not log_path.exists():
+                return None
+            with log_path.open("rb") as fh:
+                fh.seek(0, os.SEEK_END)
+                fh.seek(max(0, fh.tell() - tail_bytes))
+                chunk = fh.read().decode("utf-8", errors="replace")
+        except (OSError, ValueError):
+            return None
+        lines = [line.strip() for line in chunk.splitlines() if line.strip()]
+        if not lines:
+            return None
+        line = lines[-1][:300]
+        # Traceback 末行形如 "pkg.module ExcType: message"：去掉模块路径前缀，
+        # 时间线横幅里只留异常类型与消息，更可读。
+        head, sep, message = line.partition(": ")
+        if sep and head and all(part.isidentifier() for part in head.split(".") if part):
+            line = f"{head.rsplit('.', 1)[-1]}{sep}{message}"
+        return line
 
     @classmethod
     async def _recover_or_fail_recording(cls, sess_id: Any) -> None:
@@ -974,7 +1036,7 @@ class TaskQueueService:
             # 4. Perform fallback database status update and notification
             if sess_id:
                 new_status = await cls._persist_terminal_session_status(
-                    sess_id, returncode, manual_stop
+                    sess_id, returncode, manual_stop, task_item
                 )
                 await cls._recover_or_fail_recording(sess_id)
                 cls._announce_session_end(task_item, sess_id, goal, new_status, manual_stop)
@@ -992,7 +1054,7 @@ class TaskQueueService:
             if sess_id:
                 try:
                     new_status = await cls._persist_terminal_session_status(
-                        sess_id, returncode=1, manual_stop=False
+                        sess_id, returncode=1, manual_stop=False, task_item=task_item
                     )
                     cls._announce_session_end(task_item, sess_id, goal or "", new_status, False)
                 except (OSError, RuntimeError, ValueError):

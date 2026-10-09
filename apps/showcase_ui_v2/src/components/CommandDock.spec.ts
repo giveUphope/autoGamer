@@ -175,7 +175,7 @@ describe('CommandDock — 队列状态条（排队 chips / 暂停 / 继续）', 
     mockSession.queueHolds = [];
   });
 
-  it('排队消息以 chips 呈现且可单独移除', async () => {
+  it('排队消息以列表呈现且可单独移除', async () => {
     mockSession.submitConversationId = 'conv-1';
     mockSession.threadPendingRounds = [
       { session_id: 'q1', initial_goal: '排队消息一' },
@@ -189,6 +189,26 @@ describe('CommandDock — 队列状态条（排队 chips / 暂停 / 继续）', 
     expect(chips[0].text()).toContain('排队消息一');
     await chips[0].find('.queue-chip-remove').trigger('click');
     expect(mockSession.removeQueuedRound).toHaveBeenCalledWith('q1');
+  });
+
+  it('排队消息按提交顺序纵向排列：最新提交的在列表末尾', async () => {
+    mockSession.submitConversationId = 'conv-1';
+    mockSession.threadPendingRounds = [
+      { session_id: 'q1', initial_goal: '最早提交' },
+      { session_id: 'q2', initial_goal: '随后提交' },
+      { session_id: 'q3', initial_goal: '最新提交' },
+    ];
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const chips = wrapper.findAll('.dock-queue-strip .queue-chip');
+    expect(chips.length).toBe(3);
+    // FIFO 顺序：先提交的在上方，最新发射的追加在列表末尾
+    expect(chips[0].text()).toContain('最早提交');
+    expect(chips[1].text()).toContain('随后提交');
+    expect(chips[2].text()).toContain('最新提交');
+    await chips[2].find('.queue-chip-remove').trigger('click');
+    expect(mockSession.removeQueuedRound).toHaveBeenCalledWith('q3');
   });
 
   it('手动暂停显示暂停态与继续按钮；环境挂起显示挂起原因（悬浮可见）', async () => {

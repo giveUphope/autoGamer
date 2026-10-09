@@ -526,6 +526,48 @@ class SessionRepository:
         except Exception:
             return False
 
+    def create_failed_session(
+        self,
+        session_id: str,
+        initial_goal: str,
+        start_time: float,
+        end_time: float,
+        conversation_id: str | None = None,
+        submitted_at: float | None = None,
+        error_message: str | None = None,
+    ) -> bool:
+        """Insert a minimal terminal-failed session row when none exists.
+
+        A worker that dies before ``DataEngine.start_session`` leaves no row
+        at all: the console then has no representation of the round, so it
+        silently disappears from the timeline while the queue keeps the
+        sibling messages in place. Persisting the failed round keeps the
+        thread history complete and lets the UI attribute the break via
+        ``error_message``. Existing rows are never overwritten.
+        """
+        try:
+            with db_session(self.db_path) as conn:
+                cursor = conn.cursor()
+                cursor.execute(
+                    "INSERT OR IGNORE INTO sessions (session_id, initial_goal, start_time, "
+                    "end_time, status, error_message, conversation_id, submitted_at) "
+                    "VALUES (?, ?, ?, ?, 'failed', ?, ?, ?)",
+                    (
+                        str(session_id),
+                        initial_goal,
+                        start_time,
+                        end_time,
+                        error_message,
+                        conversation_id,
+                        submitted_at,
+                    ),
+                )
+                conn.commit()
+                return cursor.rowcount > 0
+        except Exception:
+            logger.warning("Could not persist failed session row for %s", session_id, exc_info=True)
+            return False
+
     def mark_all_running_cancelled(self) -> int:
         try:
             with db_session(self.db_path) as conn:
