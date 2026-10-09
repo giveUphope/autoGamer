@@ -110,3 +110,46 @@
 | 映射表 | media 行 `ctx.connection.fetch`→`ctx.webServer.register()`；/api/run 行补 SDK 主选+webhook 单向；mcp_server 行增 mcp-client 直连选项（二期评估） |
 | P0 | 开发流改「配置热重载、代码冷重启」；S2 spike 增 producer 样板验证 |
 | P3 | 补 web profile 默认端口 3080 与一次性 token 认证 |
+
+## 五、第二轮核查：防重复自建（2026-10-09，19 项）
+
+> 动机：第一轮核实「计划依赖的假设」，本轮核查「计划里仍标注自建的东西，DSH 是否已有更优实现」。范围：UI 聚合层 / 并发原语 / 持久终端 / 凭据 / hooks / 超时 / 媒体展示 / 存储原语。
+
+### 5.1 UI 聚合与并发（G19/S3 相关）
+
+| # | 结论 | 证据与关键 API |
+|---|---|---|
+| 1 | ✅ **排队消息 UI 原生存在（QueueDock）——ARTEMIS dock 队列的等价物**：排队计数「{n} 条排队消息」、每行 edit/remove/steer 三键（steer 仅运行中可用）、走 `conversation.updateQueue(itemId,{kind:"edit"/"remove"/"steer"})`；slot `conversation.input.dock`（id queue, order 20） | dsh-client-ui-conversation/lib/client.js:15369,15677-15696 |
+| 2 | ⚠️ round 概念部分原生：goal_round driver 有 `attempt.phase queued/claimed`、`roundsStarted` 计数、`goal.phase active/paused/complete/blocked`；但 **UI 无轮次时间线组件**、排队 goal 轮在 dock 里与普通消息无视觉区分 | dsh-goal-round-driver/lib/index.js:135-160；dsh-client-ui-chat/lib/client.js:6626 |
+| 3 | ✅ slots 全集约 **70 个缝**；关键的：`conversation.view/chat.node/chat.turnTail/input.dock/input.overlay/composer(.bar/.dock)/session.header.{actions,utilities,corner,lineage}/approval.detail/tool.call.toolview(keyed)/sidebar.right.pane.tab/settings.general.item/shell.overlay` 等 | dsh-client-ui-slots/lib/index.js:50；dsh-client-ui-layout/lib/client.js:604-627 |
+| 4 | ✅ jobs UI 原生：会话头按钮 roster（`conversation.session.header.actions`），数据 `job.list`/`job.follow`/`job.kill`，两段式 stop，无 job 不渲染 | dsh-client-ui-jobs/lib/client.js:610 + README |
+| 5 | ⚠️ **无库级 semaphore/mutex/p-queue**（全树 grep 0 命中）：闸门地基=弱表 promise 链（官方样板 `dsh-tool-bash-persistent/lib/index.js:325-333`：WeakMap<owner,Promise> 尾链；tracked pending 模式 :179-237 支持取消）+ `dsh-deque` 环形队列 | dsh-deque/lib/index.js（86 行）；dsh-chunked-list |
+| 6 | ⚠️ persistent shell **工具**（bash/pwsh-persistent）不支持交互 stdin（读 stdin 的前台子进程挂到 timeout）；per-agent 单 shell、命令串行 | dsh-tool-bash-persistent/README.md |
+| 7 | ✅ **`ctx.terminals` 服务层才是持久终端正解**：`spawn/startSend(交互 stdin)/read(有界 scrollback)/signal/abortAndClose/close`，per-owner 多实例，backend=shell（POSIX bash/Windows pwsh），输出可编程读取——正是 ARTEMIS `run_adb_command` 持久终端+stdin 的形态。注意用户面右侧栏终端（remote.terminal）是另一套、不进 transcript | dsh-terminal/lib/index.js:91-199；dsh-api-terminal-controller/README.md |
+| 8 | ✅ dsh-output-retention = 模型面工具输出保留库（ItemRetainer head 窗+omitted 计数 / TextRetainer head/tail 字节窗 UTF-8 安全切）——自定义工具输出窗口化直接用 | dsh-output-retention/lib/index.js |
+| 9 | ✅ 一个 session 一个 goal（GOAL_ALREADY_EXISTS；多 goal 排队串行）——ARTEMIS 一次提交多 goal = 多条 followup | dsh-goal/lib/index.js:639,90-100 |
+
+### 5.2 平台工具件（凭据/hooks/超时/媒体/存储）
+
+| # | 结论 | 证据与关键 API |
+|---|---|---|
+| 1 | ✅ **凭据管理原生**：`ctx.credentials.resolve/describe(永不回值)/set/unset` + records 枚举（`credentialKey('<owner>/<id>')`）+ `<DSH_HOME>/.credentials.yaml`（precedence：启动 env > 存储文件 > 项目 .env > home .env，watch 热载，rotation 即时生效）；配置用 `apiKeyEnv` 引用。**缺**：连通性测试（seam 不发网络请求，自建一小块）；refs 不可枚举（用 records 存 provider 清单） | dsh-credentials/lib/index.js:7-104；dsh-credentials-local/README |
+| 2 | ⚠️→✅ **原生工具拦截缝存在且强**：`tools/pre-execute` waterfall → Decision `{allow/deny(reason)/ask/cancel}`，ask 经 `approval.request→'allowed-once'|'rejected'|'cancelled'|'unavailable'`；`tools/post-execute` 可替换输出；轻量版 `ctx.tools.guard`（返回 string 即 deny）；`ctx.tools.restrict({allow,deny})`。**dsh-hook-protocol/-hooks-claude-code/-hooks-codex 是存量 hooks 兼容层（其 updatedInput/continue:false 不生效）——原生插件勿走** | dsh-tools/lib/types/index.js:876-900,1097-1144,513-525 |
+| 3 | ✅ **工具超时原生且语义正确**：`ToolDefinition.timeoutMs`（每工具声明，无全局默认）→ wrapper 以 `deadline(exec.signal, timeoutMs,'TOOL_TIMEOUT')` 融合信号，超时→模型收结构化 `TOOL_TIMEOUT` 错误。**契约：工具内部必须监听 exec.signal 主动杀进程**，否则超时静默失效（不崩会话但挂住调用方）——正是 ARTEMIS「超时必须工具内生效」教训的 DSH 版 | dsh-tools/lib/types/index.js:468-471,975；dsh-timeout/README |
+| 4 | ⚠️ 媒体展示：**`present(files[])` 工具 → deliverables 卡片**是最优承载（持久、`deliverables/presented` 事件可重放、右 Sidebar 预览/系统播放器打开）；attachment 管线只对**用户上传图片**做入库+模型直读；**mp4 无专门处理、聊天流内嵌播放器无现成物**（要内嵌需 client UI 扩展） | dsh-tool-present/lib/index.js:116；dsh-client-ui-deliverables |
+| 5 | ✅ 插件状态持久化不手写：`ctx.storageDomain.defineDomain({name,version,tables(zod)})` → durable 写 + `domain/changed` 事件 + per-domain 写链（host-side only）；裸文件用 `dsh-atomic-write` 的 `writeFileAtomic` + `withFileLock`（跨进程锁；无 fsync） | dsh-storage-domain/README；dsh-atomic-write/README |
+| 6 | ⚠️ dsh-http-proxy 仅出站 HTTP 代理（env 一次性解析，覆盖 LLM/web/MCP 流量，无 SOCKS/PAC/会话级）——与模型路由无关；本地 LM Studio/OpenAI 兼容端点直接配 dsh-llm(pi-ai) 适配器 + apiKeyEnv | dsh-http-proxy/README |
+| 7 | ⚠️ dsh-fs-observation-policy 名字有误导：是 read-before-edit **写护栏**（fs/write-intent、FS_NOT_OBSERVED/FS_STALE_VERSION），不观察目录、不影响 bash 落盘（设备截图目录无涉） | dsh-fs-observation-policy/README |
+| 8 | ✅ session-stats 原生：turns/steps/llmMs/toolMs/ttftMs/ttftSteps/decodeMs/decodeTokens 八指标全 log 折叠投影（对照 ARTEMIS usage 端点）+ token-meter 三投影 | dsh-session-stats/README |
+| 9 | 一句话：auto-review=实验性 per-tool-call LLM 审查（三期审批参考实现）；persona=preset 内 per-agent 人设行；`ctx.systemPrompt` registry=一期注入 autogamer 操作指引的挂点；invariants=运行时自检注册表（调试用） | 各包 README |
+| 10 | ✅ 用户文件上传端到端原生（`ctx.fileUpload.upload` 进度/取消 + Host staged receipt + admission 落 attachments）——二期用户附图无需自建路由 | dsh-client-file-upload；dsh-attachment-local |
+
+### 5.3 对方案的最终影响（已回写 todo.md）
+
+1. **G19 缩小 70%**：QueueDock（排队 chips/编辑/插队）+ jobs 头部 roster + timeline 按 turn/step 分组 + goal 轮 turn-trigger 卡全部原生；插件侧只剩「轮次时间线视图、排队 goal 轮视觉区分、轮状态徽标」，挂 `conversation.chat.node`/`chat.turnTail`，数据源 `goal` projection。
+2. **凭据管理删自建**（二期）：dsh-credentials 承接存储/掩码/rotation/分层；自建仅连通性测试。
+3. **S3 闸门地基明确**：弱表 promise 链样板 + Deque + tracked pending；状态持久化用 ctx.storageDomain（不手写 JSON）。
+4. **二期模式 a 的闸门/审批前置有原生缝**：tools/pre-execute Decision（deny/ask），不必包一层工具；hook-protocol 兼容层勿用。
+5. **run_adb_command 持久终端建在 ctx.terminals**（非 persistent shell 工具）。
+6. **媒体展示面 = present 卡片优先**；内嵌播放器需 client UI 扩展（产品决策项）。
+7. **超时契约**：自定义工具必须声明 timeoutMs 并监听 exec.signal 主动杀——写入 autogamer-device 工具规范。
