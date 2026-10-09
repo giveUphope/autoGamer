@@ -32,7 +32,7 @@ let errorTimer: ReturnType<typeof setTimeout> | null = null;
 
 const isThreadRunning = computed(() => !!sessionStore.currentConversationRunningTaskId);
 
-// ---- 队列状态条（主流 agent 模式：排队消息可见、可单独移除；暂停/继续） ----
+// ---- 队列状态区（主流 agent 模式：排队消息可见、可单独移除；暂停/继续） ----
 const threadPending = computed(() => sessionStore.threadPendingRounds);
 const queuePaused = computed(() => sessionStore.queueManuallyPaused);
 const queueHolds = computed(() => sessionStore.queueHolds);
@@ -40,11 +40,22 @@ const queueHolds = computed(() => sessionStore.queueHolds);
 const holdReasons = computed(() =>
   sessionStore.queueHolds.map((h) => h.reason).filter(Boolean).join('；'),
 );
-/** 有任务在跑或排队时提供「暂停队列」入口（暂停只停新派发，不影响运行中）。 */
+/**
+ * 当前线程在队列中「在场」：有排队消息或有运行/暂停中的任务。
+ * 队列的挂起/暂停是全局状态，但展示与操作按线程隔离——新建会话或查看
+ * 历史线程时，不得显示其他线程残留的队列状态（更不能在那里误恢复/
+ * 误暂停他线程的队列），否则会出现跨线程竞态。
+ */
+const threadHasQueueStake = computed(
+  () => threadPending.value.length > 0 || isThreadRunning.value,
+);
+/** 暂停/挂起收敛为同一个「继续队列」动作（原因只在悬浮提示里）。 */
+const showResumeAction = computed(
+  () => threadHasQueueStake.value && (queuePaused.value || queueHolds.value.length > 0),
+);
+/** 有任务在场时提供「暂停队列」入口（暂停只停新派发，不影响运行中）。 */
 const showPauseAction = computed(
-  () => (isThreadRunning.value || threadPending.value.length > 0)
-    && !queuePaused.value
-    && queueHolds.value.length === 0,
+  () => threadHasQueueStake.value && !queuePaused.value && queueHolds.value.length === 0,
 );
 
 function removeQueued(sessionId: string): void {
@@ -156,10 +167,11 @@ async function stopCurrentConversation(): Promise<void> {
   <div class="command-dock">
     <div class="dock-card">
       <a-alert v-if="errorMessage" type="error" class="dock-error">{{ errorMessage }}</a-alert>
-      <!-- 排队消息列表（FIFO，最新提交的在最下方，可单独移除）
-           + 队列状态（暂停 / 环境熔断挂起）+ 暂停/继续 -->
+      <!-- 排队消息列表（FIFO，最新提交的在最下方，可单独移除）+ 队列动作。
+           挂起/暂停不再展示说明文案（原因悬浮可见），且控件只在当前线程
+           「在场」时出现：新会话/历史线程看不到其他线程残留的队列状态。 -->
       <div
-        v-if="threadPending.length || queuePaused || queueHolds.length || showPauseAction"
+        v-if="threadPending.length || showResumeAction || showPauseAction"
         class="dock-queue-strip"
       >
         <div
@@ -175,26 +187,20 @@ async function stopCurrentConversation(): Promise<void> {
             @click="removeQueued(round.session_id)"
           >×</button>
         </div>
-        <div v-if="queuePaused || queueHolds.length || showPauseAction" class="queue-state-row">
-          <template v-if="queuePaused">
-            <span class="queue-state is-paused">{{ t('workspace.queue.paused') }}</span>
-            <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
-              {{ t('workspace.queue.resume') }}
-            </a-button>
-          </template>
-          <template v-else-if="queueHolds.length">
-            <span class="queue-state is-held" :title="holdReasons">
-              {{ t('workspace.queue.held') }}
-            </span>
-            <a-button size="mini" type="outline" class="queue-action" @click="resumeQueue">
-              {{ t('workspace.queue.resume') }}
-            </a-button>
-          </template>
-          <template v-else-if="showPauseAction">
-            <a-button size="mini" type="text" class="queue-action" @click="pauseQueue">
-              {{ t('workspace.queue.pause') }}
-            </a-button>
-          </template>
+        <div v-if="showResumeAction || showPauseAction" class="queue-state-row">
+          <a-button
+            v-if="showResumeAction"
+            size="mini"
+            type="outline"
+            class="queue-action"
+            :title="holdReasons || undefined"
+            @click="resumeQueue"
+          >
+            {{ t('workspace.queue.resume') }}
+          </a-button>
+          <a-button v-else size="mini" type="text" class="queue-action" @click="pauseQueue">
+            {{ t('workspace.queue.pause') }}
+          </a-button>
         </div>
       </div>
       <div class="dock-main-row">
@@ -307,30 +313,13 @@ async function stopCurrentConversation(): Promise<void> {
   background-color: var(--color-fill-2);
 }
 
-/* 队列状态行：暂停/挂起文案 + 继续动作，紧跟在排队消息列表之后 */
+/* 队列状态行：继续/暂停动作（说明文案已移除，挂起原因在按钮悬浮提示里） */
 .queue-state-row {
   display: flex;
   align-items: center;
   gap: 6px;
   flex-shrink: 0;
   padding-top: 2px;
-}
-
-.queue-state {
-  flex: 1;
-  min-width: 0;
-  font-size: 12px;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
-}
-
-.queue-state.is-paused {
-  color: rgb(var(--orange-6));
-}
-
-.queue-state.is-held {
-  color: rgb(var(--red-6));
 }
 
 .queue-action {

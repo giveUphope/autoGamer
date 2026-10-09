@@ -211,12 +211,16 @@ describe('CommandDock — 队列状态条（排队 chips / 暂停 / 继续）', 
     expect(mockSession.removeQueuedRound).toHaveBeenCalledWith('q3');
   });
 
-  it('手动暂停显示暂停态与继续按钮；环境挂起显示挂起原因（悬浮可见）', async () => {
+  it('手动暂停与环境挂起收敛为「继续队列」动作：无说明文案，挂起原因悬浮可见', async () => {
     mockSession.submitConversationId = 'conv-1';
+    mockSession.threadPendingRounds = [{ session_id: 'q1', initial_goal: '排队中' }];
+
     mockSession.queueManuallyPaused = true;
     let wrapper = mountDock();
     await flushPromises();
-    expect(wrapper.find('.queue-state.is-paused').exists()).toBe(true);
+    // 队列说明文案已移除，只剩动作按钮
+    expect(wrapper.find('.queue-state.is-paused').exists()).toBe(false);
+    expect(wrapper.find('.queue-state.is-held').exists()).toBe(false);
     await wrapper.find('.queue-action').trigger('click');
     expect(mockSession.resumeQueue).toHaveBeenCalled();
     wrapper.unmount();
@@ -227,10 +231,45 @@ describe('CommandDock — 队列状态条（排队 chips / 暂停 / 继续）', 
     ];
     wrapper = mountDock();
     await flushPromises();
-    const held = wrapper.find('.queue-state.is-held');
-    expect(held.exists()).toBe(true);
-    expect(held.attributes('title')).toContain('Device is not available');
-    await wrapper.find('.queue-action').trigger('click');
+    const resume = wrapper.find('.queue-action');
+    expect(resume.exists()).toBe(true);
+    // 挂起原因移到「继续队列」按钮的悬浮提示
+    expect(resume.attributes('title')).toContain('Device is not available');
+    await resume.trigger('click');
+    expect(mockSession.resumeQueue).toHaveBeenCalled();
+  });
+
+  it('新会话不残留其他线程的队列状态：无排队消息且无运行任务时不渲染队列区', async () => {
+    // 新建会话 = 全新草稿线程：线程内没有排队消息也没有运行中的任务，
+    // 即便全局队列带着前一个线程的挂起/暂停状态，也不得在本线程展示
+    // （避免在那里误恢复/误暂停其他线程的队列——跨线程竞态）
+    mockSession.submitConversationId = 'conv-new-draft';
+    mockSession.threadPendingRounds = [];
+    mockSession.currentConversationRunningTaskId = null;
+    mockSession.queueManuallyPaused = true;
+    mockSession.queueHolds = [
+      { device_serial: 'auto', reason: 'previous thread failure', failure_class: 'environment', session_id: 'other-thread-sid' },
+    ];
+    const wrapper = mountDock();
+    await flushPromises();
+
+    expect(wrapper.find('.dock-queue-strip').exists()).toBe(false);
+  });
+
+  it('线程有排队消息时展示全局挂起的「继续队列」入口（消息确实被挡住）', async () => {
+    // 挂起虽由他线程触发，但本线程的排队消息同样被挡：必须可见可恢复
+    mockSession.submitConversationId = 'conv-1';
+    mockSession.threadPendingRounds = [{ session_id: 'q1', initial_goal: '排队中' }];
+    mockSession.queueHolds = [
+      { device_serial: 'auto', reason: 'another round failed', failure_class: 'environment', session_id: 'other-sid' },
+    ];
+    const wrapper = mountDock();
+    await flushPromises();
+
+    const resume = wrapper.find('.queue-action');
+    expect(resume.exists()).toBe(true);
+    expect(resume.text()).toContain('继续队列');
+    await resume.trigger('click');
     expect(mockSession.resumeQueue).toHaveBeenCalled();
   });
 

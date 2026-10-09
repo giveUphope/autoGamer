@@ -367,8 +367,6 @@ export default {
     description: 'M2：任务队列、会话列表、命令条与会话时间线详情（步骤 / Notes / Checker / Usage）。实时流将在 M3 交付。',
     timelinePlaceholder: '会话时间线将在 M2 里程碑交付',
     queue: {
-      paused: '队列已暂停（运行中的任务不受影响）',
-      held: '队列已挂起：环境故障，设备恢复后自动继续',
       resume: '继续队列',
       pause: '暂停队列',
       remove: '从队列移除',
