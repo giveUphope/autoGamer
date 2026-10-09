@@ -65,7 +65,7 @@
 
 ### 本地 DSH 核实（2026-10-09，desktop 0.2.0-rc.2 全量源码）
 
-> 本机 Electron 安装内嵌 runtime 已解包核实（两轮共 67 项：①48 项方案假设四路并行；②19 项「防重复自建」核查）——详见 **[dsh-verification](migration/dsh-verification.md)**。核心机制全部成立（JobSpec.owner 围栏、Inbox 双列表 durable、session log v4+zstd+generation 迁移链、外置 SessionId 幂等 adopt、peer 强制校验、dsh.bundle.patch、allowed-once fail-closed、Windows ACL 沙箱）；修正已回写下列条目，二轮防重复自建要点见其 §五：
+> 本机 Electron 安装内嵌 runtime 已解包核实（三轮共 73 项：①48 项方案假设；②19 项「防重复自建」；③6 项 turn 执行 shim）——详见 **[dsh-verification](migration/dsh-verification.md)**。核心机制全部成立（JobSpec.owner 围栏、Inbox 双列表 durable、session log v4+zstd+generation 迁移链、外置 SessionId 幂等 adopt、peer 强制校验、dsh.bundle.patch、allowed-once fail-closed、Windows ACL 沙箱）；修正已回写下列条目，二轮防重复自建见其 §五、turn shim 见 §六：
 
 | 修正 | 要点 |
 |---|---|
@@ -80,6 +80,7 @@
 | SDK | TS=dsh-sdk-client / Python=PyPI deepseek-harness（0.3.1>本地 rc.2，接入前对齐协议）；SDK/ACP 均 stdio 子进程——外部 HTTP 调用方需薄桥 |
 | 二期 | ➕ `dsh-mcp-client` 可直连 ARTEMIS mcp_server 作零代码工具源（与 autogamer-device 重写并行评估） |
 | 二轮·防重复自建 | **QueueDock 原生**（排队 chips/edit/remove/steer——dock 等价物已有，G19 缩 70%）；凭据管理原生（自建仅剩连通性测试）；工具超时=`ToolDefinition.timeoutMs`+exec.signal 契约；插件状态持久化=`ctx.storageDomain`；媒体展示面=`present` 卡片；二期闸门/审批缝=`tools/pre-execute` Decision；持久终端=`ctx.terminals`（persistent shell 工具不支持交互 stdin） |
+| 三轮·turn shim | **S10 新增（P0 最优先）**：用户消息→job 的触发路径三选一——自定义 Agent factory 直派【推荐，零 LLM 成本】/ `agent/pre-step` 拒绝 / tool-mediated 兜底；`ctx.jobs.start` 需挂 tool-jobs；创建 agent 不强制 model；一期范围修剪：autogamer-device 骨架推迟到 P2、G21 通知适配推迟到 P4 |
 
 ### 对接语义（py worker ⇆ DSH 宿主契约，S1–S8）
 
@@ -126,6 +127,12 @@
 **S9 任务中途指导注入（盘点新增，G29，需 spike）**
 - `<trace_dir>/injected_instruction.json` `{instruction, release_loop}` 读后即删——运行中唯一指导注入通道；`release_loop` 是 `[Loop:continuous]` 里程碑唯一合法结束信号（自然语言「停下」不触发停止）
 - DSH 侧对应物（followup + control 标志？）待 spike
+
+**S10 轮次执行 shim（盘点新增，P0 最优先 spike——用户消息如何变成 job 而非普通 LLM 对话轮）**
+- 候选路线（详见 dsh-verification §六）：**B1 插件直派（推荐）**——autogamer-queue 经 Agent factory slot（`dsh-agent` 的 AgentRegistry factory provider，官方 ReactLoopAgent 同源挂法）注册自定义 driver：claim 到 next-turn 不调模型，直接闸门→spawn job→await settle→结果写回会话（tool/call+result 对）；零 LLM 成本，turn/step/tool 事件由我们发（toolview/时间线天然有数据）
+- **B2 备选**：标准 loop + preset 不配 model + `agent/pre-step` 一律拒绝（✅ 已核实：拒绝=不开 step=不调模型）——自定义代码最少，claim 后无 step 的消息归属需 spike 核实
+- **A 兜底**：preset 极简 instructions + spawn 工具（tool-mediated）——每轮付一次廉价 LLM 调用；无 tool_choice（已核实采样面无强制）有跑偏风险，B1/B2 失败才退到这里
+- ✅ 通用核实：创建 agent **不强制 model**（dispatch 前才要求，`agent/request` 可补）；composition **必须挂 `dsh-tool-jobs`**（武装 `ctx.jobs.start()`；`completionDelivery: quiet` 关模型通知）；inbox 事件 `agent/inbox/inserted/claimed/discarded` host 侧可订阅；autogamer preset 对 spawn 工具的 approval 应为 never（它就是产品动作）
 
 ### 落地差距核查（G1–G29，按此方案实际落地还须调整；G8+ 来自 2026-10-09 盘点审计）
 
@@ -272,8 +279,8 @@
 
 ### Checklist
 
-- [ ] P0 骨架（一期）：插件包骨架（`autogamer-queue`/`autogamer-device` 独立包，自带 `cordis.patch.yml` 声明 `dsh.bundle.patch`）+ peerDependencies range 声明 + `dsh plugin --profile web add` 安装流 + `--dump-config` 验证 layer + conformance 测试骨架 + **S1 spike（外部 SessionId 指定性）** + **S2 spike（bash job 跑 artemis CLI：输出环/kill/退出码/完成通知）**；开发流 = build + `dsh plugin add .`（link 模式）；✅ 核实：**配置层热重载**（dsh-hmr 监听 cordis.patch.yml/package.json 免重启）、**插件代码改动仍需重启 profile 进程**（node_modules 不监听；`patchReload` 字段 rc.2 无实现）；**盘点增补**：S2 spike 增 kill→cancel marker 联动验证（Windows）/env 透传集合断言（G9）/worker 内自取锁与 TS 闸门叠加验证（G8/G10）+ SSE 事件名全集快照测试（基线=盘点 05 §1.2，G18）
-- [ ] P1 队列插件（一期）：设备锁闸门 + 设备维度熔断（半开恢复）+ 孤儿对账；**先 spike 验证 DSH bash job 承载 artemis CLI worker**（输出环/kill/退出码/完成通知/session-stop 联动）；验证 Inbox 原生会话队列覆盖原需求（不引 GroupMQ/BullMQ/Redis）；**盘点增补**：熔断解除矩阵（4 条路径）+ fail-open/fail-safe 不对称 + auto 端点默认键 + allowed_fails 决策（G11）；never-started failed 补插 + stdout 尾行 + 终态双写规则（G8/G14）；parking 与 ticket 时间戳回归测试（G28）；孤儿对账 kill 用 PID-liveness 协议（G26）
+- [ ] P0 骨架（一期）：插件包骨架（**一期仅 `autogamer-queue`**——autogamer-device 骨架推迟到 P2 随二期启动，避免无效实现；自带 `cordis.patch.yml` 声明 `dsh.bundle.patch`）+ peerDependencies range 声明 + `dsh plugin --profile web add` 安装流 + `--dump-config` 验证 layer + conformance 测试骨架 + **S10 spike（轮次执行 shim，最优先——三路线见 S10）** + **S1 spike（外部 SessionId 指定性）** + **S2 spike（artemis-worker producer：输出环/kill/退出码/完成通知）** + **host/client 双端打包形态 spike**（toolview/轮次时间线是 client 侧插件——一个包双入口 vs 两个包、client bundle 如何进 web profile）；开发流 = build + `dsh plugin add .`（link 模式）；✅ 核实：**配置层热重载**（dsh-hmr 监听 cordis.patch.yml/package.json 免重启）、**插件代码改动仍需重启 profile 进程**（node_modules 不监听；`patchReload` 字段 rc.2 无实现）；**盘点增补**：S2 spike 增 kill→cancel marker 联动验证（Windows）/env 透传集合断言（G9）/worker 内自取锁与 TS 闸门叠加验证（G8/G10）+ SSE 事件名全集快照测试（基线=盘点 05 §1.2，G18）
+- [ ] P1 队列插件（一期）：设备锁闸门 + 设备维度熔断（半开恢复）+ 孤儿对账；**先 spike 验证 artemis-worker producer job 承载 artemis CLI worker**（输出环/kill/退出码/完成通知/session-stop 联动）；验证 Inbox 原生会话队列覆盖原需求（不引 GroupMQ/BullMQ/Redis）；**盘点增补**：熔断解除矩阵（4 条路径）+ fail-open/fail-safe 不对称 + auto 端点默认键 + allowed_fails 决策（G11）；never-started failed 补插 + stdout 尾行 + 终态双写规则（G8/G14）；parking 与 ticket 时间戳回归测试（G28）；孤儿对账 kill 用 PID-liveness 协议（G26）；✅ 核实增补：composition 挂 `dsh-tool-jobs` + `maxConcurrentJobsPerOwner`（默认 10，多设备并发需调）+ 启动对账含「唤醒有 pending 的会话」（D5）；**G21 webhook 通知适配推迟到 P4**（双轨期旧队列服务仍承担通知，不重复建）
 - [ ] P2 设备插件（**二期启动**——见 G1/D9：设备工具 TS 重写与移除/插件化同批；ARTEMIS 执行逻辑渐进搬迁归三期评估）：device_* 工具重写（ADB/uiautomator2 → TS；UIA koffi；隐藏桌面）；**盘点增补**：验收基线=盘点 03 §1.1–1.2 能力清单 + G24 坐标契约 + G25 互斥不变量 + G27 智能栈暗规则（koffi/隐藏桌面之外并入 Windows MKV 文件锁、CTRL_BREAK flush 经验）；✅ 二轮核实：run_adb_command 的持久终端+stdin 交互建在 **`ctx.terminals` 服务层**（startSend/read/signal/close；persistent shell 工具不支持交互 stdin，勿用）；自定义工具必须声明 `ToolDefinition.timeoutMs` 并监听 exec.signal 主动杀进程（DSH 超时契约，否则超时静默挂起）
 - [ ] P3 UI 接入（一期=DSH 轨道并行长出；二期=成为唯一控制台）：web profile（✅ 核实：默认 127.0.0.1:3080，一次性启动 token→签名 cookie 认证）+ 队列状态展示（toolview 槽=client 侧 slot 插件）+ 审批策略映射（HITL：敏感操作 ask + allowed-once【唯一授权粒度】+ fail-closed 默认）；**盘点增补**：dock/roster 交互验收对照盘点 05 §2.2（chips scoped/暂停收敛/停止多态，G19）+ catch-up 与队列信源决策（G18/G20）
 - [ ] P4 过渡（一期=双跑灰度；二期=只读共存与下线）：py worker **最小改造**接入（env 契约不变，D8+D9）+ 双跑灰度验证（G7）+ 旧控制台（showcase_ui_v2/admin_console）只读共存与下线决策；**盘点增补**：mcp_server 对账回退（trace/status.json 双写）改造先行 + notes 记忆断档防护（G16）+ 通知矩阵调研（G21）+ capabilities 处置 + quality_ratchet/locale 锁显式声明 + SameOrigin/dev.sh PID 方案等共存期事项（G17）+ 外部接入方清单具体化（mcp_server/artemis-client/`artemis run` 非 worker 分支/`artemis trace`/`batch` CLI）

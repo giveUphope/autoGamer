@@ -153,3 +153,24 @@
 5. **run_adb_command 持久终端建在 ctx.terminals**（非 persistent shell 工具）。
 6. **媒体展示面 = present 卡片优先**；内嵌播放器需 client UI 扩展（产品决策项）。
 7. **超时契约**：自定义工具必须声明 timeoutMs 并监听 exec.signal 主动杀——写入 autogamer-device 工具规范。
+
+## 六、第三轮补充核实：轮次执行 shim（2026-10-09，主代理直查）
+
+> 盲区：方案定义了「用户消息 = followup 进 Inbox」，但没写**谁来把这条消息变成 job**——不处理的话每轮会跑一次普通 LLM 对话（无效实现）。六个发现：
+
+| # | 发现 | 证据 |
+|---|---|---|
+| 1 | ✅ **自定义 Agent 实现是一等缝**：agent-loop README 明言 "Choose a custom Agent implementation only when the standard 'call model, run tools, repeat' lifecycle is insufficient"；`dsh-agent` 源码图有 **factory slot**（AgentRegistry factory provider——官方 ReactLoopAgent 即此挂法；provider unload 会停掉其创建的全部 handle） | dsh-agent-loop/README.md:28 Summary；dsh-agent/README.md:97,118 |
+| 2 | ✅ **创建 agent 不强制 model**："a model call additionally requires both provider and model"——只约束 dispatch；`agent/request` waterfall 可在派发前补/改 provider-model | dsh-agent-loop/README.md:32,51 |
+| 3 | ✅ **`agent/pre-step` 拒绝 = 不开 step = 不调模型**（"A rejected decision or empty first batch opens no step"）——标准 loop 的最小拦截缝 | dsh-agent-loop/README.md:119 |
+| 4 | ✅ inbox 生命周期事件 host 侧可订阅：`agent/inbox/inserted {message}` / `claimed {message, turn}` / `discarded`；Inbox API（append/prepend/replace/remove/clear/splice）= updateQueue 同源，remove/clear 是 durable 取消 | dsh-agent/README.md:91 |
+| 5 | ⚠️ **`ctx.jobs.start()` 必须挂 `dsh-tool-jobs` 才被武装**（"this plugin's controller is what arms producers' ctx.jobs.start()"）；`completionDelivery: quiet` 关闭模型通知、`maxConsecutiveWakes` 限自唤醒链；完成通知两形态：busy→注入下一步、idle→followup 唤醒新轮 | dsh-tool-jobs/README.md |
+| 6 | ⚠️ 无 tool_choice 强制（前轮已确认采样面只有 temperature/maxTokens/stop）——tool-mediated 路线的「模型必调工具」只能靠 instructions 约束 | 前轮 §三.11 |
+
+**三条候选路线与推荐**：
+
+- **B1 插件直派（推荐）**：autogamer-queue 经 factory slot 注册自定义 driver——claim 到 next-turn 不调模型，直接闸门→spawn job→await settle→把结果写回会话（tool/call+result 对）。零 LLM 成本；turn/step/tool 事件由我们发，toolview/时间线天然有数据。风险：driver 细节工作量（事件正确性、prompt 装配最简化）。
+- **B2 备选**：标准 loop + preset 不配 model + `agent/pre-step` 一律拒绝。自定义代码最少，但 claim 后无 step 的消息归属（是否入 history、下轮可见性）需 spike 核实。
+- **A 兜底**：preset 极简 instructions + spawn 工具（每轮一次廉价 LLM 调用）。B1/B2 spike 失败才退到这里；无 tool_choice 是固有跑偏风险。
+
+**任一路线通用**：composition 必须挂 dsh-tool-jobs（武装 job 启动）；`maxConcurrentJobsPerOwner` 默认 10；autogamer preset 的 approval 对 spawn 工具应为 never（它就是产品动作本身）。
