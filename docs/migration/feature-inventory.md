@@ -95,13 +95,13 @@
 | 9 | 坐标/互斥契约（G24/G25） | 换坐标体系=历史全失配；占用 UiAutomation=「偶发全设备层级失败」类事故 |
 | 10 | 外部承诺（G13/G21/G22） | 幂等重试、通知矩阵、MCP docstring 协议都是外部调用方踩着的隐性契约 |
 
-## 待决策清单（审计发现，需拍板后才可锁 P1 设计）
+## 待决策清单（2026-10-09 用户讨论后状态）
 
-1. **allowed_fails 默认值**（G11）：建议 = 1，保持现状「单次环境级失败即挂」。
-2. **job 侧终态判定方式**（G8/G11）：读同一 SQLite（推荐，S5 约束内）vs stdout 特征行扫描（辅助）。
-3. **队列状态信源**（G18）：DSH 事件推送 + 保留轮询等价字段 vs toolview 全事件驱动（二选一写明）。
-4. **二期是否复刻 helper**（G25）：不复刻 = 显式放弃与 Mobly/Appium/Espresso 共存能力。
-5. **LLM 暂停的 DSH 呈现**（G12）：挂起 job + 删文件=resume（写入运维手册），或一期显式调小 `LLM_PAUSE_TIMEOUT_SECONDS`。
-6. **run_adb_command 审批方式**（S6 输入）：破坏性面全部集中在它（任意 adb shell 零过滤）；ask+只读允许清单 vs 整工具 ask；`manage_app(stop)` 敏感级一并定。
-7. **capabilities 假端点处置**（G22）：DSH 侧落实或从 SDK 删除，不留假基线。
-8. **quality_ratchet 与 locale 锁测试的消亡**：TS 侧建对等物，或显式声明不做。
+1. ~~allowed_fails 默认值~~ → **工程默认 = 1**（保持现状「单次环境级失败即挂」），P1 落地时若要改再提。
+2. ~~job 侧终态判定方式~~ → **推荐采纳：读同一 SQLite**（S10 spike 时顺带验证插件侧只读连接可行性）。
+3. 队列状态信源（G18）→ **随 S10 spike 结果定**（甲=roster+progress，乙=QueueDock 原生）。
+4. ~~二期是否复刻 helper~~ → ✅ **用户决策：复刻 helper**（保留 Mobly/Appium 共存差异化能力）。
+5. LLM 暂停的 DSH 呈现（G12）→ 运维手册成文（删文件=resume），一期不建 UI；低优先级。
+6. ~~run_adb_command 审批方式~~ → ✅ **用户决策：整工具 ask**（allowed-once）起步，只读白名单二期再评估。
+7. ~~capabilities 假端点处置~~ → ✅ **随 D10 直接消失**（无外部调用方，artemis-client 直接删除）。
+8. quality_ratchet 与 locale 锁测试 → **TS 侧显式不做**（记录为有意撤除，非遗漏）。
