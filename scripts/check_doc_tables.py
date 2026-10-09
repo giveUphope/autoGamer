@@ -19,6 +19,7 @@ import sys
 DEFAULTS = [
     r"D:/DEV/autoGamer/docs/todo.md",
     r"D:/DEV/autoGamer/docs/migration/upstream-plugin-forms.md",
+    r"D:/DEV/autoGamer/docs/migration/plugin-contract-rules.md",
 ]
 
 
@@ -115,8 +116,7 @@ def inject(text, anchor, replacement, probe):
 
 def selftest():
     todo = next(t for t in DEFAULTS if t.endswith("todo.md"))
-    forms = next(t for t in DEFAULTS if "upstream-plugin-forms" in t)
-    for path in (todo, forms):
+    for path in DEFAULTS:
         with open(path, encoding="utf-8") as fh:
             report(check(fh.read(), path), path)
     with open(todo, encoding="utf-8") as fh:
@@ -145,7 +145,7 @@ def selftest():
     )
     # (e) a heading that under-claims the decision range
     expect_caught(
-        check(inject(good, "D1-D16", "D1-D14", "e"), "inject e"),
+        check(inject(good, "D1-D17", "D1-D16", "e"), "inject e"),
         "heading under-claiming the decision range",
     )
     print("SELFTEST: ruler fires on all five injected defects")
