@@ -48,7 +48,7 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 
 ## 六、未读与待查（别当已证）
 
-- `docs/capability-seams.md`（63 KB）、`docs/cookbook/adding-a-tool.md`、`docs/tool-catalog.md`（102 KB）、`docs/tool-execution-pipeline.md`、`references/host-plugin.md`、`references/verification.md`、`references/practices.md`、`cordis-composition-reference/references/packages.md`：**已取回本地但未逐字读**。`practices.md` 被官方列为「选择扩展点之前必读」，下一轮优先。
+- **状态更新（同日第二轮）**：上一版列在这里的「已取回未逐字读」清单——`references/practices.md`（官方列为「选择扩展点之前必读」）、`host-plugin.md`、`ui-plugin.md`、`user-actions.md`、`verification.md`、`docs/cookbook/adding-a-tool.zh.md`、`packages/core/tools/README.zh.md`、`packages/bundle/web-app/presets/minimal.patch.yml`——**已逐字读完**，成果写成守则 R13-R19 并据此改写了 S3/S4/S5/S6/S9/S11/P3，本文不再重述（避免两处平行口径）。**仍未读**：`docs/capability-seams.md`（63 KB）、`docs/tool-catalog.md`（102 KB，官方口径本就要求按关键词 grep 而非整读）、`docs/tool-execution-pipeline.md`、`packages/jobs/jobs/README.zh.md`、`dsh-tool-call-timeout-policy` 的包 README、`docs/subsystems/scope.zh.md`。
 - 第三方站（`deepseekdocs.com`、`dshplugin.store`、`awesome-deepseek-harness-plugins`、`dsh-plugin-radar`）：**未读**，只在搜索结果里出现，不作为任何结论的依据。
 - 0.2.1-alpha.2 相对 rc.2 的 breaking change：未读 CHANGELOG，未实测。
 

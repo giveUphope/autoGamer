@@ -2,7 +2,7 @@
 
 > 用途：`autogamer-device` 后续每一笔改动动手**之前**先对照本表；每条都给「判据」，要求能由命令或产物机器作答，不接受"看着没问题"。
 > 依据：上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) @ master 的官方 skill / 包 README / 源码，加上本机 0.2.0-rc.2 实测。逐条标 **文档口径**（官方文字）、**源码口径**（上游源码）、**实测口径**（本机产物）。
-> 本守则是 [todo.md](../todo.md) 的 D7 / D15 / D16 / S5 / S8 / G30 的执行细则；两者冲突时以本守则的编号条款为准并回改 todo。
+> 覆盖范围：R1-R19 已改写 `todo.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
 
 ---
 
@@ -93,16 +93,73 @@ preset 的服务提供方与其**全部**消费方要共处一个 `cordis:group`
 
 - **判据**：`gh api repos/deepseek-ai/deepseek-harness/releases` 与本机版本号比对；版本不一致时 conformance fixture 一律视为**过期**，升级要重录。
 
-## R12 bundle 的展示元信息是义务，不是装饰
+## R12 Host 插件的导出形态二选一，不许混用
 
-外部 bundle 应提供 `locale/en.json` 的 `meta.title` / `meta.description`、图标，以及 `dsh.bundle.patch` 声明。
+`index.js` 只能是这两种之一：① `export function apply(ctx, config) {}` + 可选 `export const inject` 与 `export const Config`；② 一个 service class 作为 default export。**声明了 `Config` 的插件会在 activation 时校验该行的 `config`**，所以写 config 之前要先用 `Config.listConfigs` 查已安装插件的 schema，并**跟着返回文档里的 `$defs` 引用读**（顶层节点常是 `type: null` + `anyOf`，只看顶层会得出"没有字段"的错误结论）。所有资源注册都必须在 `apply` 内用 `ctx.effect` / `ctx.on` 完成并返回清理。
 
-- **出处**：**文档口径** `docs/cookbook/adding-a-package.zh.md` 第 5 节 + `host-plugin.md`（**已取回未逐字读**）。
-- **判据**：`--dump-config` 与安装结果里出现元信息诊断即为不合格；细则待读 `references/host-plugin.md` 后补编号条款，不得凭印象先写。
+- **出处**：**文档口径** `references/host-plugin.md:59-64`；`$defs` 那条坑是**实测口径**（本机 `--dump-config-schema` 的 `config97` 就是这样）。
+- **判据**：`grep -c "^export function apply" dist/index.js` 与 `grep -c "export default" dist/index.js` 之和必须为 1。
+- 展示元信息与图标义务（原列在 R12 的待补条目）统一收在 **R19**，本条不重复。
+
+---
+
+## R13 扩展点按「够用即最弱」选，不许把策略内建进工具正文
+
+官方机制强度（弱→强）：`ctx.tools.restrict(filter)` 只能缩小单个 agent 的可见集合（掩码取交集，dispose 时解除）；`ctx.tools.guard(guard)` 是**单调同步拒绝**，加在 `tools/pre-execute` waterfall 之后，后续监听器无法把拒绝变回允许；`tools/pre-execute` 决定允许／拒绝／**询问**；`tools/execute` 给分发加截止时间、重试、指标；`tools/post-execute` 可替换内容或值、阻止结果、附加有序上下文；`tools/result` 只观测冻结后的最终结果。原文规则：**「尽量不要把部署策略内建到工具中」**。
+
+- **出处**：**文档口径** `docs/cookbook/adding-a-tool.zh.md:61`、`packages/core/tools/README.zh.md:85,89,141`。
+- **落到本项目**：S4 熔断的「冷却期拒绝」= `ctx.tools.guard()`（同步且单调，正合适）；需要 await 的决策（问用户）只能走 `tools/pre-execute` 返回 `ask`；S3 闸门的串行化属于执行机制，可留在工具内，但**全局并发语义要先与宿主对齐**（见 R14），不许重复实现一套。
+- **判据**：写任何"拒绝/审批/限流"逻辑前，先答一句「这该是 guard、pre-execute，还是工具内部」；选工具内部必须写出为什么前两者不够用。
+
+## R14 宿主已有并发约定，工具要声明安全属性
+
+PTC 运行规则写明：**独立只读调用可以并发，变更类调用独占执行并按提交顺序**（「safe calls run concurrently; mutating calls run alone, in submission order」）。`defineTool` 的声明项里含「协作式超时」与「并行安全属性」两个字段。
+
+- **出处**：**文档口径** `packages/core/tools/README.zh.md:12,197`。
+- **判据**：`cordis_inspect_query` 查 `Tool` / `Config.listConfigs` 拿到该属性的**真实字段名与取值**再写代码，不许按英文字面猜字段（本守则不给字段名，因为文档正文未列出）。
+- **落到本项目**：设备动作天然是变更类，宿主的"独占 + 提交序"已经覆盖我们排队需求的一半；per-device 闸门只该补"同一设备跨会话串行"这另一半，并把只读动作（`take_screenshot` / `get_ui_hierarchy`）标成可并发。
+
+## R15 `timeoutMs` 是装饰，超时要么用包装层要么自己实现
+
+**注册表绝不强制执行定义里的 `timeoutMs`**；要强制必须挂 `@deepseek-ai/dsh-tool-call-timeout-policy` 包装层。取消是协作式且等完全停稳：工具主体必须观测 `exec.signal`；主体前取消记 `ABORTED_BEFORE_DISPATCH`，主体后取消只能把成功替换为 `ABORTED`；超时报 `TOOL_TIMEOUT`；未知工具与抛异常工具都收敛成 `UNKNOWN_TOOL` 结构化错误，**调用失败但不结束轮次**。
+
+- **出处**：**文档口径** `packages/core/tools/README.zh.md:126,235`。
+- **判据**：任何"超时已生效"的说法必须指出是谁执行的——包装层，还是我们 `ActionClient` 里的 `Promise.race`（现状是后者，`timeoutMs: 45_000` 只是给模型看的声明）。
+
+## R16 不许自写会话事件类型；可回放状态走 `presentationMeta` 或投影
+
+带新 `type` 的 append 会让 Session 拒开（只有 envelope 带 `ignorable: true` 才被接受，而 live `Session.append()` 设不了它）；`appendPluginRecord()` 写 ignorable 记录但** reserved for DSH 实验包**（格式迁移只尽力保留）。可回放的结果事实走 `output.presentationMeta(args, value)`，它被持久化在 `tool/result` 的 `meta` 上并传给 `presentResult`。每会话状态用 `ctx.sessionProjections` 单元（`apply` 纯同步、`view()` 值不变就返回同一引用），**不要**订阅 `session/event` 再自己重扫；**不要 poll `agent/status`**；等 durable 事件 `turn/end` / `assistant/message` / `tool/result`。
+
+- **出处**：**文档口径** `references/practices.md:21,26-28`、`docs/cookbook/adding-a-tool.zh.md:48`。
+- **落到本项目**：S11 的 checker「判定 append-only 落 session log」这条不变量**不能靠自写事件实现**，改走 `presentationMeta` 或 storage service；`whenIdle()` 不代表一个 followup 结束（多个输入可共享同一次运行区间），S3/S9 的等待判据要按此重写。
+
+## R17 注入上下文有两种，唤醒语义不同
+
+`exec.agent` 上 `agent.inject({content, source:{kind}})` **追加持久上下文但不唤醒**（空闲 agent 保持空闲），下一次准入的 step 才看到；定时器要驱动工作就调 `agent.followup()`（会唤醒）。`source.kind` 必须在插件里经 `MessageSourceMap` 声明——session format V4 在消息准入处**拒绝**已退役的 `{kind:'plugin', plugin:'<name>'}` 包装。对已 dispose 的 agent 要 try/catch。`agent/request` 监听者改不了请求消息；加提示词用 `ctx.systemPrompt.section()`，**不要**听 `system-prompt/assemble` 来增删工具或文本。
+
+- **出处**：**文档口径** `docs/cookbook/adding-a-tool.zh.md:49`、`references/practices.md:17-18,28-29`。
+- **判据**：S9（中途指导）与 S4（冷却解除）里任何"唤醒"必须写明用的是 `followup` 还是 `inject`，两者后果不同。
+
+## R18 UI 有两条硬路：slot 与拷贝，不许 iframe、不许 import 宿主 Client 包
+
+页面/面板用 React 组件注册进 slot（`ctx.slots.inject(ownerKey, () => ctx.slots.register(...))`，owning 声明塌缩时自动卸载）；**不要**从 Host 发 HTML 塞 iframe（拿不到主题 token、明暗切换与 `ctx.locale`）。**禁止** `require('@deepseek-ai/dsh-client-ui-primitives')` 或任何宿主 Client 包——要长得像就**拷贝**其 markup/CSS/行为并加自己的类名前缀，只保留 `--dsw-alias-*` token 引用；抛错的组件会 blank 掉你的 slot 条目（console: `slot entry crashed`）。Chat 行经 `ctx.uiConversation.events.register()` + `conversation.chat.node` slot（`kind` 即渲染键）。Factory 保持无副作用；样式、定时器、监听器在 `apply` 里经 `ctx.effect`/`ctx.on` 注册并返回清理。**Web Client 不消费 `presentCall`/`presentResult`**：专用卡片必须在 client 插件的 `tool.call.toolview` keyed slot 里按 wire 工具名注册，只定义 Host 展示方法不会增加 Web 卡片；也不许另建一套 Client presenter registry。
+
+- **出处**：**文档口径** `references/practices.md:31-38`、`references/ui-plugin.md`、`docs/cookbook/adding-a-tool.zh.md:69-99`。
+- **落到本项目**：P3 的 toolview（录屏/截图展示）只能走 client 插件这条路，G2 早先结论成立且更细；展示器必须是纯函数（实时与回放都会跑），不得做 I/O、读会话状态或用时钟随机数，UI 格式不许混进模型可见规范值。
+
+## R19 命名唯一 + 展示元信息是义务；授权类动作永远 user-only
+
+包与行都要**唯一命名**；官方模板的包名带 scope（`@local/<name>`）。Host-only 或 configuration-only bundle **也有**可见 inventory 条目，「不是豁免」：`locale/en.json` 的 `meta.title` / `meta.description`（并按用户语言补 `locale/zh.json`，别留模板文案）、`exports` 出 `./locale/*.json` 与 `./icon`、`files` 覆盖 patch/locale/icon/每个运行时文件、图标为 SVG/PNG/JPEG/WebP 且 ≤256 KiB 不得越出包目录（绝对路径、URL、越界符号链接一律拒绝）。缺字段回退到 `package.json` 的 name/description，缺图用面板默认插画，元信息畸形会产生诊断。安装后要在面板逐 locale 核验标题/描述/图标；**无浏览器控制时只能核验到已安装资源，必须报告"渲染未验证"，不许从安装成功推断视觉成功**。
+另一条授权红线：**授予或确认权限的动作（批准工具调用、回答 agent 的提问、放宽策略）保持 user-only，agent 不得执行也不得授权**；同一操作只实现一次（Host service 方法），UI 与 agent 工具共用它，不许两边各写一份逻辑。
+
+- **出处**：**文档口径** `references/host-plugin.md:3,29-55`、`references/user-actions.md:11`。
+- **判据**：`package.json` 里 `exports`/`files` 是否含 locale 与 icon；面板出现默认插画或包名回退即不合格。本项目当前**两项都缺**，已登记为 G32。
 
 ---
 
 ## 待补（诚实清单）
 
-1. `references/host-plugin.md`、`references/practices.md`（官方列为「选扩展点前必读」）、`references/ui-plugin.md`、`references/user-actions.md`、`docs/capability-seams.md`、`docs/cookbook/adding-a-tool.md`、`docs/tool-catalog.md`：**已取回未逐字读**。R12 与「扩展点怎么选」两节要等读完再定，不许先写结论。
-2. `install_bundle` 在 CLI 侧是否真的只有 pnpm 一条路：本机 `dsh --help` 只有 `dsh` 与 `dsh plugin` 两种用法（**实测口径**），但上游 `dsh-plugin-manager` 自称「shared by dsh CLI, Web and agent tools」——两者尚未对齐，需要读 `packages/*/dsh-plugin-manager` 的 README 或试 Web 面板路径来定论。
+1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**
+2. **仍未读，不许凭印象引用**：`docs/capability-seams.md`（63 KB，已取回）、`docs/tool-catalog.md`（102 KB，已取回，官方口径就该按关键词 grep 而非整读）、`docs/dsh-tool-call-timeout-policy`（R15 提到的包装层，其包 README 未读）、`packages/jobs/jobs/README.zh.md`（S2 长任务与 owner 语义）、`docs/subsystems/scope.zh.md`。
+3. **一条已定论的悬案**：`install_bundle` 在 CLI 侧没有等价物——本机 `dsh --help` 只列 `dsh`（boot）与 `dsh plugin`（= pnpm 转发，`--help` 打出来是 pnpm 11.7.0 的帮助），上游 `docs/cli-help.zh.md:29,71` 同述。所以 R2 表里第三层的两条可执行路径是**Web 侧边栏「插件」面板**与**在会话里让 agent 调 `plugin_manager`**（D17）；「shared by dsh CLI」那句里的 CLI 部分指的应是 `dsh plugin` 这层 pnpm 垫片，不是 install_bundle。G31 据此收口。
+4. **待查的真实字段名**：R14 的「并行安全属性」与 R15 的超时包装层入参，官方文本只给了名称描述没给字段名 —— 必须用 `cordis_inspect_query` 在装好的 Harness 上取真名（R1/R9 的口径），取到之前不许写代码。
