@@ -1,17 +1,25 @@
 node_modules/
 dist/
+
+# spike run artefacts and local captures (tokens appear in these)
 spike/run*.ndjson
 spike/run*.stderr
-spike/proxy.stdout
-spike/sandbox/
-spike/proxy-dump.log
 spike-run*.ndjson
+spike/proxy.stdout
+spike/proxy-dump.log
 scripts/proxy-dump.log
-spike/cookies.txt
-spike/auth-page.html
 spike/web-server*.log
-spike/mock.stdout
 spike/mock.stdout
 spike/spike-token.txt
-spike/web-server*.log
-spike/run*.ndjson
+spike/cookies.txt
+spike/auth-page.html
+spike/apply-probe.txt
+spike/sandbox/
+
+# dsh --dump-config / --dump-config-schema captures
+spike/dsh-dump*.json
+spike/dsh-dump*.err
+spike/dsh-schema*.json
+spike/dsh-schema*.err
+spike/dump-config.out
+spike/dump-config.err
