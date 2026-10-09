@@ -12,7 +12,7 @@
 - **py 复用**（零重写）：`mcp_server` 动作面（13 工具）+ 驱动栈（adb/uiautomator2）+ 诊断栈 + clients/controllers + utils CV；录屏后补（D12）
 - **不迁移**：py 智能栈（langgraph 多 agent——由 S11 单层替代）、旧控制台（原地只读保留）、artemis-client（无外部调用方）
 
-## 二、决策记录（现行有效，D1-D14）
+## 二、决策记录（现行有效，D1-D16）
 
 | # | 决策点 | 结论 |
 |---|---|---|
@@ -22,7 +22,7 @@
 | D4 | 积压策略 | Inbox 无上限原生，零自建 |
 | D5 | 重启恢复 | Inbox pending 原生恢复待派 + 插件启动显式 kick（已核实的唯一缺口）；动作无断点续跑（与上游一致） |
 | D6 | 版本管控 | peerDependencies 声明 + runtime 强制校验 + conformance 契约测试；自研包精确 pin |
-| D7 | 引入形态 | out-of-tree 插件（`dsh.bundle.patch` + `dsh plugin add`）；**配置层热重载、代码层冷重启**（`patchReload` 字段 rc.2 无实现） |
+| D7 | 引入形态 | **bundle 经 `plugin_manager install_bundle` 安装**（官方明令禁止手写 profile 的 package.json / cordis.patch.yml，也不许在 profile 目录跑 pnpm）；preset 声明由 bundle 补丁承载；CLI `--patch` 只当临时实验层；**配置层热重载、代码层冷重启**（`patchReload` 字段 rc.2 无实现）；**preset 改动只影响之后创建的 Agent**——现有会话保留其启动时的 revision，复验必须开新会话 |
 | D8 | 技术栈 | 插件 TS；py 复用动作面/驱动/诊断/helper/录屏(后补)；**langgraph 智能栈不迁移**（由 S11 单层替代） |
 | D9 | 迁移路径 | **R2' 直通插件**（P0 即插件形态，质量 spike 把关；不过→回退三段式双跑，历史方案见 git）；一期红线=旧控制台**原地只读保留**（不删除） |
 | D10 | 产品形态 | 项目=DSH 插件，**无独立外部 HTTP API 面**：不建 HTTP→SDK 桥、artemis-client 直接删、webhook 通知按需再建 |
@@ -31,6 +31,7 @@
 | D13 | helper | 二期 TS 复刻（保留与 Mobly/Appium 共存差异化能力） |
 | D14 | 智能层 | **单层执行路由（S11）**：单 agent + 代码强制路由器 + validator/checker 只读 subagent；pro 一期内实现、调用逻辑保真；不做反思式自检（业界 SOTA 立场） |
 | D15 | 契约核实口径 | **只用声明面**：`dsh --dump-config-schema` / `--help` / 随包 README / 已安装 npm 包产物；**禁止解包 app.asar** 去读宿主内部代码（2026-10-10 用户裁定）。既有 [dsh-verification](migration/dsh-verification.md) 里 37 处包内代码行引用属旧口径，沿用前须按声明面重验；README 与 CLI 旗标类证据（28 处）本已合规 |
+| D16 | 插件分层与 realm | 官方口径（[upstream-plugin-forms](migration/upstream-plugin-forms.md) 二.6）：Host 插件提供共享服务（tools registry、agent loop、sessions 等），**preset 插件只向这些 registry 贡献 scoped tools / persona / prompt 片段 / policy**；preset 内提供服务的插件**必须与其全部消费方同处一个 `cordis:group` + `isolate` realm**，条目局部隔离不沿 Agent 注册 scope 传播；注册表 `mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**直接拒绝整个 preset 挂载**（源码口径 `mount.ts:193,212-213`） |
 
 ## 三、对接语义（S1-S11，R2' 最终版）
 
@@ -57,6 +58,7 @@
 - autogamer TS 工具内部作 MCP client 转发（**不裸用 dsh-mcp-client patch**——会绕过闸门）；进程由插件生命周期管理
 - env 极简（对齐上游容器契约）：`ADB_DEVICE_SERIAL`/`ADB_HOST/PORT/SERVER_SOCKET`/`ARTEMIS_HIERARCHY_BACKEND` + helper 相关
 - 返回契约：ActionResult（`isError=False + ok=False` = 设备拒绝，观察非异常）；0-1000 归一坐标（G24）；超时必须在工具内生效（ToolDefinition.timeoutMs + exec.signal，G6）
+- **注册可见性（G30）**：`ctx.tools.register()` 返回 disposer **不等于 Agent 能看见该工具**——插件注册继承 preset scope，由 Agent scope 的父链接决定可见性，而组外的普通 Context 查找仍选 Host realm。判据改用官方检查器（`cordis_inspect_query` 的 `Tool` 项 = 「本 Agent 可调用哪些工具」、roster 的 `enabled`/`fiberPhase`/诊断文本、`inspectCompositions()` 的 leakedServices），不再靠 LLM wire 反推
 
 **S6 审批映射**
 - 常规动作 never；破坏性面全部集中在 run_adb_command → **整工具 ask**（D11）；helper APK 安装/Chrome 强制标志 = 任务前置隐式授权（ARTEMIS_HELPER_AUTO_INSTALL 可关）；fail-closed 默认
@@ -64,7 +66,7 @@
 **S7 重启对账**
 - 插件启动：拉起/校验 action server → 扫 pending inbox 非空会话显式 kick（D5）→ 无孤儿 worker 概念（R1 遗产消失）
 
-**S8 版本门禁**：conformance 契约测试锁事件/工具面/session 格式，接 `dsh plugin` 升级流
+**S8 版本门禁**：conformance 契约测试锁事件/工具面/session 格式，接 `dsh plugin` 升级流。**版本差要盯住**：spike 全程跑 `0.2.0-rc.2`（2026-09-29），上游已发 `dsh-v0.2.1-alpha.1`（10-03）与 `dsh-v0.2.1-alpha.2`（10-09），alpha.1 的主题就是「让 Agent 给自己造插件」（即本次调研引用的两个 skill）；升级前 conformance fixture 视为过期
 
 **S9 中途指导注入**：py 机制消失；DSH 侧 = `steer`/`followup` 原生（已核实）
 
@@ -100,6 +102,7 @@
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
 | G28 | parking + 全局并发 N | 保留：闸门工具内部语义 |
+| G30 | preset 工具可见性（P0 当前阻塞点） | 新开：两个工具在 `register()` 成功之后仍不进 Agent 工具面。定性次序按官方诊断走——roster 的 `enabled`/`fiberPhase`/诊断文本，`cordis_inspect_query` 的 `Tool` 项，`inspectCompositions()` 的 leakedServices；命中「服务泄漏进 root realm」就按 D16 把插件包进 `cordis:group` + `isolate`，命中「行激活失败」则整个 preset 本就被拒绝挂载 |
 | 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -114,20 +117,21 @@
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；19 个 vitest 用例全绿（含 conformance 契约 6 项）
-- ✅ **安装流 spike（live）**：三处修正固化——`dsh.bundle.patch` 必须声明、bundle patch 是 `- insert:` 列表、Windows 路径+remove/add 重评估；层合成 dump-config exit 0
+- ✅ **安装流 spike（live）**：三处修正固化——`dsh.bundle.patch` 必须声明、bundle patch 是 `- insert:` 列表、Windows 路径+remove/add 重评估；层合成 dump-config exit 0。**2026-10-10 调研修正**：`dsh plugin add` 加手写 profile `cordis.patch.yml` 这条流程本身落在官方明令禁止的一侧（正道是 `plugin_manager install_bundle`），已固化下来的三条机制结论仍有效，但流程要按 D7 改写
 - ✅ **MCP 直连 spike（离线）**：ActionClient ↔ `artemis mcp --type adb` 全链路；真实契约接线（13 工具名/像素坐标 0-1000 换算/字符串结果归一化含 `Error executing tool` 变体/`--type` 旗标）
 - ✅ **S1**：外部 SessionId 源码核实（幂等 adopt）+ live 组合验证（preset 注册、新任务默认标记、选择器可见）
 - ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
 - ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
-- 🔴 **S10 四点 live 复验（2026-10-10 执行，① 未通过；归属已定）**：同实例配对差分给出定位——AutoGamer 会话发给模型的请求体里**根本没有 `tools` 键**（wire 实录两次：本地 01:33:43、01:41:11），模型转而幻觉出一个 `os` 工具并把调用写成文本 JSON；而**标准模式在同实例、同模型、同 provider 下 `tools=26` 且真跑了 pwsh**（1 轮 2 步列出目录）。所以不是宿主、不是 LM Studio、不是模型能力，是我们 preset 的工具面没组装起来。
-  - **二分实验已做完（01:51）**：把 `preset-autogamer` 的 plugins 抄成 standard 的同一批顶层工具插件（Windows 腿 tool-pwsh，不含 tool-bash）**再加我们的 inner**，会话请求从 `tools=0` 变成 **`tools=16`，16 个全是内置工具，`run_device_action` 与 `report_task_status` 一个都不在**。三态里命中的正是中间那态 ⇒ 内置 `@deepseek-ai/dsh-*` 插件作为 preset 子项能解析，**而 profile 级 link 安装的外部插件名 `autogamer-device` 写在 preset 子项里不被解析**。
-  - **顺带抓到一条硬约束**：旧形态那项 `- name: "@deepseek-ai/dsh-tool-jobs"`（**只有 name、没有 id**）产不出任何工具；补上 `- id: tool-jobs` 之后 job_list/job_output/job_kill 才出现在 wire 里。⇒ **preset 的 plugins 子项必须带自己的 id**，裸 `- name:` 项会被丢掉。
+- 🔴 **S10 四点 live 复验（2026-10-10 执行，① 未通过）**：同实例配对差分给出定位——AutoGamer 会话发给模型的请求体里**根本没有 `tools` 键**（wire 实录两次：本地 01:33:43、01:41:11），模型转而幻觉出一个 `os` 工具并把调用写成文本 JSON；而**标准模式在同实例、同模型、同 provider 下 `tools=26` 且真跑了 pwsh**（1 轮 2 步列出目录）。所以不是宿主、不是 LM Studio、不是模型能力，是我们 preset 的工具面没组装起来。
+  - 01:51 二分实验留下的**事实**：新会话里 `tools=16`，16 个全是内置工具，`run_device_action` 与 `report_task_status` 都不在。
+  - **上一轮记在这条下面的两条归因，同日撤回**（依据 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 三）：①「内置 `@deepseek-ai/dsh-*` 名作为 preset 子项能解析、profile link 的外部插件名不能」——那一次**同时变了两个量**（plugins 集合 + 旧会话换成新会话），而官方口径是「声明只影响之后创建的 Agent；现有会话保留其启动时的 plugin revision；改动要在新会话里验」，单是「换新会话」这一项就足以解释此前连 `tools` 键都不存在；②「裸 `- name:`（无 id）子项产不出工具、子项必须带自己的 id」——与 `@deepseek-ai/dsh-agent-preset` README「子插件可省略行 ID，由 Loader 分配」直接冲突，差异原因未定性。**阻塞点重登记为 G30**，判据改用官方给的活门禁（roster 的 `enabled`/`fiberPhase`/诊断文本、`cordis_inspect_query` 的 `Tool` 项、`inspectCompositions()` 的 leakedServices），不再靠 LLM wire 反推。
   - 插件自身侧全部就绪（临时探针实测后已撤）：`apply()` 会被调用、注册到 2 个 tool disposer、Config 七个键全生效（含 preset inline 的 `actionServerCommand`）、`dsh plugin --profile web list` 显示 link 已装、`dsh --dump-config` 合成形态正确（`--dump-config` exit 0、无 unmatched-patch 警告）。
   - 声明面否掉两个猜测：`dsh --dump-config-schema` 的 `$defs/config97`（`@deepseek-ai/dsh-agent-preset` 的 config）**确实声明了 `plugins`**，且 `required: [id, plugins]` —— 我们的子挂载形态合法，不是「字段不认识」。
   - **取证方法（下次直接用）**：web UI 那个输入框是 Lexical，`fill` 无效；真实 click 建立选区后 `execCommand('insertText')` 才写入，且**不要在写入的同一次调用里回读 textContent**（会误判成没写进而重复注入）。发送用 `evaluate_script` 里按 aria-label 找按钮 `.click()` 最可靠——`click(uid)` 的 uid 会被同批改 DOM 的操作弄过期，我们因此白丢过两次发送。
   - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）；mock action server 的 PNG 截图被插件解析成 1080x2400（坐标修复的 live 证据）。
   - ②效果验证 / ③闸门阻塞 / ④Inbox 连发 **仍未测**——它们都以「我们的工具真在面上」为前提，被上面这条外部插件解析缺口挡住。
 - ✅ **本轮 live 连带的两个缺陷修复**（都先实测再修，配锁死测试）：`coord.ts` 的 `byteAt` 自己调自己，`parseImageSize` 对任何输入都栈溢出，截图取尺寸这条路本来就是死的；`apply()` 里 `if (config.screenSize)` 被判据骗过——Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，于是默认配置下的坐标一路 `NaN` 发给 action server 还报成功。修法是把判定导出成 `configuredScreenSize()` 纯函数并在 `tests/apply.spec.ts` 里断言 action server 真收到的坐标（删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload）。
+- ✅ **联网调研上游插件形态（2026-10-10，正文见 [upstream-plugin-forms](migration/upstream-plugin-forms.md)）**：逐字读了 `editing-cordis-compositions` / `cordis-plugin-development` / `cordis-composition-reference` 三个官方 skill、`agent-preset` 与 `agent-preset-registry` 的 README、`core/scope` README、`mount.ts` 源码，以及 shipped `presets/minimal.patch.yml` 与 `standard.patch.yml`。对本方案有决定作用的三条：①preset 只能由 **bundle 补丁**承载且要经 `plugin_manager install_bundle`（官方明令禁止手写 profile 的 package.json / cordis.patch.yml）；②**声明只影响之后创建的 Agent**，现有会话保留其启动时的 revision；③`mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**拒绝整个 preset 挂载**（源码 `mount.ts:193,212-213`）。据此修订 D7、新增 D16 与 G30，补 S5 注册可见性与 S8 版本差。`capability-seams` / `cookbook/adding-a-tool` / `references/practices.md`（官方列为「选扩展点前必读」）等已取回**未读**，下一轮先读它。
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
@@ -138,3 +142,4 @@
 | [upstream-rethink](migration/upstream-rethink.md) | 上游 google/artemis 三张调用面研究 + R2' 基线论证 |
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |
 | [feature-inventory](migration/feature-inventory.md) | fork 现状防丢失盘点（inventory/01-05 明细；队列控制台部分已随 R2' 降级为 fork 场景遗产，设备/智能栈部分为上游 canonical 契约） |
+| [upstream-plugin-forms](migration/upstream-plugin-forms.md) | 上游公开文档与源码调研：插件 / preset / 工具形态的官方口径（D7 改写、D16、G30 的依据），含本轮收回的两条错误归因、官方活门禁判据清单与「已取回未读」清单 |
