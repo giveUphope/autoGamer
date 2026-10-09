@@ -635,3 +635,45 @@ describe('AgentTimeline 动作卡展开图标语义', () => {
     expect(card.find('.card-expanded').exists()).toBe(true);
   });
 });
+
+describe('AgentTimeline 排队轮次不进消息区域', () => {
+  beforeEach(() => {
+    setActivePinia(createPinia());
+    vi.clearAllMocks();
+    apiGetMock.mockReset();
+    mockBackend();
+  });
+
+  it('排队中的消息只留在队列列表：时间线不渲染 pending 轮，发射后按原轮序出现', async () => {
+    const wrapper = mountTimeline();
+    const sessionStore = useSessionStore();
+    const submittedAt = SESSION.start_time + 120;
+    const queued = {
+      session_id: 'sess-queued',
+      initial_goal: '排队的消息',
+      start_time: submittedAt,
+      status: 'pending',
+      conversation_id: 'conv-spec',
+      submitted_at: submittedAt,
+    };
+    sessionStore.rawSessions = [{ ...SESSION, conversation_id: 'conv-spec' }];
+    sessionStore.pendingQueue = [queued];
+    sessionStore.selectSession('sess-1', false);
+
+    // 已发射的轮正常渲染；排队轮不得出现在时间线（它只待在队列列表里）
+    await vi.waitFor(() => expect(wrapper.findAll('.round-block').length).toBe(1));
+    expect(wrapper.text()).not.toContain('排队的消息');
+
+    // 发射后（queue → running）：以原有轮序（第 2 轮）进入时间线
+    sessionStore.pendingQueue = [];
+    sessionStore.activeTasks = [
+      { session_id: 'sess-queued', goal: '排队的消息', conversation_id: 'conv-spec', created_at: submittedAt },
+    ];
+    sessionStore.agentStatus = 'running';
+    sessionStore.runningSessionId = 'sess-queued';
+    await vi.waitFor(() => expect(wrapper.findAll('.round-block').length).toBe(2));
+    const second = wrapper.findAll('.round-block')[1]!;
+    expect(second.text()).toContain('第 2 轮');
+    expect(second.text()).toContain('排队的消息');
+  });
+});

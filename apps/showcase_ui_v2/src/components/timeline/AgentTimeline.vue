@@ -72,7 +72,10 @@ function threadKey(session: Session): string {
 }
 
 /** 对话轮列表：旧 → 新（聊天顺序），只渲染选中的会话线程。roundNumber 是
- * 会话内 1 起始的轮序号（与 store 的线程分组同一排序规则）。 */
+ * 会话内 1 起始的轮序号（与 store 的线程分组同一排序规则）。
+ * 排队中（pending）的消息不进消息区域——它们只出现在输入区的队列列表里
+ * （可移除、按序发射），获得运行表示后才成为时间线里的一轮；轮序编号仍
+ * 计入排队轮，发射后按原有位次出现，避免同一条消息在两处重复展示。 */
 const rounds = computed(() => {
   const thread = sessionStore.currentConversationId;
   // 排序锚点 = 提交时刻（sessionChronoKey）：start_time 随任务发射漂移
@@ -100,21 +103,24 @@ const rounds = computed(() => {
       // 新建的空草稿线程绝不携带旧会话内容
       || (session.session_id === sessionStore.currentSessionId && byThread.has(thread)),
   );
-  return list.map((session) => {
+  return list.flatMap((session) => {
     const status = getTaskStatus(session, sessionStore.runningSessionId, sessionStore.agentStatus);
-    return {
-      id: session.session_id,
-      roundNumber: roundOrderBySession.get(session.session_id) ?? 1,
-      goal: session.initial_goal,
-      status,
-      statusText: t(`status.${status}`),
-      statusColor: sessionStatusColor(status),
-      time: formatSessionTime(sessionChronoKey(session)),
-      isSelected: session.session_id === sessionStore.currentSessionId,
-      // 会话级失败原因：设备不可用等在执行任何步骤前就失败的轮次没有
-      // 日志可看，只有它解释断点在哪里
-      error: session.error_message || null,
-    };
+    if (status === 'pending') return [];
+    return [
+      {
+        id: session.session_id,
+        roundNumber: roundOrderBySession.get(session.session_id) ?? 1,
+        goal: session.initial_goal,
+        status,
+        statusText: t(`status.${status}`),
+        statusColor: sessionStatusColor(status),
+        time: formatSessionTime(sessionChronoKey(session)),
+        isSelected: session.session_id === sessionStore.currentSessionId,
+        // 会话级失败原因：设备不可用等在执行任何步骤前就失败的轮次没有
+        // 日志可看，只有它解释断点在哪里
+        error: session.error_message || null,
+      },
+    ];
   });
 });
 
