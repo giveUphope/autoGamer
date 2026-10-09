@@ -30,3 +30,4 @@
     actionServerCommand:
       - node
       - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs
+
