@@ -150,12 +150,13 @@
 - **路由器按序判定每步（代码强制，模型不可绕过）**：
   1. 目标置信：元素索引在当前层级可解析且无歧义 → **短路径直执行**（flash 等价，3-5s/步保持）
   2. 风险等级：破坏性/不可逆动作 → validator 前置校验 + approval ask（S6）
-  3. 失败/阻塞：动作失败 → validator 自愈梯（XML→坐标→pixel）→ 连续失败达阈值 → **checker 审计通过才允许重试**
+  3. 失败/阻塞：**执行后效果确认**（✅ 业界采纳 action-effect verification，dsh-verification §八：屏幕差分/dHash——py utils image_diff/image_hash 已有）确认动作生效，未生效即失败 → validator 自愈梯（XML→坐标→pixel）→ 连续失败达阈值 → **checker 审计通过才允许重试**
   4. 计划检查点：会话存在 plan（goal 工具）→ 里程碑处 checker 审计；无 plan = 仅出口审计（= 上游 final 档）
   5. 梯级参数化：off/final/checkpoints/strict 保留为路由器严格度配置（run_device_task 入参），不再是两个执行体
 - **保真对照（盘点 04）**：validator 升级梯原样保留；checker 三不变量保留（只读 subagent、判定 append-only 落 session log、释放与判定分离——fail-open 只影响释放，inconclusive 原样记录）；run_outcome 双轴 = 汇报工具的 completed/blocked + tests.failed 字段；预算 = goal `maxGoalRounds`（round-limit→blocked，✅ 已核实）+ checker 重试上限
 - **收益**：单层维护；路由决策全部落 session log 可回归调优；短路径零 subagent 开销
 - **代价/风险**：单 agent 技能/prompt 卫生要求高（指引全量装载）；路由误判=过验证（慢）或欠验证（质量降）——靠路由日志调阈值，P1 加路由决策日志
+- ✅ 业界对齐（dsh-verification §八）：「单 agent + 外部确定性控制」是收敛方向——Anthropic workflows、verifier-driven、logic-based action verification 一致**反对反思式自检**；DSH 原生 workflow/PTC 是三期确定性动作 burst 的现成机制
 
 ### 落地差距核查（G1–G29，按此方案实际落地还须调整；G8+ 来自 2026-10-09 盘点审计）
 

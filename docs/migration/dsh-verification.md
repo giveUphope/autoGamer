@@ -92,7 +92,9 @@
 | 11 | ⚠️ workflow/workflow-ptc = 模型提交 JS 编排脚本（agent()/parallel()/pipeline()），**阻塞父 turn、同步、无持久化**——不是任务队列，勿与 Inbox/schedule 混淆 | dsh-workflow/README.md:32-53 |
 | 12 | ✅ 279 个 dsh* 包全部 0.2.0-rc.2；peerDeps 惯例：dsh-\* 精确版本、cordis ~4.0.4；自研插件 peerDependencies 建议精确 pin + 升级走 conformance | 全树 package.json |
 
-## 方案修改对照（已回写 todo.md）
+## 方案修改对照（第一轮，已回写 todo.md）
+
+| 位置 | 修改 |
 
 | 位置 | 修改 |
 |---|---|
@@ -197,3 +199,18 @@
 4. **二期换壳洞察**：甲方案下 **py worker ⇆ dsh headless 是对等可换壳物**——同一 job 命令从 py worker 换成 dsh headless agent（带 autogamer-device MCP 工具）即模式 a 的最平滑渐进入口，先换壳再拆逻辑。
 
 来源：[Codex as a platform](https://developers.openai.com/blog/codex-as-a-platform)、[Unlocking the Codex harness](https://openai.com/index/unlocking-the-codex-harness)、[Harness Engineering: Headless mode](https://www.zyte.com/blog/harness-engineering-3-headless-mode-the-minimal-agent-harness)、[ACP Architecture](https://agentclientprotocol.com/get-started/architecture)、[OpenClaw Architecture](https://ppaolo.substack.com/p/openclaw-system-architecture-overview)、[Claude Code headless](https://mcpmarket.com/tools/skills/headless-mode-for-claude-code)
+
+## 八、业界「普通 agent + 外部机制约束」模式调研（2026-10-09，web 调研）
+
+> 动机：验证 S11「单层 agent + 确定性路由」是否业界正确形态。结论：**是，且是收敛方向**——研究趋势明确反对「反思式自检」（模型审查自己不可靠），支持 verifier 驱动 + 逻辑化守卫。
+
+| # | 机制（按约束力排序） | 业界出处 | S11 对应 |
+|---|---|---|---|
+| 1 | 确定性代码包住模型（workflows：代码编排 LLM 调用，模型只填参数） | Anthropic「Building Effective Agents」五模式（routing/parallelization/evaluator-optimizer…）；「workflows 给可控性、agents 给开放性」 | S11 路由器 = 动作级 workflow |
+| 2 | **逻辑驱动的动作验证**（明确批评 reflection 式自检，提出逻辑化守卫） | arXiv 2503.18492「Safeguarding Mobile GUI Agent via Logic-based Action Verification」 | S11 前置校验/失败阈值门=逻辑守卫；validator subagent 只做语义层 |
+| 3 | Verifier 驱动范式（验证者一等公民 + 离散化动作空间） | arXiv 2503.15937「Verifier-Driven Mobile GUI Agents」+ evaluator-optimizer 模式 | S11 checker subagent + run_outcome 记账；ARTEMIS 结构化动作集即离散动作空间 |
+| 4 | **动作效果验证**（post-action effect check：屏幕真的变了吗） | ACL 2026「Action-Effect Verification and Self-Refinement」 | **S11 采纳升级**：路由器执行后以效果信号（屏幕差分/dHash，py utils 已有 image_diff/image_hash）确认生效，未生效=失败路径检测信号 |
+| 5 | 分层反思（长程失败复盘） | MobileUse hierarchical reflection / GUI-Reflection | S11 checker 里程碑审计为粗粒度对应；不做模型自反思（与 #2 立场一致） |
+| 6 | 代码模式/PTC（模型写代码确定性调用工具：98% token 节省+确定性控制流） | Anthropic PTC / code-execution-with-MCP；**DSH 原生对应=dsh-workflow + dsh-ptc-runtime（已解包核实）** | 一期不需要（py worker click_sequence/burst 已覆盖确定性动作串）；三期把动作 burst 迁 PTC 的现成机制 |
+
+来源：[Building Effective Agents](https://www.anthropic.com/engineering/building-effective-agents)、[Logic-based Action Verification](https://arxiv.org/html/2503.18492v1)、[Verifier-Driven Mobile GUI Agents](https://arxiv.org/html/2503.15937v4)、[Action-Effect Verification (ACL 2026)](https://aclanthology.org/2026.acl-long.1335.pdf)、[MobileUse hierarchical reflection](https://openreview.net/pdf?id=KR6tnkb6h4)、[Code execution with MCP](https://www.anthropic.com/engineering/code-execution-with-mcp)、[Programmatic Tool Calling](https://platform.claude.com/docs/en/agents-and-tools/tool-use/programmatic-tool-calling)
