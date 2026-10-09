@@ -17,7 +17,8 @@
 | D5 | 重启恢复语义 | **排队消息原生自动恢复**（Inbox 是 durable projection，重启后 pending 原生续派——零自建）；**运行中任务死亡 → 标记 failed 不重新入队**（设备任务是有状态长交互，重入会重复操作设备，BullMQ stalled 重入语义不适用）；启动时对账孤儿 py worker | DSH 官方：Inbox durable projection + `resume()` 加载持久会话；`jobs-local` 进程内存储不持久；设备任务重入不安全是领域约束 |
 | D6 | DSH 版本管控 | **peerDependencies range 声明兼容窗**（DSH runtime 拒载旧版，dsh-data-agent 实证）+ conformance 契约测试守升级；`upgrade:dsh` pin 门禁**降级为可选**（仅 repo 级复现 runtime 时需要） | 社区无 workspace-host 先例：插件均以 peer range 对 dsh 声明兼容；Harness Ultimate 用 commit-SHA pin 是 profile 安装器场景 |
 | D7 | 引入形态 | **社区主流 out-of-tree 插件模式**：DSH 为独立 runtime（`npm i -g @deepseek-ai/dsh` / npx），自建插件为独立包（自带 `cordis.patch.yml` 声明 `dsh.bundle.patch`），经 `dsh plugin --profile web add` 安装（支持 npm/git:`github:owner/repo#ref`/file:/link:）；`--dump-config` 验证生效 layer；**不自建宿主、零源码 fork** | 社区实证：dsh-data-agent（plugin add + dsh-market + Settings→Plugins 面板）、harness-relay（pnpm pack + `plugin add .`）、awesome-deepseek-harness（1.1k stars，安装约定即此）；`dsh plugin` 转发 pnpm |
-| D8 | 技术栈约束 | **TS 优先**：能 TS 实现的一律 TS（插件/闸门/熔断/孤儿对账/媒体路由/toolview 渲染）；py 仅保留强依赖 py 成熟生态的例外——Android 驱动（uiautomator2/adbutils）、录屏栈（opencv/imageio-ffmpeg）、langgraph worker 本体（一期黑盒保留，二期随模式 a 退役）；**py 侧一期零新增代码** | 用户约束（2026-10-09）：方便开发、收敛单语言维护面；Windows UIA 走 koffi 已是 TS；Android UI 自动化无 uiautomator2 等价 TS 库，故留 py |
+| D8 | 技术栈约束 | **TS 优先**：能 TS 实现的一律 TS（插件/闸门/熔断/孤儿对账/媒体路由/toolview 渲染）；py 仅保留强依赖 py 成熟生态的例外——Android 驱动（uiautomator2/adbutils）、录屏栈（opencv/imageio-ffmpeg）、langgraph worker 本体（一期黑盒保留，二期随模式 a 退役）；**py 侧一期最小改造**（D9 修订：放宽为共存必需的最小改造，逐项显式登记；不删除、不整体重构的红线不变） | 用户约束（2026-10-09）：方便开发、收敛单语言维护面；Windows UIA 走 koffi 已是 TS；Android UI 自动化无 uiautomator2 等价 TS 库，故留 py |
+| D9 | 三期划分与红线 | **一期=引入+并行共存**（DSH runtime+插件骨架接入、新旧双轨灰度；**不删除任何模块、不整体重构**，允许为共存做最小改造且逐项登记）；**二期=确认迁移后**：移除 DSH 原生已承接模块 + 必须自建模块插件化改造 + **DSH 缺口能力一律经官方扩展缝（插件 API/toolview/webhook/Inbox/jobs/connection.fetch）补齐同体验，禁止修改 DSH 源码/fork 来实现插件可用**；**三期=以 DSH 为核心给出插件优化方向** | 用户约束（2026-10-09）：一期并行降风险、二期收敛自建面、三期持续优化；不改 DSH 保升级自由度（呼应 D6/D7） |
 
 自建盘点结论（为什么换）：`task_queue_service` 2027 行 + `device_lock` 1028 行全部自建；通用状态机层（持久化/FIFO/重试/stalled 检测）是 bug 高发区（PID 复用、全局 FIFO 竞态、session_ended 误提升均有前科）。核实后：会话独立/积压/排队消息恢复均为 DSH 原生能力，无需队列库；自建只剩真正的差异化——设备资源调度语义（锁 + 熔断 + worker 监管）。
 
@@ -39,8 +40,28 @@
 - **DSH runtime**：官方独立安装（`npm i -g @deepseek-ai/dsh` 或 npx），`web` profile 起步（官方 UI + 轨迹回放）；**不自建宿主 workspace**——自建能力以 out-of-tree 插件包交付（社区主流，见 D7）
 - **队列插件 `autogamer-queue`**：**不自建会话队列容器**（DSH Inbox 原生）、**不自建子进程监管层**（py worker 注册为 DSH job——DSH 自带 `bash` job kind + subprocess `readFrom` pull source，output ring/`JobRegistry.kill`/退出码→`JobOutcome.detail`/settled 完成通知全原生）；职责收缩为——设备锁闸门（先到先得，进程内）+ 设备维度熔断（冷却窗半开单探测）+ 启动时孤儿 worker 对账（`jobs-local` 不持久，死亡任务标 failed）
 - **设备插件 `autogamer-device`**：device_list/use/screenshot/uia/desktop 工具重写（koffi 绑 UIA；注意 `koffi.decode 'string16'` 崩溃陷阱改手动 utf16le；隐藏桌面键盘免前台不可达等边界经验见项目记忆）
-- **py 侧零新增**（D8）：artemis CLI 原样作为 worker 子进程入口；FastAPI 控制台过渡期只读共存；原 py 计划项（孤儿对账/媒体路由）全部移入 TS 插件
+- **py 侧最小改造**（D8+D9）：artemis CLI 原样作为 worker 子进程入口；FastAPI 控制台一期全功能共存、二期转只读后下线；除共存必需的最小改造（逐项登记）外 py 侧零新增；原 py 计划项（孤儿对账/媒体路由）全部移入 TS 插件
 - **契约测试**：锁定依赖的 DSH 行为（turn/step 事件、插件注册 API、session JSONL 格式、approval 语义），接入升级门禁
+
+### 三期划分（D9，2026-10-09——checklist 分期标注与差距表均按此对齐）
+
+**一期 · 引入与并行共存**（不删除任何模块、不整体重构）
+- 引入 DSH runtime（web profile）+ `autogamer-queue` 插件骨架；py worker 经 bash job 接入——S2/S5 契约与 G8–G10 全部在插件侧消化，py worker 本体不动
+- 新旧双轨并行 + 灰度开关；旧控制台全功能保留；DSH 轨道 UI（P3）并行长出
+- 允许的最小改造**逐项登记**（当前已知：① 灰度路由开关（py，十行级，挂点=`artemis run` 非 worker 分支 / /api/run 准入前）；② TS 闸门对 py 锁目录/格式的兼容适配（G15，TS 侧）；其余如需触碰既有模块，先登记再动手）
+- 一期承接：G8–G17、G19/G20（以插件/TS 侧实现验收）+ G5 conformance 骨架 + S1/S2 spike
+- 出口条件：双跑稳定窗（队列/停止/熔断/录屏/通知全路径无回归，建议 ≥2 周）→ 确认迁移 → 进入二期
+
+**二期 · 确认迁移后：移除 + 插件化（含缺口同体验补齐）**
+- 移除映射表「✅ 删除/收缩」行模块（ipc/SSE、/api/status、state.py、artemis-client、replay、SDK、config/telemetry 大部、data_engine 等）——**每移除一项，先核对其 P4 外部消费项与共存期鉴权面（G17）**
+- 必须自建模块启动插件化：autogamer-device（G24/G25 验收基线）、autogamer-media（G23）、mock→TS 插件、预设→skills
+- **红线：DSH 没有的能力一律经官方扩展缝补齐同体验，不得修改 DSH 源码**——优雅取消联动（G10）、终态判定读 DB（G8）、熔断/闸门/parking/全局并发（G11/G28）、幂等 admission（G13）、LLM 暂停呈现（G12）、通知矩阵（G21）、媒体托管+安全模型（G23）、catch-up/队列信源（G18/G20）、线程聚合不变量（G19）、injected_instruction 等价物（S9 spike 结论）
+- 旧控制台转只读 → 下线决策（P4 后半）
+
+**三期 · 以 DSH 为核心的插件优化方向**
+- 模式 a 主线：ARTEMIS 执行逻辑（agents/graph/tools/memory）渐进搬入 DSH agent+skills（G1；启动条件=二期稳定后评估；验收基线=盘点 04）
+- toolview 结构化渲染（G2 可选小件）、LLM seam 可靠性对齐（重试/fallback/熔断语义，盘点 04 §2.3）、插件 conformance 扩展、性能优化（输出环→结构化事件）、远期多机 durable backend（D2 尾注）
+- 三期启动时产出「插件优化方向提案」，逐项排期
 
 ### 对接语义（py worker ⇆ DSH 宿主契约，S1–S8）
 
@@ -69,7 +90,7 @@
 - 入口：`artemis` CLI 不变；env **全集**见盘点 inventory/02 §2.1（G9）——必设 `ARTEMIS_TASK_WORKER=1`（缺失时 `artemis run` 反向自提交旧 daemon）；`ARTEMIS_CONVERSATION_ID`/`ARTEMIS_SESSION_ID`/`ARTEMIS_SUBMITTED_AT`（轮次排序锚）/`ARTEMIS_TASK_INGRESS`/`ARTEMIS_DEVICE_QUEUE_TICKET`/`ARTEMIS_ADB_ENDPOINT_ID`/`ARTEMIS_IPC_PORT` + driver 组（`ADB_*`/`ARTEMIS_MOCK_DRIVER`/`ARTEMIS_HIERARCHY_BACKEND` 等）+ 凭证组；stderr→stdout 合并、Windows `CREATE_NO_WINDOW`
 - 输出：stdout → job output ring（stdout/stderr 模型可读；进度/心跳标 `log` channel 仅观察者可见）；录像文件走 `spillPath` 交接（ring 仅 UTF-8，二进制不入环）
 - 终态留痕：DB/trace 仍由 DataEngine 写入（job outcome 只作 UI/通知层，不承载持久化）
-- 孤儿对账由 autogamer-queue（TS）承担：插件启动时扫孤儿 worker 进程 → 标 failed——**py 侧一期零新增代码**
+- 孤儿对账由 autogamer-queue（TS）承担：插件启动时扫孤儿 worker 进程 → 标 failed——**py 侧一期最小改造**（D8+D9，改造逐项登记）
 
 **S6 审批映射（HITL）**
 - 敏感分级 → DSH approval policy：常规设备操作 `never`；破坏性操作（卸载/清数据/支付类）`ask` + `allowed-once`；fail-closed
@@ -90,7 +111,7 @@
 
 | # | 差距 | 调整 |
 |---|---|---|
-| G1 | **Agent 驱动模式未决（最关键）**：S2（bash job 黑盒跑 py worker）与 P2（device_* 重写为 DSH 插件工具）隐含矛盾——黑盒模式下 DSH agent 不需要设备工具，P2 重写了也没有调用方；反之 agent 驱动模式意味着 ARTEMIS langgraph 执行逻辑整体废弃重写 | **分期拆解**：一期 = 模式 b（黑盒 worker，DSH 只做宿主/Inbox 队列/闸门/熔断/UI），P2 整体移出一期范围；二期 = 模式 a（agent 驱动设备工具，ARTEMIS 执行逻辑渐进搬入 DSH agent+skills），启动条件 = 一期双跑稳定后评估 |
+| G1 | **Agent 驱动模式未决（最关键）**：S2（bash job 黑盒跑 py worker）与 P2（device_* 重写为 DSH 插件工具）隐含矛盾——黑盒模式下 DSH agent 不需要设备工具，P2 重写了也没有调用方；反之 agent 驱动模式意味着 ARTEMIS langgraph 执行逻辑整体废弃重写 | **分期拆解**：一期 = 模式 b（黑盒 worker，DSH 只做宿主/Inbox 队列/闸门/熔断/UI），P2 整体移出一期范围；二期 = 模式 a（agent 驱动设备工具，ARTEMIS 执行逻辑渐进搬入 DSH agent+skills），启动条件 = 一期双跑稳定后评估；**D9 更新**：设备工具插件化（autogamer-device）在二期与移除/插件化同批，执行逻辑渐进搬迁归三期优化主线 |
 | G2 | **UI 步骤时间线降级**：旧控制台有结构化 thinking/toolcall 卡片；一期 py worker 输出在 DSH 侧只是 job 文本流 | 一期明确接受输出环展示；可选小件：py worker 打 JSONL 结构化事件 + DSH 侧自定义 toolview 渲染（dsh-data-agent 已实证 toolview 注册可行，量级百行） |
 | G3 | **auto-serial 闸门缺口**：未指定设备的任务在 acquire 时没有 lockKey，「先到先得」退化 | 闸门升级为小调度器：显式 serial → per-device 队列；auto → 空闲设备池 + 全局 auto 队列（仍百行级） |
 | G4 | half-open「单探测」探测体未定义 | 探测 = Inbox 队头**真实消息**（不合成探测任务，符合 LiteLLM 半开语义）；环境级判定一期实现 = exit code + 错误特征扫描（沿用 ENVIRONMENT_ERROR_MARKERS） |
@@ -231,11 +252,12 @@
 
 ### Checklist
 
-- [ ] P0 骨架：插件包骨架（`autogamer-queue`/`autogamer-device` 独立包，自带 `cordis.patch.yml` 声明 `dsh.bundle.patch`）+ peerDependencies range 声明 + `dsh plugin --profile web add` 安装流 + `--dump-config` 验证 layer + conformance 测试骨架 + **S1 spike（外部 SessionId 指定性）** + **S2 spike（bash job 跑 artemis CLI：输出环/kill/退出码/完成通知）**；开发流 = build + `dsh plugin add .`（link 模式；无热重载，改码需重启 profile 进程）；**盘点增补**：S2 spike 增 kill→cancel marker 联动验证（Windows）/env 透传集合断言（G9）/worker 内自取锁与 TS 闸门叠加验证（G8/G10）+ SSE 事件名全集快照测试（基线=盘点 05 §1.2，G18）
-- [ ] P1 队列插件：设备锁闸门 + 设备维度熔断（半开恢复）+ 孤儿对账；**先 spike 验证 DSH bash job 承载 artemis CLI worker**（输出环/kill/退出码/完成通知/session-stop 联动）；验证 Inbox 原生会话队列覆盖原需求（不引 GroupMQ/BullMQ/Redis）；**盘点增补**：熔断解除矩阵（4 条路径）+ fail-open/fail-safe 不对称 + auto 端点默认键 + allowed_fails 决策（G11）；never-started failed 补插 + stdout 尾行 + 终态双写规则（G8/G14）；parking 与 ticket 时间戳回归测试（G28）；孤儿对账 kill 用 PID-liveness 协议（G26）
-- [ ] P2 设备插件（**二期·模式 a，一期不做**——见 G1）：device_* 工具重写（ADB/uiautomator2 → TS；UIA koffi；隐藏桌面）+ ARTEMIS 执行逻辑搬入 DSH agent+skills；**盘点增补**：验收基线=盘点 03 §1.1–1.2 能力清单 + G24 坐标契约 + G25 互斥不变量 + G27 智能栈暗规则（koffi/隐藏桌面之外并入 Windows MKV 文件锁、CTRL_BREAK flush 经验）
-- [ ] P3 UI 接入：web profile + 队列状态展示（toolview 槽）+ 审批策略映射（HITL：敏感操作 ask/never + allowed-once）；**盘点增补**：dock/roster 交互验收对照盘点 05 §2.2（chips scoped/暂停收敛/停止多态，G19）+ catch-up 与队列信源决策（G18/G20）
-- [ ] P4 过渡：py worker **零改动**接入（env 契约不变，D8）+ 双跑灰度验证（G7）+ 旧控制台（showcase_ui_v2/admin_console）只读共存与下线决策；**盘点增补**：mcp_server 对账回退（trace/status.json 双写）改造先行 + notes 记忆断档防护（G16）+ 通知矩阵调研（G21）+ capabilities 处置 + quality_ratchet/locale 锁显式声明 + SameOrigin/dev.sh PID 方案等共存期事项（G17）+ 外部接入方清单具体化（mcp_server/artemis-client/`artemis run` 非 worker 分支/`artemis trace`/`batch` CLI）
+- [ ] P0 骨架（一期）：插件包骨架（`autogamer-queue`/`autogamer-device` 独立包，自带 `cordis.patch.yml` 声明 `dsh.bundle.patch`）+ peerDependencies range 声明 + `dsh plugin --profile web add` 安装流 + `--dump-config` 验证 layer + conformance 测试骨架 + **S1 spike（外部 SessionId 指定性）** + **S2 spike（bash job 跑 artemis CLI：输出环/kill/退出码/完成通知）**；开发流 = build + `dsh plugin add .`（link 模式；无热重载，改码需重启 profile 进程）；**盘点增补**：S2 spike 增 kill→cancel marker 联动验证（Windows）/env 透传集合断言（G9）/worker 内自取锁与 TS 闸门叠加验证（G8/G10）+ SSE 事件名全集快照测试（基线=盘点 05 §1.2，G18）
+- [ ] P1 队列插件（一期）：设备锁闸门 + 设备维度熔断（半开恢复）+ 孤儿对账；**先 spike 验证 DSH bash job 承载 artemis CLI worker**（输出环/kill/退出码/完成通知/session-stop 联动）；验证 Inbox 原生会话队列覆盖原需求（不引 GroupMQ/BullMQ/Redis）；**盘点增补**：熔断解除矩阵（4 条路径）+ fail-open/fail-safe 不对称 + auto 端点默认键 + allowed_fails 决策（G11）；never-started failed 补插 + stdout 尾行 + 终态双写规则（G8/G14）；parking 与 ticket 时间戳回归测试（G28）；孤儿对账 kill 用 PID-liveness 协议（G26）
+- [ ] P2 设备插件（**二期启动**——见 G1/D9：设备工具 TS 重写与移除/插件化同批；ARTEMIS 执行逻辑渐进搬迁归三期评估）：device_* 工具重写（ADB/uiautomator2 → TS；UIA koffi；隐藏桌面）；**盘点增补**：验收基线=盘点 03 §1.1–1.2 能力清单 + G24 坐标契约 + G25 互斥不变量 + G27 智能栈暗规则（koffi/隐藏桌面之外并入 Windows MKV 文件锁、CTRL_BREAK flush 经验）
+- [ ] P3 UI 接入（一期=DSH 轨道并行长出；二期=成为唯一控制台）：web profile + 队列状态展示（toolview 槽）+ 审批策略映射（HITL：敏感操作 ask/never + allowed-once）；**盘点增补**：dock/roster 交互验收对照盘点 05 §2.2（chips scoped/暂停收敛/停止多态，G19）+ catch-up 与队列信源决策（G18/G20）
+- [ ] P4 过渡（一期=双跑灰度；二期=只读共存与下线）：py worker **最小改造**接入（env 契约不变，D8+D9）+ 双跑灰度验证（G7）+ 旧控制台（showcase_ui_v2/admin_console）只读共存与下线决策；**盘点增补**：mcp_server 对账回退（trace/status.json 双写）改造先行 + notes 记忆断档防护（G16）+ 通知矩阵调研（G21）+ capabilities 处置 + quality_ratchet/locale 锁显式声明 + SameOrigin/dev.sh PID 方案等共存期事项（G17）+ 外部接入方清单具体化（mcp_server/artemis-client/`artemis run` 非 worker 分支/`artemis trace`/`batch` CLI）
+- [ ] 一期改造登记（D9 红线：不删除、不整体重构；每项对既有模块的修改在此登记后才可动手）：① 灰度路由开关（py，十行级，挂点=`artemis run` 非 worker 分支 / /api/run 准入前）；② TS 闸门对 py 锁目录/格式的兼容适配（G15，TS 侧）；③ LLM 暂停/终态判定在 DSH 侧的只读消费（不写 py，只读 DB/文件，G8/G12）
 
 ### DSH 版本管控附录
 
