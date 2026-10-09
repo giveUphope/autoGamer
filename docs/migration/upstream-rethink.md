@@ -28,6 +28,7 @@
 1. **内容层（=插件提供物）**：
    - 设备工具：上游 `mcp_server` 动作面（13 工具）为基线，经 TS 包装转发 py action server（闸门阻塞在自家工具内；不裸用 dsh-mcp-client patch 以免绕闸）
    - flash 模式：DSH agent loop + skills（与 FlashRunner 反应环天然同构，README：3-5s/步）
+   - **flash/pro 合并为单层路由（S11，用户提议）**：单 agent + `run_device_action` 路由工具（代码强制按序判定：目标置信→短路径直执行 / 风险→validator 前置+ask / 失败→自愈梯→阈值→checker 审计 / 有 plan→里程碑审计）+ 严格度梯级（off/final/checkpoints/strict）降为路由器配置；validator 升级梯原样、checker 三不变量保留（详见 todo.md S11）
    - **pro 模式一期内实现（用户已决）**：checker/validator 以 DSH subagent 承接，**调用逻辑保真**——上游语义 = Operator 产出动作 → validator 执行前安全网 → blocked/failed 终态动作作为 `open_incident` 回 Operator 自行恢复 → checker 零副作用只读判定 → verify 失败回流（预算内）、assert 失败只记 tests.failed 不回流（盘点 04 §2.4/2.5 为保真清单）
    - 诊断/模拟器：上游 `core/diagnostics`（emulator_manager 管本地 AVD 生命周期——playground 的 Cuttlefish 编排在单机版对应物）→ admission 工具
 2. **DSH 原生承接**：Inbox 队列、调度、web UI、jobs 监管、审批（run_adb_command 整工具 ask）、凭据、超时、沙箱、present

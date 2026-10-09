@@ -142,6 +142,21 @@
 - 重启恢复补丁（小）：插件启动时扫 pending inbox 非空的会话并显式 kick（D5 已核实的唯一缺口，属领域粘合非编排）
 - P0 S10 spike 验证（乙路线四点）：①本地廉价模型 + guard 下首调 spawn 工具的稳定性；②await 长阻塞工具的取消/进度表现（exec.signal + job updateProgress）；③pending kick；④多消息快速连发的 Inbox 串行排队（QueueDock 可见性）
 
+**S11 单层执行路由（✅ flash/pro 合并为单层，替代双 profile——用户提议）**
+
+> 依据：上游 validator 本来就是逐动作升级的路由器（XML 匹配→坐标自愈→pixel VLM 双网，盘点 04 §2.4）；flash/pro 之差不是两个执行体，而是验证密度。合并=把验证密度做成**代码强制的确定性路由**（满足「调用逻辑保真」），不再靠模型自觉。
+
+- **结构**：单 agent loop + 一个执行工具 `run_device_action`（内部即路由器）+ 两个只读 subagent provider（validator/checker）+ goal 工具（可选计划脚手架）
+- **路由器按序判定每步（代码强制，模型不可绕过）**：
+  1. 目标置信：元素索引在当前层级可解析且无歧义 → **短路径直执行**（flash 等价，3-5s/步保持）
+  2. 风险等级：破坏性/不可逆动作 → validator 前置校验 + approval ask（S6）
+  3. 失败/阻塞：动作失败 → validator 自愈梯（XML→坐标→pixel）→ 连续失败达阈值 → **checker 审计通过才允许重试**
+  4. 计划检查点：会话存在 plan（goal 工具）→ 里程碑处 checker 审计；无 plan = 仅出口审计（= 上游 final 档）
+  5. 梯级参数化：off/final/checkpoints/strict 保留为路由器严格度配置（run_device_task 入参），不再是两个执行体
+- **保真对照（盘点 04）**：validator 升级梯原样保留；checker 三不变量保留（只读 subagent、判定 append-only 落 session log、释放与判定分离——fail-open 只影响释放，inconclusive 原样记录）；run_outcome 双轴 = 汇报工具的 completed/blocked + tests.failed 字段；预算 = goal `maxGoalRounds`（round-limit→blocked，✅ 已核实）+ checker 重试上限
+- **收益**：单层维护；路由决策全部落 session log 可回归调优；短路径零 subagent 开销
+- **代价/风险**：单 agent 技能/prompt 卫生要求高（指引全量装载）；路由误判=过验证（慢）或欠验证（质量降）——靠路由日志调阈值，P1 加路由决策日志
+
 ### 落地差距核查（G1–G29，按此方案实际落地还须调整；G8+ 来自 2026-10-09 盘点审计）
 
 | # | 差距 | 调整 |
