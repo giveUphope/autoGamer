@@ -4,6 +4,7 @@
 > 核实对象：本机 Electron 桌面安装（`D:\DeepSeek Harness\`）内嵌 runtime；源码提取：`resources/app.asar → D:\tmp\dsh-ref\dsh\`（临时解包，不入 repo）；真实运行数据参照：`C:\Users\78557\.dsh\`（web profile 活配置、`sessions/--D-DEV-autoGamer--/` 真实会话 v3/v4 并存）。
 > 方法：4 路并行子代理对 48 项方案假设做源码级核实（jobs / session+Inbox / 插件缝+审批 / SDK+CLI）。
 > 维护规则：DSH 升级（尤其 rc→正式）必须重验本表全部「⚠️修正」项。
+> **来源口径变更（2026-10-10，用户裁定，见 todo.md D15）**：此后不得再解包 `app.asar` 取证据，核实面收窄到声明面——`dsh --dump-config-schema` / `--help` / 随包 README / 已安装 npm 包产物。本文件是裁定之前写成的：其中 37 处 `lib/index.js:NN` 形式的包内代码行引用属**历史口径**，结论本身未被推翻，但重新引用时要按声明面复验一遍；README 与 CLI 旗标类证据（28 处）不受影响。已由声明面重验过的：插件 `Config` 必须是原生 Schemastery schema、preset 子项挂载形态（`dsh --dump-config` 合成产物可证）、py 动作面 13 工具（live 抓取入 fixture）、DSH peer 精确 pin。
 
 ## 结论速览（触发方案修改的 12 项）
 

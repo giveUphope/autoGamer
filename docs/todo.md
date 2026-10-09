@@ -30,6 +30,7 @@
 | D12 | 录屏 | 后续补齐（一期无录像） |
 | D13 | helper | 二期 TS 复刻（保留与 Mobly/Appium 共存差异化能力） |
 | D14 | 智能层 | **单层执行路由（S11）**：单 agent + 代码强制路由器 + validator/checker 只读 subagent；pro 一期内实现、调用逻辑保真；不做反思式自检（业界 SOTA 立场） |
+| D15 | 契约核实口径 | **只用声明面**：`dsh --dump-config-schema` / `--help` / 随包 README / 已安装 npm 包产物；**禁止解包 app.asar** 去读宿主内部代码（2026-10-10 用户裁定）。既有 [dsh-verification](migration/dsh-verification.md) 里 37 处包内代码行引用属旧口径，沿用前须按声明面重验；README 与 CLI 旗标类证据（28 处）本已合规 |
 
 ## 三、对接语义（S1-S11，R2' 最终版）
 
@@ -118,7 +119,13 @@
 - ✅ **S1**：外部 SessionId 源码核实（幂等 adopt）+ live 组合验证（preset 注册、新任务默认标记、选择器可见）
 - ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
 - ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
-- 🔶 **S10 四点 live 复验（唯一剩余；环境已就绪待执行）**：Config schema 根因修复已就位（插件无 Config 声明时 patch 行 config=absent、preset 子挂载被跳过——creator 模式 cordis_inspect 实锤），启动 `dsh --profile web --patch spike/web-live.patch.yml` → 新会话（默认 AutoGamer）→ 发设备任务 → 确认 run_device_action 触发（mock action server 已带延迟）→ 顺带观察 Inbox 连发（④）与并发闸门（③）。注：ZCode IAB 自动化浏览器已卡死（对健康服务导航超时），此步需用系统浏览器执行或重启 ZCode 后再试
+- 🔴 **S10 四点 live 复验（2026-10-10 执行，① 未通过）**：同实例配对差分给出定位——AutoGamer 会话发给模型的请求体里**根本没有 `tools` 键**（wire 实录两次：本地 01:33:43、01:41:11），模型转而幻觉出一个 `os` 工具并把调用写成文本 JSON；而**标准模式在同实例、同模型、同 provider 下 `tools=26` 且真跑了 pwsh**（1 轮 2 步列出目录）。所以不是宿主、不是 LM Studio、不是模型能力，是我们 preset 的工具面没组装起来。
+  - 插件自身侧全部就绪（探针实测后已撤）：`apply()` 会被调用、注册到 2 个 tool disposer、Config 七个键全生效（含 preset inline 的 `actionServerCommand`）、`dsh plugin --profile web list` 显示 link 已装、`dsh --dump-config` 合成形态正确。
+  - 声明面否掉两个猜测：`dsh --dump-config-schema` 的 `$defs/config97`（`@deepseek-ai/dsh-agent-preset` 的 config）**确实声明了 `plugins`**，且 `required: [id, plugins]` —— 我们的子挂载形态合法，不是「字段不认识」。
+  - **未定归属**：把 root 行从 `disabled: true` 改为启用后，`apply()` 会为会话恢复跑 2 次，但那一轮没能把新的会话请求发出去（内置浏览器对 Lexical 输入框的驱动受阻：`fill` 无效、`execCommand` 只在真实 click 建立选区后生效且会累加文本），所以「工具落在 root plane 还是 preset plane」这条还没判成。10-09 那句「root 工具不进会话」属 asar 历史口径，按 D15 要重立。
+  - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）；mock action server 的 PNG 截图被插件解析成 1080x2400（坐标修复的 live 证据）。
+  - ②效果验证 / ③闸门阻塞 / ④Inbox 连发 **均未测**——它们都以「工具真被调用」为前提，被 ① 挡住。
+- ✅ **本轮 live 连带的两个缺陷修复**（都先实测再修，配锁死测试）：`coord.ts` 的 `byteAt` 自己调自己，`parseImageSize` 对任何输入都栈溢出，截图取尺寸这条路本来就是死的；`apply()` 里 `if (config.screenSize)` 被判据骗过——Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，于是默认配置下的坐标一路 `NaN` 发给 action server 还报成功。修法是把判定导出成 `configuredScreenSize()` 纯函数并在 `tests/apply.spec.ts` 里断言 action server 真收到的坐标（删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload）。
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
