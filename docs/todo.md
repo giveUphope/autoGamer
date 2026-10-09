@@ -110,6 +110,18 @@
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由
 
+### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
+
+- ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；19 个 vitest 用例全绿（含 conformance 契约 6 项）
+- ✅ **安装流 spike（live）**：三处修正固化——`dsh.bundle.patch` 必须声明、bundle patch 是 `- insert:` 列表、Windows 路径+remove/add 重评估；层合成 dump-config exit 0
+- ✅ **MCP 直连 spike（离线）**：ActionClient ↔ `artemis mcp --type adb` 全链路；真实契约接线（13 工具名/像素坐标 0-1000 换算/字符串结果归一化含 `Error executing tool` 变体/`--type` 旗标）
+- ✅ **S1**：外部 SessionId 源码核实（幂等 adopt）+ live 组合验证（preset 注册、新任务默认标记、选择器可见）
+- ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
+- ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
+- ⏳ **S10 四点 live 复验（唯一剩余）**：Config schema 根因修复已就位（插件无 Config 声明时 patch 行 config=absent、preset 子挂载被跳过——creator 模式 cordis_inspect 实锤），启动 `dsh --profile web --patch spike/web-live.patch.yml` → 新会话（默认 AutoGamer）→ 发设备任务 → 确认 run_device_action 触发（mock action server 已带延迟）→ 顺带观察 Inbox 连发（④）与并发闸门（③）
+- 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
+- ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
+
 ## 六、文档索引
 
 | 文档 | 内容 |

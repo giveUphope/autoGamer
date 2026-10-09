@@ -25,7 +25,7 @@ export interface RouterLogger {
   warn(message: string): void;
 }
 
-const ACTIONS = [
+export const ACTIONS = [
   "click",
   "long_press",
   "swipe",
@@ -43,6 +43,28 @@ const ACTIONS = [
 ] as const;
 
 export type DeviceAction = (typeof ACTIONS)[number];
+
+/**
+ * Contract table: agent action → upstream py action-server tool name
+ * (legacy stdio contract; conformance test locks this against the live
+ * surface fixture). `wait` is client-side and maps to null.
+ */
+export const ACTION_TO_PY_TOOL: Record<DeviceAction, string | null> = {
+  click: "tap",
+  long_press: "long_press_on",
+  swipe: "swipe",
+  input_text: "focus_and_input_text",
+  press_key: "press_key",
+  back: "back",
+  erase_one_char: "erase_one_char",
+  focus_and_clear_text: "focus_and_clear_text",
+  launch_app: "launch_app",
+  stop_app: "stop_app",
+  open_link: "open_link",
+  take_screenshot: "take_screenshot",
+  get_ui_hierarchy: "get_ui_hierarchy",
+  wait: null,
+};
 
 const KEYCODES: Record<string, string> = {
   home: "KEYCODE_HOME",

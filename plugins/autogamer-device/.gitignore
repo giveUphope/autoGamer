@@ -10,3 +10,4 @@ scripts/proxy-dump.log
 spike/cookies.txt
 spike/auth-page.html
 spike/web-server*.log
+spike/mock.stdout

@@ -1,0 +1,32 @@
+{
+  "captured": "2026-10-09",
+  "source": "docs/migration/inventory/01 §1.4 + inventory/05 §1.2 (web-server SSE /api/stream, baseline for G18)",
+  "serverEventNames": [
+    "info",
+    "session_started",
+    "session_ended",
+    "startup_progress",
+    "step_recorded",
+    "step_updated",
+    "trace_recorded",
+    "background_tasks_updated",
+    "recording_ready",
+    "recording_failed",
+    "queue_held",
+    "queue_resumed",
+    "queue_paused",
+    "server_shutdown",
+    "keep-alive"
+  ],
+  "serverBroadcastButFrontendNeverSubscribed": [
+    "queue_held",
+    "queue_paused",
+    "queue_resumed",
+    "note_saved",
+    "llm_stream_downgrade"
+  ],
+  "notes": [
+    "队列 UI 信源是 /api/status 的 queue_paused/queue_holds 轮询字段，不是 SSE（G18）",
+    "DSH 侧对应物为 session/event + readSessionState catch-up（已核实原生支持，G20）"
+  ]
+}

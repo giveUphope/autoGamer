@@ -1,0 +1,25 @@
+{
+  "captured": "2026-10-09",
+  "source": "live MCP stdio listing of `uv run artemis mcp --type adb` (ARTEMIS_MOCK_DRIVER agnostic)",
+  "pyActionServerTools": [
+    "tap",
+    "long_press_on",
+    "swipe",
+    "back",
+    "launch_app",
+    "stop_app",
+    "open_link",
+    "focus_and_input_text",
+    "focus_and_clear_text",
+    "erase_one_char",
+    "press_key",
+    "take_screenshot",
+    "get_ui_hierarchy"
+  ],
+  "notes": [
+    "Contract quirks locked by live capture (see docs/migration/inventory/03 + dsh-verification §一):",
+    "legacy PIXEL coordinate contract — 0-1000 normalization happens in this plugin (src/coord.ts)",
+    "results are plain strings: Success / Failed / Error: ... / Error executing tool ...",
+    "real flag is `--type adb` (not --server); stdio transport default"
+  ]
+}
