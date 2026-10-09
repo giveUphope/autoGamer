@@ -17,7 +17,7 @@ export function parseImageSize(bytes: Uint8Array): ScreenSize | undefined {
 }
 
 function byteAt(bytes: Uint8Array, index: number): number {
-  return byteAt(bytes, index) ?? 0;
+  return bytes[index] ?? 0;
 }
 
 function isPng(bytes: Uint8Array): boolean {
@@ -65,6 +65,20 @@ function parseJpegSize(bytes: Uint8Array): ScreenSize | undefined {
     offset += 2 + length;
   }
   return undefined;
+}
+
+/**
+ * A declared `screenSize` is optional, but Schemastery resolves an unset tuple
+ * to a truthy `[undefined, undefined]` array rather than `undefined`, so
+ * presence has to be judged by the numbers — a truthiness check on the array
+ * itself always passes.
+ */
+export function configuredScreenSize(raw?: readonly unknown[]): ScreenSize | undefined {
+  const [width, height] = raw ?? [];
+  if (typeof width !== "number" || typeof height !== "number") return undefined;
+  if (!Number.isFinite(width) || !Number.isFinite(height)) return undefined;
+  if (width <= 0 || height <= 0) return undefined;
+  return { width, height };
 }
 
 /** Decode a base64 screenshot far enough to read its dimensions. */

@@ -1,7 +1,9 @@
 # AutoGamer device tools for DSH.
 # Bundle patches are insert lists: each row adds an entry to the composed
 # profile tree (id/name/config — see cordis-plugin-loader Entry Options).
-# The preset's child-entry shape is a P0 spike item (see README).
+# The preset's child entry carries its own distinct row id — a bare
+# `- name:` item would inherit the root row's id, which the root copy also
+# uses; sessions mount the preset's plugins, the root row is inert for them.
 - insert:
     - id: autogamer-device
       name: autogamer-device
@@ -12,5 +14,6 @@
         name: AutoGamer
         description: Single-layer device execution agent (flash/pro merged, S11 router).
         plugins:
-          - name: autogamer-device
+          - id: autogamer-device-inner
+            name: autogamer-device
           - name: "@deepseek-ai/dsh-tool-jobs"

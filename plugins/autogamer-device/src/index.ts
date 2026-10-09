@@ -1,18 +1,19 @@
 /**
  * autogamer-device plugin entry (P0 skeleton, docs/todo.md R2').
- * Contracts verified against DSH 0.2.0-rc.2 source: a cordis plugin module
- * exports {name, inject, Config?, apply}; tools register through
- * ctx.tools.register(defineTool(...)) from @deepseek-ai/dsh-tools.
+ * Contracts verified through declared surfaces only (dsh --dump-config-schema,
+ * dsh --help, shipped READMEs — no asar reading, user ruling 2026-10-10): a
+ * cordis plugin module exports {name, inject, Config?, apply}; Config must be
+ * a native Schemastery schema; tools register through ctx.tools.register.
  */
 import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
-import { imageSizeFromBase64, type ScreenSize } from "./coord.js";
+import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
 import type { DshContext } from "./dsh-types.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction } from "./tools/runDeviceAction.js";
-import { z } from "zod";
+import z from "@deepseek-ai/schemastery";
 
 export const name = "autogamer-device";
 
@@ -21,17 +22,20 @@ export const name = "autogamer-device";
  * config: without a schema the row's config is treated as absent
  * (Config.listConfigs status=absent) and the preset-scope child mount
  * silently skips it — the root cause of the missing-tools spike finding.
+ * The schema must be native Schemastery (dsh rejects foreign schema objects
+ * with "Config is not a native Schemastery schema"). Typed as `object`
+ * because schemastery exports no nameable Schema type from this package.
  */
-export const Config = z.object({
+export const Config: object = z.object({
   actionServerCommand: z
     .array(z.string())
     .default(["python", "-m", "artemis.interfaces.cli.main", "mcp", "--type", "adb"]),
-  actionServerEnv: z.record(z.string(), z.string()).default({}),
+  actionServerEnv: z.dict(z.string()).default({}),
   defaultDeviceKey: z.string().default("default"),
   allowedFails: z.number().default(1),
   breakerCooldownMs: z.number().default(30_000),
   actionCallTimeoutMs: z.number().default(30_000),
-  screenSize: z.tuple([z.number(), z.number()]).optional(),
+  screenSize: z.tuple([z.number(), z.number()]),
 });
 
 /** ctx.tools is the only hard dependency; everything else is ours. */
@@ -44,7 +48,7 @@ export type PluginConfig = {
   allowedFails: number;
   breakerCooldownMs: number;
   actionCallTimeoutMs: number;
-  screenSize?: [number, number];
+  screenSize?: readonly unknown[];
 };
 
 export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
@@ -61,9 +65,8 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
 
   const screenSizeCache = new Map<string, ScreenSize>();
   async function resolveScreenSize(key: string): Promise<ScreenSize | undefined> {
-    if (config.screenSize) {
-      return { width: config.screenSize[0], height: config.screenSize[1] };
-    }
+    const configured = configuredScreenSize(config.screenSize);
+    if (configured) return configured;
     const cached = screenSizeCache.get(key);
     if (cached) return cached;
     const base64 = unwrapText(await client.callTool("take_screenshot", {}));

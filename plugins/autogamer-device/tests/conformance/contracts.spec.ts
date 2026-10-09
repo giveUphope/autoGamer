@@ -9,7 +9,16 @@
 import { describe, expect, it } from "vitest";
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
+import Schema from "@deepseek-ai/schemastery";
+import { Config } from "../../src/index.js";
 import { ACTION_TO_PY_TOOL, ACTIONS } from "../../src/tools/runDeviceAction.js";
+
+/** Minimal view of a Schemastery object node (the package exports no type name). */
+type SchemaObject = {
+  type: string;
+  dict: Record<string, { type: string }>;
+};
+type ConfigCallable = (data?: unknown) => Record<string, unknown>;
 
 const fixtureRoot = fileURLToPath(new URL("../fixtures", import.meta.url));
 
@@ -76,5 +85,76 @@ describe("conformance: DSH peer version pin", () => {
       expect(range, `${pkg} must pin the verified generation`).toBe("0.2.0-rc.2");
     }
     expect(Object.keys(peers).length).toBeGreaterThan(0);
+  });
+});
+
+/**
+ * The loader rejects foreign schema objects ("Config is not a native
+ * Schemastery schema"), and a plugin row whose Config is missing is reported
+ * as status=absent — which silently skips the preset-scope child mount, i.e.
+ * the tools never register. Both failure modes are locked here.
+ */
+describe("conformance: plugin Config is a native Schemastery schema", () => {
+  const schemaSymbols = new Set(Object.getOwnPropertySymbols(Schema.prototype).map(String));
+
+  it("carries the Schemastery brand symbol on the prototype", () => {
+    // Guards the discriminator itself: if instanceof ever stops meaning
+    // "native", the assertions below would pass vacuously.
+    expect(schemaSymbols).toContain("Symbol(schemastery)");
+    expect({} instanceof Schema).toBe(false);
+    expect(null instanceof Schema).toBe(false);
+  });
+
+  it("exports a native object schema at the top level", () => {
+    expect(Config instanceof Schema, "Config must be a native Schemastery schema").toBe(true);
+    expect((Config as SchemaObject).type).toBe("object");
+  });
+
+  it("declares every field natively — a mixed zod/Schemastery schema is a half migration", () => {
+    const fields = (Config as SchemaObject).dict;
+    expect(Object.keys(fields).sort()).toEqual(
+      [
+        "actionCallTimeoutMs",
+        "actionServerCommand",
+        "actionServerEnv",
+        "allowedFails",
+        "breakerCooldownMs",
+        "defaultDeviceKey",
+        "screenSize",
+      ].sort(),
+    );
+    for (const [name, sub] of Object.entries(fields)) {
+      expect(sub instanceof Schema, `${name} must be a native Schemastery schema`).toBe(true);
+    }
+    expect(fields.actionServerCommand.type).toBe("array");
+    expect(fields.actionServerEnv.type).toBe("dict");
+    expect(fields.screenSize.type).toBe("tuple");
+  });
+
+  it("applies declared defaults and leaves the un-defaulted tuple null-filled", () => {
+    const resolved = (Config as ConfigCallable)();
+    expect(resolved.actionServerCommand).toEqual([
+      "python",
+      "-m",
+      "artemis.interfaces.cli.main",
+      "mcp",
+      "--type",
+      "adb",
+    ]);
+    expect(resolved.actionServerEnv).toEqual({});
+    expect(resolved.defaultDeviceKey).toBe("default");
+    expect(resolved.allowedFails).toBe(1);
+    expect(resolved.breakerCooldownMs).toBe(30_000);
+    expect(resolved.actionCallTimeoutMs).toBe(30_000);
+    // The trap `configuredScreenSize()` exists to survive: an unset optional
+    // tuple comes back as a truthy `[undefined, undefined]` array, never
+    // undefined, so `if (config.screenSize)` always looks "configured".
+    expect(Array.isArray(resolved.screenSize)).toBe(true);
+    expect(Boolean(resolved.screenSize), "unset tuple is still a truthy array").toBe(true);
+    expect(resolved.screenSize).toEqual([undefined, undefined]);
+  });
+
+  it("rejects a malformed value rather than coercing it silently", () => {
+    expect(() => (Config as ConfigCallable)({ actionServerCommand: "not-an-array" })).toThrow();
   });
 });

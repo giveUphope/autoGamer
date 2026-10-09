@@ -1,7 +1,10 @@
 # Live web-profile overlay for the S10 spike (applies last via --patch).
-# Web profile HAS the preset registry (id-patch works there); the plugin
-# stays enabled at root — the bundle patch already inserts it, and the
-# selected preset's children reference it.
+# Declared contract (dsh --dump-config): each web session mounts its tools
+# FROM ITS AGENT PRESET — every shipped preset row owns the tool entries its
+# agent sees, and root-plane tool rows are invisible to sessions. So the
+# plugin must be a plugin of preset-autogamer with its config INLINE on the
+# preset's plugins entry (same shape as shipped preset-standard rows), and
+# the root bundle copy is disabled here to avoid a duplicate instance.
 - id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"
   config:
@@ -25,9 +28,21 @@
     default: autogamer
 
 - id: autogamer-device
-  name: autogamer-device
   config:
     actionServerCommand:
       - node
       - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs
 
+- id: preset-autogamer
+  name: "@deepseek-ai/dsh-agent-preset"
+  config:
+    id: autogamer
+    name: AutoGamer
+    description: Single-layer device execution agent (flash/pro merged, S11 router).
+    plugins:
+      - id: autogamer-device-inner
+        name: autogamer-device
+        config:
+          actionServerCommand:
+            - node
+            - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs
