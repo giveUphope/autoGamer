@@ -17,35 +17,32 @@ export interface DshContext {
     register(definition: unknown): () => void;
   };
   get?(key: string): unknown;
-  effect?(dispose: () => void): void;
+  /**
+   * Cordis effect: the callback runs IMMEDIATELY (it is the setup body) and
+   * its returned function becomes the teardown. Verified against upstream
+   * sources (mount.ts:208 `ctx.effect(() => () => { tree.root.stop() })`,
+   * agent-preset-registry/src/index.ts:112, app-boot service.ts:110) — see
+   * changelogs #10: an early version passed the teardown AS the callback and
+   * disposed its own tool registrations during apply().
+   */
+  effect?(setup: () => unknown): void;
 }
 
 export interface ToolExec {
   signal: AbortSignal;
 }
 
-export interface ToolParameterSpec {
-  type: "string" | "number" | "boolean" | "object" | "array";
-  required?: boolean;
-  description?: string;
-  enum?: string[];
-  items?: ToolParameterSpec;
-  properties?: Record<string, ToolParameterSpec>;
-  default?: unknown;
-}
+/*
+ * Tool definition types come straight from the installed @deepseek-ai/dsh-tools
+ * package artifacts (R1 declared-surface usage; type-only imports are erased at
+ * runtime). The `any` parameters are deliberate: the official dialect
+ * (per-property `required: true`, mandatory `additionalProperties` on object
+ * nodes, ContentBlock[] renders) is enforced at REGISTRATION time by
+ * defineTool's own schema compiler, which throws on unsupported shapes —
+ * hand-mirroring the recursive spec types here only recreated them wrongly
+ * (InferValue over the broad union collapses to `never`).
+ */
+import type { DefineToolOptions } from "@deepseek-ai/dsh-tools";
 
-export interface ToolDefinitionInput {
-  name: string;
-  description: string;
-  parameters: Record<string, ToolParameterSpec>;
-  timeoutMs?: number;
-  execute(args: Record<string, unknown>, exec: ToolExec): Promise<unknown>;
-  /** Required by dsh-tools: declared result shape + model-facing rendering. */
-  output: {
-    schema: Record<string, unknown>;
-    render(args: Record<string, unknown>, value: unknown): string;
-  };
-}
-
-/** Subset of defineTool we rely on; imported from @deepseek-ai/dsh-tools at runtime. */
-export type DefineTool = (options: ToolDefinitionInput) => unknown;
+/** Author-facing tool options as accepted by the official defineTool(). */
+export type ToolDefinitionInput = DefineToolOptions<any, any>;

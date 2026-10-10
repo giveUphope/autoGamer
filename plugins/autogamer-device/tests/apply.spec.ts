@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 const harness = vi.hoisted(() => ({
   calls: [] as { tool: string; args: Record<string, unknown> }[],
   clientOptions: [] as Record<string, unknown>[],
+  disposed: 0,
 }));
 
 vi.mock("../src/actionClient.js", () => ({
@@ -37,7 +38,9 @@ vi.mock("../src/actionClient.js", () => ({
       return { content: [{ type: "text", text: "Success" }] };
     }
 
-    async dispose() {}
+    async dispose() {
+      harness.disposed += 1;
+    }
   },
 }));
 
@@ -48,8 +51,17 @@ type ToolDefinition = {
 
 const { apply, Config } = await import("../src/index.js");
 
+/**
+ * Cordis-faithful context double. `effect(setup)` runs `setup` IMMEDIATELY and
+ * keeps its returned function as the teardown (verified against upstream
+ * mount.ts:208 / agent-preset-registry/src/index.ts:112 / app-boot
+ * service.ts:110). The apply.spec.ts double used to omit `effect` entirely,
+ * which let a teardown-as-callback bug (G30: apply() disposed its own tool
+ * registrations) pass CI while every live session lost the tool face.
+ */
 function fakeContext(definitions: ToolDefinition[]) {
-  return {
+  const cleanups: unknown[] = [];
+  const context = {
     logger: { info: () => {}, warn: () => {}, error: () => {} },
     tools: {
       register(definition: unknown) {
@@ -57,13 +69,18 @@ function fakeContext(definitions: ToolDefinition[]) {
         return () => {};
       },
     },
+    effect(setup: () => unknown): void {
+      cleanups.push(setup());
+    },
   };
+  return { context, cleanups };
 }
 
 async function registerToolWith(config: Record<string, unknown>): Promise<ToolDefinition> {
   const definitions: ToolDefinition[] = [];
   harness.calls.length = 0;
-  await apply(fakeContext(definitions) as never, config as never);
+  const { context } = fakeContext(definitions);
+  await apply(context as never, config as never);
   const tool = definitions.find((definition) => definition.name === "run_device_action");
   if (!tool) throw new Error(`run_device_action was not registered (got: ${definitions.map((d) => d.name).join(", ")})`);
   return tool;
@@ -76,6 +93,7 @@ function exec(): { signal: AbortSignal } {
 beforeEach(() => {
   harness.calls.length = 0;
   harness.clientOptions.length = 0;
+  harness.disposed = 0;
 });
 
 describe("apply(): screen size sourcing wiring", () => {
@@ -120,5 +138,38 @@ describe("apply(): screen size sourcing wiring", () => {
       "--type",
       "adb",
     ]);
+  });
+});
+
+describe("apply(): registration lifetime (G30 regression)", () => {
+  it("returns teardown from effect() instead of running it during apply()", async () => {
+    const definitions: ToolDefinition[] = [];
+    harness.calls.length = 0;
+    const { context, cleanups } = fakeContext(definitions);
+    await apply(context as never, Config() as never);
+
+    // Both tools must still be registered once apply() resolved: cordis
+    // effect() takes the RETURNED function as the disposer. The broken
+    // ancestor passed teardown as the callback body, so it executed inline,
+    // disposing both registrations within apply() while every official
+    // checker still reported the row "running".
+    expect(definitions.map((definition) => definition.name)).toEqual([
+      "run_device_action",
+      "report_task_status",
+    ]);
+    expect(cleanups).toHaveLength(1);
+    expect(typeof cleanups[0]).toBe("function");
+    // apply() itself must not have disposed anything synchronously.
+    expect(harness.disposed).toBe(0);
+  });
+
+  it("tears down the action client only when the effect disposer runs", async () => {
+    const definitions: ToolDefinition[] = [];
+    const { context, cleanups } = fakeContext(definitions);
+    await apply(context as never, Config() as never);
+
+    const cleanup = cleanups[0] as () => void;
+    cleanup();
+    expect(harness.disposed).toBe(1);
   });
 });

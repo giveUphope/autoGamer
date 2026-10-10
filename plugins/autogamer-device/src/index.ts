@@ -13,6 +13,7 @@ import { unwrapText } from "./mcpText.js";
 import type { DshContext } from "./dsh-types.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction } from "./tools/runDeviceAction.js";
+import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
 
 export const name = "autogamer-device";
@@ -81,20 +82,34 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     warn: (message: string) => ctx.logger.warn(message),
   };
 
-  const disposers = [
-    ctx.tools.register(defineRunDeviceAction({
-      gate,
-      breaker,
-      client,
-      logger,
-      defaultDeviceKey: config.defaultDeviceKey,
-      resolveScreenSize,
-    })),
-    ctx.tools.register(defineReportTaskStatus()),
-  ];
+  // Raw ctx.tools.register() expects parameters to ALREADY be a full JSON
+  // Schema (the official MCP path passes server schemas verbatim); a named
+  // spec map goes through defineTool, whose parameterSchemaSpecToJsonSchema
+  // emits the object-rooted wire schema and validates args on execute (same
+  // form as the shipped tool-jobs). Registering the bare map produced
+  // `parameters.type` != "object" on the wire and the LLM API rejected the
+  // whole request with 400 (changelogs #10). The explicit <any, any>
+  // instantiation skips const-generics inference, which exceeds TS's stack on
+  // our 13-parameter literal; the official compiler still validates the whole
+  // shape when this runs.
+  ctx.tools.register(defineTool<any, any>(defineRunDeviceAction({
+    gate,
+    breaker,
+    client,
+    logger,
+    defaultDeviceKey: config.defaultDeviceKey,
+    resolveScreenSize,
+  })));
+  ctx.tools.register(defineTool<any, any>(defineReportTaskStatus()));
 
-  ctx.effect?.(() => {
-    for (const dispose of disposers) dispose();
+  // Tool registration ownership belongs to the tools registry itself (its
+  // entries are cordis effects on this plugin's fiber, exactly like the
+  // shipped tool-jobs plugin — it registers bare, with no effect wrapper).
+  // The only resource needing an explicit teardown is the MCP client. Cordis
+  // effect() runs the callback NOW and keeps its RETURNED function as the
+  // disposer; passing teardown as the callback disposed our own tools during
+  // apply() (changelogs #10, the G30 root cause).
+  ctx.effect?.(() => () => {
     void client.dispose();
   });
 }

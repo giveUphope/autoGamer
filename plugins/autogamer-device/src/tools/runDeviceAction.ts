@@ -152,6 +152,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       action: { type: "string", required: true, enum: [...ACTIONS], description: "Action to execute." },
       target: {
         type: "object",
+        additionalProperties: false,
         description:
           "Where to act. {coordinate:[x,y]} 0-1000, {index} element index, or {text} substring of text/content-desc/resource-id. Required by click/long_press/input_text/focus_and_clear_text.",
         properties: {
@@ -173,21 +174,20 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     },
     timeoutMs: 45_000,
     output: {
+      // Payloads are action-dependent (waited_ms for wait, the MCP record for
+      // device calls), so the object is explicitly OPEN (official rule:
+      // openness is declared, never accidental). render formats whatever came.
       schema: {
         type: "object",
-        properties: {
-          result: { type: "string", description: "Executor output text." },
-          ok: { type: "boolean" },
-          code: { type: "string" },
-          message: { type: "string" },
-        },
+        additionalProperties: true,
       },
       render: (_args, value) => {
         const record = (value ?? {}) as Record<string, unknown>;
         const parts = Object.entries(record)
           .filter(([, v]) => v !== undefined)
           .map(([k, v]) => `${k}=${typeof v === "string" ? v.slice(0, 200) : JSON.stringify(v)}`);
-        return parts.length > 0 ? parts.join("; ") : "action completed";
+        const text = parts.length > 0 ? parts.join("; ") : "action completed";
+        return [{ type: "text", text }];
       },
     },
     async execute(args, exec) {

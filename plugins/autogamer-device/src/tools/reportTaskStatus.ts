@@ -25,16 +25,17 @@ export function defineReportTaskStatus(): ToolDefinitionInput {
     output: {
       schema: {
         type: "object",
+        additionalProperties: false,
         properties: {
-          status: { type: "string" },
+          status: { type: "string", required: true },
           tests_failed: { type: "number" },
-          outcome: { type: "string" },
+          outcome: { type: "string", required: true },
         },
-        required: ["status", "outcome"],
       },
       render: (_args, value) => {
         const record = (value ?? {}) as Record<string, unknown>;
-        return `task outcome recorded: ${String(record.outcome ?? record.status ?? "unknown")}`;
+        const text = `task outcome recorded: ${String(record.outcome ?? record.status ?? "unknown")}`;
+        return [{ type: "text", text }];
       },
     },
     async execute(args) {

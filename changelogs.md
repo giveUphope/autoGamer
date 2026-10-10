@@ -333,3 +333,27 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] `tests/coord.spec.ts`：`configuredScreenSize` 对 `[1080, 2400]` / `[undefined, undefined]` / `[null, null]` 的断言
 - [x] `tests/apply.spec.ts` wiring lock：驱动经 `apply()` 注册的工具，断言 action server 真收到的坐标；删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload
 - [x] vitest 全绿；mock action server 的 PNG 截图实测解析为 1080x2400（live 证据）
+
+### #10 G30 双根因：cordis effect 语义反转自注销工具面 + 裸注册 schema 未编译上 wire
+
+- **日期**: 2026-10-10
+- **状态**: ✅ 已完成
+- **优先级**: 高（P0 唯一阻塞 G30）
+- **来源**: 联网源码调研（deepseek-ai/deepseek-harness@master）+ 官方检查器分级实证（`plugins/autogamer-device`）
+
+#### 问题描述
+
+1. **effect 语义反转**（注册生命周期）：`apply()` 里 `ctx.effect?.(() => { disposers 逐个执行; client.dispose() })` 把 teardown 当成了回调体。cordis 的 `effect()` 语义是**回调立即执行、返回值才是清理函数**（官方源码 mount.ts:208、agent-preset-registry/src/index.ts:112、app-boot service.ts:110 同式）——于是两个工具在注册后数毫秒内被自己注销，而行状态、Config、注册计数一切正常。测试假 context 干脆没有 `effect` 方法，缺陷在 CI 里不可见。
+2. **裸注册 schema 未编译**（wire 契约）：裸 `ctx.tools.register()` 走官方 MCP 路径，`parameters` 必须已是完整 JSON Schema（根节点 `type: "object"`）；我们传的是命名 spec 映射，map→object schema 的编译只存在于 `defineTool()` DSL（`parameterSchemaSpecToJsonSchema`）。结果 LLM API 以 400 拒绝整个请求（zod: `parameters.type` 期望 "object"）。
+
+#### 整改方案与实施
+
+1. `src/index.ts`：工具注册交还注册表自持所有权（与官方 tool-jobs 同形、不再包 effect）；effect 只包 ActionClient 清理并**返回**清理函数。`src/dsh-types.ts` 的 `effect` 类型改为 `setup: () => unknown` 并注记语义出处。
+2. 注册改走官方 `defineTool()`（新增 devDependency `@deepseek-ai/dsh-tools@0.2.0-rc.2` 及其值导入所需的 4 个 peer——运行时仍经 linked-root peer 拦截解析宿主副本）；`src/dsh-types.ts` 删除手镜像 spec 类型，直接使用官方包类型产物（`DefineToolOptions`）。两处定义补官方方言缺口：object 节点显式 `additionalProperties`（G34）、输出 schema 的 required 数组改 per-property `required: true`、render 返回 `ContentBlock[]`；run_device_action 的输出 schema 改显式开放对象（payload 按动作而异）。
+3. `tests/apply.spec.ts`：fakeContext 按真实 cordis 语义实现 `effect`（立即执行回调、收下返回的清理函数），新增 G30 回归锁两条——effect 必须返回清理函数而非就地执行、清理只作用于 ActionClient。
+
+#### 验收标准
+
+- [x] vitest 38/38（含 2 条新回归锁；删除实验：回退 effect 写法 ⇒ 两条红）
+- [x] 离线自证：加载 dist 跑 `apply()`，注册产物 `parameters.type === "object"`、required 为数组、render 返回 ContentBlock
+- [x] live 实证（R7 新会话）：模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；上一轮的 400 / 「没有这个工具」签名全部消失（mock 后端超时为另一问题，见 todo S5 跟进）
