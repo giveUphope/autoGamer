@@ -112,6 +112,22 @@ While a task is queued/running it has no DB row; `/api/status` shows it via the 
 - Built bundle goes to `dist/browser/` and is served by FastAPI (SPA fallback built in);
   `npm run sync:resources` publishes it into the wheel fallback `artemis/resources/showcase_ui`
 
+## Change planning → todo ledger (habit)
+
+Applies to any non-trivial change. The moment the user confirms a plan/spec, **before**
+implementation starts, write the confirmed spec into `docs/todo.md` as a themed entry. The
+entry must be self-sufficient: reading the entry alone must make clear what to do, how to do
+it, how to verify it, and what counts as done — no re-deriving state from code or chat:
+
+- **What**: scope, deliverables, explicit out-of-scope
+- **How**: approach and key decisions from the confirmed plan
+- **Verify**: exact commands / tests / manual checks
+- **Done means**: acceptance criteria as a checklist
+
+During implementation, after each checkpoint completes, update the entry in the same step —
+tick checklist items and record deviations from the plan — proactively, without being asked.
+Finished entries are deleted (docs no-old-archives rule); git history carries the narrative.
+
 ## Change wrap-up
 
 When a unit of work is complete (tests green, behavior verified), finish it with a **local

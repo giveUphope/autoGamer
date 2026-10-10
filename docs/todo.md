@@ -2,6 +2,7 @@
 
 > 活文档：已完成条目直接删除，演进依据查 git 历史。
 > 本方案于 2026-10-09 经七轮源码核实与两次方向重构后定稿：**基线 = google/artemis 上游实现**（本仓库为其 fork，智能栈基本未动；领先提交数**别写死**，复测：`gh api repos/giveUphope/autoGamer/compare/google:artemis:main...main --jq .ahead_by`，2026-10-10 实测 83，另有本会话未推送的提交），路径 = **直通插件**。论证过程与历史版本：git log + [upstream-rethink](migration/upstream-rethink.md) + [dsh-verification](migration/dsh-verification.md) + [feature-inventory](migration/feature-inventory.md)（含 inventory/01-05 明细）。
+> 变更工作流（AGENTS.md 习惯）：用户确认方案后，先把方案 spec 落到本文件一条自足条目（做什么 / 怎么做 / 怎么验 / 什么算合格）再开工；每个检查点完成后随手勾选更新，保持过程与方案一致，避免来回翻代码核对。
 
 ## 零、当前状态（先读这一页，细节在后面的节）
 
