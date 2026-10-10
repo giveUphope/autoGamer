@@ -2,7 +2,7 @@
 
 > 活文档：已完成条目直接删除，演进依据查 git 历史。
 > 本方案于 2026-10-09 经七轮源码核实与两次方向重构后定稿：**基线 = google/artemis 上游实现**（本仓库为其 fork，智能栈基本未动；领先提交数**别写死**，复测：`gh api repos/giveUphope/autoGamer/compare/google:artemis:main...main --jq .ahead_by`，2026-10-10 实测 83，另有本会话未推送的提交），路径 = **直通插件**。论证过程与历史版本：git log + [upstream-rethink](migration/upstream-rethink.md) + [dsh-verification](migration/dsh-verification.md) + [feature-inventory](migration/feature-inventory.md)（含 inventory/01-05 明细）。
-> 变更工作流（AGENTS.md 习惯）：用户确认方案后，先把方案 spec 落到本文件一条自足条目（做什么 / 怎么做 / 怎么验 / 什么算合格）再开工；每个检查点完成后随手勾选更新，保持过程与方案一致，避免来回翻代码核对。顺带发现的问题（含已顺手修掉的）同样在本文件留痕——开项进差距清单并按 registry 编号，顺手修复记入状态表，不允许只留在对话里。
+> 变更工作流（AGENTS.md 习惯）：用户确认方案后，先把方案 spec 落到本文件一条自足条目（做什么 / 怎么做 / 怎么验 / 什么算合格）再开工；每个检查点完成后随手勾选更新，保持过程与方案一致，避免来回翻代码核对。顺带发现的问题按归属留痕——未修的进差距清单并按 registry 编号，已顺手修复的记入 changelogs.md（本文件至多留一行指针），不允许只留在对话里。
 
 ## 零、当前状态（先读这一页，细节在后面的节）
 
@@ -13,7 +13,7 @@
 | 头号候选 | `inject: ["tools"]` 里的服务在该 realm 未必可解析。practices 原文要求可选服务走 `ctx.inject([...])`，让插件「不激活而不是抛错」 |
 | 下一步（按序） | ① `inject` 改可选注入 → ② preset 挂 `tool-plugin-manager`（D17）→ ③ 用 roster 诊断与 `cordis_inspect_query` 的 `Tool` 分流 → ④ 若 `leakedServices` 非空则按 R8 包 `cordis:group` + `isolate` |
 | 每步的前置 | R6（`--dump-config` exit 0 且无 unmatched）＋ R7（**开新会话**再验，旧会话不重读声明） |
-| 已顺手修掉 | `coord.ts` 的 `byteAt` 无限递归（截图取尺寸整条路死）；`screenSize` 的真值 `[undefined, undefined]` 陷阱（默认配置会把 `NaN` 坐标发给 action server 还报成功）。都有锁死测试＋删除实验 |
+| 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | vitest 36/36；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
 | 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md) |
 
@@ -156,7 +156,7 @@
   - **取证方法（下次直接用）**：web UI 那个输入框是 Lexical，`fill` 无效；真实 click 建立选区后 `execCommand('insertText')` 才写入，且**不要在写入的同一次调用里回读 textContent**（会误判成没写进而重复注入）。发送用 `evaluate_script` 里按 aria-label 找按钮 `.click()` 最可靠——`click(uid)` 的 uid 会被同批改 DOM 的操作弄过期，我们因此白丢过两次发送。
   - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）；mock action server 的 PNG 截图被插件解析成 1080x2400（坐标修复的 live 证据）。
   - ②效果验证 / ③闸门阻塞 / ④Inbox 连发 **仍未测**——它们都以「我们的工具真在面上」为前提，被上面这条外部插件解析缺口挡住。
-- ✅ **本轮 live 连带的两个缺陷修复**（都先实测再修，配锁死测试）：`coord.ts` 的 `byteAt` 自己调自己，`parseImageSize` 对任何输入都栈溢出，截图取尺寸这条路本来就是死的；`apply()` 里 `if (config.screenSize)` 被判据骗过——Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，于是默认配置下的坐标一路 `NaN` 发给 action server 还报成功。修法是把判定导出成 `configuredScreenSize()` 纯函数并在 `tests/apply.spec.ts` 里断言 action server 真收到的坐标（删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload）。
+- ✅ **本轮 live 连带的两个缺陷修复**：`coord.ts` 的 `byteAt` 无限递归（截图取尺寸整条路死）与 `screenSize` 真值 `[undefined, undefined]` 陷阱（默认配置把 `NaN` 坐标发给 action server 还报成功）——问题、修法与验收（锁死测试＋删除实验）详见 changelogs #9。
 - ✅ **联网调研上游插件形态（2026-10-10，正文见 [upstream-plugin-forms](migration/upstream-plugin-forms.md)）**：逐字读了 `editing-cordis-compositions` / `cordis-plugin-development` / `cordis-composition-reference` 三个官方 skill、`agent-preset` 与 `agent-preset-registry` 的 README、`core/scope` README、`mount.ts` 源码，以及 shipped `presets/minimal.patch.yml` 与 `standard.patch.yml`。对本方案有决定作用的三条：①preset 只能由 **bundle 补丁**承载且要经 `plugin_manager install_bundle`（官方明令禁止手写 profile 的 package.json / cordis.patch.yml）；②**声明只影响之后创建的 Agent**，现有会话保留其启动时的 revision；③`mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**拒绝整个 preset 挂载**（源码 `mount.ts:193,212-213`）。据此修订 D7、新增 D16 与 G30，补 S5 注册可见性与 S8 版本差。
 - ✅ **守则已成文（[plugin-contract-rules](migration/plugin-contract-rules.md) R1-R19）**：把这次调研与踩坑换成「每条都带出处口径和可执行判据」的红线。其中三条专门防我再次自伤——R6 每次改 patch 必须 `--dump-config` exit 0 且 grep 不到 unmatched；R7 复验前必须证明会话创建时刻晚于本次生效，否则该轮不作数；R9 判「生效」只认官方检查器（install 的 `application`/`warnings`、`list_plugins` 的 `enabled`/`fiberPhase`、roster 诊断、`cordis_inspect_query`、`inspectCompositions`），**不认**日志、进程列表、`dsh plugin list`、也不认 wire 反推。据此把 D7 重写为三层（并纠正上一轮两处误判：`--patch` 其实是 `dsh --help` 明列的官方 overlay；侧边栏「插件」面板能 install/enable/disable/retry，不是只读页），另加 D17 与 G31
 - ✅ **未读清单已读完并回填（2026-10-10 第二轮，守则 R13-R19 成文）**：逐字读完 `references/practices.md`（官方列为「选扩展点前必读」）、`host-plugin.md`、`ui-plugin.md`、`user-actions.md`、`verification.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `packages/core/tools/README.zh.md`。据此新增七条硬约束并改写 S3/S4/S5/S6/S9/S11/P3：扩展点按「够用即最弱」（R13）、宿主已有「只读并发 / 变更独占按提交序」的调度约定（R14）、**`timeoutMs` 只是声明、注册表绝不强制执行**（R15）、不许自写会话事件类型而要走 `presentationMeta`/投影（R16）、`inject` 不唤醒而 `followup` 唤醒（R17）、UI 只能进 slot 且禁止 import 宿主 Client 包（R18）、展示元信息与图标是义务且授权类动作永远 user-only（R19）。同时**否证了我自己的一条假设**（「裸 schema 注册必须经 `defineTool` 包装」——官方 MCP 路径就是拿 server schema 直接 `register()`）。新开 G32/G33/G34 三条实现差集，G31 按 CLI 证据收口

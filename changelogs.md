@@ -310,3 +310,26 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
       GEMINI_API_KEY/GOOGLE_API_KEY 已设的环境变量下验证）
 - [x] 显式用户配置（openai + LM Studio 实测环境）行为不受影响；全量 `pytest tests/` 通过
 - [x] ruff 通过
+
+### #9 live 复验连带的两个插件缺陷：截图取尺寸栈溢出与 `screenSize` 真值陷阱
+
+- **日期**: 2026-10-10
+- **状态**: ✅ 已完成
+- **优先级**: 中（截图取尺寸路径整体不可用；默认配置下坐标静默错误并报成功）
+- **来源**: P0 live 复验顺带发现（`plugins/autogamer-device`）
+
+#### 问题描述
+
+1. `src/coord.ts` 的 `parseImageSize` 对任何输入都栈溢出：`byteAt` 自己调自己——截图取尺寸（PNG IHDR / JPEG SOFn 解析）这条路本来就是死的，坐标换算拿不到任何设备尺寸。
+2. `src/index.ts` 的 `apply()` 里 `if (config.screenSize)` 被判据骗过——Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，于是「操作者配置了尺寸」误判成立，默认配置下的 0-1000 → 像素换算一路 `NaN` 发给 action server 还报成功。
+
+#### 整改方案与实施
+
+1. `src/coord.ts`：`byteAt` 修为 `bytes[index] ?? 0`（不再自递归）；新增 `configuredScreenSize()` 纯函数——按数字判定（类型 / 有限性 / 正值），`[undefined, undefined]`、`[null, null]` 一律视作未配置。
+2. `src/index.ts`：`resolveScreenSize` 改调 `configuredScreenSize(config.screenSize)`；未配置时退回探针截图解析（`imageSizeFromBase64`），解析结果按设备键缓存。
+
+#### 验收标准
+
+- [x] `tests/coord.spec.ts`：`configuredScreenSize` 对 `[1080, 2400]` / `[undefined, undefined]` / `[null, null]` 的断言
+- [x] `tests/apply.spec.ts` wiring lock：驱动经 `apply()` 注册的工具，断言 action server 真收到的坐标；删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload
+- [x] vitest 全绿；mock action server 的 PNG 截图实测解析为 1080x2400（live 证据）
