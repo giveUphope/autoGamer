@@ -10,7 +10,7 @@
 |---|---|
 | 阶段 | **P0 未完**（骨架、离线 spike、安装流、conformance 已过；live 复验进行中——工具面已通，剩 S10 ②③④ 三点） |
 | G30 | **✅ 已关闭（2026-10-10）**：双根因——① cordis `effect()` 语义反转（回调立即执行、返回值才是清理函数），apply() 把 teardown 当回调体，工具注册后数毫秒内被自己注销；② 裸 `register()` 要求 parameters 已是完整 JSON Schema，命名 spec 映射必须经官方 `defineTool()` 编译。修法与验收见 changelogs #10。当前跟进点：动作后端联调（mock 超时，已切真机 py action server + MuMu） |
-| 当前跟进 | **S5 动作后端**：overlay 已切 `D:/DEV/autoGamer/.venv/Scripts/python.exe -m artemis.interfaces.cli.main mcp --type adb` + `ADB_DEVICE_SERIAL=emulator-5554`（MuMu 在线）；真机 take_screenshot 功能轮待跑 |
+| 当前跟进 | **S5 动作后端 ✅ live 打通（2026-10-10）**：真机 `take_screenshot` 一次调用即成（py action server + MuMu `emulator-5554`，返回 `screenshot=captured 1600x900`，回合 10s/1 轮 2 步）。**新观测**：截图 base64 未进模型也未渲染 UI（结果文本 `base64 withheld; visual inspection via UI pending`）——媒体展示路径待查（present/media 契约 vs 我们 render 的文本化），S10 ② 效果验证需要视觉确认，届时一并处理 |
 | 下一步（按序） | S10 剩余三点（真机）：② 效果验证 ③ 闸门阻塞 ④ Inbox 连发；随后 preset 挂 `tool-plugin-manager`（D17）；交付形态迁 `install_bundle`（G31/D7） |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但注意 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9） |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
@@ -177,3 +177,4 @@
 | [feature-inventory](migration/feature-inventory.md) | fork 现状防丢失盘点（inventory/01-05 明细；队列控制台部分已随 R2' 降级为 fork 场景遗产，设备/智能栈部分为上游 canonical 契约） |
 | [upstream-plugin-forms](migration/upstream-plugin-forms.md) | 上游公开文档与源码调研第一轮：插件 / preset / 工具形态的官方口径（D7 改写、D16、G30 的依据），含本轮收回的两条错误归因与官方活门禁判据清单 |
 | [plugin-contract-rules](migration/plugin-contract-rules.md) | **插件契约守则 R1-R19**：每条带出处口径与可执行判据，动手改插件 / preset / patch 前先对照；R2 分三层看改配置、R7 复验必须新会话、R8 realm 与 fail-fast、R9 只认官方检查器、R13 扩展点按「够用即最弱」、R15 `timeoutMs` 不执行、R16 会话写入边界、R18 UI 走 slot、R19 图标与授权红线；并记录了三处对本文档早期判断的自我纠正 |
+
