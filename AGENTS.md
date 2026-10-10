@@ -128,6 +128,12 @@ During implementation, after each checkpoint completes, update the entry in the 
 tick checklist items and record deviations from the plan — proactively, without being asked.
 Finished entries are deleted (docs no-old-archives rule); git history carries the narrative.
 
+**Incidental findings are ledger entries too**: any problem noticed while working — out of
+scope, in passing, even one already fixed on the spot — is written into `docs/todo.md` in the
+same step it is found: open issues as gap rows (numbered per `docs/migration/registry.md`,
+doc gates re-run), drive-by fixes into the status fix-log. A chat-only mention or a silent
+fix does not count as recorded.
+
 ## Change wrap-up
 
 When a unit of work is complete (tests green, behavior verified), finish it with a **local

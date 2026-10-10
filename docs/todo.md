@@ -2,7 +2,7 @@
 
 > 活文档：已完成条目直接删除，演进依据查 git 历史。
 > 本方案于 2026-10-09 经七轮源码核实与两次方向重构后定稿：**基线 = google/artemis 上游实现**（本仓库为其 fork，智能栈基本未动；领先提交数**别写死**，复测：`gh api repos/giveUphope/autoGamer/compare/google:artemis:main...main --jq .ahead_by`，2026-10-10 实测 83，另有本会话未推送的提交），路径 = **直通插件**。论证过程与历史版本：git log + [upstream-rethink](migration/upstream-rethink.md) + [dsh-verification](migration/dsh-verification.md) + [feature-inventory](migration/feature-inventory.md)（含 inventory/01-05 明细）。
-> 变更工作流（AGENTS.md 习惯）：用户确认方案后，先把方案 spec 落到本文件一条自足条目（做什么 / 怎么做 / 怎么验 / 什么算合格）再开工；每个检查点完成后随手勾选更新，保持过程与方案一致，避免来回翻代码核对。
+> 变更工作流（AGENTS.md 习惯）：用户确认方案后，先把方案 spec 落到本文件一条自足条目（做什么 / 怎么做 / 怎么验 / 什么算合格）再开工；每个检查点完成后随手勾选更新，保持过程与方案一致，避免来回翻代码核对。顺带发现的问题（含已顺手修掉的）同样在本文件留痕——开项进差距清单并按 registry 编号，顺手修复记入状态表，不允许只留在对话里。
 
 ## 零、当前状态（先读这一页，细节在后面的节）
 
@@ -128,6 +128,7 @@
 | G33 | 策略内建在工具正文里 | 新开（守则 R13）：熔断冷却拒绝、审批与超时判断现在都写在 `run_device_action` 正文内，与官方「尽量不要把部署策略内建到工具中」相反。迁移方向：单调拒绝改 `ctx.tools.guard()`、需要 await 的改 `tools/pre-execute` 返回 `ask`、结果观测改 `tools/result`，并显式声明并发安全属性（字段名待 `cordis_inspect_query` 取，见守则待补 4） |
 | G34 | 裸 schema 的输入自校验缺口 | 新开（守则 R12 补正项）：直接注册的原始 JSON Schema 工具**自己负责输入校验**，且显式对象节点要声明 `additionalProperties: true / false`，非空字符串、正数、跨字段规则也要自查。现状：`target.coordinate` 只判了元素是否为 number，`text` 未判空、`duration_ms` 未判正、`key` 未判枚举成员 |
 | G31 | 引入流仍靠手工 | 新开：现在用 `dsh plugin add file:`（= pnpm 转发，只证明装了没证明生效）+ `--patch` overlay 起步。交付形态要迁到 `install_bundle`，落点见 D17（让 agent 自己装）；`dsh-plugin-manager` 自称 shared by dsh CLI 但本机 `dsh --help` 只列 `dsh` 与 `dsh plugin` 两种用法，**这条尚未定论**（守则待补 2） |
+| G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
 | 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
