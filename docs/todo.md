@@ -15,7 +15,7 @@
 | 下一步（按序） | **1)** S10 ② 效果验证——像素链路已通，现在可以直接问「动作前后屏幕变了什么」；同时按 S11 第 3 条补**工具内前后帧差分**（模型看图是佐证，代码强制的判定才是路由依据）；**2)** S10 ③ 闸门阻塞（两会话抢同一设备）；**3)** S10 ④ Inbox 连发；**4)** MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，判直通成立还是回退三段式）——D9 唯一未过项；**5)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31）；**6)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类） |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
-| 测试面 | vitest **41/41**（2026-10-11 复跑，含 3 条 G36 媒体锁）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
+| 测试面 | vitest **50/50**（2026-10-11 复跑，含 3 条 G36 媒体锁 + 9 条效果观察锁）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
 | 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md) |
 
 ## 一、最终形态
@@ -132,6 +132,7 @@
 | G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
+| G39 | 效果判定的归属层未定（真机回 JPEG） | 新开（2026-10-11 S10 ② 实测）：`take_screenshot` 在真机上返回 **JPEG**（`ffd8ffe0`、66KB，uiautomator2 路径），不是 adb `screencap -p` 的 PNG——TS 侧新写的 PNG 帧差分器在真机上恒为 `effect=unknown`（离线与 vitest 全绿，live 一轮才暴露）。而**上游权威实现已在仓库里**：`artemis/utils/image_diff.py` 的 `check_ui_change`（cv2 灰度解码 + 遮状态栏 10%/导航栏 5% + 全屏比例阈值 1e-4 + tap 类走 ROI 并按屏对角缩放 + 解码失败**按「有变化」兜底**）与 `wait_for_screen_stability`。两条路：**A** py MCP 面加一个只读 diff 工具（image_diff 原样复用，属 D8「一期改造登记 ②」要逐项登记的触碰）；**B** TS 加 JPEG 解码依赖自己复刻（与 D13「二期再复刻」、盘点 04 保真清单相冲）。倾向 A：效果判定是设备层事实不是展示层，且 A 与上游 validator 共用同一套阈值口径 |
 | 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10）/G37（live overlay 收回交付形态：R6 exit 0 + R7 新会话实测工具面恰为 5 个） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -156,7 +157,7 @@
   - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）。
 - ✅ **S5 动作后端真机打通（2026-10-10/11）**：overlay 从 mock 切到 `.venv` python 的 `artemis mcp --type adb` + `actionServerEnv.ADB_DEVICE_SERIAL=emulator-5554`，MuMu 上 `take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。当年 c8b49c8 按「无法解析」删掉的 `actionServerEnv` 块本轮复跑 R6 确认可合成（exit 0、0 unmatched、键出现在 `--dump-config` 输出里），旧结论作废；mock action server 的 1080x2400 解析证据同属坐标修复的 live 面（changelogs #9）。
 - ✅ **G37 收回 + G36 模型侧打通（2026-10-11，三轮 live）**：overlay 收回交付形态后 R7 新会话实测工具面恰为 **5 个**（`run_device_action` + `report_task_status` + jobs 三件），说明交付 preset 形态本身能挂、G30 的修法在窄面上成立。媒体链路按官方声明面走通：`ctx.attachments.saveImages` → 内容寻址引用 → `render` 出 `[text, image]` → 宿主提升为带 base64 的 user 消息（请求体 12KB→296KB）→ 模型报出只有像素里才有的信息。**过程中否证两条**：① 不声明 `inject` 也能读宿主服务（cordis 在属性 GET 处直接抛）；② 模型看图需要挂 fs/`read_image` 去开只读路径（宿主自己提升）。细节与验收见 changelogs #11
-- 🔶 **S10 ②③④ 未测**——两项前置（G36 模型侧、G37 交付形态）本轮已清，② 可以直接开测；② 的判定依据仍要按 S11 第 3 条补**工具内前后帧差分**（模型看图是佐证，不是路由依据）
+- 🔶 **S10 ② 首轮流到 `effect=unknown` 为止（2026-10-11）**：工具内前后帧差分已实现并锁测（vitest 50/50 = PNG 解码器 5 条 + 效果接线 4 条 + 媒体 3 条），live 一轮 `back` 动作跑通、闸门与动作都正常，结果 `result=Success; effect=unknown`——真机截图是 JPEG 而解码器只吃 PNG。**判定归属层未定，登记 G39**（A：py MCP 面加只读 diff 工具 / B：TS 复刻 + JPEG 依赖）。③ 闸门阻塞、④ Inbox 连发 未测
 - 🔶 **P0 还差最后一道判据**：MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，对比上游 flash 质量）——离线契约 spike 已过，这条才是 D9「直通成立 / 回退三段式双跑」的裁决点，目前只有工具面通了、还没跑过完整真机任务。
 - ✅ **本轮 live 连带的两个缺陷修复**：`coord.ts` 的 `byteAt` 无限递归（截图取尺寸整条路死）与 `screenSize` 真值 `[undefined, undefined]` 陷阱（默认配置把 `NaN` 坐标发给 action server 还报成功）——问题、修法与验收（锁死测试＋删除实验）详见 changelogs #9。
 - ✅ **联网调研上游插件形态（2026-10-10，正文见 [upstream-plugin-forms](migration/upstream-plugin-forms.md)）**：逐字读了 `editing-cordis-compositions` / `cordis-plugin-development` / `cordis-composition-reference` 三个官方 skill、`agent-preset` 与 `agent-preset-registry` 的 README、`core/scope` README、`mount.ts` 源码，以及 shipped `presets/minimal.patch.yml` 与 `standard.patch.yml`。对本方案有决定作用的三条：①preset 只能由 **bundle 补丁**承载且要经 `plugin_manager install_bundle`（官方明令禁止手写 profile 的 package.json / cordis.patch.yml）；②**声明只影响之后创建的 Agent**，现有会话保留其启动时的 revision；③`mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**拒绝整个 preset 挂载**（源码 `mount.ts:193,212-213`）。据此修订 D7、新增 D16 与 G30，补 S5 注册可见性与 S8 版本差。
@@ -171,7 +172,7 @@
 | 文档 | 内容 |
 |---|---|
 | [README](migration/README.md) | **入口页**：按「你要做什么」给阅读顺序，并列出哪几处文档别当真 |
-| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G38（含 16 条已关闭）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
+| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G39（含 16 条已关闭）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
 | [glossary](migration/glossary.md) | 术语翻译表：宿主黑话、Cordis 概念、本项目自造词，以及 **`inject` 的两个意思** |
 | [upstream-rethink](migration/upstream-rethink.md) | 上游 google/artemis 三张调用面研究 + R2' 基线论证 |
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |

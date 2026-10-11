@@ -8,6 +8,7 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseImageSize } from "../src/coord.js";
+import { encodePng } from "./support/png.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
 
 /** A 1080x2400 PNG: signature + IHDR carrying the dimensions at byte 16/20. */
@@ -24,6 +25,8 @@ function pngBytes(): Buffer {
 const harness = vi.hoisted(() => ({
   calls: [] as { tool: string; args: Record<string, unknown> }[],
   clientOptions: [] as Record<string, unknown>[],
+  /** Successive take_screenshot answers; empty means "always the same frame". */
+  frames: [] as string[],
   disposed: 0,
 }));
 
@@ -36,7 +39,8 @@ vi.mock("../src/actionClient.js", () => ({
     async callTool(tool: string, args: Record<string, unknown>) {
       harness.calls.push({ tool, args });
       if (tool === "take_screenshot") {
-        return { content: [{ type: "text", text: pngBytes().toString("base64") }] };
+        const next = harness.frames.shift();
+        return { content: [{ type: "text", text: next ?? pngBytes().toString("base64") }] };
       }
       if (tool === "get_ui_hierarchy") {
         return { content: [{ type: "text", text: "<hierarchy></hierarchy>" }] };
@@ -107,6 +111,7 @@ function exec(): { signal: AbortSignal } {
 beforeEach(() => {
   harness.calls.length = 0;
   harness.clientOptions.length = 0;
+  harness.frames.length = 0;
   harness.disposed = 0;
 });
 
@@ -124,7 +129,9 @@ describe("apply(): screen size sourcing wiring", () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "configured" }, exec());
 
-    expect(harness.calls.map((call) => call.tool)).not.toContain("take_screenshot");
+    // Effect observation captures a before-frame and an after-frame, so "no
+    // probe" means exactly two captures around the tap, not three.
+    expect(harness.calls.filter((call) => call.tool === "take_screenshot")).toHaveLength(2);
     const tap = harness.calls.find((call) => call.tool === "tap");
     expect(tap?.args.coordinates).toEqual([360, 800]);
   });
@@ -241,5 +248,50 @@ describe("apply(): screenshot media path (G36)", () => {
     >;
     expect(value).toEqual({ screenshot: "captured 1080x2400" });
     expect(tool.output!.render({}, value)).toEqual([{ type: "text", text: "screenshot=captured 1080x2400" }]);
+  });
+});
+
+describe("apply(): effect observation (S10 ② / S11 step 3)", () => {
+  const FRAME = { width: 160, height: 90 };
+  const flat = (value: number) => encodePng(FRAME.width, FRAME.height, 0, () => value).toString("base64");
+  const split = () =>
+    encodePng(FRAME.width, FRAME.height, 0, (x) => (x < FRAME.width / 2 ? 40 : 240)).toString("base64");
+  const notAnImage = () => Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).toString("base64");
+
+  async function clickWith(frames: string[]): Promise<Record<string, unknown>> {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    harness.frames.push(...frames);
+    return (await tool.execute(
+      { action: "click", target: { coordinate: [500, 500] }, reason: "observe" },
+      exec(),
+    )) as Record<string, unknown>;
+  }
+
+  it("reports unchanged when the after-frame matches the before-frame", async () => {
+    const value = await clickWith([flat(40), flat(40)]);
+    expect(value.effect).toBe("unchanged");
+    expect(value.effect_diff).toBe(0);
+  });
+
+  it("reports changed when the screen actually moved", async () => {
+    const value = await clickWith([flat(40), split()]);
+    expect(value.effect).toBe("changed");
+    expect(Number(value.effect_diff)).toBeGreaterThan(0.05);
+  });
+
+  it("reports unknown rather than guessing on undecodable frames", async () => {
+    const value = await clickWith([notAnImage(), notAnImage()]);
+    expect(value.effect).toBe("unknown");
+    expect(value).not.toHaveProperty("effect_diff");
+  });
+
+  it("takes no observation frames for read-only actions", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute({ action: "get_ui_hierarchy", reason: "read" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(value).not.toHaveProperty("effect");
+    expect(harness.calls.map((call) => call.tool)).toEqual(["get_ui_hierarchy"]);
   });
 });

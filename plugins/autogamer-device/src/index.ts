@@ -8,7 +8,8 @@
 import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
-import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
+import { configuredScreenSize, decodeImageBase64, imageSizeFromBase64, type ScreenSize } from "./coord.js";
+import { grayscaleGrid } from "./frame.js";
 import { unwrapText } from "./mcpText.js";
 import type { DshContext } from "./dsh-types.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
@@ -108,6 +109,12 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     resolveScreenSize,
     // Screenshots go to the host attachment store so the model gets a real
     // image block and the log keeps only the content-addressed reference.
+    // Effect observation runs entirely in-tool: the router looks at the screen
+    // itself rather than trusting the model's account of what happened.
+    captureFrame: async () => {
+      const base64 = unwrapText(await client.callTool("take_screenshot", {}));
+      return grayscaleGrid(decodeImageBase64(base64));
+    },
     saveScreenshot: async (bytes, mediaType) => {
       try {
         const [ref] = await ctx.attachments.saveImages([

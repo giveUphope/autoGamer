@@ -15,6 +15,7 @@ import type { ActionClient } from "../actionClient.js";
 import type { DeviceBreaker } from "../breaker.js";
 import type { DeviceGate } from "../gate.js";
 import { classifyMessage } from "../classify.js";
+import { frameDiff } from "../frame.js";
 import {
   decodeImageBase64,
   imageMediaTypeOf,
@@ -72,6 +73,42 @@ export const ACTION_TO_PY_TOOL: Record<DeviceAction, string | null> = {
   wait: null,
 };
 
+/**
+ * Actions that should move the screen. Observation-only actions
+ * (take_screenshot / get_ui_hierarchy / wait) are excluded so the router does
+ * not pay two extra captures for them.
+ */
+const EFFECT_OBSERVED_ACTIONS: ReadonlySet<DeviceAction> = new Set([
+  "click",
+  "long_press",
+  "swipe",
+  "input_text",
+  "press_key",
+  "back",
+  "erase_one_char",
+  "focus_and_clear_text",
+  "launch_app",
+  "stop_app",
+  "open_link",
+]);
+
+/** Let navigation animations finish before the after-frame is taken. */
+const EFFECT_SETTLE_MS = 600;
+
+/**
+ * Mean grayscale grid difference above which the screen counts as changed.
+ * Measured on the live device: idle frames differ by <= 0.015 (animated
+ * wallpaper) while a real navigation measured 0.69 — see src/frame.ts.
+ */
+const EFFECT_CHANGED_MIN = 0.05;
+
+function settle(ms: number): Promise<void> {
+  return new Promise((resolve) => {
+    const timer = setTimeout(resolve, ms);
+    timer.unref?.();
+  });
+}
+
 const KEYCODES: Record<string, string> = {
   home: "KEYCODE_HOME",
   enter: "KEYCODE_ENTER",
@@ -106,6 +143,8 @@ export interface RouterOptions {
     bytes: Uint8Array,
     mediaType: DshImageAttachment["mediaType"],
   ): Promise<DshImageAttachment | undefined>;
+  /** Downscaled grayscale of the current screen, for effect observation. */
+  captureFrame?(): Promise<Uint8Array | undefined>;
 }
 
 interface TargetInput {
@@ -274,6 +313,8 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     }
 
     let structured: unknown;
+    const observesEffect = EFFECT_OBSERVED_ACTIONS.has(action);
+    const before = observesEffect ? await captureFrameSafe() : undefined;
     try {
       structured = await client.callTool(tool, payload);
     } catch (error) {
@@ -289,7 +330,31 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     if (!outcome.ok) {
       return { ok: false, failure: classifyMessage(outcome.message), message: outcome.message };
     }
-    return { ok: true, value: value ?? outcome.value };
+    const observed = (value ?? outcome.value) as Record<string, unknown>;
+    if (!observesEffect) {
+      return { ok: true, value: observed };
+    }
+
+    // S11 step 3: the router observes the screen itself instead of trusting the
+    // model's reading of it. `unchanged` after a mutating action is the signal
+    // the P1 validator ladder escalates on; for now it is reported verbatim.
+    await settle(EFFECT_SETTLE_MS);
+    const diff = frameDiff(before, await captureFrameSafe());
+    const effect = diff === undefined ? "unknown" : diff > EFFECT_CHANGED_MIN ? "changed" : "unchanged";
+    logger.info(`[route] effect=${effect} diff=${diff?.toFixed(4) ?? "n/a"} action=${action} device=${key}`);
+    return {
+      ok: true,
+      value: { ...observed, effect, ...(diff === undefined ? {} : { effect_diff: Number(diff.toFixed(4)) }) },
+    };
+  }
+
+  async function captureFrameSafe(): Promise<Uint8Array | undefined> {
+    try {
+      return await options.captureFrame?.();
+    } catch (error) {
+      logger.warn(`[route] effect frame failed: ${(error as Error)?.message ?? error}`);
+      return undefined;
+    }
   }
 
   async function buildCall(
