@@ -8,14 +8,14 @@
 
 | 项 | 现状 |
 |---|---|
-| 阶段 | **P0 收尾段**：骨架 / 离线 spike / 安装流 / conformance ✅，**S10 ①（工具面）✅**，**S5 动作后端真机 ✅**；剩 S10 ②③④ 与真机质量 spike（D9 直通 vs 回退的最后判据） |
+| 阶段 | **P0 收尾段**：骨架 / 离线 spike / 安装流 / conformance ✅，S10 ①（工具面）✅，S5 动作后端真机 ✅，**G37 收回 ✅、G36 模型侧 ✅**；剩 S10 ②③④ 与真机质量 spike（D9 直通 vs 回退的最后判据） |
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
-| live 现场（未提交） | `spike/web-live.patch.yml` 三处改动：provider 端口回 `1234`、`actionServerCommand` 换真机 py、**重新加回 `actionServerEnv`**。旧结论「该块无法解析」（c8b49c8 删过它）**作废**：Config 现声明 `actionServerEnv: z.dict(z.string())`（`src/index.ts:34`），R6 本轮实测 exit 0 且 0 unmatched，合成配置里出现 `ADB_DEVICE_SERIAL: emulator-5554`。**遗留偏差**：overlay 的 `preset-autogamer.plugins` 还是 G30 二分实验形态（standard 全套子行 + inner），与 `cordis.patch.yml` 的交付形态不一致 → 登记 **G37** |
-| 下一步（按序） | **1)** 收回 overlay 到交付形态（`inner` + `@deepseek-ai/dsh-tool-jobs` + 保留真机 command/env，重写已作废的实验注释），R6 复跑、R7 新会话确认工具面只剩我们那两个，并把这轮真机现场一起提交；**2)** 补 **G36** 截图媒体展示（现在只回尺寸，`present` 契约未接）——S10 ② 要视觉确认就绕不过它；**3)** S10 ② 效果验证 → ③ 闸门阻塞 → ④ Inbox 连发；**4)** MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，判直通成立还是回退三段式）；**5)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31）；**6)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验） |
+| live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
+| 下一步（按序） | **1)** S10 ② 效果验证——像素链路已通，现在可以直接问「动作前后屏幕变了什么」；同时按 S11 第 3 条补**工具内前后帧差分**（模型看图是佐证，代码强制的判定才是路由依据）；**2)** S10 ③ 闸门阻塞（两会话抢同一设备）；**3)** S10 ④ Inbox 连发；**4)** MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，判直通成立还是回退三段式）——D9 唯一未过项；**5)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31）；**6)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类） |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
-| 测试面 | vitest **38/38**（2026-10-11 复跑）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
+| 测试面 | vitest **41/41**（2026-10-11 复跑，含 3 条 G36 媒体锁）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
 | 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md) |
 
 ## 一、最终形态
@@ -77,6 +77,7 @@
 - env 极简（对齐上游容器契约）：`ADB_DEVICE_SERIAL`/`ADB_HOST/PORT/SERVER_SOCKET`/`ARTEMIS_HIERARCHY_BACKEND` + helper 相关
 - 返回契约：ActionResult（`isError=False + ok=False` = 设备拒绝，观察非异常）；0-1000 归一坐标（G24）；**超时不许指望 `timeoutMs`**——注册表绝不强制执行定义里的它（守则 R15），现状是由 `ActionClient` 的 `Promise.race` 自实现并观测 `exec.signal`（主体前取消 = `ABORTED_BEFORE_DISPATCH`，主体后取消只能把成功换成 `ABORTED`，超时为 `TOOL_TIMEOUT`）；要交给宿主执行须挂 `dsh-tool-call-timeout-policy` 包装层，其入参官方文本未列（守则待补 2）
 - **裸 schema 注册是合法形态，但前提是给的东西已经是完整 JSON Schema**（守则 R12/R13 补正 + G30 实证修正）：`ctx.tools.register()` 直接收 schema 定义，官方自己就这么接 MCP——「MCP 服务器发现工具后，用服务器的 schema 调用 `ctx.tools.register()`」；`defineTool` 是类型化 DSL 糖，**但命名 spec 映射 → object schema 的编译只发生在 `defineTool` 里**（`parameterSchemaSpecToJsonSchema`）。我们曾用命名 spec 直接裸注册，LLM API 以 `parameters.type` 非 `"object"` 拒绝整个请求（400）。现状：两处定义都走 `defineTool()`，object 节点显式 `additionalProperties`（G34）。代价照旧成立：**工具自己负责输入校验**，非空字符串、正数、跨字段也要自查——现在的 `target` / `text` / `key` 校验就是这部分
+- **宿主服务依赖与图像结果（G36 实证）**：`inject` 是**属性 GET 的闸门**，不是启动偏好——没声明的服务读一下就抛 `cannot get property "attachments" without inject`（不是返回 undefined）。工具要让模型看图的正道：`ctx.attachments.saveImages([{data: Uint8Array, mediaType, name}])` 换内容寻址引用，结果 `render` 成 `[text 信封, image 块]`（官方 `read_image` 就是这个形状），**字节绝不进 value / 会话日志**；宿主会自行把图提升成带真实 base64 的后续 user 消息，**不需要**给 preset 挂 fs 或 `read_image` 去开那个只读路径。两个必踩的坑：provider 配置 `models[].input` 的 schema 默认 `[]`，而声明面口径是「absent=unknown，显式省略=负能力」，于是图被替成 `[image omitted because this model accepts text only]`——要显式写 `[text, image]`；附件准入有上限（单边 8192px / 64M 像素 / 单图 20MiB，宿主还会重编码成 JPEG），被拒时降级成文本而不是失败整个动作
 - **注册可见性（G30，已定性并关闭）**：`ctx.tools.register()` 返回 disposer **不等于 Agent 能看见该工具**——真正的坑不在 scope，而在**注册的生命周期**：cordis `effect()` 是「回调立即执行、返回值才是清理函数」，把 teardown 当回调体传进去，工具就在注册后数毫秒内被自己注销，而 roster/插件页/清单一切正常（G30 根因 ①，changelogs #10）。判「生效」仍只认官方检查器（`cordis_inspect_query` 的 `Tool` 项、roster 的 `enabled`/`fiberPhase`/诊断、`inspectCompositions()` 的 leakedServices），但**最快的一步是插件侧 wire 差分**：看新会话里「哪几个工具在/不在」，比读挂载诊断收敛得快
 
 **S6 审批映射**
@@ -129,9 +130,9 @@
 | G34 | 裸 schema 的输入自校验缺口 | 新开（守则 R12 补正项）：直接注册的原始 JSON Schema 工具**自己负责输入校验**，且显式对象节点要声明 `additionalProperties: true / false`，非空字符串、正数、跨字段规则也要自查。现状：`target.coordinate` 只判了元素是否为 number，`text` 未判空、`duration_ms` 未判正、`key` 未判枚举成员 |
 | G31 | 引入流仍靠手工 | 新开：现在用 `dsh plugin add file:`（= pnpm 转发，只证明装了没证明生效）+ `--patch` overlay 起步。交付形态要迁到 `install_bundle`，落点见 D17（让 agent 自己装）；`dsh-plugin-manager` 自称 shared by dsh CLI 但本机 `dsh --help` 只列 `dsh` 与 `dsh plugin` 两种用法，**这条尚未定论**（守则待补 2） |
 | G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
-| G36 | 截图媒体展示缺口 | 新开（2026-10-10 真机轮观测）：`take_screenshot` 分支把 base64 解码成尺寸就返回（`src/tools/runDeviceAction.ts:339-352`，结果文本自陈 `base64 withheld; visual inspection via UI pending`），**模型看不到图、UI 也没有卡片**。多模态工具结果这一条当时被记成「spike item」至今没做。方向：按官方 present 契约把图交给宿主渲染，可回放状态走 `output.presentationMeta`（R16，不许自写会话事件类型），并核 `@deepseek-ai/dsh-tool-present` 是否要进 preset 子行。**它是 S10 ② 效果验证做视觉确认的前置**；另一条不依赖模型看图的路是工具内部前后帧差分/dHash（S11 第 3 条本就要求代码强制的效果确认，现状是只分类了 action 的 Success/Failed，没有屏幕确认） |
-| G37 | live overlay 仍停在二分实验形态 | 新开（2026-10-10/11）：`spike/web-live.patch.yml` 的 `preset-autogamer.plugins` 还是 G30 二分时的 standard 全套子行 + `autogamer-device-inner`（13 项），而交付形态是 `cordis.patch.yml` 里的 `inner` + `@deepseek-ai/dsh-tool-jobs` 两项；文件头部注释整段讲的是已被 G30 否证的假设。后果：**在实验形态上测出的 S10 ②③④ 结论不代表要交付的 preset**（工具面宽窄、`present` 是否在内都不一样）。修法：overlay 收回交付形态 + 保留真机 `actionServerCommand`/`actionServerEnv`，注释重写为当前实验目的，R6 复跑，R7 新会话用 `cordis_inspect_query` 确认工具面恰为我们那两个 + jobs |
-| 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
+| G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
+| G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
+| 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10）/G37（live overlay 收回交付形态：R6 exit 0 + R7 新会话实测工具面恰为 5 个） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
 
@@ -154,7 +155,8 @@
   - **取证方法（下次直接用）**：web UI 那个输入框是 Lexical，`fill` 无效；真实 click 建立选区后 `execCommand('insertText')` 才写入，且**不要在写入的同一次调用里回读 textContent**（会误判成没写进而重复注入）。发送用 `evaluate_script` 里按 aria-label 找按钮 `.click()` 最可靠——`click(uid)` 的 uid 会被同批改 DOM 的操作弄过期，我们因此白丢过两次发送。
   - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）。
 - ✅ **S5 动作后端真机打通（2026-10-10/11）**：overlay 从 mock 切到 `.venv` python 的 `artemis mcp --type adb` + `actionServerEnv.ADB_DEVICE_SERIAL=emulator-5554`，MuMu 上 `take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。当年 c8b49c8 按「无法解析」删掉的 `actionServerEnv` 块本轮复跑 R6 确认可合成（exit 0、0 unmatched、键出现在 `--dump-config` 输出里），旧结论作废；mock action server 的 1080x2400 解析证据同属坐标修复的 live 面（changelogs #9）。
-- 🔶 **S10 ②③④ 仍未测**，两项前置排在它们前面：**G36**（截图媒体展示——② 要视觉确认就绕不过）、**G37**（overlay 还停在 G30 二分实验形态，在它上面测出的结论不代表要交付的 preset）。
+- ✅ **G37 收回 + G36 模型侧打通（2026-10-11，三轮 live）**：overlay 收回交付形态后 R7 新会话实测工具面恰为 **5 个**（`run_device_action` + `report_task_status` + jobs 三件），说明交付 preset 形态本身能挂、G30 的修法在窄面上成立。媒体链路按官方声明面走通：`ctx.attachments.saveImages` → 内容寻址引用 → `render` 出 `[text, image]` → 宿主提升为带 base64 的 user 消息（请求体 12KB→296KB）→ 模型报出只有像素里才有的信息。**过程中否证两条**：① 不声明 `inject` 也能读宿主服务（cordis 在属性 GET 处直接抛）；② 模型看图需要挂 fs/`read_image` 去开只读路径（宿主自己提升）。细节与验收见 changelogs #11
+- 🔶 **S10 ②③④ 未测**——两项前置（G36 模型侧、G37 交付形态）本轮已清，② 可以直接开测；② 的判定依据仍要按 S11 第 3 条补**工具内前后帧差分**（模型看图是佐证，不是路由依据）
 - 🔶 **P0 还差最后一道判据**：MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，对比上游 flash 质量）——离线契约 spike 已过，这条才是 D9「直通成立 / 回退三段式双跑」的裁决点，目前只有工具面通了、还没跑过完整真机任务。
 - ✅ **本轮 live 连带的两个缺陷修复**：`coord.ts` 的 `byteAt` 无限递归（截图取尺寸整条路死）与 `screenSize` 真值 `[undefined, undefined]` 陷阱（默认配置把 `NaN` 坐标发给 action server 还报成功）——问题、修法与验收（锁死测试＋删除实验）详见 changelogs #9。
 - ✅ **联网调研上游插件形态（2026-10-10，正文见 [upstream-plugin-forms](migration/upstream-plugin-forms.md)）**：逐字读了 `editing-cordis-compositions` / `cordis-plugin-development` / `cordis-composition-reference` 三个官方 skill、`agent-preset` 与 `agent-preset-registry` 的 README、`core/scope` README、`mount.ts` 源码，以及 shipped `presets/minimal.patch.yml` 与 `standard.patch.yml`。对本方案有决定作用的三条：①preset 只能由 **bundle 补丁**承载且要经 `plugin_manager install_bundle`（官方明令禁止手写 profile 的 package.json / cordis.patch.yml）；②**声明只影响之后创建的 Agent**，现有会话保留其启动时的 revision；③`mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**拒绝整个 preset 挂载**（源码 `mount.ts:193,212-213`）。据此修订 D7、新增 D16 与 G30，补 S5 注册可见性与 S8 版本差。
@@ -169,7 +171,7 @@
 | 文档 | 内容 |
 |---|---|
 | [README](migration/README.md) | **入口页**：按「你要做什么」给阅读顺序，并列出哪几处文档别当真 |
-| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G37（含 15 条已关闭）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
+| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G38（含 16 条已关闭）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
 | [glossary](migration/glossary.md) | 术语翻译表：宿主黑话、Cordis 概念、本项目自造词，以及 **`inject` 的两个意思** |
 | [upstream-rethink](migration/upstream-rethink.md) | 上游 google/artemis 三张调用面研究 + R2' 基线论证 |
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |

@@ -357,3 +357,31 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] vitest 38/38（含 2 条新回归锁；删除实验：回退 effect 写法 ⇒ 两条红）
 - [x] 离线自证：加载 dist 跑 `apply()`，注册产物 `parameters.type === "object"`、required 为数组、render 返回 ContentBlock
 - [x] live 实证（R7 新会话）：模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；上一轮的 400 / 「没有这个工具」签名全部消失（mock 后端超时为另一问题，见 todo S5 跟进）
+
+### #11 G36 截图媒体展示：附件服务漏声明 inject，且模型模态默认是「负能力」
+
+- **日期**: 2026-10-11
+- **状态**: ✅ 已完成（模型侧打通；UI 卡片侧按官方形态归 P3，见 todo G36）
+- **优先级**: 高（S10 ② 效果验证的视觉前置）
+- **来源**: 真机 live 三轮 + 上游声明面（`docs/subsystems/attachment.zh.md`、`--dump-config-schema` 的 `providers.*.models[].input`、`@deepseek-ai/dsh-llm` 的 `inputModalities`）
+
+#### 问题描述
+
+1. **截图不进模型**：`take_screenshot` 分支主动 withhold base64，只回尺寸。wire 实录：模型拿到 `screenshot=captured 1600x900 (base64 withheld…)` 后**自己退到 `get_ui_hierarchy`**，用 XML 里的 `content-desc` 拼出「屏幕内容」——看起来像看懂了图，其实一个像素都没见。
+2. **附件服务不是可选依赖**：首版按「拿不到就降级」写，直接读 `ctx.attachments` 被 cordis 在**属性 GET 处**抛 `cannot get property "attachments" without inject`；该错误没有 `environment:` 前缀，被 dispatch 归类成 **task 级失败**，模型连试三次后 `report_task_status=blocked`。
+3. **模态默认值是负数**：声明 inject 后附件确实落盘（`~/.dsh/attachments/v1/objects/…`，宿主把 PNG 重编码成 JPEG），但请求里模型看到的仍是 `[image omitted because this model accepts text only; attachment sha256:…]`。声明面口径：`inputModalities` **absent = unknown，显式省略 = 负能力**，而 provider 配置 `models[].input` 的 schema 默认就是 `[]`。
+
+#### 整改方案与实施
+
+1. `src/coord.ts`：新增 `decodeImageBase64`（全量解码）与 `imageMediaTypeOf`（PNG/JPEG 头部嗅探），`atLeast` 与它共用 strip/binary 助手。
+2. `src/tools/runDeviceAction.ts`：take_screenshot 改成「解码 → `saveScreenshot` → value 里只放引用」；`output.render` 按官方工具图像结果形态返回 `[text 信封, image 块]`（宿主 `read_image` 就是这个形状）。base64 绝不进 value——会话日志只记内容寻址引用。
+3. `src/dsh-types.ts`：镜像 `DshAttachments.saveImages` / `DshImageAttachment` 并标出处。不引官方包当类型源：`@deepseek-ai/dsh-attachment` 在 npm 上是 `0.0.1-rc.1`，与本机宿主 rc.2 不同版（D6 精确 pin 不允许混版）。
+4. `src/index.ts`：`inject = ["tools", "attachments"]`；`saveImages` 被拒（字节/像素/单边上限、解码失败）只 warn 并降级成文本，不失败整个动作。
+5. `spike/web-live.patch.yml`：收回交付形态（G37）+ 给本地模型补 `input: [text, image]`。
+
+#### 验收标准
+
+- [x] vitest 41/41，新增 3 条 G36 锁：附件收到 1080x2400 的 PNG 字节并回引用、render 出 `[text, image]`、**结果 value 内不含 base64**、store 拒绝时仍报尺寸
+- [x] R6：overlay 三个版本各跑一次 `--dump-config`，均 exit 0 且 0 unmatched
+- [x] live（R7 新会话、纯交付形态 `tools=5`）：一次 `take_screenshot` → 附件落盘 → 宿主把图**提升为带真实 base64 的 user 消息**（wire 请求体 12KB→296KB、`image_url`×2）→ 模型答出「太空星球主题壁纸 + 顶部时间 17:06」；17:06 是本轮真实时刻，而上一轮从 XML 读到的是 14:30，证明确实读到了像素
+- [x] **否证一条猜测**：不需要给 preset 挂 `@deepseek-ai/dsh-tool-fs` 让模型用 `read_image` 去开那个只读路径——宿主自己完成提升。带 fs 的那轮验完已收回，overlay 仍是 `inner + tool-jobs`
