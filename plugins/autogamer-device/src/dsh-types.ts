@@ -52,6 +52,11 @@ export interface DshAgent {
 
 export interface DshAgentsService {
   get(id: string): DshAgent | undefined;
+  /**
+   * Declared at docs/subsystems/core.zh.md:612; live-verified to return the
+   * session id during a model-driven tool call (CHANGELOGS #15), so the ledger
+   * and the `turn/end` listener key on the same value.
+   */
   currentInitiator?(): DshAgent | undefined;
 }
 
