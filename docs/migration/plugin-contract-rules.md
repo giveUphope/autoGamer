@@ -227,6 +227,18 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
   推荐方案前先核它是否**已经是现状**（#21 的 `node-linker` 就是这么露馅的）。
 - **出处**：**仓库口径**，本文件 R20/R21/R24 的延伸；触发实例三见 CHANGELOGS #21 的「更正」块。
 
+## R26 `gh` 的写操作必须显式 `--repo`，禁止依赖默认仓库解析
+
+本仓库同时挂着 `origin=giveUphope/autoGamer`（我们的公开 fork）与 `upstream=google/artemis`，
+而 `gh repo view` **默认解析到的是 upstream**。于是任何不带 `--repo` 的 `gh` 写命令都会打到**别人的仓库**上，
+失败信息还可能把人引向错误的归因——实测 `gh release create` 报
+「`workflow` scope may be required」，而 `gh auth status` 显示 token **本来就有 `workflow`**：
+真实原因是请求发往了无权写入的上游，那句 scope 只是 gh 的通用猜测。
+- **判据**：`gh` 的**写**操作（`release create`/`issue create`/`pr create`/`api -X POST|PATCH|DELETE`）必须带 `--repo <owner>/<repo>`；
+  失败后先 `gh repo view --json nameWithOwner` 核对到底打到了谁，再谈归因；
+  误写风险动作执行前先跑一次只读核对（如 `gh api repos/<upstream>/releases --jq length`）确认没有留下东西。
+- **出处**：**实测** 本仓库 CHANGELOGS **#24**（上游核对 0 releases、0 相关 tag，未误写）。
+
 ## 待补（诚实清单）
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**

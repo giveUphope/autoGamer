@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#23 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#24 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -964,6 +964,53 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 - [x] 终态链路在 packed 形态下同样成立（未汇报 → 追问 → 第 2 轮补汇报 → 回合终结）
 - [x] 开发环境精确还原（`link:` + reparse point + 工作树干净）
 - [ ] **③b 的 GitHub Release 那一发未做**：`gh release create` 是 GitHub 端写操作，按 R19 留给用户决定
+
+### #24 G50 ③b 落地：Release 资产发布并从 URL 装通；顺带挖出两个环境级陷阱
+
+- **日期**: 2026-10-12
+- **状态**: ✅ ③b 验通；另开 **G51**（本机 Node TLS 信任被本地代理接管）
+- **优先级**: 高（交付路径的最后一发）
+- **来源**: 一次真实发布 + 一次真实 URL 安装；`gh`/`openssl`/`node fetch` 三方对照
+
+#### 做了什么
+
+1. **发布**：`gh release create autogamer-device-v0.1.0 … --prerelease` ⇒
+   `https://github.com/giveUphope/autoGamer/releases/tag/autogamer-device-v0.1.0`，
+   资产 `autogamer-device-0.1.0.tgz` 24,162 B。**发布前自查**：无密钥（唯一 `token` 命中是 README 里
+   「含 token 的别提交」这句说明）；绝对路径只在 `README.md:37` 的 CLI 示例里，而该文件**本就随仓库公开**；
+   **真正会执行的 `cordis.patch.yml` 里 0 处本地绝对路径**。
+2. **匿名取回核对**：`gh release download` 取回的字节与我们打包的 **SHA256 逐字节相同**
+   （`f978d03cc8ae56fcf9b75c1e…`）。注意 `releases/latest` 端点**故意排除 prerelease**，
+   按 tag 查才有——第一次用 `latest` 拿到 404 不是没发布。
+3. **从 URL 装通**：`pnpm add <那条 URL>` ⇒ `Packages: +17 … added 17, done`、exit 0，
+   `dist/index.js` 在、`skills/…/SKILL.md` 在、`src/` 未泄漏，依赖值就是这条 URL；
+   起宿主加载这份安装 ⇒ **0 启动错误**（资产与 #23 已验通的本地 tarball 哈希相同，故不再重跑整轮会话）。
+
+#### 途中挖出的两个陷阱（都跟 DSH 无关，但都会咬人）
+
+**① `gh` 把仓库解析成了上游 `google/artemis`。** 第一次 `gh release create` 报
+「Failed to create release, `workflow` scope may be required」，而 `gh auth status` 显示 token **本来就有 `workflow`**——
+提示是 gh 的通用猜测，真因是本仓库同时挂了 `origin=giveUphope/autoGamer` 与 `upstream=google/artemis`，
+`gh repo view` 默认解析到的是 **upstream**，那次请求打的是**别人的仓库**（因无写权限而失败）。
+**已核对上游 0 releases、0 相关 tag，没被写入任何东西。** ⇒ 立守则 **R26**：`gh` 的写操作一律显式 `--repo`。
+
+**② 本机 Node 的 TLS 信任被本地中间代理接管。** 用 URL 装第一次直接 `TypeError: fetch failed`，
+完整原因是 `unable to verify the first certificate; … try running Node.js with --use-system-ca`，
+而 `openssl s_client` 显示 `api.github.com` 的证书签发者是
+**`CN=SteamTools Certificate, O=BeyondDimension`**——本机跑着 TLS 拦截型网络工具，它把根 CA 装进了
+**Windows 证书库**，所以 `git`/`gh` 能过，Node 用自己的 CA 列表就不过；`registry.npmmirror.com` 不受影响。
+⇒ 解法是 Node 官方开关 **`--use-system-ca`**（实测加上后两个 URL 都 200、安装 exit 0），
+**不是** `NODE_TLS_REJECT_UNAUTHORIZED=0`——那等于关掉校验，本仓库明确不用这种"修法"。
+这条记成环境前置 **G51**。
+
+#### 验收标准
+
+- [x] Release 与资产存在，按 tag 可查；资产字节与本地打包 **SHA256 相同**
+- [x] 发布前泄露自查完成（密钥 0、绝对路径仅在本已公开的 README 示例、`cordis.patch.yml` 干净）
+- [x] `pnpm add <URL>` ⇒ `added 17, done` exit 0，落地树三事实核对通过（dist 在 / skills 在 / src 不在）
+- [x] 宿主加载 URL 安装出来的 bundle：0 启动错误
+- [x] 上游未被误写（0 releases、0 相关 tag）；开发环境精确还原（`link:` + reparse point + `src` 可达 + 工作树干净）
+- [x] 两个陷阱都落到台账：R26（`gh` 显式 `--repo`）与 G51（Node TLS 信任）
 
 ## 已关闭差距史（G*）
 
