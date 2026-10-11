@@ -10,6 +10,21 @@
   },
   "type": "module",
   "main": "./dist/index.js",
+  "icon": "./icon.svg",
+  "exports": {
+    ".": "./dist/index.js",
+    "./cordis.patch.yml": "./cordis.patch.yml",
+    "./locale/*.json": "./locale/*.json",
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "dist/**/*.js",
+    "cordis.patch.yml",
+    "skills/**/SKILL.md",
+    "locale/*.json",
+    "icon.svg"
+  ],
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "test": "vitest run"

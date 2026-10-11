@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14, #15, #16 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14, #15, #16, #17 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -610,6 +610,46 @@ G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_stat
 - [x] `grep -n "D:/DEV" scripts/check_doc_tables.py` 无命中；`check_doc_registry.py` 门禁仍 OK
 - [x] 换锚点后自测仍能抓到「空行把表切断」这一类缺陷（六条全 CAUGHT）
 
+### #17 G32：bundle 补上展示元信息与 icon，插件面板不再回退成技术名
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（英文渲染与 packed file list 两项按官方口径明记为未验，见验收最后两条）
+- **优先级**: 中（R19 义务项，且是 G31 真实安装前的前置）
+- **来源**: 官方 `packages/preset/agent-preset/skills/cordis-plugin-development/references/host-plugin.md:28-55`（"Display metadata and icon" 整节）
+
+#### 问题描述
+
+`package.json` 只有 `name`/`description`，没有 `locale/en.json`、`locale/zh.json`、icon，也没有 `exports`/`files`。
+官方口径是：**Plugin Manager 与 Settings 不激活插件就读**导出 locale JSON 里的 `meta.title`/`meta.description`
+和导出资源里的 icon；「A Host-only or configuration-only bundle still has a visible inventory entry;
+**neither is an exception by itself**」。缺字段的后果是回退——实测就回退了：
+面板里我们那行的描述显示成 `package.json.description` 的整段技术文案。
+
+#### 整改方案与实施
+
+1. 新增 `locale/en.json` 与 `locale/zh.json`，各写 `meta.title` + `meta.description`
+   （描述讲能力，不讲实现细节；官方禁止「与交付内容无关的模板文案」）。
+2. 新增 `icon.svg`（原创，684 字节，远低于官方 256 KiB 上限，且留在包内——
+   官方明确「绝对路径、URL、越界符号链接一律拒绝」「仅文件名合规不代表字节能渲染」）。
+3. `package.json` 加 `exports`（`.` / `./cordis.patch.yml` / `./locale/*.json` / `./icon` / `./package.json`）
+   与 `files`（`dist/**/*.js`、`cordis.patch.yml`、`skills/**/SKILL.md`、`locale/*.json`、`icon.svg`），
+   并按官方「package-root 可在 `package.json` 顶层声明 `icon`，它优先于 `./icon`」同时给出顶层 `icon`。
+   `./package.json` 一并导出，因为 G31 要用的随包 skill 路径解析正是 `createRequire(...).resolve('<pkg>/package.json')`。
+4. **加 `exports` 是有风险的改动**（会限制子路径解析），所以做了 live 复验而非只看声明面。
+
+#### 验收标准
+
+- [x] 静态：三份 JSON 可解析、icon 684 B 且是合法 SVG；R6 对 `cordis.patch.yml` 仍 exit 0 / 0 unmatched；插件 vitest 67/67
+- [x] **live 渲染**（新服务实例 + 官方插件面板）：「已安装」区我们那行显示 **`AutoGamer 设备执行`** + 中文能力描述，
+      `hasFallbackDesc=false`（旧的 `package.json.description` 回退文案消失），同一行内渲染出我们的 SVG
+      （`img.naturalWidth=150`，`atob(src)` 解出 `<svg … viewBox="0 0 64 64" role="img" aria-label="AutoGam…"`）
+- [x] **live 挂载未因 `exports` 受损**（R7 新会话 wire）：system 仍 4052 字符、persona 起于第 50 字符，
+      工具面仍是 5 个且含 `run_device_action`/`report_task_status`（`plugin_manager` 不在列——D17 那行还没加，符合预期）
+- [ ] **未验（照官方口径明记，不宣称成功）**：英文渲染。本机 UI 是中文 locale，只观察到了 `locale/zh.json` 生效；
+      `locale/en.json` 仅证明内容合法，未切语言亲眼看过。官方要求是「in English and the user's locale where supplied」。
+- [ ] **未验**：packed file list。本机安装是**符号链接到 checkout**（`node_modules/autogamer-device -> D:/DEV/autoGamer/...`），
+      官方明说「`files` does not filter a linked directory」，所以 `files` 是否真起作用要等 G31 走一次真实 `install_bundle` 再核。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -641,3 +681,4 @@ G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_stat
 | G44 | 模型可以不调 report_task_status 就结束回合 | `{global:true}` 监听 + 边界外 `followup()` 的兜底追问端到端可用：追问落进日志、第二轮模型补出汇报并终结 | 本文件 **#15** |
 | G46 | 追问从未触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status`——而终结回合的那次调用永不出现在请求体里；改读会话日志后机制完好，据此立守则 R24 | 本文件 **#15** |
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 改从脚本自身位置推导仓库根；自测的注入锚点改为动态取差距表里第一条 G 行，不再绑定任何具体差距编号 | 本文件 **#16** |
+| G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/en.json + locale/zh.json 的 meta.title/description、原创 icon.svg（684 B）、exports 与 files 登记；面板 live 已渲染中文标题与图标 | 本文件 **#17** |

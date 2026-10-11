@@ -68,7 +68,6 @@
 | G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
 | G28 | parking 与全局并发上限的内部语义 |
 | G31 | 引入流仍靠手工：交付形态要迁 install_bundle |
-| G32 | bundle 展示元信息缺失（locale meta 与 icon） |
 | G33 | 策略内建在工具正文里，与官方「不要内建策略」相反 |
 | G34 | 裸 schema 注册的输入自校验缺口 |
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
@@ -103,6 +102,7 @@
 | G46 | 未汇报追问在交付形态下从不触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status` 推断「没汇报也没追问」；实际那次汇报是**终结回合的最后一次工具调用**，永远不会出现在后续请求体里。改读会话日志后：追问与汇报都正常发生，详见 CHANGELOGS **#15** 与守则 **R24** |
 | G45 | 交付 preset 没有指令投递行：flash 契约从未进过模型，spike 与服从性观察的前提都不成立 | `persona` 行进交付形态与 overlay（文本内禁 `{{}}`）；新会话 wire 断言 system 4052 字符、契约起于第 50 字符；详见 CHANGELOGS **#14** |
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 从脚本自身位置推导仓库根；自测锚点改为动态取第一条 G 行；详见 CHANGELOGS **#16** |
+| G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/{en,zh}.json 的 meta.title/description + 原创 icon.svg + exports/files；详见 CHANGELOGS **#17** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

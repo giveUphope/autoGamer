@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "AutoGamer Device",
+    "description": "Operates one Android device through the run_device_action router tool: safety gate, per-action effect verification, and terminal reporting via report_task_status."
+  }
+}
