@@ -8,7 +8,7 @@
 
 | 项 | 现状 |
 |---|---|
-| 阶段 | **P0 收尾段**：骨架 / 离线 spike / 安装流 / conformance ✅，S10 ①✅、S5 真机✅、G37 收回✅、G36 模型侧✅、**S10 ② 效果验证✅**、**S10 ③ 闸门阻塞✅（两会话同设备串行实证）**；**S10 ④ Inbox 连发 ✅（原生 QueueDock：排队发送 → 回合结束按序执行）**；S10 四点全通过，P0 只剩真机质量 spike |
+| 阶段 | **P0 收尾段**：骨架 / 离线 spike / 安装流 / conformance ✅，S10 ①✅、S5 真机✅、G37 收回✅、G36 模型侧✅、**S10 ② 效果验证✅**、**S10 ③ 闸门阻塞✅（两会话同设备串行实证）**；**S10 ④ ✅**；S10 四点全通过。**真机质量 spike 已跑（2026-10-11）：T1 达成且快于基线，T2 失控 → 新开 G41/G42，D9「直通」判定为暂不成立，待两项修完重跑裁决** |
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
@@ -132,6 +132,8 @@
 | G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
+| G41 | 终态不收敛：`report_task_status` 不结束回合 | 新开（2026-10-11 真机质量 spike T2，**严重**）：模型调用 `report_task_status(status=blocked)` 之后**回合继续跑**——它把「已汇报」当成「还没成」，进入自我救火式指数退避 （`wait` 2s→5s→10s→…→7200s），每轮再补一次 `report_task_status`，70 秒内 47 次模型请求、12+ 次汇报，**必须人工点「停止生成」才停**。S2 说「终态 = 汇报工具的 completed/blocked」，但 DSH 侧没有任何机制让一次工具调用终结回合——这是语义缺口不是模型毛病。方向：终态要么由工具返回结构告诉宿主停止（查官方是否有 tool→end-turn 的声明面形态），要么在插件侧 guard/pre-execute 拦住「已汇报后再动设备」，要么给 wait/重试设硬预算并让超出预算直接结束回合 |
+| G42 | `{index}` 目标定位整条不可用 | 新开（同一轮 spike）：工具 schema 与 flash skill 都写着「优先用元素 index」，但两处都是空的：① `get_ui_hierarchy` 透传的是 **JSON 元素列表**，而 `findNodeCenterByIndex` 还在用正则找 `<node>` XML 标签，永远匹配不上；② 就算改成解析 JSON，该载荷的 `index` 是**容器内序号**（实测 21 个元素只有 5 个不同值 0-5），根本无法当全局句柄。基线侧没这个问题——它用 py 的编号可见元素列表（`artemis/utils/visualization.format_minimal_list_with_elements`，由 `observe_screen` 融合产出）。后果实测：T1 里模型连吃 6 次 `element index 1 not found` 才退回坐标。修法二选一：**A** 插件侧按同一规则把 JSON 列表拍平成全局编号（与基线同口径，P1「hierarchy wiring」的正主）；**B** 在 A 之前先从 schema 与 skill 里摘掉 `{index}`，别继续广告一条走不通的路 |
 | 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10）/G37（live overlay 收回交付形态：R6 exit 0 + R7 新会话实测工具面恰为 5 个）/G39（效果判定归属：裁定路线 A，py 动作面新增只读 compare_ui_frames，changelogs #12）/G40（**撤回**：探针按固定 `aria-label` 查按钮，把运行中的「排队发送」误读成入口消失；实测 QueueDock 原生可用） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -167,6 +169,22 @@
   [x] G39 并入已关闭行。**偏差**：工具最终落在 `adb_server.py` 而非最初写的 `action_server.py`——插件消费的是 `--type adb` 那个面，
   内部面的改动已全部撤销。
 
+### 真机质量 spike 结果（2026-10-11，D9 直通 vs 回退三段式的裁决材料）
+
+对照条件公平：**同一台 MuMu（emulator-5554）、同一个模型（qwen3.6-35b-a3b-mtp）**，两侧只差执行器——
+基线 `uv run artemis run "<goal>" --profile flash`，实验侧 DSH web 会话（AutoGamer preset + autogamer-flash skill）。
+
+| 任务 | 基线（py flash） | 插件（DSH + skill） |
+|---|---|---|
+| T1 打开设置→显示页 | **77.2s / 6 步 / completed**，全部用归一化坐标（含 3 次滑动找目标），截图核实**真达成** | **≈35s / 10 次请求 / 达成**，但其中 **6 次是 `index` 定位失败**（G42）后才退回坐标 |
+| T2 打开设置→开深色主题 | **42.1s / 3 步 / completed**，用**编号目标**（`target: 12`、`target: 17`），`ui_night_mode` 与截图双重核实**真达成** | **失控未完成**：`text` 目标失败后自认「设备连接问题」，转入指数退避 `wait` + 反复 `report_task_status`，70s 内 47 次请求仍在跑，**人工点「停止生成」才停**（G41） |
+
+**判定：D9 的「直通」目前不成立，但失败原因是可修的接线/语义项，不是架构性的。**
+- 赢的一面：单步延迟与总耗时明显更好（T1 35s vs 77s），效果判定（`effect=changed`）与截图进模型是基线没有的，
+  闸门/连发/媒体四点全通过。
+- 输的一面：基线的**编号可见元素列表**是我们缺的核心能力（G42），以及**终态语义在 DSH 侧没有落地机制**（G41，严重）。
+- 建议顺序：**先修 G41 + G42，再重跑本 spike 作为 D9 的正式裁决**；在此之前不要宣布直通成立。
+
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
@@ -199,7 +217,7 @@
 | 文档 | 内容 |
 |---|---|
 | [README](migration/README.md) | **入口页**：按「你要做什么」给阅读顺序，并列出哪几处文档别当真 |
-| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G40（含 18 条已关闭，其中 G40 为当日撤回的错误归因）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
+| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G42（含 18 条已关闭，其中 G40 为当日撤回的错误归因）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
 | [glossary](migration/glossary.md) | 术语翻译表：宿主黑话、Cordis 概念、本项目自造词，以及 **`inject` 的两个意思** |
 | [upstream-rethink](migration/upstream-rethink.md) | 上游 google/artemis 三张调用面研究 + R2' 基线论证 |
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |
