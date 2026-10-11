@@ -72,8 +72,7 @@
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 | G38 | 插件内部错误被归类成任务级失败（熔断语义被污染） |
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
-| G44 | 模型可以不调 report_task_status 就结束回合，终态与结构化汇报在这条路径上仍是空的 |
-| G41 | 终态不收敛：`report_task_status` 之后回合继续跑，退避循环需人工停止 |
+| G47 | `install_bundle` 的两项未验：失败是否真回滚 profile 文件、`files` 打包清单是否生效 |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
 
@@ -97,6 +96,8 @@
 | G37 | live overlay 停在二分实验形态 | overlay 收回 `inner + tool-jobs` 交付形态，R6 exit 0 且 R7 新会话实测工具面恰为 5 个；证据见 ../CHANGELOGS.md #11 |
 | G42 | `{index}` 元素定位整条不可用 | 按数组位置统一编号（模型看到的列表与解析器同源）+ 修掉 render 的 200 字符截断；7 条单测 + live 两轮命中 `#28`/`#17` |
 | G39 | 效果判定归属层（真机回 JPEG 令 TS 侧 PNG 差分失效） | 裁定路线 A：py 动作面新增只读 `compare_ui_frames`，判定委托仓库内上游实现 `check_ui_change`；证据见 ../CHANGELOGS.md #12 |
+| G41 | 终态不收敛：`report_task_status` 之后回合继续跑 | `concludeTurn()` live 实证：汇报的 tool/call 之后直接 `turn/end`、无后续 `step/start`（CHANGELOGS **#15**） |
+| G44 | 模型可以不调 report_task_status 就结束回合 | `{global:true}` 监听 + 边界外 `followup()` 的兜底追问端到端可用，第二轮模型补出汇报（CHANGELOGS **#15**） |
 | G40 | 运行中 UI 不接受第二条消息（**当日撤回的错误归因**） | 探针按固定 `aria-label="发送消息"` 找按钮，把运行中主按钮切成「排队发送」误读成入口消失；改按按钮位 class 枚举后实测 QueueDock 原生可用、回合结束按序执行 |
 | G46 | 未汇报追问在交付形态下从不触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status` 推断「没汇报也没追问」；实际那次汇报是**终结回合的最后一次工具调用**，永远不会出现在后续请求体里。改读会话日志后：追问与汇报都正常发生，详见 CHANGELOGS **#15** 与守则 **R24** |
 | G45 | 交付 preset 没有指令投递行：flash 契约从未进过模型，spike 与服从性观察的前提都不成立 | `persona` 行进交付形态与 overlay（文本内禁 `{{}}`）；新会话 wire 断言 system 4052 字符、契约起于第 50 字符；详见 CHANGELOGS **#14** |
