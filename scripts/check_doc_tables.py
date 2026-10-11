@@ -21,14 +21,15 @@ import re
 import sys
 from pathlib import Path
 
+ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = [
-    r"D:/DEV/autoGamer/AGENTS.md",
-    r"D:/DEV/autoGamer/docs/TODO.md",
-    r"D:/DEV/autoGamer/docs/migration/README.md",
-    r"D:/DEV/autoGamer/docs/migration/registry.md",
-    r"D:/DEV/autoGamer/docs/migration/glossary.md",
-    r"D:/DEV/autoGamer/docs/migration/upstream-plugin-forms.md",
-    r"D:/DEV/autoGamer/docs/migration/plugin-contract-rules.md",
+    ROOT / "AGENTS.md",
+    ROOT / "docs" / "TODO.md",
+    ROOT / "docs" / "migration" / "README.md",
+    ROOT / "docs" / "migration" / "registry.md",
+    ROOT / "docs" / "migration" / "glossary.md",
+    ROOT / "docs" / "migration" / "upstream-plugin-forms.md",
+    ROOT / "docs" / "migration" / "plugin-contract-rules.md",
 ]
 SEPARATOR = re.compile(r"^\|[\s:|-]+\|?\s*$")
 
@@ -147,21 +148,27 @@ def read(path):
 
 
 def unique_flag_for(path):
-    return path.endswith("TODO.md")
+    return Path(path).name == "TODO.md"
 
 
 def selftest():
     for path in DEFAULTS:
         report(check(read(path), path, unique_ids=unique_flag_for(path)), path)
-    todo_path = next(p for p in DEFAULTS if p.endswith("TODO.md"))
+    todo_path = next(p for p in DEFAULTS if unique_flag_for(p))
     good = read(todo_path)
     uniq = unique_flag_for(todo_path)
     expect_caught(
         check(inject(good, "2026-10-10 用户裁定", "2026-10-10|裁定", "a"), "inject a", uniq),
         "bare pipe inside a cell",
     )
+    # Anchor on whatever gap row currently exists: gap rows get removed when a
+    # gap closes, so a hardcoded id rots (it did - `| G30 |` moved to
+    # CHANGELOGS and this selftest failed loudly, which is the point of it).
+    gap_row = next((ln for ln in good.split("\n") if re.match(r"^\| G\d+ \|", ln)), None)
+    if gap_row is None:
+        raise SystemExit("FAIL: no gap row to inject into - the gap table moved")
     expect_caught(
-        check(inject(good, "| G30 |", "\n| G30 |", "b"), "inject b", uniq),
+        check(inject(good, gap_row, "\n" + gap_row, "b"), "inject b", uniq),
         "blank line splitting a table",
     )
     lines = good.split("\n")

@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14, #15 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14, #15, #16 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -577,6 +577,39 @@ G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_stat
 - [x] **G46 撤回**并登记为撤回条目；守则补 **R24**，`registry.md` 同步
 - [x] 插件 vitest 62/62 仍绿（本轮无生产代码改动）
 
+### #16 G35：文档门禁脚本的默认文件集不再写死绝对路径
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（顺带修掉一个由它暴露出的自测锚点腐烂）
+- **优先级**: 中（门禁不可复现 = 守则形同虚设）
+- **来源**: 本机复现（仓库位于其他路径时直接 `FileNotFoundError`）
+
+#### 问题描述
+
+`scripts/check_doc_tables.py` 的 `DEFAULTS` 是七条硬编码 `D:/DEV/autoGamer/...` 绝对路径。
+仓库换一台机器、换一个 checkout 位置，门禁脚本本身就跑不起来——而 R6/R9 这些守则的机械判据全靠它。
+同目录的 `check_doc_registry.py` 早就用 `ROOT = Path(__file__).resolve().parents[1]` 推导，两者形态不一致。
+
+修它时 `--selftest` 又暴露第二处：**注入锚点写死了 `"| G30 |"`**，而 G30 早已在「已关闭差距拆进 CHANGELOGS」
+那轮从 TODO 差距表里移走，于是自测报 `anchor for injection (b) not found - the text moved`。
+（这条失败本身是对的——`inject()` 的设计就是「锚点移动就大声失败」，而不是静默跳过；
+但它说明**用具体差距编号当锚点会腐烂**，因为差距结案就会从表里删。）
+
+#### 整改方案与实施
+
+1. `DEFAULTS` 改为从 `ROOT` 拼出七条 `Path`；随之把 `unique_flag_for(path)` 从
+   `path.endswith("TODO.md")` 改成 `Path(path).name == "TODO.md"`（`Path` 没有 `endswith`），
+   `selftest()` 里取 TODO 锚点的那处也改用同一个谓词，不再各写一遍字符串比较。
+2. 注入缺陷 (b) 的锚点改成**动态取当前表里第一条 `^| G\d+ |` 行**；取不到就报
+   「no gap row to inject into - the gap table moved」。锚点从此不绑定任何具体编号。
+
+#### 验收标准
+
+- [x] 从无关 cwd 调用绝对路径可跑：`cd /c && python -X utf8 "D:/DEV/autoGamer/scripts/check_doc_tables.py"` ⇒ 7 个文件全 `OK:`
+- [x] `python -X utf8 scripts/check_doc_tables.py --selftest` ⇒ `SELFTEST: ruler fires on all six injected defects`
+- [x] `grep -n "D:/DEV" scripts/check_doc_tables.py` 无命中；`check_doc_registry.py` 门禁仍 OK
+- [x] 换锚点后自测仍能抓到「空行把表切断」这一类缺陷（六条全 CAUGHT）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -607,3 +640,4 @@ G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_stat
 | G41 | 终态不收敛：`report_task_status` 之后回合继续跑 | `exec.concludeTurn()` live 实证：汇报的 tool/call 之后直接 `turn/end`、无后续 `step/start`（会话日志 `session-429a5560`） | 本文件 **#15** |
 | G44 | 模型可以不调 report_task_status 就结束回合 | `{global:true}` 监听 + 边界外 `followup()` 的兜底追问端到端可用：追问落进日志、第二轮模型补出汇报并终结 | 本文件 **#15** |
 | G46 | 追问从未触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status`——而终结回合的那次调用永不出现在请求体里；改读会话日志后机制完好，据此立守则 R24 | 本文件 **#15** |
+| G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 改从脚本自身位置推导仓库根；自测的注入锚点改为动态取差距表里第一条 G 行，不再绑定任何具体差距编号 | 本文件 **#16** |
