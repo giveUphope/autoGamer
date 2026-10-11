@@ -10,7 +10,8 @@ export function defineReportTaskStatus(): ToolDefinitionInput {
   return {
     name: "report_task_status",
     description:
-      "Report the final outcome of the device task. Call exactly once, when nothing else remains to do.",
+      "Report the final outcome of the device task. Call exactly once, when nothing else remains to do; " +
+      "reporting concludes the turn, so no further tool call is possible afterwards.",
     parameters: {
       status: {
         type: "string",
@@ -38,9 +39,14 @@ export function defineReportTaskStatus(): ToolDefinitionInput {
         return [{ type: "text", text }];
       },
     },
-    async execute(args) {
+    async execute(args, exec) {
       const status = args.status as string;
       const testsFailed = typeof args.tests_failed === "number" ? args.tests_failed : 0;
+      // S2 defines the terminal state as this tool's result, which needs an
+      // enforcement point rather than a prompt convention: without concluding the
+      // turn the model kept acting (and re-reporting) after it had already
+      // reported `blocked` — see G41.
+      exec.concludeTurn?.();
       return {
         status,
         tests_failed: testsFailed,

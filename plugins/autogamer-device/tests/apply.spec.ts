@@ -46,7 +46,18 @@ vi.mock("../src/actionClient.js", () => ({
         };
       }
       if (tool === "get_ui_hierarchy") {
-        return { content: [{ type: "text", text: "<hierarchy></hierarchy>" }] };
+        // Live shape: a JSON node list whose own `index` is per-container.
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify([
+                { index: "0", text: "亮度", "content-desc": "", "resource-id": "", class: "android.widget.TextView", package: "com.android.settings", clickable: "true", parsed_bounds: { left: 40, top: 400, right: 200, bottom: 460 } },
+                { index: "1", text: "显示", "content-desc": "", "resource-id": "", class: "android.widget.TextView", package: "com.android.settings", clickable: "true", parsed_bounds: { left: 40, top: 600, right: 200, bottom: 660 } },
+              ]),
+            },
+          ],
+        };
       }
       return { content: [{ type: "text", text: "Success" }] };
     }
@@ -297,5 +308,57 @@ describe("apply(): effect observation (S10 ② / G39 route A)", () => {
     >;
     expect(value).not.toHaveProperty("effect");
     expect(harness.calls.map((call) => call.tool)).toEqual(["get_ui_hierarchy"]);
+  });
+});
+
+describe("apply(): turn conclusion on the reported outcome (G41)", () => {
+  async function reportWith(exec: { signal: AbortSignal; concludeTurn?(): void }) {
+    const definitions: ToolDefinition[] = [];
+    const { context } = fakeContext(definitions);
+    await apply(context as never, Config() as never);
+    const tool = definitions.find((d) => d.name === "report_task_status");
+    if (!tool) throw new Error("report_task_status was not registered");
+    return tool.execute(
+      { status: "blocked", summary: "device never answered", reason: "report" },
+      exec,
+    );
+  }
+
+  it("concludes the agent turn once the outcome is reported", async () => {
+    let concluded = 0;
+    await reportWith({ signal: new AbortController().signal, concludeTurn: () => { concluded += 1; } });
+    expect(concluded).toBe(1);
+  });
+
+  it("does not let a device action conclude the turn", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    let concluded = 0;
+    await tool.execute({ action: "back", reason: "act" }, {
+      signal: new AbortController().signal,
+      concludeTurn: () => { concluded += 1; },
+    });
+    expect(concluded).toBe(0);
+  });
+});
+
+describe("apply(): element handles reach the device (G42)", () => {
+  it("resolves a #N handle to that element's pixel center", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
+    await tool.execute({ action: "click", target: { index: 1 }, reason: "tap 显示" }, exec());
+    const tap = harness.calls.find((call) => call.tool === "tap");
+    // #1 is the 显示 row at bounds [40,600]-[200,660] on a 1600x900 screen.
+    expect(tap?.args.coordinates).toEqual([120, 630]);
+  });
+
+  it("hands the model a numbered list rather than the raw per-container index", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
+    const value = (await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(value.element_count).toBe(2);
+    const lines = String(value.hierarchy).split("\n");
+    expect(lines[0]).toMatch(/^#0 /);
+    expect(lines[1]).toMatch(/^#1 .*显示$/);
   });
 });

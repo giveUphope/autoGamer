@@ -1,9 +1,92 @@
 /**
- * Minimal uiautomator-dump XML parsing for target resolution (S11 step 1).
- * Only what the router needs: find a node whose text/content-desc/resource-id
- * contains the target text, and read its bounds center. Full index-based
- * targeting (the visible-elements list) lands with hierarchy wiring in P1.
+ * Element targeting for `run_device_action` (S11 step 1).
+ *
+ * The action server answers `get_ui_hierarchy` with a JSON list of uiautomator
+ * nodes, and its own `index` field is a PER-CONTAINER ordinal (measured on the
+ * live device: 21 nodes carried only 5 distinct values), so it cannot address an
+ * element. Both the list the model reads and the lookup that resolves it
+ * therefore number nodes by position in that same array — one numbering, no
+ * ambiguity (G42). An earlier version scanned the payload for `<node>` XML tags,
+ * which never matched and made `{index}` fail on every call.
  */
+
+export interface VisibleElement {
+  /** Our positional handle, 0-based, in array order. */
+  index: number;
+  x: number;
+  y: number;
+  text?: string;
+  desc?: string;
+  resourceId?: string;
+  class?: string;
+  package?: string;
+  clickable?: boolean;
+  center?: { x: number; y: number };
+}
+
+interface RawNode {
+  text?: unknown;
+  "content-desc"?: unknown;
+  "resource-id"?: unknown;
+  class?: unknown;
+  package?: unknown;
+  clickable?: unknown;
+  parsed_bounds?: unknown;
+  bounds?: unknown;
+}
+
+/** Parse the action server's hierarchy payload; undefined when it is not JSON. */
+export function parseVisibleElements(payload: string): VisibleElement[] | undefined {
+  let nodes: unknown;
+  try {
+    nodes = JSON.parse(payload);
+  } catch {
+    return undefined;
+  }
+  if (!Array.isArray(nodes)) return undefined;
+  const out: VisibleElement[] = [];
+  for (const node of nodes as RawNode[]) {
+    const center = centerOf(node);
+    if (!center) continue;
+    out.push({
+      index: out.length,
+      x: center.x,
+      y: center.y,
+      text: typeof node?.text === "string" && node.text ? node.text : undefined,
+      desc: typeof node?.["content-desc"] === "string" && node["content-desc"] ? node["content-desc"] : undefined,
+      resourceId: typeof node?.["resource-id"] === "string" && node["resource-id"] ? node["resource-id"] : undefined,
+      class: typeof node?.class === "string" ? node.class : undefined,
+      package: typeof node?.package === "string" ? node.package : undefined,
+      clickable: node?.clickable === true || node?.clickable === "true",
+    });
+  }
+  return out;
+}
+
+/**
+ * The model-facing rendering of the same list. Kept deliberately compact: the
+ * handle comes first, then whatever identifies the node, then whether it is
+ * actionable.
+ */
+export function formatVisibleElements(elements: VisibleElement[]): string {
+  if (elements.length === 0) return "[]";
+  const lines = elements.map((el) => {
+    const label = el.text || el.desc || el.resourceId || el.class || "(unlabeled)";
+    const pkg = el.package ? ` pkg=${el.package}` : "";
+    return `#${el.index} [${el.x},${el.y}]${el.clickable ? " clickable" : ""}${pkg} ${label}`;
+  });
+  return lines.join("\n");
+}
+
+export function findNodeCenterByIndex(
+  payload: string,
+  index: number,
+): NodeCenter | undefined {
+  const elements = parseVisibleElements(payload);
+  if (!elements) return undefined;
+  const hit = elements.find((el) => el.index === index);
+  return hit ? { x: hit.x, y: hit.y } : undefined;
+}
 
 export interface NodeCenter {
   x: number;
@@ -12,57 +95,43 @@ export interface NodeCenter {
 }
 
 export function findNodeCenterBySubstring(
-  xml: string,
+  payload: string,
   needle: string,
 ): NodeCenter | undefined {
+  const elements = parseVisibleElements(payload);
+  if (!elements) return undefined;
   const lowered = needle.toLowerCase();
-  const nodePattern = /<node\b[^>]*>/g;
-  let match: RegExpExecArray | null | undefined;
-  let best: { center: NodeCenter; exact: boolean } | undefined; // eslint-disable-line
-  while ((match = nodePattern.exec(xml)) !== null) {
-    const tag = match[0];
-    const text = attr(tag, "text");
-    const desc = attr(tag, "content-desc");
-    const resource = attr(tag, "resource-id");
-    const candidates = [text, desc, resource].filter(
+  let best: { center: NodeCenter; exact: boolean } | undefined;
+  for (const el of elements) {
+    const candidates = [el.text, el.desc, el.resourceId].filter(
       (value): value is string => Boolean(value),
     );
-    const hit: string | undefined = candidates.find((value) => value.toLowerCase().includes(lowered));
+    const hit = candidates.find((value) => value.toLowerCase().includes(lowered));
     if (hit === undefined) continue;
-    const center = boundsCenter(tag);
-    if (!center) continue;
     const exact = hit.toLowerCase() === lowered;
-    if (best === undefined || (exact && !best.exact)) best = { center: { ...center, text: hit }, exact };
+    if (!best || (exact && !best.exact)) best = { center: { x: el.x, y: el.y, text: hit }, exact };
     if (best.exact) break;
   }
   return best?.center;
 }
 
-export function findNodeCenterByIndex(xml: string, index: number): NodeCenter | undefined {
-  const nodePattern = /<node\b[^>]*>/g;
-  let match: RegExpExecArray | null | undefined;
-  let seen = -1;
-  while ((match = nodePattern.exec(xml)) !== null) {
-    seen += 1;
-    if (seen === index && match) return boundsCenter(match[0]);
+function centerOf(node: RawNode): { x: number; y: number } | undefined {
+  const bounds = node?.parsed_bounds;
+  if (bounds && typeof bounds === "object") {
+    const { left, top, right, bottom } = bounds as Record<string, unknown>;
+    if (typeof left === "number" && typeof top === "number" && typeof right === "number" && typeof bottom === "number") {
+      return midpoint(left, top, right, bottom);
+    }
+  }
+  // Legacy fallback: "bounds" as "[l,t][r,b]" style strings.
+  const numbers = typeof node?.bounds === "string" ? node.bounds.match(/-?\d+/g) : undefined;
+  if (numbers && numbers.length >= 4) {
+    return midpoint(Number(numbers[0]), Number(numbers[1]), Number(numbers[2]), Number(numbers[3]));
   }
   return undefined;
 }
 
-function attr(tag: string, name: string): string | undefined {
-  const match = new RegExp(`${name}="([^"]*)"`).exec(tag);
-  return match?.[1];
-}
-
-function boundsCenter(tag: string): { x: number; y: number } | undefined {
-  const bounds = attr(tag, "bounds");
-  if (!bounds) return undefined;
-  const numbers = bounds.match(/\d+/g);
-  if (!numbers || numbers.length < 4) return undefined;
-  const left = Number(numbers[0]);
-  const top = Number(numbers[1]);
-  const right = Number(numbers[2]);
-  const bottom = Number(numbers[3]);
+function midpoint(left: number, top: number, right: number, bottom: number) {
   if (right <= left || bottom <= top) return undefined;
   return { x: Math.round((left + right) / 2), y: Math.round((top + bottom) / 2) };
 }

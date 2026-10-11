@@ -12,10 +12,10 @@ honest reporting.
 ## Acting
 
 1. One action per `run_device_action` call, with a one-sentence `reason`.
-2. Prefer element `index` from the latest `get_ui_hierarchy` result over
-   coordinates. Use `[x,y]` coordinates (0-1000) only when no element matches.
-3. After every observation-affecting action, take a fresh screenshot or
-   hierarchy before choosing the next target — never reuse stale indices.
+2. Prefer the `#N` handle from the latest `get_ui_hierarchy` output as
+   `target: {index: N}`; use `[x,y]` coordinates (0-1000) only when no element matches.
+3. Handles are only valid for the dump they came from: after any action that
+   changes the screen, call `get_ui_hierarchy` again before using `#N`.
 4. If an action is refused, do not repeat it verbatim: re-observe, adjust the
    target, or change approach. The tool escalates to verification on its own.
 5. Keep bursts tight: navigation and typing need no commentary between calls.

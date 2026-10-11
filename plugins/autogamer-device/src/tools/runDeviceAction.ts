@@ -23,7 +23,7 @@ import {
   type ScreenSize,
 } from "../coord.js";
 import type { DshImageAttachment, ToolDefinitionInput } from "../dsh-types.js";
-import { findNodeCenterByIndex, findNodeCenterBySubstring } from "../hierarchy.js";
+import { findNodeCenterByIndex, findNodeCenterBySubstring, formatVisibleElements, parseVisibleElements } from "../hierarchy.js";
 import { unwrapText } from "../mcpText.js";
 
 export interface RouterLogger {
@@ -90,6 +90,11 @@ const EFFECT_OBSERVED_ACTIONS: ReadonlySet<DeviceAction> = new Set([
   "stop_app",
   "open_link",
 ]);
+
+/** Model-facing budget for a hierarchy dump: ~27 rows at ~70 chars each. */
+const RENDER_HIERARCHY_BUDGET = 6_000;
+/** Budget for any other string field in the result envelope. */
+const RENDER_TEXT_BUDGET = 200;
 
 /** Let navigation animations finish before the after-frame is taken. */
 const EFFECT_SETTLE_MS = 600;
@@ -175,7 +180,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     if (typeof target.index === "number") {
       const center = findNodeCenterByIndex(xml, target.index);
       if (center) return center;
-      throw new Error(`task: element index ${target.index} not found in the current hierarchy`);
+      throw new Error(`task: no element #${target.index} in the current hierarchy (re-run get_ui_hierarchy and use a #N handle)`);
     }
     if (typeof target.text === "string" && target.text.length > 0) {
       const center = findNodeCenterBySubstring(xml, target.text);
@@ -211,9 +216,9 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         type: "object",
         additionalProperties: false,
         description:
-          "Where to act. {coordinate:[x,y]} 0-1000, {index} element index, or {text} substring of text/content-desc/resource-id. Required by click/long_press/input_text/focus_and_clear_text.",
+          "Where to act. {index} = the #N handle from the latest get_ui_hierarchy output (preferred); {coordinate:[x,y]} in 0-1000 as fallback; {text} matches text/content-desc/resource-id. Required by click/long_press/input_text/focus_and_clear_text.",
         properties: {
-          index: { type: "number", description: "Element index in the latest hierarchy dump." },
+          index: { type: "number", description: "The #N handle from the latest get_ui_hierarchy output." },
           coordinate: { type: "array", items: { type: "number" }, description: "[x,y] normalized to 0-1000." },
           text: { type: "string", description: "Substring to locate the element." },
         },
@@ -247,7 +252,13 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         delete record.image;
         const parts = Object.entries(record)
           .filter(([, v]) => v !== undefined)
-          .map(([k, v]) => `${k}=${typeof v === "string" ? v.slice(0, 200) : JSON.stringify(v)}`);
+          .map(([k, v]) => {
+            if (typeof v !== "string") return `${k}=${JSON.stringify(v)}`;
+            // A hierarchy dump is one long numbered list; clipping it at the
+            // generic budget left the model seeing 3 of 27 elements (G42).
+            const budget = k === "hierarchy" ? RENDER_HIERARCHY_BUDGET : RENDER_TEXT_BUDGET;
+            return `${k}=${v.length > budget ? `${v.slice(0, budget)}…` : v}`;
+          });
         const text = parts.length > 0 ? parts.join("; ") : "action completed";
         return image?.attachmentId
           ? [{ type: "text", text }, { type: "image", attachment: image }]
@@ -332,6 +343,19 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const outcome = normalizeOutcome(structured);
     if (!outcome.ok) {
       return { ok: false, failure: classifyMessage(outcome.message), message: outcome.message };
+    }
+    if (action === "get_ui_hierarchy") {
+      // Hand the model OUR numbering: the server's own `index` field is a
+      // per-container ordinal and cannot address an element (G42). Read the
+      // untruncated text — normalizeOutcome clips at 4000 chars, which would
+      // cut a real hierarchy dump mid-JSON and make it unparseable.
+      const elements = parseVisibleElements(unwrapText(structured));
+      if (elements) {
+        return {
+          ok: true,
+          value: { hierarchy: formatVisibleElements(elements), element_count: elements.length },
+        };
+      }
     }
     const observed = (value ?? outcome.value) as Record<string, unknown>;
     if (!observesEffect) {

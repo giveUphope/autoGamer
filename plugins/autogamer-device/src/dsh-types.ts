@@ -64,6 +64,15 @@ export interface DshContext {
 
 export interface ToolExec {
   signal: AbortSignal;
+  /**
+   * Declares this call's successful result terminal for the current agent turn:
+   * "The agent loop stops after committing this successful result batch"
+   * (`ToolExecutionSuccess.concludesTurn`, @deepseek-ai/dsh-tools types).
+   * `execute` receives a full `ToolRunContext`, so a reporting tool can end the
+   * turn instead of letting the model keep calling tools after it already
+   * reported the outcome (G41).
+   */
+  concludeTurn?(): void;
 }
 
 /*
