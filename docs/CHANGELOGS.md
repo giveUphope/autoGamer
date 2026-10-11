@@ -1,18 +1,40 @@
-# ARTEMIS 项目整改记录
+# ARTEMIS 变更历史（CHANGELOGS）
 
-> 本文档记录实测过程中发现的问题与整改点，作为后续逐步优化项目的依据。
-> 每完成一项，将「状态」更新为 ✅ 已完成，并补充整改说明（改动文件、验证方式）。
-> 后续新整改点按 #1 的格式在文末追加。
+> 本文档只记**已经发生并结案**的变更：每条是一个 `### #N` 条目，含「问题描述 / 整改方案与实施 / 验收标准」三段。
+> **在办事项、差距、方案与验收清单在 `TODO.md`，不要写在这里**；两者的分工与追加规则见下方「写入规则」与 `AGENTS.md`。
+> **条目编号 `#N` 一经发布不得改写**——`AGENTS.md`、`TODO.md`、`migration/registry.md` 与守则都按 `changelogs #N` 引用它，分类只移动块的位置，不动编号。
 
-## 测试环境
+## 索引
 
+| 分类 | 条目 | 范围 |
+|---|---|---|
+| 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
+| 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
+| 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
+| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
+
+## 写入规则（如何新增一条变更历史）
+
+1. **判归属**：问题已修好并有验收证据 → 写这里；还没修 → 写 `TODO.md` 差距行并按 `registry.md` 编号；只是方案/验收清单 → 写 `TODO.md` 主题条目。
+2. **取号**：`### #N` 取当前最大号 +1，**永不复用、永不重排**；分类只影响块的位置。
+3. **写三段**：`#### 问题描述`（含实测证据与原文/出处）、`#### 整改方案与实施`（改了哪些文件与为什么这么改）、`#### 验收标准`（可复跑的命令/测试勾选项）。
+4. **与 TODO 的交接**：条目若关闭某个 `G*`，本文件写正文，`registry.md` 的已关闭表写一行结论，`TODO.md` 只保留一行指针或直接从差距表移除——**同一事实只在一处展开**。
+5. **防膨胀**：单条超过 ~60 行时，把调研正文移进 `docs/migration/` 对应文档，本文件留结论 + 链接；分类小节只增不改，新增分类须同步更新上方索引表。
+
+---
+
+## 附录 · 早期整改背景（2026-10-06 前后）
+
+### 测试环境
 | 项 | 说明 |
 |---|---|
 | 模拟器 | MuMu 模拟器（`adb connect 127.0.0.1:16384`，设备序列号已写入 `.env`） |
 | 本地模型服务 | LM Studio，http://127.0.0.1:1234/v1（OpenAI 兼容）；已加载 `qwen3.6-35b-a3b-mtp`（VLM + tool_use） |
 | 平台 | Windows / Git Bash |
 
-## 整改后的预期形状（2026-10-06 已落地）
+### 整改后的预期形状
+（2026-10-06 已落地）
 
 - **端点即配置**：`artemis.jsonc` 的每个节点（`default` / `nodes`）都可用 `api_base` + `api_key`（或 `api_key_env`）声明完整端点；只写 `model` 的节点自动继承部署默认端点（含 fallback）。
 - **优先级链**：配置显式指定 > 环境变量（`OPENAI_BASE_URL` 等）> 提供商官方默认端点。
@@ -26,9 +48,28 @@
   fallback——一切端点信息（provider / model / api_base / api_key）都来自用户配置；
   用户没有配置时系统明确不可用（报错附配置指引），有无 Google Key 都不存在零配置可用路径。
 
+### 早期验证记录（2026-10-06 端点整改）
+
+| 时间 | 项目 | 结果 |
+|---|---|---|
+| 10-06 首测 | Flash「设置查电量」 | ❌ 崩溃（`ChatGoogleGenerativeAI` 校验错误）→ 立出 #2 |
+| 10-06 二测 | 同任务（#2 热修 + `OPENAI_BASE_URL` 旁路） | ✅ 3 回合，电量 80% 充电中，全程约 50s |
+| 10-06 冒烟 | 端点贯通 6 项（原始 default / DefaultDeployment / 节点继承 / fallback 继承 / ChatOpenAI base_url / 实时调用） | ✅ 全过（此时 `.env` 旁路已移除，端点纯来自配置） |
+| 10-06 三测 | Flash 同任务（纯配置端点） | ✅ 2 回合，电量 73%，全部请求命中 `127.0.0.1:1234` |
+| 10-06 四测 | Pro「关于手机查 Android 版本」（纯配置端点） | ✅ LangGraph 全链路（planner/operator/checker）命中本地端点，status completed |
+| 10-06 冒烟 | 空默认行为 4 项（无 google key 展开为空 / LLMConfig 校验 / 节点级清晰报错 / 真实配置不受影响） | ✅ 全过（#4） |
+| 10-06 五测 | 故障注入：`api_base` 指向死端口 | ✅ CLI 显示 `Connection error.` + 定位提示；`sessions.error_message` 持久化（#3-1） |
+| 10-06 六测 | Flash 回归（恢复配置）+ 编译产物 | ✅ 任务成功；`Materialized N steps`、`steps.json` 非空、`trace.gif` 生成；成功会话 error_message 为 NULL（#3-2） |
+| 10-06 七测 | 无控制台父进程启动 Jupyter 内核 + 窗口快照 diff | ✅ 无新窗口弹出；内核执行正常（`print(2+3)`→`5`），输出落盘 `kernel.log`（#5） |
+| 10-07 全量 | 后端 pytest 全量套件（Windows 实机，修复前） | ❌ 6 处失败：explorer×9 / video_analyzer×3 / readiness 缓存 / 设备发现 / device_lock 偶发（立出 #7） |
+| 10-07 全量 | 后端 pytest 全量套件（修复后，含 device_lock 连跑 10 次） | ✅ 2570 passed / 0 failed，ruff 通过；前端 254 用例 + vue-tsc + 生产构建通过（#7） |
+| 10-07 冒烟 | 无出厂默认行为 4 项（假 Key 注入下：缺文件→空默认 / 空配置→未配置节点与判官 / 解析报清晰指引 / 显式配置不受影响） | ✅ 全过，`test_no_google_factory_default` 钉住（#8） |
+
 ---
 
-## 整改点列表
+---
+
+## 一 · 模型端点与配置
 
 ### #1 默认端点不应写死：应支持预设提供商与自定义端点
 
@@ -68,6 +109,7 @@
 
 ---
 
+
 ### #2 多处调用点硬编码 Google 客户端，配置中的 provider 被忽略
 
 - **日期**: 2026-10-06
@@ -105,6 +147,7 @@
 
 ---
 
+
 ### #3 失败可观测性不足：CLI 报错信息为空，trace 编译丢失步骤
 
 - **日期**: 2026-10-06
@@ -133,6 +176,7 @@
 
 ---
 
+
 ### #4 无 Google Key 时默认环境应为空，不指定任何端点
 
 - **日期**: 2026-10-06
@@ -159,115 +203,6 @@
 
 ---
 
-### #5 每次任务弹出空白 python 控制台窗口
-
-- **日期**: 2026-10-06
-- **状态**: ✅ 已完成
-- **优先级**: 中（体验问题：任务运行时弹出一个内容全空的 `.venv\Scripts\python.exe` 终端）
-- **来源**: 实测观察
-
-#### 问题描述
-
-每次任务运行都会弹出一个标题为 `D:\DEV\autoGamer\.venv\Scripts\python.exe` 的控制台窗口，且窗口内无任何输出。
-
-#### 根因
-
-该窗口是 **ImageProcessor 感知工具的 Jupyter 内核**（`ipykernel`，即 `.venv\Scripts\python.exe`）。jupyter_client 的 `launch_kernel` 只在父进程为 `pythonw.exe` 时才追加 `CREATE_NO_WINDOW`（`redirect_out = sys.executable.endswith("pythonw.exe")`）；而 ARTEMIS 的 worker 进程本身是无控制台启动的（`CREATE_NO_WINDOW`），无控制台的父进程再拉起控制台程序时，Windows 会为其**分配一个新的可见控制台**——内核 stdout 又被重定向到 `kernel.log`，于是窗口永久空白。
-
-#### 整改方案与实施
-
-`artemis/utils/python_executor.py` 的 `_start()`：Windows 下向 `KernelManager.start_kernel` 显式传入 `creationflags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`，经 `launch_kernel → Popen` 透传生效；内核输出仍按设计落盘到 `session_dir/kernel.log`（满足"或能出现正常 log"的备选预期）。
-
-#### 验收标准
-
-- [x] 从无控制台的父进程启动内核，系统可见窗口前后快照 diff 为空（不再弹窗）
-- [x] 内核功能正常：`execute("print(2+3)")` 返回 `5`；输出落盘 `kernel.log`
-- [x] ruff lint 通过
-
----
-
-
-## 验证记录
-
-| 时间 | 项目 | 结果 |
-|---|---|---|
-| 10-06 首测 | Flash「设置查电量」 | ❌ 崩溃（`ChatGoogleGenerativeAI` 校验错误）→ 立出 #2 |
-| 10-06 二测 | 同任务（#2 热修 + `OPENAI_BASE_URL` 旁路） | ✅ 3 回合，电量 80% 充电中，全程约 50s |
-| 10-06 冒烟 | 端点贯通 6 项（原始 default / DefaultDeployment / 节点继承 / fallback 继承 / ChatOpenAI base_url / 实时调用） | ✅ 全过（此时 `.env` 旁路已移除，端点纯来自配置） |
-| 10-06 三测 | Flash 同任务（纯配置端点） | ✅ 2 回合，电量 73%，全部请求命中 `127.0.0.1:1234` |
-| 10-06 四测 | Pro「关于手机查 Android 版本」（纯配置端点） | ✅ LangGraph 全链路（planner/operator/checker）命中本地端点，status completed |
-| 10-06 冒烟 | 空默认行为 4 项（无 google key 展开为空 / LLMConfig 校验 / 节点级清晰报错 / 真实配置不受影响） | ✅ 全过（#4） |
-| 10-06 五测 | 故障注入：`api_base` 指向死端口 | ✅ CLI 显示 `Connection error.` + 定位提示；`sessions.error_message` 持久化（#3-1） |
-| 10-06 六测 | Flash 回归（恢复配置）+ 编译产物 | ✅ 任务成功；`Materialized N steps`、`steps.json` 非空、`trace.gif` 生成；成功会话 error_message 为 NULL（#3-2） |
-| 10-06 七测 | 无控制台父进程启动 Jupyter 内核 + 窗口快照 diff | ✅ 无新窗口弹出；内核执行正常（`print(2+3)`→`5`），输出落盘 `kernel.log`（#5） |
-| 10-07 全量 | 后端 pytest 全量套件（Windows 实机，修复前） | ❌ 6 处失败：explorer×9 / video_analyzer×3 / readiness 缓存 / 设备发现 / device_lock 偶发（立出 #7） |
-| 10-07 全量 | 后端 pytest 全量套件（修复后，含 device_lock 连跑 10 次） | ✅ 2570 passed / 0 failed，ruff 通过；前端 254 用例 + vue-tsc + 生产构建通过（#7） |
-| 10-07 冒烟 | 无出厂默认行为 4 项（假 Key 注入下：缺文件→空默认 / 空配置→未配置节点与判官 / 解析报清晰指引 / 显式配置不受影响） | ✅ 全过，`test_no_google_factory_default` 钉住（#8） |
-
----
-
-### #6 前端 Web 控制台重构迁移完成（Angular 22 → Vue 3 + Arco Design Vue）
-
-- **日期**: 2026-10-06
-- **状态**: ✅ 已完成
-- **优先级**: 高（Web 控制台前端工程整体一次性替换）
-- **来源**: 前端迁移专项（M0–M6 里程碑收官）
-
-#### 迁移内容
-
-旧 Angular 22 工程（`apps/showcase_ui`）已删除，由 Vue 3 + Arco Design Vue 新工程
-（`apps/showcase_ui_v2`）完整承接，M0–M6 全部里程碑完成：
-
-- **SSE 实时流**：任务时间线 / 截图 / 工具调用事件实时推送渲染，替代旧轮询与增量构建链路。
-- **回放投屏**：会话回放视图与投屏（cast）桥接层按编译期结构断言对齐真实契约。
-- **系统诊断**：连通性 / 就绪度（readiness）诊断接入，联动顶栏在线状态指示。
-- **托管切换（决策 D2，一次性替换）**：`server.py` 的静态产物探测候选指向
-  `apps/showcase_ui_v2/dist/browser`（源码树托管）；wheel 回退产物
-  `artemis/resources/showcase_ui` 经 `npm run sync:resources` 同步为 Vite 产物
-  （发布流程可 `make release-ui` 一键构建 + 同步）；无 /v2 并行子路径。
-
-#### 验收标准
-
-- [x] 前端：vitest 198 用例全绿 + vue-tsc 零错误 + 生产构建通过
-- [x] 后端：托管链路 66 用例全绿
-- [x] 打包：`uv build --wheel` 解包确认 `showcase_ui` 资源完整
-
----
-
-### #7 Windows 实机全量测试修复：FIFO 预约乱序（真 bug）+ 强刷缓存吞没 + 5 处测试隔离缺失
-
-- **日期**: 2026-10-07
-- **状态**: ✅ 已完成
-- **优先级**: 高（device_lock 为真产品缺陷：队列顺序随机；其余为测试对环境/平台的隐性依赖，迁移期只跑过子集，全量套件在 Windows 实机长期未绿）
-- **来源**: 从断点恢复后跑全量后端套件
-
-#### 问题描述
-
-迁移与端点库特性期间只验证过前端全套与后端托管链路子集；全量 `pytest tests/` 在 Windows 实机上有 6 处失败：
-
-| 失败 | 性质 | 根因 |
-|---|---|---|
-| `test_device_lock.py::test_submission_reservations_preserve_order_before_workers_start`（偶发，单独跑必过） | **真产品 bug** | `reserve()` 以 `time.time_ns()` 作为票据文件名排序前缀，Windows 时钟约 1ms 才走一格：连续两次 reserve 拿到相同前缀，`sorted()` 退化为按随机 uuid 排序——后提交的任务有 50% 概率插队到先提交的之前，FIFO 预约顺序失效 |
-| `test_diagnostics.py::test_readiness_engine_reuses_cache_until_forced` | 真产品边界 bug | `run_all` 合并分支用 `>=` 比较 `_report_cache_time` 与 `request_started`；Windows `time.monotonic()` 刻度约 16ms，强刷请求与上一次刷新落在同一刻度时两值相等，强制刷新被当作「等待期间完成的刷新」吞掉，返回陈旧快照 |
-| `test_explorer.py` ×9、`test_video_analyzer.py` ×3 | 测试夹具过期 | 用例只 mock 了 `genai.Client`，但引擎探测收紧后（无 `GOOGLE_API_KEY` 时走 universal 引擎）落到 `_resolve_endpoint`，MagicMock provider 撞上 `ModelProvider.from_string` 校验抛 `ValueError`；同文件后写的用例已改用「预设 `ctx._genai_client` 选 native 引擎」模式，旧用例没跟上 |
-| `test_awake_service.py::test_discovery_keeps_only_pool_claimed_devices` | 测试环境泄漏 | 开发机 shell 导出了 `ADB_DEVICE_SERIAL=127.0.0.1:16384`（MuMu 序号），`_discover_connected_device_ids` 的显式 target 优先分支使断言落空返回 `[]` |
-
-#### 整改方案与实施
-
-1. **FIFO 前缀严格递增**（`artemis/runtime/device_lock.py`）：`reserve()` 增加类级 `_reserve_lock`（进程内串行化）+ 前缀占用检测——目标前缀已被任何 `*.wait` 占用时递增 ns 重试，保证前缀唯一且严格按预约完成顺序递增；跨进程残留碰撞由 O_EXCL 兜底。新增确定性回归用例 `test_reserve_prefixes_increase_even_when_the_clock_stalls`。
-2. **强刷合并改严格大于**（`artemis/core/diagnostics/engine.py`）：`_report_cache_time > request_started` 才合并——刷新确实在本请求开始之后完成才允许吃掉强制刷新；同刻度歧义一律重建（对强制语义安全）。非强制请求随后的 TTL 缓存检查不受影响。
-3. **测试夹具对齐现行引擎探测**（`tests/unit/agents/test_explorer.py`、`test_video_analyzer.py`）：12 个用例在创建 mock client 后补 `mock_ctx._genai_client = mock_client`，与既有 `test_explorer_final_turn_tool_stripping` 同模式，引擎选择不再依赖环境里有没有 Google Key。
-4. **测试环境钉死**（`tests/unit/runtime/test_awake_service.py`）：两个 discovery 用例加 `@patch.dict` 钉住 `ARTEMIS_KEEP_DEVICE_AWAKE` / `ARTEMIS_CLOUD_MODE` / `ARTEMIS_DEVICE_ID` / `ADB_DEVICE_SERIAL`，不再受开发机 shell 环境影响。
-
-#### 验收标准
-
-- [x] 全量 `pytest tests/`：2570 passed / 0 failed（修复前 6 failed）
-- [x] `test_device_lock.py` 连跑 10 次全绿（修复前 10 次挂 3 次；因果经 12 轮插桩试验确认：6 次前缀碰撞全部对应乱序与提前获得锁）
-- [x] ruff 对全部改动文件通过
-- [x] 前端回归不受影响：vitest 254 用例 + vue-tsc + 生产构建通过
-
-
----
 
 ### #8 移除 Google 出厂默认端点：一切端点信息均依靠用户配置
 
@@ -311,6 +246,106 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] 显式用户配置（openai + LM Studio 实测环境）行为不受影响；全量 `pytest tests/` 通过
 - [x] ruff 通过
 
+
+## 二 · 前端 Web 控制台
+
+### #6 前端 Web 控制台重构迁移完成（Angular 22 → Vue 3 + Arco Design Vue）
+
+- **日期**: 2026-10-06
+- **状态**: ✅ 已完成
+- **优先级**: 高（Web 控制台前端工程整体一次性替换）
+- **来源**: 前端迁移专项（M0–M6 里程碑收官）
+
+#### 迁移内容
+
+旧 Angular 22 工程（`apps/showcase_ui`）已删除，由 Vue 3 + Arco Design Vue 新工程
+（`apps/showcase_ui_v2`）完整承接，M0–M6 全部里程碑完成：
+
+- **SSE 实时流**：任务时间线 / 截图 / 工具调用事件实时推送渲染，替代旧轮询与增量构建链路。
+- **回放投屏**：会话回放视图与投屏（cast）桥接层按编译期结构断言对齐真实契约。
+- **系统诊断**：连通性 / 就绪度（readiness）诊断接入，联动顶栏在线状态指示。
+- **托管切换（决策 D2，一次性替换）**：`server.py` 的静态产物探测候选指向
+  `apps/showcase_ui_v2/dist/browser`（源码树托管）；wheel 回退产物
+  `artemis/resources/showcase_ui` 经 `npm run sync:resources` 同步为 Vite 产物
+  （发布流程可 `make release-ui` 一键构建 + 同步）；无 /v2 并行子路径。
+
+#### 验收标准
+
+- [x] 前端：vitest 198 用例全绿 + vue-tsc 零错误 + 生产构建通过
+- [x] 后端：托管链路 66 用例全绿
+- [x] 打包：`uv build --wheel` 解包确认 `showcase_ui` 资源完整
+
+---
+
+
+## 三 · 实机与测试环境
+
+### #5 每次任务弹出空白 python 控制台窗口
+
+- **日期**: 2026-10-06
+- **状态**: ✅ 已完成
+- **优先级**: 中（体验问题：任务运行时弹出一个内容全空的 `.venv\Scripts\python.exe` 终端）
+- **来源**: 实测观察
+
+#### 问题描述
+
+每次任务运行都会弹出一个标题为 `D:\DEV\autoGamer\.venv\Scripts\python.exe` 的控制台窗口，且窗口内无任何输出。
+
+#### 根因
+
+该窗口是 **ImageProcessor 感知工具的 Jupyter 内核**（`ipykernel`，即 `.venv\Scripts\python.exe`）。jupyter_client 的 `launch_kernel` 只在父进程为 `pythonw.exe` 时才追加 `CREATE_NO_WINDOW`（`redirect_out = sys.executable.endswith("pythonw.exe")`）；而 ARTEMIS 的 worker 进程本身是无控制台启动的（`CREATE_NO_WINDOW`），无控制台的父进程再拉起控制台程序时，Windows 会为其**分配一个新的可见控制台**——内核 stdout 又被重定向到 `kernel.log`，于是窗口永久空白。
+
+#### 整改方案与实施
+
+`artemis/utils/python_executor.py` 的 `_start()`：Windows 下向 `KernelManager.start_kernel` 显式传入 `creationflags = CREATE_NEW_PROCESS_GROUP | CREATE_NO_WINDOW`，经 `launch_kernel → Popen` 透传生效；内核输出仍按设计落盘到 `session_dir/kernel.log`（满足"或能出现正常 log"的备选预期）。
+
+#### 验收标准
+
+- [x] 从无控制台的父进程启动内核，系统可见窗口前后快照 diff 为空（不再弹窗）
+- [x] 内核功能正常：`execute("print(2+3)")` 返回 `5`；输出落盘 `kernel.log`
+- [x] ruff lint 通过
+
+---
+
+
+### #7 Windows 实机全量测试修复：FIFO 预约乱序（真 bug）+ 强刷缓存吞没 + 5 处测试隔离缺失
+
+- **日期**: 2026-10-07
+- **状态**: ✅ 已完成
+- **优先级**: 高（device_lock 为真产品缺陷：队列顺序随机；其余为测试对环境/平台的隐性依赖，迁移期只跑过子集，全量套件在 Windows 实机长期未绿）
+- **来源**: 从断点恢复后跑全量后端套件
+
+#### 问题描述
+
+迁移与端点库特性期间只验证过前端全套与后端托管链路子集；全量 `pytest tests/` 在 Windows 实机上有 6 处失败：
+
+| 失败 | 性质 | 根因 |
+|---|---|---|
+| `test_device_lock.py::test_submission_reservations_preserve_order_before_workers_start`（偶发，单独跑必过） | **真产品 bug** | `reserve()` 以 `time.time_ns()` 作为票据文件名排序前缀，Windows 时钟约 1ms 才走一格：连续两次 reserve 拿到相同前缀，`sorted()` 退化为按随机 uuid 排序——后提交的任务有 50% 概率插队到先提交的之前，FIFO 预约顺序失效 |
+| `test_diagnostics.py::test_readiness_engine_reuses_cache_until_forced` | 真产品边界 bug | `run_all` 合并分支用 `>=` 比较 `_report_cache_time` 与 `request_started`；Windows `time.monotonic()` 刻度约 16ms，强刷请求与上一次刷新落在同一刻度时两值相等，强制刷新被当作「等待期间完成的刷新」吞掉，返回陈旧快照 |
+| `test_explorer.py` ×9、`test_video_analyzer.py` ×3 | 测试夹具过期 | 用例只 mock 了 `genai.Client`，但引擎探测收紧后（无 `GOOGLE_API_KEY` 时走 universal 引擎）落到 `_resolve_endpoint`，MagicMock provider 撞上 `ModelProvider.from_string` 校验抛 `ValueError`；同文件后写的用例已改用「预设 `ctx._genai_client` 选 native 引擎」模式，旧用例没跟上 |
+| `test_awake_service.py::test_discovery_keeps_only_pool_claimed_devices` | 测试环境泄漏 | 开发机 shell 导出了 `ADB_DEVICE_SERIAL=127.0.0.1:16384`（MuMu 序号），`_discover_connected_device_ids` 的显式 target 优先分支使断言落空返回 `[]` |
+
+#### 整改方案与实施
+
+1. **FIFO 前缀严格递增**（`artemis/runtime/device_lock.py`）：`reserve()` 增加类级 `_reserve_lock`（进程内串行化）+ 前缀占用检测——目标前缀已被任何 `*.wait` 占用时递增 ns 重试，保证前缀唯一且严格按预约完成顺序递增；跨进程残留碰撞由 O_EXCL 兜底。新增确定性回归用例 `test_reserve_prefixes_increase_even_when_the_clock_stalls`。
+2. **强刷合并改严格大于**（`artemis/core/diagnostics/engine.py`）：`_report_cache_time > request_started` 才合并——刷新确实在本请求开始之后完成才允许吃掉强制刷新；同刻度歧义一律重建（对强制语义安全）。非强制请求随后的 TTL 缓存检查不受影响。
+3. **测试夹具对齐现行引擎探测**（`tests/unit/agents/test_explorer.py`、`test_video_analyzer.py`）：12 个用例在创建 mock client 后补 `mock_ctx._genai_client = mock_client`，与既有 `test_explorer_final_turn_tool_stripping` 同模式，引擎选择不再依赖环境里有没有 Google Key。
+4. **测试环境钉死**（`tests/unit/runtime/test_awake_service.py`）：两个 discovery 用例加 `@patch.dict` 钉住 `ARTEMIS_KEEP_DEVICE_AWAKE` / `ARTEMIS_CLOUD_MODE` / `ARTEMIS_DEVICE_ID` / `ADB_DEVICE_SERIAL`，不再受开发机 shell 环境影响。
+
+#### 验收标准
+
+- [x] 全量 `pytest tests/`：2570 passed / 0 failed（修复前 6 failed）
+- [x] `test_device_lock.py` 连跑 10 次全绿（修复前 10 次挂 3 次；因果经 12 轮插桩试验确认：6 次前缀碰撞全部对应乱序与提前获得锁）
+- [x] ruff 对全部改动文件通过
+- [x] 前端回归不受影响：vitest 254 用例 + vue-tsc + 生产构建通过
+
+
+---
+
+
+## 四 · DSH 插件轨道（当前主线）
+
 ### #9 live 复验连带的两个插件缺陷：截图取尺寸栈溢出与 `screenSize` 真值陷阱
 
 - **日期**: 2026-10-10
@@ -333,6 +368,7 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] `tests/coord.spec.ts`：`configuredScreenSize` 对 `[1080, 2400]` / `[undefined, undefined]` / `[null, null]` 的断言
 - [x] `tests/apply.spec.ts` wiring lock：驱动经 `apply()` 注册的工具，断言 action server 真收到的坐标；删除实验：退回旧判据 ⇒ 2 条红，实测打出 `[null,null]` 形态的 payload
 - [x] vitest 全绿；mock action server 的 PNG 截图实测解析为 1080x2400（live 证据）
+
 
 ### #10 G30 双根因：cordis effect 语义反转自注销工具面 + 裸注册 schema 未编译上 wire
 
@@ -357,6 +393,7 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] vitest 38/38（含 2 条新回归锁；删除实验：回退 effect 写法 ⇒ 两条红）
 - [x] 离线自证：加载 dist 跑 `apply()`，注册产物 `parameters.type === "object"`、required 为数组、render 返回 ContentBlock
 - [x] live 实证（R7 新会话）：模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；上一轮的 400 / 「没有这个工具」签名全部消失（mock 后端超时为另一问题，见 todo S5 跟进）
+
 
 ### #11 G36 截图媒体展示：附件服务漏声明 inject，且模型模态默认是「负能力」
 
@@ -386,6 +423,7 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] live（R7 新会话、纯交付形态 `tools=5`）：一次 `take_screenshot` → 附件落盘 → 宿主把图**提升为带真实 base64 的 user 消息**（wire 请求体 12KB→296KB、`image_url`×2）→ 模型答出「太空星球主题壁纸 + 顶部时间 17:06」；17:06 是本轮真实时刻，而上一轮从 XML 读到的是 14:30，证明确实读到了像素
 - [x] **否证一条猜测**：不需要给 preset 挂 `@deepseek-ai/dsh-tool-fs` 让模型用 `read_image` 去开那个只读路径——宿主自己完成提升。带 fs 的那轮验完已收回，overlay 仍是 `inner + tool-jobs`
 
+
 ### #12 G39 路线 A：效果判定落到 py 动作面（真机 JPEG 让 TS 侧解码器失效）
 
 - **日期**: 2026-10-11
@@ -412,3 +450,31 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] 插件：vitest 46/46（效果锁改为「调用 py 判定」的形状，含「tap 坐标必须传给 compare_ui_frames」一条）
 - [x] live（R7 新会话、真机）：`back` 从 Settings 回桌面 → `effect=changed`；再按一次 `back`（已在桌面）→ `effect=unchanged`。**正反两例都有**，且 MuMu 的动态壁纸没有造成假阳性
 - [x] 字节等值路线被实测排除的结论保留在案：静态三帧哈希全不同（动态壁纸），而真换屏灰度均值差 0.69 vs 动画噪声 ≤0.015
+
+
+## 已关闭差距史（G*）
+
+> 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
+
+| 编号 | 原短语 | 关闭方式 | 出处 |
+|---|---|---|---|
+| G1 | 模式矛盾 | 随 R2' 定稿消失 | git 历史 + 三份研究文档 |
+| G2 | UI 降级 | 随 DSH 原生 roster/QueueDock 与旧控制台只读消失；**只覆盖展示降级面，未覆盖 catch-up（那是 G20）** | 同上 |
+| G6 | Windows 沙箱 | 随 R2' 不 spawn job 消失 | 同上 |
+| G7 | 双跑 | 转为 D9 的回退件 | 同上 |
+| G9 | worker env | 随 R1 遗产消失 | 同上 |
+| G12 | LLM 暂停 | 随 py 智能栈不迁移消失 | 同上 |
+| G15 | 共享锁 | 由 D3 裁定吸收 | 同上 |
+| G16 | notes | 由 D2/S1 的 DSH 原生会话记忆承接 | 同上 |
+| G18 | SSE | 随 D10 收缩；事件名全集保留为 conformance fixture（`tests/fixtures/sse-events.json`） | 同上 |
+| G19 | 轮次视图 | 旧控制台只读，DSH 原生承接 | 同上 |
+| G20 | catch-up | 核实为 DSH 原生支持（`readSessionState` 等），无需自建 | `docs/migration/dsh-verification.md` |
+| G21 | 通知 | 改为按需再建（D10） | 同上 |
+| G22 | SDK | 随 D10 删除 artemis-client | 同上 |
+| G29 | 注入 | 由 S9 以 DSH 原生承接 | 同上 |
+| G30 | preset 工具可见性（曾是 P0 阻塞点） | 双根因修复：cordis `effect()` 语义反转自注销 + 裸 `register()` 未经 `defineTool()` 编译 | 本文件 **#10** |
+| G36 | 截图媒体展示（模型侧半边） | 附件服务 `saveImages` + `[text, image]` 结果 + provider `input: [text, image]` 模态声明；UI 卡片半边仍开放并归 P3 | 本文件 **#11** |
+| G37 | live overlay 停在二分实验形态 | overlay 收回 `inner + tool-jobs` 交付形态，R6 exit 0 且 R7 新会话实测工具面恰为 5 个 | 本文件 **#11** |
+| G39 | 效果判定归属层（真机回 JPEG 令 TS 侧 PNG 差分失效） | 裁定路线 A：py 动作面新增只读 `compare_ui_frames`，判定委托仓库内上游实现 `check_ui_change` | 本文件 **#12** |
+| G40 | 运行中 UI 不接受第二条消息（**当日撤回的错误归因**） | 探针按固定 `aria-label="发送消息"` 找按钮，把运行中主按钮切成「排队发送」误读成入口消失；改按按钮位 class 枚举后实测 QueueDock 原生可用、回合结束按序执行 | TODO「S10 ③/④」条 + 守则 R20 取证方法 |
+| G42 | `{index}` 元素定位整条不可用 | 按数组位置统一编号（模型所见与解析同源）+ 修掉 render 的 200 字符截断；7 条单测 + live 两轮命中 `#28`/`#17` | 本文件 **#11** 之后的修复轮（TODO「G41/G42 修复轮」条） |

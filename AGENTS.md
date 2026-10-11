@@ -29,6 +29,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 |---|---|
 | `docs/TODO.md` | 任何 DSH 侧改动之前。方案本体：D1-D17 决策表、S1-S11 对接语义、差距清单 G*、P0-P4 checklist 与「P0 执行状态」 |
 | `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R22，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）** |
+| `docs/CHANGELOGS.md` | **只记已发生并结案的变更**（`### #N` 三段：问题 / 修法 / 验收），按分类组织、顶部有索引；**已关闭差距 `G*` 的正文在这里**（「已关闭差距史」节）。编号 `#N` 发布后不得改写——守则与 TODO 都按 `changelogs #N` 引用 |
 | `docs/migration/registry.md` | **要引用或新增任何编号（D/S/G/R）之前**。编号唯一权威，含 `inventory/*` 与 `TODO.md` 的 G 编号撞车冲突表；`scripts/check_doc_registry.py` 机械守着 |
 | `docs/migration/glossary.md` | 读方案时卡住词了：`realm`、`parking`、`PTC`、`roster`，尤其是 **`inject` 有两个意思**（服务依赖 vs 不唤醒的上下文追加） |
 | `docs/migration/README.md` | 第一次接触本迁移时的入口页；也是「哪几处别当真」的清单（旧 py 智能栈 prompt 文档、旧控制台研究、docker 材料等） |
@@ -136,6 +137,19 @@ out of scope, in passing — is written down in the same step it is found. Not y
 already fixed on the spot → `docs/CHANGELOGS.md` as a new `### #N` entry (问题 / 修法 / 验收),
 with `docs/TODO.md` keeping at most a one-line pointer. A chat-only mention or a silent fix
 does not count as recorded.
+
+**Change-history rules (docs/CHANGELOGS.md「写入规则」is the authority; this is the summary)**:
+- **One fact, one place**: TODO holds open work, plans and acceptance checklists; CHANGELOGS holds
+  closed changes only. When a gap closes, its prose moves to CHANGELOGS and its id gets one row in
+  the 已关闭差距史 table — TODO keeps no narrative for it.
+- **Entry ids are permanent**: `### #N` takes max+1, never renumbered or reused; categorising moves
+  blocks, never numbers (other docs cite `changelogs #N`).
+- **Every entry has the three sections**: 问题描述 (with measured evidence and the official source
+  text, per R20), 整改方案与实施 (which files and why this way), 验收标准 (re-runnable commands).
+- **Bloat control**: past ~60 lines per entry, move the research body into the matching
+  `docs/migration/*.md` and keep conclusion + link here; new categories must update the index table.
+- **Gates**: `scripts/check_doc_registry.py` reads closed `G*` ids from CHANGELOGS' table, so a closed
+  gap needs a row there **and** in `registry.md`; re-run both doc gates after any of these edits.
 
 ## Change wrap-up
 

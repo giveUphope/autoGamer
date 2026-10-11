@@ -1,5 +1,5 @@
 /**
- * autogamer-device plugin entry (P0 skeleton, docs/todo.md R2').
+ * autogamer-device plugin entry (P0 skeleton, docs/TODO.md R2').
  * Contracts verified through declared surfaces only (dsh --dump-config-schema,
  * dsh --help, shipped READMEs — no asar reading, user ruling 2026-10-10): a
  * cordis plugin module exports {name, inject, Config?, apply}; Config must be

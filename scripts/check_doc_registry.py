@@ -7,7 +7,7 @@ than in docs/TODO.md. docs/migration/registry.md is the declared authority; this
 script proves it stays true.
 
 Judgments (each fails loudly, none of them prints-and-forgets):
-  1. registry lists exactly the ids that TODO.md / plugin-contract-rules.md define
+  1. registry lists exactly the ids that TODO.md / CHANGELOGS.md / plugin-contract-rules.md define
   2. every id referenced anywhere in the tracked markdown corpus exists in registry
   3. ids that inventory/* defines with a different meaning are all listed as clashes
   4. the "closed" ids are individual registry rows, not folded back into one line
@@ -26,6 +26,7 @@ from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
 TODO = ROOT / "docs" / "TODO.md"
+CHANGELOGS = ROOT / "docs" / "CHANGELOGS.md"
 RULES = ROOT / "docs" / "migration" / "plugin-contract-rules.md"
 REGISTRY = ROOT / "docs" / "migration" / "registry.md"
 INVENTORY_GLOB = "docs/migration/inventory"
@@ -62,9 +63,13 @@ def defined_in_todo() -> dict[str, set[str]]:
     got["D"] |= {f"D{m}" for m in re.findall(r"^\| D(\d+) \|", text, re.M)}
     got["S"] |= {f"S{m}" for m in re.findall(r"^\*\*S(\d+)\b", text, re.M)}
     got["G"] |= {f"G{m}" for m in re.findall(r"^\| G(\d+) \|", text, re.M)}
-    # ids folded into the "| 已关闭 | G1（…）/G2（…） |" row
+    # ids folded into the "| 已关闭 | ... |" row (kept for the legacy shape)
     for row in re.findall(r"^\| 已关闭 \|(.*)\|$", text, re.M):
         got["G"] |= {f"G{m}" for m in re.findall(r"G(\d+)", row)}
+    # closed gaps now live in CHANGELOGS.md's 已关闭差距史 table: one row per id
+    if CHANGELOGS.exists():
+        log = read(CHANGELOGS)
+        got["G"] |= {f"G{m}" for m in re.findall(r"^\| G(\d+) \|", log, re.M)}
     return got
 
 

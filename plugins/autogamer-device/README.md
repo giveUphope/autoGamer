@@ -4,7 +4,7 @@ AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`r
 `report_task_status` 终态汇报、`autogamer` agent 预设，以及设备资源治理。队列、调度、UI、
 审批、会话记忆全部由宿主提供。
 
-- 方案与进度：[`../../docs/todo.md`](../../docs/todo.md)（活文档）
+- 方案与进度：[`../../docs/TODO.md`](../../docs/TODO.md)（活文档）
 - **动手前必读**：[`../../docs/migration/plugin-contract-rules.md`](../../docs/migration/plugin-contract-rules.md)（守则 R1-R19）
 - 编号查表：[`registry.md`](../../docs/migration/registry.md)｜术语查表：[`glossary.md`](../../docs/migration/glossary.md)
 - 当前状态（2026-10-10）：🔴 **P0 未完，卡在 G30**——工具 `register()` 成功但没进 agent 工具面
