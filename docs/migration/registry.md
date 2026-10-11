@@ -67,7 +67,6 @@
 | G26 | PID-liveness 协议：仅用于 action server 进程管理 |
 | G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
 | G28 | parking 与全局并发上限的内部语义 |
-| G31 | 引入流仍靠手工：交付形态要迁 install_bundle |
 | G33 | 策略内建在工具正文里，与官方「不要内建策略」相反 |
 | G34 | 裸 schema 注册的输入自校验缺口 |
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
@@ -103,6 +102,7 @@
 | G45 | 交付 preset 没有指令投递行：flash 契约从未进过模型，spike 与服从性观察的前提都不成立 | `persona` 行进交付形态与 overlay（文本内禁 `{{}}`）；新会话 wire 断言 system 4052 字符、契约起于第 50 字符；详见 CHANGELOGS **#14** |
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 从脚本自身位置推导仓库根；自测锚点改为动态取第一条 G 行；详见 CHANGELOGS **#16** |
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/{en,zh}.json 的 meta.title/description + 原创 icon.svg + exports/files；详见 CHANGELOGS **#17** |
+| G31 | 引入流仍靠手工：交付形态要迁 install_bundle | 一次性空 bundle 端到端验通 install_bundle（applied/注册/撤除干净）；随包 skill 路径改官方 !!js 解析；详见 CHANGELOGS **#18** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

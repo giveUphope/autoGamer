@@ -127,7 +127,6 @@
 | G28 | parking + 全局并发 N | 保留：闸门工具内部语义 |
 | G33 | 策略内建在工具正文里 | 新开（守则 R13）：熔断冷却拒绝、审批与超时判断现在都写在 `run_device_action` 正文内，与官方「尽量不要把部署策略内建到工具中」相反。迁移方向：单调拒绝改 `ctx.tools.guard()`、需要 await 的改 `tools/pre-execute` 返回 `ask`、结果观测改 `tools/result`，并显式声明并发安全属性（字段名待 `cordis_inspect_query` 取，见守则待补 4） |
 | G34 | 裸 schema 的输入自校验缺口 | 新开（守则 R12 补正项）：直接注册的原始 JSON Schema 工具**自己负责输入校验**，且显式对象节点要声明 `additionalProperties: true / false`，非空字符串、正数、跨字段规则也要自查。现状：`target.coordinate` 只判了元素是否为 number，`text` 未判空、`duration_ms` 未判正、`key` 未判枚举成员 |
-| G31 | 引入流仍靠手工 | 新开：现在用 `dsh plugin add file:`（= pnpm 转发，只证明装了没证明生效）+ `--patch` overlay 起步。交付形态要迁到 `install_bundle`，落点见 D17（让 agent 自己装）；`dsh-plugin-manager` 自称 shared by dsh CLI 但本机 `dsh --help` 只列 `dsh` 与 `dsh plugin` 两种用法，**这条尚未定论**（守则待补 2）。**状态更新（2026-10-12）**：剩下的只有「真装一次」——本机 bundle 仍是 `dsh plugin add file:` 建起来的**符号链接**（`node_modules/autogamer-device -> D:/DEV/autoGamer/...`），要走一次真实 `install_bundle` 才算换掉手工路径，并按官方口径核 packed file list（官方明说链接式本地安装不过滤 `files`）。**并承接 G45 留下的一项（已解）**：随包 skill 根路径怎么解析——spike 用绝对路径写 `customSkillDirs`，安装后包目录未知；官方给的随包形态是 `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR` 或专用提供方（`dsh-skill-badge` 那种在码里 `ctx.skills.register()`）。**接线时要的官方口径已查清，记在这里免得再查**：本地提供方 rank = project-dsh 100 / project-agents 200 / **custom 300（`customSkillDirs`）** / user-dsh 400 / user-agents 500 / bundled 600；名字须 kebab-case，形态只接受 `<name>/SKILL.md` 与 `<name>.md`（**不支持嵌套 `**/SKILL.md`**）；frontmatter `disable-model-invocation`/`user-invocable` 省略即 true；要模型能自动加载还须挂消费方 `@deepseek-ai/dsh-tool-skill`（它注入 `<available_skills>` 目录，**目录只含 name+description，正文要模型自愿调 `skill` 工具**），官方 preset 挂 `skill-filesystem`+`tool-skill` 两行且**不挂 `dsh-skill`**（服务定义在宿主层） |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
@@ -361,9 +360,9 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - **Done means**
   - [x] G32：locale/icon/exports/files 齐备（CHANGELOGS **#17**）；面板 live 已渲染中文标题+描述+我们的 SVG，且加 `exports` 后挂载未受损
   - [x] D17：preset 的 `tool-plugin-manager` 行落地（**用户已确认「一起开 D17」**）；live 证：工具面 5→7，多出 `plugin_manager` 与 `skill`
-  - [ ] G31：`install_bundle` 真跑通一次（本地 spec），失败路径确认宿主按原文回滚 `package.json`/`pnpm-lock.yaml`
+  - [x] G31：`install_bundle` 端到端走通（CHANGELOGS **#18**）。⚠️ 只验了**成功路径**——「失败按原文回滚 package.json/pnpm-lock」那条**没验**（要造一次失败才会触发，本轮没造）
   - [x] skill 根路径不再写死绝对路径：官方 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 形态**live 走通**——`<available_skills>` 列出 `autogamer-flash`，模型调 `skill({name:"autogamer-flash"})` 拿回 1784 字符正文与 `skill_resources` 基目录
-  - [ ] 生效判定全部来自官方检查器（R9），overlay 降级为「仅测量仪器」并在正文注明
+  - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [ ] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 

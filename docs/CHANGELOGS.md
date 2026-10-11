@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14, #15, #16, #17 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#18 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -650,6 +650,46 @@ G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_stat
 - [ ] **未验**：packed file list。本机安装是**符号链接到 checkout**（`node_modules/autogamer-device -> D:/DEV/autoGamer/...`），
       官方明说「`files` does not filter a linked directory」，所以 `files` 是否真起作用要等 G31 走一次真实 `install_bundle` 再核。
 
+### #18 G31 引入流：`install_bundle` 端到端走通（用一次性空 bundle 验，不碰在用的）
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（packed file list 一项**证明不了**，理由见验收最后一条，非未做）
+- **优先级**: 高（P0 的最后一块「怎么装」）
+- **来源**: 官方 `editing-cordis-compositions/SKILL.md:18-52`（两文件 bundle 示例 + 「Install with `plugin_manager`, `action: install_bundle`, `target` set to the **absolute bundle directory**」）、`plugin_manager` 工具自己的 wire schema（action 枚举与 `target` 语义是从我们抓到的请求体里读的，不是猜的）、`packages/boot/plugin-manager/README.md:29-40`
+
+#### 问题描述
+
+交付形态一直靠手工：`dsh plugin add file:`（pnpm 转发垫片，只证明装了不证明生效）+ 启动时 `--patch` overlay。
+官方对口径是禁止的：`SKILL.md:10`「Do not write the profile's `package.json` or `cordis.patch.yml` …
+**`install_bundle` performs those steps**」、`editing-cordis-compositions:52`「**do not reproduce those steps with shell commands**」。
+G45 接线时又留了一项：随包 skill 的根路径当时只能写绝对路径，装到别的机器上就废了。
+
+#### 整改方案与实施
+
+1. **skill 根路径先解决**（`c24ee20`）：抄 shipped `web-app/presets/cordis.patch.yml:134-138` 的官方形态，
+   在补丁里用 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 取 dirname 再拼 `skills`。
+   `baseUrl` 是宿主注入的 loader 变量，**R6 把 `!!js` 原样打印、也不挂 preset，所以判不了它**——只能 live 证。
+2. **再验安装路径**：按官方示例在 `scratch/probe-bundle/`（gitignored）写**只有两个文件**的一次性 bundle，
+   声明一个没人选的 inert preset（`probe-noop`），确保即使出问题也影响不到 AutoGamer 会话。
+   装之前先对它单独跑 R6（exit 0），避免把一个语法坏的补丁写进 profile。
+3. 通过 D17 那行让会话里的 agent 调 `plugin_manager`（`action: install_bundle`，`target` 给绝对目录）。
+   本机 Web 会话是用户既设的**完全权限**态，所以没弹审批；这不是我们放宽的（R19）。
+4. 验完立刻 `action: remove_bundle` 撤掉，再删 scratch 目录。全程不改我们在用的 bundle。
+
+#### 验收标准
+
+- [x] **安装成功**：工具返回 `{"stage":"enable","target":"@local/dsh-probe-preset","enabled":true,"changed":true,"application":"applied", "packageResult":{"exitCode":0, …}}`
+- [x] **注册生效**（官方检查器，非 `dsh plugin list`）：`--profile web --dump-config` 合成树里出现 `- id: preset-probe-noop`；
+      profile 的 `package.json` 里 `dependencies` 与 `dsh.profile.bundles` 都加上了该包
+- [x] **移除干净**：`remove_bundle` 后 `dependencies` 与 `bundles` 里都没有它，而 `autogamer-device` 原样在位
+- [x] **skill 端到端**：`<available_skills>` 列出 `autogamer-flash`；模型调 `skill({name:"autogamer-flash"})`
+      拿回 1784 字符正文 + 解析后的 `skill_resources` 基目录 ⇒ bundle 内无绝对路径也能发现并加载随包 skill
+- [x] 交付形态与 overlay 两处 preset 一致，由 `tests/deliveryShape.spec.ts` 机械守；插件 vitest 67/67
+- [ ] **packed file list 本地证明不了**（不是没做，是**做不到**）：实测 pnpm 把本地目录安装解析成
+      `link:D:/DEV/autoGamer/scratch/probe-bundle`，与官方「Local directory installation links the checkout instead …
+      `files` does not filter a linked directory」一致。我们在用的 `autogamer-device` 同样是 `link:`。
+      ⇒ 要验 `files` 是否真过滤，必须走发布件或 tarball，本轮不假装验过。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -682,3 +722,4 @@ G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_stat
 | G46 | 追问从未触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status`——而终结回合的那次调用永不出现在请求体里；改读会话日志后机制完好，据此立守则 R24 | 本文件 **#15** |
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 改从脚本自身位置推导仓库根；自测的注入锚点改为动态取差距表里第一条 G 行，不再绑定任何具体差距编号 | 本文件 **#16** |
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/en.json + locale/zh.json 的 meta.title/description、原创 icon.svg（684 B）、exports 与 files 登记；面板 live 已渲染中文标题与图标 | 本文件 **#17** |
+| G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
