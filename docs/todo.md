@@ -142,7 +142,30 @@
 - [ ] **P2 设备层补全**：helper TS 复刻（D13/G25）+ 录屏接回（D12/G23 契约 + graceful stop）+ mock driver + 诊断 admission（锁屏 fail-closed/多设备切换/emulator_manager 对接）+ 模拟器专属演进评估
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
-- [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由
+- [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节
+
+### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
+
+- **What**：把「动作后屏幕是否变化」的判定移到 py 动作面，复用仓库里已有的 `artemis/utils/image_diff.py::check_ui_change`，
+  让 TS 侧只负责取帧与路由。交付物：① `artemis/mcp/action_server.py` 新增**只读**工具 `compare_ui_frames`
+  （入参 before/after 的 base64 + `action` + 可选 `coordinates`，返回 `{changed: bool, ratio: number}`）；
+  ② `artemis/mcp/action_manifest.py` 登记该工具名并纳入能力门（与 `take_screenshot` 同一档）；
+  ③ TS 侧 `captureFrame` 改调该工具，删掉 `src/frame.ts` 里失效的 PNG 差分（保留 600ms 沉降与 changed/unchanged/unknown 词汇）；
+  ④ conformance 的 13 工具快照更新为 14。**范围外**：validator 升级梯、`wait_for_screen_stability` 的轮询语义（P1 再谈）、
+  任何对 `image_diff.py` 本体的修改。
+- **How**：判定是**设备层事实**不是展示层，且上游阈值口径要保真（盘点 04 / G27）。关键事实：`check_ui_change` 在本 fork 里
+  **没有活调用点**（只有定义 + `tests/unit/agents/test_validator.py` 里的 mock），所以它的语义权威就是那份测试与函数文档串：
+  遮状态栏 10%/导航栏 5%、全屏比例阈值 1e-4、tap 类走按屏对角缩放的 ROI（50px，最小 15px）、**解码失败按「有变化」兜底**。
+  新工具**不自己截图**——上游刻意把 actuation 与 observation 拆开（`observation.py` 模块注释），取帧时机归 TS（它持有闸门与沉降）。
+  豁免理由（D8「一期改造登记 ②」）：纯新增只读面，不改任何既有工具的行为与返回契约；真机 `take_screenshot` 回 JPEG，
+  TS 侧无 cv2/PIL 等价物，自己复刻等于长期背两份同一算法。
+- **Verify**：py 侧 `uv run python -m pytest tests/unit/mcp -q` 新增用例（同一帧→False、半屏翻转→True、
+  tap ROI 命中→True、坏字节→True 且 ratio 语义不变、能力未开时不出现在 tools/list）；
+  `uv run ruff check`；插件侧 `npm run test`（把 frame 相关锁测改判为「调用 py 工具」的形状）+ `npm run build`；
+  R6 声明面自检照旧；live 按 R7 开新会话跑一次 `back`，结果必须出现 `effect=changed`（当前是 `effect=unknown`）。
+- **Done means**：[ ] py 工具注册且只读；[ ] manifest/能力门同步、conformance 14 工具绿；
+  [ ] TS 不再依赖 PNG 解码，真机一轮 `effect` 不再是 unknown；[ ] 阈值与兜底语义与 `check_ui_change` 一致（由测试锁定）；
+  [ ] `docs/todo.md` 的 G39 关闭并入已关闭行。
 
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
