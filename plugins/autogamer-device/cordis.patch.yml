@@ -45,3 +45,25 @@
           - id: autogamer-device-inner
             name: autogamer-device
           - name: "@deepseek-ai/dsh-tool-jobs"
+          # Skills ship in this package's skills/ dir. Resolving the root at load
+          # time is the official patch-level form (web-app/presets/cordis.patch.yml
+          # does exactly this for dsh-agent-preset): createRequire(baseUrl) anchors
+          # on OUR installed package, so no absolute path is baked into the bundle.
+          # baseUrl is a host-injected loader variable - R6 prints !!js inertly, so
+          # only a live mount proves it resolves here.
+          - id: skill-filesystem
+            name: "@deepseek-ai/dsh-skill-filesystem"
+            config:
+              customSkillDirs:
+                - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('autogamer-device/package.json')), 'skills')
+          - id: tool-skill
+            name: "@deepseek-ai/dsh-tool-skill"
+          # D17: self-install capability. Preset-backed sessions use their own
+          # tool-plugin-manager row (packages/boot/plugin-manager/README.md),
+          # and shipped presets ship it disabled - enabling it hands the model
+          # the ability to install Host code, which runs in-process outside the
+          # workspace sandbox. Every plugin_manager action needs
+          # danger-full-access or per-call approval.
+          - id: tool-plugin-manager
+            name: "@deepseek-ai/dsh-plugin-manager/tools"
+            disabled: false

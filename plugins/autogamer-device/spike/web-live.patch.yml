@@ -91,3 +91,17 @@
           actionServerEnv:
             ADB_DEVICE_SERIAL: "emulator-5554"
       - name: "@deepseek-ai/dsh-tool-jobs"
+      # Same skill wiring as cordis.patch.yml (tests/deliveryShape.spec.ts compares
+      # the two presets' contributed plugin names).
+      - id: skill-filesystem
+        name: "@deepseek-ai/dsh-skill-filesystem"
+        config:
+          customSkillDirs:
+            - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('autogamer-device/package.json')), 'skills')
+      - id: tool-skill
+        name: "@deepseek-ai/dsh-tool-skill"
+      # D17 row, kept identical to cordis.patch.yml (tests/deliveryShape.spec.ts
+      # compares the two presets' contributed plugin names).
+      - id: tool-plugin-manager
+        name: "@deepseek-ai/dsh-plugin-manager/tools"
+        disabled: false
