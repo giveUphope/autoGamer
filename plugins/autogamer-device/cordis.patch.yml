@@ -64,6 +64,12 @@
           # the ability to install Host code, which runs in-process outside the
           # workspace sandbox. Every plugin_manager action needs
           # danger-full-access or per-call approval.
+          # Track the SERVICE's condition instead of `false`: the plugin-manager
+          # row itself is `disabled: !!js "!ctx.get('profileContext')"`, so an
+          # unconditionally enabled tool row would ask for a service that is
+          # absent in a non-profile-backed boot, and a missing service rejects
+          # the whole preset mount (D16). The shipped Creator preset does exactly
+          # this.
           - id: tool-plugin-manager
             name: "@deepseek-ai/dsh-plugin-manager/tools"
-            disabled: false
+            disabled: !!js "!ctx.get('profileContext')"

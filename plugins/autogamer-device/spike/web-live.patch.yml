@@ -101,7 +101,10 @@
       - id: tool-skill
         name: "@deepseek-ai/dsh-tool-skill"
       # D17 row, kept identical to cordis.patch.yml (tests/deliveryShape.spec.ts
-      # compares the two presets' contributed plugin names).
+      # compares the two presets' contributed plugin names). The condition tracks
+      # the plugin-manager service, which is itself off without a profileContext:
+      # `disabled: false` would ask for an absent service and D16 rejects the
+      # whole preset mount.
       - id: tool-plugin-manager
         name: "@deepseek-ai/dsh-plugin-manager/tools"
-        disabled: false
+        disabled: !!js "!ctx.get('profileContext')"

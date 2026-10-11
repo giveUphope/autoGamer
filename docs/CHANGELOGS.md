@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#25 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#26 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1046,6 +1046,9 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 
 #### 顺带挖到的结构性死结（交付路径的边界，值得记）
 
+> ⚠️ 本节「死结」的说法**被 #26 收窄**：自举的起点是官方 Creator preset（它本来就带 `plugin_manager`），
+> 不需要我们的 bundle 先存在；真正剩下的只是「同一 preset 内自装同名新版本会撞 #22 的旧 junction」。
+
 要让 agent 用 `plugin_manager` 自装**同一个包**，前提是 `plugin_manager` 已经在会话里——
 而它由我们的 preset 提供，preset 又依赖这个 bundle 已安装。叠加 #22 的结论
 （同名旧 `link:` junction 会让 `importPackage` 走进开发工作区并报 `EPERM`），得到：
@@ -1061,6 +1064,68 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 - [x] README 装上「⚠️ 本机 TLS 前置」段：启动带 `--use-system-ca`，并**明确禁止**用 `NODE_TLS_REJECT_UNAUTHORIZED=0`
 - [x] profile 清干净：`pnpm-lock.yaml` 无 URL 残留条目、`autogamer-device` 回到 `link:` 且 `src/index.ts` 可透过链接访问
 - [ ] **未获得**：一发从零开始、走 DSH `install_bundle` 的完整成功安装（需要干净 profile 或换机器验证）
+
+### #26 「plugin_manager 不是 DSH 自带的吗，为什么要我们提供」——查完发现我写错了一个开关
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 问题澄清 + **修掉 D17 落地的一个真实隐患** + 更正 #25 的一处过度陈述
+- **优先级**: 高（隐患会让整条 preset 在非 profile-backed 启动下被拒挂）
+- **来源**: `packages/bundle/base/cordis.patch.yml:16-22` 与其头部注释、`packages/bundle/web-app/presets/cordis.patch.yml`、本机 rc.2 `--dump-config` 转储、`plugin-manager/README.md`
+
+#### 问题的直接回答：是我们理解偏了，但偏的方向有讲究
+
+`plugin_manager` **确实是 DSH 自带的**，两样东西都在 `dsh-base` 里随包出货：
+
+```yaml
+# packages/bundle/base/cordis.patch.yml
+- id: tool-plugin-manager
+  name: '@deepseek-ai/dsh-plugin-manager/tools'
+  disabled: true                      # ← 工具行：基线给的是「关」
+- id: plugin-manager
+  name: '@deepseek-ai/dsh-plugin-manager'
+  disabled: !!js "!ctx.get('profileContext')"   # ← 服务行：只在 profile-backed 时开
+```
+
+我们 preset 里那一行**不是「提供这个功能」，而是「拨我们自己的开关」**。为什么每个 preset 都要各自写一遍——
+base 补丁的头部注释给了官方理由：「A patch replaces the targeted row's whole `config` rather than merging into it,
+so **a row whose value differs by mode does NOT live here: it belongs to each mode bundle** …
+**each mode bundle restates its complete configuration**」。
+本机 rc.2 转储对得上：`preset-standard` / `preset-ptc` 各自重述 `disabled: true`，
+而 Creator 用的 `preset-cordis` 重述成 `disabled: !!js "!ctx.get('profileContext')"`；
+README 那句「Preset-backed sessions use their preset's `tool-plugin-manager` entry」就是这个设计的收口。
+
+#### 顺着这个问题查出的**真隐患**（已修）
+
+D17 落地时我写的是 `disabled: false`——**无条件开**。但服务行自己是有条件的
+（`!ctx.get('profileContext')`），而 tools 行要注入 `ctx.pluginManager`（`docs/tool-catalog.md` 那行列出
+`ctx.tools`, `ctx.pluginManager`, `ctx.sandboxPolicy`）。⇒ 在**没有 profileContext 的启动**里，
+服务是关的、我们的工具行却要它，而 **缺服务会 fail-fast 拒掉整条 preset 挂载（D16）**——
+不是这个工具没了，是**整个 AutoGamer preset 挂不上**。
+
+修法就是照抄官方 Creator 的形状，让工具行**跟着服务的条件走**：
+
+```yaml
+- id: tool-plugin-manager
+  name: "@deepseek-ai/dsh-plugin-manager/tools"
+  disabled: !!js "!ctx.get('profileContext')"
+```
+
+两份 YAML 同步改（`cordis.patch.yml` 与 `spike/web-live.patch.yml`），并留下注释说明**为什么不能写 `false`**。
+
+#### 同时更正 #25 的一处过度陈述
+
+#25 说「agent 用 `plugin_manager` 自装同名包」存在结构性死结。这句话**只对「用我们自己的 preset」成立**：
+Creator preset（`preset-cordis`）本来就带着这个工具，所以**在 Creator 会话里 agent 可以装我们的 bundle，
+不需要我们的 bundle 先存在**——自举的起点是官方就有的，不是我们提供的。
+真正剩下的边界只有一条：在**同一个 preset 内**自装同名新版本时，#22 那个旧 `link:` junction 仍会撞 `EPERM`。
+
+#### 验收标准
+
+- [x] 声明面：两份 patch 各跑 `--dump-config` ⇒ exit 0、0 unmatched；合成树里我们的行是
+      `disabled: !!js '!ctx.get(''profileContext'')'`（与 Creator preset 逐字同形）
+- [x] 一致性：`tests/deliveryShape.spec.ts` 3/3 绿（两处 preset 仍同形）
+- [x] **live 复验修正没有关掉能力**：web profile（profileContext 存在）新会话工具面仍是 **7 个、含 `plugin_manager`**，宿主 0 启动错误
+- [x] #25 的过度陈述已在本条更正，并写清自举的真实起点在 Creator preset
 
 ## 已关闭差距史（G*）
 
