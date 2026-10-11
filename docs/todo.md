@@ -8,11 +8,11 @@
 
 | 项 | 现状 |
 |---|---|
-| 阶段 | **P0 收尾段**：骨架 / 离线 spike / 安装流 / conformance ✅，S10 ①✅、S5 真机✅、G37 收回✅、G36 模型侧✅、**S10 ② 效果验证✅**、**S10 ③ 闸门阻塞✅（两会话同设备串行实证）**；**S10 ④ 撞出 G40**（运行中 UI 不给入队 → D2/D4 前提待重查），真机质量 spike 未做 |
+| 阶段 | **P0 收尾段**：骨架 / 离线 spike / 安装流 / conformance ✅，S10 ①✅、S5 真机✅、G37 收回✅、G36 模型侧✅、**S10 ② 效果验证✅**、**S10 ③ 闸门阻塞✅（两会话同设备串行实证）**；**S10 ④ Inbox 连发 ✅（原生 QueueDock：排队发送 → 回合结束按序执行）**；S10 四点全通过，P0 只剩真机质量 spike |
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** 查 G40（运行中 UI 到底给不给入队 / QueueDock 出现条件 / `agent.followup` 能否承载积压）——它决定 D2/D4 要不要重开，排在质量 spike 之前；**2)** MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，判直通成立还是回退三段式）——D9 唯一未过项；**5)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31）；**4)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）；**6)** P1 开工前记得 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面 |
+| 下一步（按序） | **1)** MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，判直通成立还是回退三段式）——D9 唯一未过项；**5)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31）；**3)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）；**6)** P1 开工前记得 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **46/46**（5 条效果锁改判为「调用 py 判定」形状）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
@@ -32,9 +32,9 @@
 | # | 决策点 | 结论 |
 |---|---|---|
 | D1 | 战略路线 | 项目以 **DSH 插件形态重生**；方案基线 = google/artemis 上游（upstream-rethink） |
-| D2 | 队列底座 | 会话队列 = **DSH Inbox**（durable + QueueDock）；禁止自建队列容器/引 Redis；「autogamer-queue」插件概念已取消。**前提待重查（G40，2026-10-11）**：回合运行中 web composer 不接受第二条消息，原生积压尚未在 UI 面观测到 |
+| D2 | 队列底座 | 会话队列 = **DSH Inbox**（durable + QueueDock）；禁止自建队列容器/引 Redis；「autogamer-queue」插件概念已取消 |
 | D3 | 设备模型 | **共享真机 + 完整闸门**（用户已决）：闸门/熔断/准入 = run_device_action 工具内部逻辑；每会话专属模拟器（上游 playground 模型）= 二期演进项 |
-| D4 | 积压策略 | Inbox 无上限原生，零自建。**同受 G40 影响**：若入队只能经 Host 服务方法而非 UI，本决策的落地方式要改写 |
+| D4 | 积压策略 | Inbox 无上限原生，零自建 |
 | D5 | 重启恢复 | Inbox pending 原生恢复待派 + 插件启动显式 kick（已核实的唯一缺口）；动作无断点续跑（与上游一致） |
 | D6 | 版本管控 | peerDependencies 声明 + runtime 强制校验 + conformance 契约测试；自研包精确 pin |
 | D7 | 引入形态 | **三层分开**（守则 R2）：① 禁——手写 profile 目录内的 `package.json` / `cordis.patch.yml` 或在 profile 目录跑 pnpm；② 允许且为开发期主路径——`dsh --patch <path>`（`dsh --help` 明列的官方 overlay，可重复）；③ 交付形态——`plugin_manager install_bundle` 或 Web 侧边栏「插件」面板（面板具备 install/enable/disable/retry/compose 能力）。preset 声明由 bundle 补丁承载（注册表不扫目录、不接受路径）；**配置层热重载、代码层冷重启**（`patchReload` 字段 rc.2 无实现）；**声明只影响之后创建的 Agent**，复验必须开新会话（守则 R7） |
@@ -132,8 +132,7 @@
 | G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
-| G40 | 运行中的会话不接受第二条用户消息（Inbox 连发在 UI 面不成立） | 新开（2026-10-11 S10 ④）：同一会话里回合运行期间 「发送消息」按钮**整个从 DOM 消失**（两次实测 `found:false`，回合结束后立刻恢复且 enabled），第二条文本只能滞留在草稿框；枚举 composer 区域与全页按钮也没找到任何带「队列/排队/入队/中止」语义的入口。这与 D2/D4 的前提冲突——「用户消息 = followup 进 Inbox（原生会话 FIFO + QueueDock 排队 UI）」「Inbox 无上限原生，零自建」目前是**未证实**假设，不是观测。**注意口径**：R9 只认官方检查器，UI 缺席不等于能力缺席——S9 已从声明面核实过 `agent.followup()` / `agent.inject()` 是 Host 服务方法。下一步查清三件事：① 运行中消失的那个按钮是什么（可能是停止/替换形态，需在回合内抓 DOM 快照）；② QueueDock 到底在什么条件下出现（可能只对 job/子会话或 headless 入队可见）；③ 若 UI 确实不暴露，插件侧的「积压」语义要按什么承载（D2/D4 要重开） |
-| 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10）/G37（live overlay 收回交付形态：R6 exit 0 + R7 新会话实测工具面恰为 5 个）/G39（效果判定归属：裁定路线 A，py 动作面新增只读 compare_ui_frames，changelogs #12） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
+| 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10）/G37（live overlay 收回交付形态：R6 exit 0 + R7 新会话实测工具面恰为 5 个）/G39（效果判定归属：裁定路线 A，py 动作面新增只读 compare_ui_frames，changelogs #12）/G40（**撤回**：探针按固定 `aria-label` 查按钮，把运行中的「排队发送」误读成入口消失；实测 QueueDock 原生可用） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
 
@@ -177,13 +176,15 @@
 - ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
 - ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
 - ✅ **S10 ①（工具面 + 模型稳定性）通过（2026-10-10）**：从「AutoGamer 会话的请求体里根本没有 `tools` 键、模型幻觉出一个 `os` 工具」到「新会话里模型真实调用 `run_device_action` 三次、入参合法、按次重试」。根因与修法在 G30 关闭行与 changelogs #10；当时用来定性的同实例配对差分（标准模式 `tools=26` 且真跑 pwsh）留作方法——**插件侧 wire 差分比挂载诊断更快收敛**。这条留下两项仍可复用的资产：
-  - **取证方法（下次直接用）**：web UI 那个输入框是 Lexical，`fill` 无效；真实 click 建立选区后 `execCommand('insertText')` 才写入，且**不要在写入的同一次调用里回读 textContent**（会误判成没写进而重复注入）。发送用 `evaluate_script` 里按 aria-label 找按钮 `.click()` 最可靠——`click(uid)` 的 uid 会被同批改 DOM 的操作弄过期，我们因此白丢过两次发送。
+  - **取证方法一（按钮态）**：主按钮位（class 含 `primary`）的 `aria-label` 会随回合状态变——空闲「发送消息」/运行中「停止生成」/运行中有草稿「排队发送」或「插话发送」。**按固定标签查按钮会把状态切换误读成入口消失**（G40 就是这么错出来又撤掉的）；要按按钮位 class 枚举再读标签。
+  - **取证方法二（草稿合并）**：往非空草稿里 `insertText` 会把多条拼成一条用户消息（transcript 里出现「Q2…。Q1…。」），那是自动化的产物不是宿主行为；每次发送前必须先全选清空。
+  - **取证方法三（Lexical）**：web UI 那个输入框是 Lexical，`fill` 无效；真实 click 建立选区后 `execCommand('insertText')` 才写入，且**不要在写入的同一次调用里回读 textContent**（会误判成没写进而重复注入）。发送用 `evaluate_script` 里按 aria-label 找按钮 `.click()` 最可靠——`click(uid)` 的 uid 会被同批改 DOM 的操作弄过期，我们因此白丢过两次发送。
   - 顺带证实：D5 重启后会话从磁盘恢复可用；`agent-preset-registry default: autogamer` 生效（新会话预设自动是 AutoGamer）。
 - ✅ **S5 动作后端真机打通（2026-10-10/11）**：overlay 从 mock 切到 `.venv` python 的 `artemis mcp --type adb` + `actionServerEnv.ADB_DEVICE_SERIAL=emulator-5554`，MuMu 上 `take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。当年 c8b49c8 按「无法解析」删掉的 `actionServerEnv` 块本轮复跑 R6 确认可合成（exit 0、0 unmatched、键出现在 `--dump-config` 输出里），旧结论作废；mock action server 的 1080x2400 解析证据同属坐标修复的 live 面（changelogs #9）。
 - ✅ **G37 收回 + G36 模型侧打通（2026-10-11，三轮 live）**：overlay 收回交付形态后 R7 新会话实测工具面恰为 **5 个**（`run_device_action` + `report_task_status` + jobs 三件），说明交付 preset 形态本身能挂、G30 的修法在窄面上成立。媒体链路按官方声明面走通：`ctx.attachments.saveImages` → 内容寻址引用 → `render` 出 `[text, image]` → 宿主提升为带 base64 的 user 消息（请求体 12KB→296KB）→ 模型报出只有像素里才有的信息。**过程中否证两条**：① 不声明 `inject` 也能读宿主服务（cordis 在属性 GET 处直接抛）；② 模型看图需要挂 fs/`read_image` 去开只读路径（宿主自己提升）。细节与验收见 changelogs #11
 - ✅ **S10 ② 效果验证通过（2026-10-11，真机正反两例）**：改屏动作前/后各取一帧、600ms 沉降后交 py 只读工具 `compare_ui_frames` 判定，工具结果带 `effect=changed|unchanged|unknown`。live 实证：Settings 按 `back` → `effect=changed`；已在桌面再按一次 → `effect=unchanged`——MuMu 动态壁纸没造成假阳性，说明上游 `check_ui_change` 的遮罩与阈值选择在真机站得住。过程中三条结论入册：**字节等值不可用**（静态三帧哈希全不同）、**TS 自研 PNG 差分不可用**（真机回 JPEG）、**判定归属选 py 动作面**（G39 路线 A，细节与豁免理由见 changelogs #12）。③ 闸门阻塞、④ Inbox 连发 未测
 - ✅ **S10 ③ 闸门阻塞通过（2026-10-11，两会话同设备）**：会话 A `wait(20000)` 占闸，A 的结果出现在 wire `10:00:22.98`；会话 B 早在 `10:00:10.45` 就已把请求发给模型（**宿主确实跨会话并发**），但它的 `take_screenshot` 结果直到 `10:00:26.59` 才回到线上——阻塞精确落在工具调用上、时长≈A 的剩余占闸时间，即 per-device 闸门在跨会话生效。若不串行，B 应在 ~10:00:12 就返回
-- 🔶 **S10 ④ Inbox 连发未通过，登记 G40**：回合运行中「发送消息」按钮整个从 DOM 消失、无任何队列/中止入口，第二条消息滞留草稿框。D2/D4 的「Inbox 原生无上限、QueueDock 排队」前提因此从「已核实」降级为「未证实」——UI 缺席不等于能力缺席（S9 核过 `agent.followup()`），但**积压靠什么承载**必须重查，见 G40 的三个待查项
+- ✅ **S10 ④ Inbox 连发通过（2026-10-11，原生 QueueDock）**：回合运行中输入区主按钮从「发送消息」切成**「排队发送」**（可用），点击后草稿清空、消息进 QueueDock 行，行上带**「编辑排队消息」/「删除排队消息」/「插话发送」**三个操作与「停止生成」；当前回合（`wait 30000`，用时 32 秒）结束后排队消息**按序自动执行**，模型回「收到」。D2/D4 的「Inbox 原生积压、零自建」前提**成立**，与官方 README 口径一致（「繁忙时 Queue 进入 QueueDock，繁忙时 Steer 进入 pending-steering 区域」）。**上一轮登记的 G40 已撤回**——那是探针自己的错：按固定 `aria-label="发送消息"` 找按钮，把「运行中换了标签」误读成「入口消失」
 - 🔶 **P0 还差最后一道判据**：MCP 直连**真机**质量 spike（flash skill 跑 2-3 个真实设备任务，对比上游 flash 质量）——离线契约 spike 已过，这条才是 D9「直通成立 / 回退三段式双跑」的裁决点，目前只有工具面通了、还没跑过完整真机任务。
 - ✅ **本轮 live 连带的两个缺陷修复**：`coord.ts` 的 `byteAt` 无限递归（截图取尺寸整条路死）与 `screenSize` 真值 `[undefined, undefined]` 陷阱（默认配置把 `NaN` 坐标发给 action server 还报成功）——问题、修法与验收（锁死测试＋删除实验）详见 changelogs #9。
 - ✅ **联网调研上游插件形态（2026-10-10，正文见 [upstream-plugin-forms](migration/upstream-plugin-forms.md)）**：逐字读了 `editing-cordis-compositions` / `cordis-plugin-development` / `cordis-composition-reference` 三个官方 skill、`agent-preset` 与 `agent-preset-registry` 的 README、`core/scope` README、`mount.ts` 源码，以及 shipped `presets/minimal.patch.yml` 与 `standard.patch.yml`。对本方案有决定作用的三条：①preset 只能由 **bundle 补丁**承载且要经 `plugin_manager install_bundle`（官方明令禁止手写 profile 的 package.json / cordis.patch.yml）；②**声明只影响之后创建的 Agent**，现有会话保留其启动时的 revision；③`mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**拒绝整个 preset 挂载**（源码 `mount.ts:193,212-213`）。据此修订 D7、新增 D16 与 G30，补 S5 注册可见性与 S8 版本差。
@@ -198,7 +199,7 @@
 | 文档 | 内容 |
 |---|---|
 | [README](migration/README.md) | **入口页**：按「你要做什么」给阅读顺序，并列出哪几处文档别当真 |
-| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G40（含 17 条已关闭）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
+| [registry](migration/registry.md) | **编号唯一权威**：D1-D17 / S1-S11 / G1-G40（含 18 条已关闭，其中 G40 为当日撤回的错误归因）/ R1-R19 一览，外加 `inventory/*` 与本文的 **G 编号撞车冲突表**。新增编号先登记到这里，`scripts/check_doc_registry.py` 守着 |
 | [glossary](migration/glossary.md) | 术语翻译表：宿主黑话、Cordis 概念、本项目自造词，以及 **`inject` 的两个意思** |
 | [upstream-rethink](migration/upstream-rethink.md) | 上游 google/artemis 三张调用面研究 + R2' 基线论证 |
 | [dsh-verification](migration/dsh-verification.md) | DSH 0.2.0-rc.2 源码核实（48 假设/12 修正 + 19 项防重复自建 + turn shim + 主流范式 + 业界约束模式，§一~八） |
