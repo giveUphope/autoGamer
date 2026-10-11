@@ -74,7 +74,6 @@
 | G35 | 文档门禁脚本默认路径写死（从脚本位置推导仓库根） |
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 | G38 | 插件内部错误被归类成任务级失败（熔断语义被污染） |
-| G42 | `{index}` 元素定位整条不可用（JSON 载荷 + index 非全局唯一），基线靠编号可见元素列表 |
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
 | G44 | 模型可以不调 report_task_status 就结束回合，终态与结构化汇报在这条路径上仍是空的 |
 | G41 | 终态不收敛：`report_task_status` 之后回合继续跑，退避循环需人工停止 |
@@ -99,6 +98,7 @@
 | G29 | 注入 | 由 S9 以 DSH 原生承接 |
 | G30 | preset 工具可见性（曾是 P0 阻塞点） | 双根因修复：cordis `effect()` 语义反转导致自注销 + 裸 `register()` 未经 `defineTool()` 编译；证据见 changelogs.md #10 |
 | G37 | live overlay 停在二分实验形态 | overlay 收回 `inner + tool-jobs` 交付形态，R6 exit 0 且 R7 新会话实测工具面恰为 5 个；证据见 changelogs.md #11 |
+| G42 | `{index}` 元素定位整条不可用 | 按数组位置统一编号（模型看到的列表与解析器同源）+ 修掉 render 的 200 字符截断；7 条单测 + live 两轮命中 `#28`/`#17` |
 | G39 | 效果判定归属层（真机回 JPEG 令 TS 侧 PNG 差分失效） | 裁定路线 A：py 动作面新增只读 `compare_ui_frames`，判定委托仓库内上游实现 `check_ui_change`；证据见 changelogs.md #12 |
 | G40 | 运行中 UI 不接受第二条消息（**当日撤回的错误归因**） | 探针按固定 `aria-label="发送消息"` 找按钮，把运行中主按钮切成「排队发送」误读成入口消失；改按按钮位 class 枚举后实测 QueueDock 原生可用、回合结束按序执行 |
 
