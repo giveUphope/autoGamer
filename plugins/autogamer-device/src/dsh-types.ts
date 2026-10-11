@@ -1,9 +1,15 @@
 /**
- * Minimal DSH-side contracts used by this plugin. DSH ships no type
- * declarations (dist JS only, verified); these stubs mirror the shapes we
- * verified against 0.2.0-rc.2 source (ctx.tools.register / defineTool /
- * exec.signal). Keep them in one place so a DSH upgrade re-checks them all.
+ * Minimal DSH-side contracts used by this plugin.
+ *
+ * Two kinds of entry, and the difference is deliberate:
+ *  - anything a published `@deepseek-ai/*` package declares is **imported**, not
+ *    restated — a hand copy is a claim that silently rots on upgrade (rule R21;
+ *    the attachment mirror below lost exactly its branded `attachmentId` that way).
+ *  - shapes only observable through the Host (which ships nothing outside the
+ *    bundle) stay hand-mirrored here with the version and source they were
+ *    verified against, so one DSH upgrade re-checks them all in this file.
  */
+import type { ImageAttachmentRef, SaveImageAttachment } from "@deepseek-ai/dsh-attachment";
 
 export interface DshLogger {
   info(message: string): void;
@@ -12,32 +18,18 @@ export interface DshLogger {
 }
 
 /**
- * Durable, content-addressed image reference. The host owns the bytes: a
- * producer hands them to `ctx.attachments.saveImages()` and only the returned
- * reference ever enters the session log — image bytes never do
- * (docs/subsystems/attachment: "会话事件和模型可见的附件块包含该引用及其元数据，
- * 绝不包含 … base64 数据"). `attachmentId` is opaque and provider-owned, so
+ * Durable, content-addressed image reference (`@deepseek-ai/dsh-attachment`,
+ * lib/types/types.d.ts:7). The host owns the bytes: a producer hands them to
+ * `ctx.attachments.saveImages()` and only the returned reference ever enters the
+ * session log — image bytes never do ("会话事件和模型可见的附件块包含该引用及其
+ * 元数据，绝不包含 … base64 数据"). `attachmentId` is a branded opaque id, so
  * nothing here may parse or pattern-match it.
  */
-export interface DshImageAttachment {
-  attachmentId: string;
-  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
-  bytes: number;
-  width: number;
-  height: number;
-  name?: string;
-}
+export type DshImageAttachment = ImageAttachmentRef;
 
 /** The `AttachmentStore` seam, narrowed to what this plugin calls. */
 export interface DshAttachments {
-  saveImages(
-    inputs: readonly {
-      data: Uint8Array;
-      /** Declared here, but validated by the host against the decoded bytes. */
-      mediaType: DshImageAttachment["mediaType"];
-      name?: string;
-    }[],
-  ): Promise<readonly DshImageAttachment[]>;
+  saveImages(inputs: readonly SaveImageAttachment[]): Promise<readonly ImageAttachmentRef[]>;
 }
 
 /**
