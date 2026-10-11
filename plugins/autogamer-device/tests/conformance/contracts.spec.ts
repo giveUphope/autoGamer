@@ -1,17 +1,23 @@
 /**
- * Conformance contract skeleton (P0/G5). These tests lock the externally
- * observable contracts this plugin depends on, using fixtures recorded from
- * live verification. Re-capture the fixtures whenever the DSH runtime or the
- * py action server upgrades:
- *   - py action tools:  ARTEMIS_MOCK_DRIVER=1 node scripts/spike-mcp.mjs
- *   - DSH peer version: read DSH desktop release notes / installed runtime.json
+ * Conformance contracts (P0/G5). Each section names the runtime or source it
+ * reads its truth from, and none of them is a hand-typed list any more:
+ *   - py action tools : live MCP server (scripts/spike-mcp.mjs) / its fixture
+ *   - legacy SSE names: extracted from the emitters and subscriptions in this repo
+ *   - DSH generation  : the @deepseek-ai/* packages actually installed
+ *   - session events  : KNOWN_SESSION_EVENT_TYPES exported by @deepseek-ai/dsh-session
+ * The in-process real-runtime assertions live in runtimeBoot.spec.ts.
  */
 import { describe, expect, it } from "vitest";
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
+import { homedir } from "node:os";
+import { join } from "node:path";
 import { fileURLToPath } from "node:url";
 import Schema from "@deepseek-ai/schemastery";
+import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION } from "@deepseek-ai/dsh-session";
 import { Config } from "../../src/index.js";
 import { ACTION_TO_PY_TOOL, ACTIONS } from "../../src/tools/runDeviceAction.js";
+import { buildFixture, mappedPyTools } from "../../scripts/spike-mcp.mjs";
+import { extractLegacySseEvents } from "../../scripts/gen-sse-events.mjs";
 
 /** Minimal view of a Schemastery object node (the package exports no type name). */
 type SchemaObject = {
@@ -26,13 +32,16 @@ function readFixture(name: string): Record<string, unknown> {
   return JSON.parse(readFileSync(`${fixtureRoot}/${name}`, "utf8"));
 }
 
+const manifest = JSON.parse(
+  readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8"),
+) as { peerDependencies?: Record<string, string> };
+
 describe("conformance: py action server surface", () => {
   const fixture = readFixture("py-action-tools.json");
   const realTools = fixture.pyActionServerTools as string[];
 
-  it("every mapped py tool exists in the live action server surface", () => {
-    const mapped = Object.values(ACTION_TO_PY_TOOL).filter((t): t is string => t !== null);
-    const unknown = mapped.filter((tool) => !realTools.includes(tool));
+  it("every mapped py tool exists in the action server surface", () => {
+    const unknown = mappedPyTools().filter((tool: string) => !realTools.includes(tool));
     expect(unknown).toEqual([]);
   });
 
@@ -40,22 +49,50 @@ describe("conformance: py action server surface", () => {
     expect(Object.keys(ACTION_TO_PY_TOOL).sort()).toEqual([...ACTIONS].sort());
   });
 
-  it("fixture records the 14-tool legacy contract", () => {
-    // 13 device verbs + compare_ui_frames (G39 route A, 2026-10-11).
-    expect(realTools).toHaveLength(14);
-    expect(realTools).toContain("tap");
-    expect(realTools).toContain("focus_and_input_text");
-    expect(realTools).not.toContain("click"); // real name is `tap`
-    expect(realTools).not.toContain("input_text"); // real name is `focus_and_input_text`
+  it("the fixture is a generated record, not a list someone maintains by hand", () => {
+    expect(typeof fixture.captured).toBe("string");
+    expect(String(fixture.source)).toContain("spike-mcp.mjs");
+    // Same builder the --write path uses: if the fixture drifted from the
+    // mapping, this is where it shows up.
+    expect(buildFixture(realTools).pyActionServerTools).toEqual(realTools);
   });
+
+  // Opt-in, because it costs a real server spawn: `AUTOGAMER_CONFORMANCE_PY=live`.
+  // CI does the same comparison with `node scripts/spike-mcp.mjs`, which exits
+  // non-zero on drift and keeps `npm test` timing-independent.
+  it.skipIf(process.env.AUTOGAMER_CONFORMANCE_PY !== "live")(
+    "the live action server still exposes the recorded surface",
+    async () => {
+      const { liveActionSurface } = await import("../../scripts/spike-mcp.mjs");
+      const spawned = (await import("../../scripts/spike-mcp.mjs")).actionClient();
+      try {
+        const { tools } = await liveActionSurface(spawned);
+        expect(tools).toEqual(realTools);
+        for (const tool of mappedPyTools()) expect(tools).toContain(tool);
+      } finally {
+        await spawned.dispose();
+      }
+    },
+  );
 });
 
 describe("conformance: legacy web-console SSE event names (G18 baseline)", () => {
   const fixture = readFixture("sse-events.json");
-  const serverEvents = fixture.serverEventNames as string[];
 
-  it("locks the 15 documented server event names", () => {
-    expect(serverEvents).toHaveLength(15);
+  it("matches the events the backend actually emits and the console actually subscribes to", () => {
+    const fresh = extractLegacySseEvents();
+    for (const key of [
+      "serverEventNames",
+      "frontendSubscribedEventNames",
+      "serverBroadcastButFrontendNeverSubscribed",
+      "frontendSubscribesButServerNeverEmits",
+    ] as const) {
+      expect(fixture[key], `${key} drifted from the sources; re-run gen-sse-events.mjs --write`).toEqual(fresh[key]);
+    }
+  });
+
+  it("keeps the events the DSH plugin must replace in view", () => {
+    const serverEvents = fixture.serverEventNames as string[];
     for (const required of [
       "session_started",
       "session_ended",
@@ -68,24 +105,60 @@ describe("conformance: legacy web-console SSE event names (G18 baseline)", () =>
       expect(serverEvents).toContain(required);
     }
   });
-
-  it("records which events the old frontend never subscribed to (dead channels)", () => {
-    const dead = fixture.serverBroadcastButFrontendNeverSubscribed as string[];
-    expect(dead).toEqual(["queue_held", "queue_paused", "queue_resumed", "note_saved", "llm_stream_downgrade"]);
-  });
 });
 
 describe("conformance: DSH peer version pin", () => {
-  it("pins the verified runtime generation", () => {
-    const manifest = JSON.parse(
-      readFileSync(fileURLToPath(new URL("../../package.json", import.meta.url)), "utf8"),
-    ) as { peerDependencies?: Record<string, string> };
-    const peers = manifest.peerDependencies ?? {};
-    for (const [pkg, range] of Object.entries(peers)) {
-      expect(pkg, "peer dependency should target @deepseek-ai scope").toMatch(/^@deepseek-ai\//);
-      expect(range, `${pkg} must pin the verified generation`).toBe("0.2.0-rc.2");
+  const scopeDir = fileURLToPath(new URL("../../node_modules/@deepseek-ai", import.meta.url));
+
+  it("pins every installed harness package to one verified generation", () => {
+    const pin = manifest.peerDependencies?.["@deepseek-ai/dsh-agent-preset"];
+    expect(pin, "peerDependencies must state the verified generation").toBeTruthy();
+    const installed = readdirSync(scopeDir)
+      .filter((name) => name.startsWith("dsh-"))
+      .map((name) => [name, JSON.parse(readFileSync(join(scopeDir, name, "package.json"), "utf8")).version as string]);
+    expect(installed.length, "no @deepseek-ai/dsh-* packages installed").toBeGreaterThan(0);
+    for (const [name, version] of installed) {
+      expect(version, `${name} is not the pinned generation`).toBe(pin);
     }
-    expect(Object.keys(peers).length).toBeGreaterThan(0);
+  });
+
+  it("cross-checks the pin against a locally installed DSH runtime when there is one", () => {
+    const dshHome = process.env.DSH_HOME ?? join(homedir(), ".dsh");
+    const runtimes = join(dshHome, "dsh-runtimes");
+    const candidates = existsSync(runtimes) ? readdirSync(runtimes) : [];
+    const found = candidates
+      .map((dir) => join(runtimes, dir, "runtime.json"))
+      .filter((path) => existsSync(path))
+      .map((path) => JSON.parse(readFileSync(path, "utf8")).desktopVersion as string);
+    if (found.length === 0) {
+      // No desktop install in this environment (CI is one): the pin still has
+      // to name a released generation, which the check above already enforced.
+      return;
+    }
+    const pin = manifest.peerDependencies?.["@deepseek-ai/dsh-agent-preset"] ?? "";
+    for (const version of found) {
+      expect(version.split(".").slice(0, 2).join("."), "pinned generation vs installed runtime").toBe(
+        pin.split(".").slice(0, 2).join("."),
+      );
+    }
+  });
+});
+
+/**
+ * G44 keys the turn-end enforcement off `turn/end`, and R17 off session format
+ * V4. Both were claims copied out of docs; the packages now say it directly.
+ */
+describe("conformance: real DSH session vocabulary", () => {
+  const known = KNOWN_SESSION_EVENT_TYPES as ReadonlySet<string>;
+
+  it("the session event types this plugin relies on are real", () => {
+    for (const type of ["turn/end", "turn/start", "tool/call", "tool/result", "user/message"]) {
+      expect(known.has(type), `${type} is not in KNOWN_SESSION_EVENT_TYPES (${known.size} entries)`).toBe(true);
+    }
+  });
+
+  it("the session log is still the format the plugin's message shape assumes", () => {
+    expect(SESSION_FORMAT_VERSION).toBe(4);
   });
 });
 
@@ -93,7 +166,8 @@ describe("conformance: DSH peer version pin", () => {
  * The loader rejects foreign schema objects ("Config is not a native
  * Schemastery schema"), and a plugin row whose Config is missing is reported
  * as status=absent — which silently skips the preset-scope child mount, i.e.
- * the tools never register. Both failure modes are locked here.
+ * the tools never register. Both failure modes are locked here; runtimeBoot.spec
+ * proves the loader side of the second one by refusing a bad config.
  */
 describe("conformance: plugin Config is a native Schemastery schema", () => {
   const schemaSymbols = new Set(Object.getOwnPropertySymbols(Schema.prototype).map(String));
