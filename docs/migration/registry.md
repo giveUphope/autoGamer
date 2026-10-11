@@ -77,6 +77,7 @@
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
 | G44 | 模型可以不调 report_task_status 就结束回合，终态与结构化汇报在这条路径上仍是空的 |
 | G41 | 终态不收敛：`report_task_status` 之后回合继续跑，退避循环需人工停止 |
+| G45 | 交付 preset 没有指令投递行：flash 契约从未进过模型，spike 与服从性观察的前提都不成立 |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
 
