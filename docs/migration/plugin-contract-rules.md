@@ -186,6 +186,13 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 - **出处**：**仓库口径** AGENTS.md「Change planning → todo ledger」+ 本文件 R20/R21；触发实例：G44 第一版先写了 preset 层监听（61/61 单测）才去查 `session/event` 的 scope 规则，结果整轮回退。
 - **判据**：`git log` 里**方案提交必须早于实现提交**（同一功能的两条 commit 顺序可机械核对；无独立方案提交即视为跳步）；方案条目内必须出现"出处/原文"字样，只写"实测可用"不算过第 1 步。
 
+## R23 不得在 `session/event` 的 emit 里 append；要注入上下文先推出发布边界
+
+`agent.followup()` / `steer()` / `inject()` 与任何 `session.append()` 一样是**写日志**，而 `session/event` 是"提交后、发布中"的回调——在此同步 append 会被宿主拒绝：`session append cannot reenter while another append is being published`（官方口径 `docs/subsystems/session.zh.md:609`：「在验收/发布边界打开时重入的 append 会在日志变更前被拒绝」）。**判据**：任何从 `session/event` / `tool/result` 一类事件回调里发起的注入，必须先 `setTimeout(…, 0)`（或等价的边界外时机）；官方 `goal-round-driver` 的 `case 'turn/end'` 分支**只更新状态、从不 append**，就是这一形态的样板。另外 `session/event` 按 scope 筛选派发，跨作用域观察须显式 `{ global: true }`（R20 的原文，`packages/core/scope/README.zh.md:75`）。
+
+- **出处**：**文档口径** `docs/subsystems/session.zh.md:609,1301`、`packages/core/scope/README.zh.md:71,75`、cordis 4.0.4 `lib/types/events.d.ts:98-105`；**实测** 本仓库 CHANGELOGS #13（同步调用被拒的原文错误串）。
+- **判据**：插件里任何"事件回调 → 注入/append"的路径必须有边界外推迟，且单测要等一个宏任务再断言注入发生。
+
 ## 待补（诚实清单）
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**

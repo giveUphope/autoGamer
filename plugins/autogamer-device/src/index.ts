@@ -132,11 +132,21 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
         // rejected by session format V4 (rule R17).
         source: { kind: "autogamer", reason: "unreported-turn" },
       };
-      try {
-        agent.followup(message);
-      } catch (error) {
-        logger.warn(`[turn] followup refused: ${(error as Error)?.message ?? error}`);
-      }
+      // Deferred out of the emit on purpose: Session.append rejects anything
+      // reentered while its acceptance/publication boundary is open
+      // (docs/subsystems/session.zh.md:609 "an append reentered while this
+      // acceptance/publication boundary is open also rejects before the log
+      // changes"), and calling followup() straight from this listener hit
+      // exactly that - "session append cannot reenter while another append is
+      // being published". The official round-driver never appends from its
+      // turn/end handler either; it only records state.
+      setTimeout(() => {
+        try {
+          agent.followup(message);
+        } catch (error) {
+          logger.warn(`[turn] followup refused: ${(error as Error)?.message ?? error}`);
+        }
+      }, 0);
     },
     { global: true },
   );

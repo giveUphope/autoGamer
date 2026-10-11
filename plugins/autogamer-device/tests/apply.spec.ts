@@ -417,6 +417,9 @@ describe("apply(): unreported turns are nudged (G44 v2)", () => {
     const tools = await registeredTools(CONFIG);
     await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
     tools.emit("turn/end");
+    // The followup is deferred out of the append/publication boundary, so let the
+    // macrotask run before asserting.
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(tools.followups).toHaveLength(1);
     const text = JSON.stringify(tools.followups[0]);
     expect(text).toContain("report_task_status");
@@ -428,6 +431,7 @@ describe("apply(): unreported turns are nudged (G44 v2)", () => {
     await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
     await tools.reportTaskStatus.execute({ status: "completed", summary: "done" }, exec());
     tools.emit("turn/end");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(tools.followups).toHaveLength(0);
   });
 
@@ -435,8 +439,10 @@ describe("apply(): unreported turns are nudged (G44 v2)", () => {
     const tools = await registeredTools(CONFIG);
     await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
     tools.emit("turn/end");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     await tools.runDeviceAction.execute({ action: "back", reason: "again" }, exec());
     tools.emit("turn/end");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(tools.followups).toHaveLength(1);
   });
 
@@ -444,6 +450,7 @@ describe("apply(): unreported turns are nudged (G44 v2)", () => {
     const tools = await registeredTools(CONFIG);
     await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
     tools.emit("tool/call");
+    await new Promise((resolve) => setTimeout(resolve, 0));
     expect(tools.followups).toHaveLength(0);
   });
 });

@@ -28,7 +28,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 | 文档 | 什么时候读 |
 |---|---|
 | `docs/TODO.md` | 任何 DSH 侧改动之前。方案本体：D1-D17 决策表、S1-S11 对接语义、差距清单 G*、P0-P4 checklist 与「P0 执行状态」 |
-| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R22，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）** |
+| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R23，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）**、**R23 不得在 session/event 的 emit 里 append（注入类调用先推出发布边界）** |
 | `docs/CHANGELOGS.md` | **只记已发生并结案的变更**（`### #N` 三段：问题 / 修法 / 验收），按分类组织、顶部有索引；**已关闭差距 `G*` 的正文在这里**（「已关闭差距史」节）。编号 `#N` 发布后不得改写——守则与 TODO 都按 `changelogs #N` 引用 |
 | `docs/migration/registry.md` | **要引用或新增任何编号（D/S/G/R）之前**。编号唯一权威，含 `inventory/*` 与 `TODO.md` 的 G 编号撞车冲突表；`scripts/check_doc_registry.py` 机械守着 |
 | `docs/migration/glossary.md` | 读方案时卡住词了：`realm`、`parking`、`PTC`、`roster`，尤其是 **`inject` 有两个意思**（服务依赖 vs 不唤醒的上下文追加） |

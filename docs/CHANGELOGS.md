@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -450,6 +450,37 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] 插件：vitest 46/46（效果锁改为「调用 py 判定」的形状，含「tap 坐标必须传给 compare_ui_frames」一条）
 - [x] live（R7 新会话、真机）：`back` 从 Settings 回桌面 → `effect=changed`；再按一次 `back`（已在桌面）→ `effect=unchanged`。**正反两例都有**，且 MuMu 的动态壁纸没有造成假阳性
 - [x] 字节等值路线被实测排除的结论保留在案：静态三帧哈希全不同（动态壁纸），而真换屏灰度均值差 0.69 vs 动画噪声 ≤0.015
+
+
+### #13 G44 终态强制打通：`turn/end` 要 `{global:true}` 才收得到，而追问必须推迟出 append 边界
+
+- **日期**: 2026-10-11
+- **状态**: ✅ 机制闭环（模型服从性另计，见验收最后一条）
+- **优先级**: 高（P0 唯一硬阻塞）
+- **来源**: 官方声明面 `packages/core/scope/README.zh.md:71,75`、`docs/subsystems/session.zh.md:609,1301`、cordis 4.0.4 `lib/types/events.d.ts:98-105` + `lib/index.js:263`、`packages/goal/goal-round-driver/src/index.ts:322-345`；live 五轮实证
+
+#### 问题描述
+
+`report_task_status` 是 S2 定义的终态出口，但本地模型两次被观察到**达成目标后直接文本收尾、根本不调该工具**，于是双轴终态（`completed/blocked + tests_failed`）压根不存在，还伴随 G41 式的不收敛。要在插件侧强制，就得观察"回合结束"。三轮失败与真因：
+
+1. **v1 普通监听收不到 `turn/end`**：把 `session/event` 监听器注册在 preset 子作用域上，只收到 `tool/call`。当时误判为"必须另写 Host 级插件"。正解在 `packages/core/scope/README.zh.md:75`——事件按 scope 筛选，**带 `{ global: true }` 的监听器绕过筛选**，cordis 4.0.4 的 `EventOptions.global` 就是它（"Receive the event regardless of context filter checks"）。
+2. **v2 加了 `global` 仍无追问**：把监听到的事件类型与追问结果做成 wire 可见探针后才发现——追问**触发了但被拒**：`session append cannot reenter while another append is being published`。官方口径 `docs/subsystems/session.zh.md:609`：「在验收/发布边界打开时重入的 append 会在日志变更前被拒绝」。`agent.followup()` 本质是一次 append，**不能在 `session/event` 的 emit 里同步调用**。
+3. **对照官方实现佐证**：`goal-round-driver` 的 `case 'turn/end'` 分支**只更新状态、从不 append**，追问发生在边界之外。
+
+#### 整改方案与实施
+
+1. `src/turnLedger.ts`：按 agent（= session id，官方 `ctx.agents.get(session.id)` 同键）记 `acted / reported / nudged`；`consumeTurn()` 决定是否需要追问，**上限 1 次**防死循环。
+2. `src/index.ts`：监听以 `ctx.on("session/event", handler, { global: true })` 注册；`turn/end` 且 acted 未 reported 时，**`setTimeout(…, 0)` 推迟出发布边界**再调 `agent.followup()`；追问失败只 warn 不影响动作。
+3. 两个工具接入台账：`run_device_action` 记 acted，`report_task_status` 先记 reported 再 `concludeTurn()`。
+4. 临时判别探针（`agent=` / `events=` / `nudge=` 上 wire）在定性后**已全部移除**，不留调试代码。
+
+#### 验收标准
+
+- [x] vitest 62/62，其中 5 条锁 G44 行为（含「监听必须以 `{global:true}` 注册」「已汇报不追问」「同一 agent 至多追问一次」「非 turn/end 不动作」）；追问改异步后测试等一个宏任务再断言
+- [x] **live 四段全通**：`turn/end` 被 `{global:true}` 收到 → 台账判定 acted&&!reported → 推迟后的 `followup()` **被受理并驱动出第二轮**（只发一条消息却出现 `2 轮 3 步`）→ 追问文本出现在下一请求的 user 消息里（`nudge_present=True`）
+- [x] **实验②结案**：自声明 `source.kind: "autogamer"` **通过 session format V4**（消息被受理并送达模型），未用被禁的 `{kind:'plugin', plugin}` 包装
+- [x] 探针与调试代码零残留（`grep diag|nudgeOutcome|seenEvents dist/` 全 0）
+- [ ] **模型服从性未达成**：本地 `qwen3.6-35b-a3b-mtp` 收到明确指令后，第二轮 1 秒返回空文本、**仍未调用 `report_task_status`**。机制已可强制，服从是模型质量问题——它作为输入进 D9 质量裁决，而不是继续算作 G44 的机制缺口
 
 
 ## 已关闭差距史（G*）
