@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -483,6 +483,56 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [ ] **模型服从性未达成**：本地 `qwen3.6-35b-a3b-mtp` 收到明确指令后，第二轮 1 秒返回空文本、**仍未调用 `report_task_status`**。机制已可强制，服从是模型质量问题——它作为输入进 D9 质量裁决，而不是继续算作 G44 的机制缺口
 
 
+### #14 G45 指令投递：交付 preset 补上 `persona` 行，flash 契约第一次真的进入模型上下文
+
+- **日期**: 2026-10-11
+- **状态**: ✅ 已关闭（skill 随包路径另归 G31）
+- **优先级**: 高（它使此前一批「模型不服从」观察全部失效）
+- **来源**: 官方声明面 `packages/preset/persona/src/index.ts`（包源注释 + `Config`）、`packages/bundle/web-app/presets/standard.patch.yml`、`docs/subsystems/skills.zh.md`、`packages/core/system-prompt/README.zh.md`、本机 `--dump-config-schema` `$defs/config97`
+
+#### 问题描述
+
+`autogamer` preset 的 `plugins` 只有 `autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`：**没有任何指令投递行**。
+`skills/autogamer-flash/SKILL.md` 虽然随包出货，却从未被挂进任何会话——preset 既没挂 skill 提供方也没挂消费方；
+而 `@deepseek-ai/dsh-agent-preset` 的 config 只有 `id / name / description / order / plugins`（`$defs/config97`），
+**根本没有 prompt 字段**。后果是会话的 system 消息只有 3194 字符的宿主默认人设，
+`run_device_action` / `report_task_status` 的操作契约一个字都没进模型。
+
+于是这些观察全部作废重测：真机 spike 的「插件侧不如基线」、G41 的「模型收到指令仍不调工具」、
+以及把 D9 判成「暂不成立」的那张对照表——两侧比的不是同一件事，**基线有 flash 契约、插件侧根本没有**。
+
+顺带查清两条官方口径，避免以后再猜：
+1. **skill 是渐进披露，不是上下文注入**：模型侧目录「仅使用 name 和 description，从不使用正文」，
+   正文要模型自己调 `skill({name})` 才拿到。把硬约束放在按需加载路径上，等于把纪律交给一次自愿的工具调用。
+2. **`persona` 是 scope-only 行**：包源注释写明「挂进 agent preset 会为那一场会话遮蔽部署 persona」，
+   「挂在全局会与注册表自己的注册相撞、fail loud」，并解释该行存在的理由——
+   「agent preset 不能自己挂 prompt 注册表，所以没有这一行，preset 只能改 agent 的工具、改不了身份」。
+
+#### 整改方案与实施
+
+1. `cordis.patch.yml`（交付形态）与 `spike/web-live.patch.yml`（live overlay）各加一行
+   `persona` / `@deepseek-ai/dsh-persona`，`config.prefix` 写死 5 条硬约束：一次一动作并附 `reason`；
+   终态唯一出口是 `report_task_status`、调用后不得再动设备/再 `wait`/再汇报；`#N` 只对当次
+   `get_ui_hierarchy` 有效；被拒动作不得原样重试；判断屏幕只认截图。两处文本逐字一致（G37 的教训）。
+2. **文本内不出现任何 `{{…}}`**：`system-prompt/README.zh.md` 规定未知引用会在**任何模型请求之前**使组装抛错，
+   内置变量只有 `provider` / `model`，且明令自定义 persona 不得依赖 `{{cwd}}`。
+3. **本轮故意不挂 skill 行**：D9 要裁的是「插件形态能否替掉 py flash」，把 skill 的成本（多一个 `skill` 工具、
+   多一条目录消息）与 persona 的收益混进同一次真机跑就无法归因。skill 接线连同随包路径解析并到 G31。
+4. 新增 `spike/headless-real.patch.yml` 的尝试**当场作废并留下结论**：headless profile 的组合里没有
+   `@deepseek-ai/dsh-agent-preset-registry`（`--dump-config` 报 `patch insert: entry "@deepseek-ai/dsh-base" not found`），
+   旧 `headless-spike.patch.yml` 那套「插进 dsh-base 组」的写法从未命中过——它是 R20 之前的猜测产物。
+
+#### 验收标准
+
+- [x] R6：`--dump-config` 对 `cordis.patch.yml` 与 `spike/web-live.patch.yml` 均 exit 0、0 unmatched，契约文本在合成树里各出现 1/2 次
+- [x] **live 前提断言**：新会话（`agentPreset: "autogamer"`）的 wire 里 system 消息 **4052 字符**、
+      `You are AutoGamer…` 起于第 **50** 字符，`run_device_action` 与 `report_task_status` 都在 `tools` 里
+      ⇒ persona 行虽不在 rc.2 `--dump-config-schema` 名单内，挂载并未 fail-fast（D16 会整条拒绝，表现为工具全没）
+- [x] 插件 vitest 62/62 仍绿（本轮零代码改动）
+- [x] 重跑真机 spike：T1 **17s / 5 步 / 达成**（基线 77.2s / 6 步）、T2 **22s / 7 步 / 达成且自己收尾**（基线 42.1s / 3 步，上一版插件侧 47 请求失控需人工停止）
+- [ ] **重判结果**：接线后模型**依旧不调用 `report_task_status`**——G44 的服从性观察这次前提成立；
+      G41 的 `concludeTurn()` live 证据仍缺；兜底追问从未触发，另开 **G46**
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -509,3 +559,4 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 | G39 | 效果判定归属层（真机回 JPEG 令 TS 侧 PNG 差分失效） | 裁定路线 A：py 动作面新增只读 `compare_ui_frames`，判定委托仓库内上游实现 `check_ui_change` | 本文件 **#12** |
 | G40 | 运行中 UI 不接受第二条消息（**当日撤回的错误归因**） | 探针按固定 `aria-label="发送消息"` 找按钮，把运行中主按钮切成「排队发送」误读成入口消失；改按按钮位 class 枚举后实测 QueueDock 原生可用、回合结束按序执行 | TODO「S10 ③/④」条 + 守则 R20 取证方法 |
 | G42 | `{index}` 元素定位整条不可用 | 按数组位置统一编号（模型所见与解析同源）+ 修掉 render 的 200 字符截断；7 条单测 + live 两轮命中 `#28`/`#17` | 本文件 **#11** 之后的修复轮（TODO「G41/G42 修复轮」条） |
+| G45 | 交付 preset 没有指令投递行，flash 契约从未进过模型 | `persona` 行（`config.prefix` 五条硬约束，文本内无 `{{}}`）同时进交付形态与 overlay；新会话 wire 断言 system 4052 字符、契约起于第 50 字符 | 本文件 **#14** |

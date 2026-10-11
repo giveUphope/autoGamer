@@ -8,11 +8,11 @@
 
 | 项 | 现状 |
 |---|---|
-| 阶段 | **P0 收尾段**：G44 终态强制机制闭环（CHANGELOGS #13 + 守则 R23），骨架 / 离线 spike / 安装流 / conformance ✅，S10 ①✅、S5 真机✅、G37 收回✅、G36 模型侧✅、**S10 ② 效果验证✅**、**S10 ③ 闸门阻塞✅（两会话同设备串行实证）**；**S10 ④ ✅**；S10 四点全通过。**真机质量 spike 已跑（2026-10-11）：T1 达成且快于基线，T2 失控 → 新开 G41/G42，D9「直通」判定为暂不成立，待两项修完重跑裁决**。G41/G42 已修（G42 live 过）。**但 G45 推翻了这批观察的前提**：交付 preset 从来没有指令投递行，flash 契约从未进过模型上下文——服从性结论要在接线后重测 |
+| 阶段 | **P0 已出 D9 裁决（2026-10-11 深夜）**：G45 指令投递接线完成（CHANGELOGS **#14**），flash 契约真的进了 system（4052 字符、起于第 50 字符）；**真机 spike 重跑 T1 17s/5 步、T2 22s/7 步，两个任务全部达成且回合自己收尾**（基线 77.2s/6 步、42.1s/3 步；上一版插件侧 T2 是 47 请求失控人工停）⇒ **D9「直通」在执行质量这一维成立**。骨架 / 离线 spike / 安装流 / conformance ✅，S10 四点 ✅，G42 live ✅。**遗留：终态语义没闭合**——接线后模型仍不调 `report_task_status`（G44 前提这次成立）、G41 `concludeTurn` 的 live 证据仍缺、兜底追问从未触发（新开 **G46**） |
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** G45 指令投递接线（方案见「G45 指令投递接线」条）：preset 挂 `persona` 硬约束 + `skill-filesystem`/`tool-skill`，用新会话 wire 断言「契约真进了上下文」——**这条不做，D9 裁决与 G41/G44 的服从性结论都建立在无效前提上**；**2)** 之后重跑真机质量 spike（T1/T2/T3）作 D9 裁决；**3)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31，含 skill 根路径的随包解析）；**4)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**5)** P1 开工前注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面 |
+| 下一步（按序） | **1)** **G46**：判别兜底追问为何从不触发（三个候选：`turn/end` 没进监听 / 手镜像的 `currentInitiator()` 在真宿主上返回 undefined / `followup()` 被拒），它和 G44 一起决定「终态唯一出口」是否真的存在——注意取证只认会话日志与 wire，**插件 `ctx.logger` 不进 dsh stdout**；**2)** G41 的 `concludeTurn()` live 证据（要么模型终于调了汇报工具，要么承认本地模型撑不起 S2 终态、改由插件侧强制）；**3)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31，含 skill 根路径的随包解析与 skill 接线）；**4)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**5)** P1 开工前注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **57/57**（含 G41 终态 2 条、G42 编号 7 条）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
@@ -128,14 +128,14 @@
 | G32 | bundle 展示元信息缺失 | 新开（守则 R19）：`package.json` 没有 `locale/en.json` 与 `locale/zh.json` 的 `meta.title`/`meta.description`，也没有 icon 与对应 `exports`/`files` 条目。官方口径是 Host-only 与 configuration-only bundle **也有可见 inventory 条目，不构成豁免**，缺字段回退包名、缺图用面板默认插画。后果：插件面板里我们的行显示成技术名与通用插画（本轮已亲眼看到描述回退到 `package.json.description`） |
 | G33 | 策略内建在工具正文里 | 新开（守则 R13）：熔断冷却拒绝、审批与超时判断现在都写在 `run_device_action` 正文内，与官方「尽量不要把部署策略内建到工具中」相反。迁移方向：单调拒绝改 `ctx.tools.guard()`、需要 await 的改 `tools/pre-execute` 返回 `ask`、结果观测改 `tools/result`，并显式声明并发安全属性（字段名待 `cordis_inspect_query` 取，见守则待补 4） |
 | G34 | 裸 schema 的输入自校验缺口 | 新开（守则 R12 补正项）：直接注册的原始 JSON Schema 工具**自己负责输入校验**，且显式对象节点要声明 `additionalProperties: true / false`，非空字符串、正数、跨字段规则也要自查。现状：`target.coordinate` 只判了元素是否为 number，`text` 未判空、`duration_ms` 未判正、`key` 未判枚举成员 |
-| G31 | 引入流仍靠手工 | 新开：现在用 `dsh plugin add file:`（= pnpm 转发，只证明装了没证明生效）+ `--patch` overlay 起步。交付形态要迁到 `install_bundle`，落点见 D17（让 agent 自己装）；`dsh-plugin-manager` 自称 shared by dsh CLI 但本机 `dsh --help` 只列 `dsh` 与 `dsh plugin` 两种用法，**这条尚未定论**（守则待补 2）。**并承接 G45 留下的一项**：随包 skill 根路径怎么解析——spike 用绝对路径写 `customSkillDirs`，安装后包目录未知；官方给的随包形态是 `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR` 或专用提供方（`dsh-skill-badge` 那种在码里 `ctx.skills.register()`） |
+| G31 | 引入流仍靠手工 | 新开：现在用 `dsh plugin add file:`（= pnpm 转发，只证明装了没证明生效）+ `--patch` overlay 起步。交付形态要迁到 `install_bundle`，落点见 D17（让 agent 自己装）；`dsh-plugin-manager` 自称 shared by dsh CLI 但本机 `dsh --help` 只列 `dsh` 与 `dsh plugin` 两种用法，**这条尚未定论**（守则待补 2）。**并承接 G45 留下的一项**：随包 skill 根路径怎么解析——spike 用绝对路径写 `customSkillDirs`，安装后包目录未知；官方给的随包形态是 `bundledSkillDir`/`DSH_BUNDLED_SKILL_DIR` 或专用提供方（`dsh-skill-badge` 那种在码里 `ctx.skills.register()`）。**接线时要的官方口径已查清，记在这里免得再查**：本地提供方 rank = project-dsh 100 / project-agents 200 / **custom 300（`customSkillDirs`）** / user-dsh 400 / user-agents 500 / bundled 600；名字须 kebab-case，形态只接受 `<name>/SKILL.md` 与 `<name>.md`（**不支持嵌套 `**/SKILL.md`**）；frontmatter `disable-model-invocation`/`user-invocable` 省略即 true；要模型能自动加载还须挂消费方 `@deepseek-ai/dsh-tool-skill`（它注入 `<available_skills>` 目录，**目录只含 name+description，正文要模型自愿调 `skill` 工具**），官方 preset 挂 `skill-filesystem`+`tool-skill` 两行且**不挂 `dsh-skill`**（服务定义在宿主层） |
 | G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
 | G41 | 终态不收敛：`report_task_status` 不结束回合 | **代码已落地**（`exec.concludeTurn()`，声明面原文为证 + 2 条单测锁）。G44 的机制已通（追问能送达模型），但 `concludeTurn` 的 live 证据**仍缺**。**原记的「模型收到明确指令后仍不调用该工具」前提作废**——按 G45，模型从未收到任何指令，所以这条不是服从性结论，要在接线后重测。原发现（2026-10-11 真机 spike T2，**严重**）：模型调用 `report_task_status(status=blocked)` 之后**回合继续跑**——它把「已汇报」当成「还没成」，进入自我救火式指数退避 （`wait` 2s→5s→10s→…→7200s），每轮再补一次 `report_task_status`，70 秒内 47 次模型请求、12+ 次汇报，**必须人工点「停止生成」才停**。S2 说「终态 = 汇报工具的 completed/blocked」，但 DSH 侧没有任何机制让一次工具调用终结回合——这是语义缺口不是模型毛病。方向：终态要么由工具返回结构告诉宿主停止（查官方是否有 tool→end-turn 的声明面形态），要么在插件侧 guard/pre-execute 拦住「已汇报后再动设备」，要么给 wait/重试设硬预算并让超出预算直接结束回合 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
 | G44 | 模型可以不调 `report_task_status` 就结束回合 | **机制已闭环**（CHANGELOGS #13）：`turn/end` 需 `{global:true}` 才收得到（R20 原文），且追问必须推迟出 append 边界（新守则 R23）；live 四段全通——追问被受理、驱动出第二轮、文本送达模型，实验② 同时结案（自声明 `source.kind:"autogamer"` 过 session format V4）。**剩模型服从性**：本地 qwen 收到明确指令后仍 1 秒空返回、不调工具——归入 D9 质量裁决的输入，不再算机制缺口。**指令来源要说清（G45 的教训）**：这条收到的指令是插件自己注入的追问文本，不依赖 persona/skill 投递，所以它**不受 G45 前提失效影响**，结论仍成立 |
-| G45 | 交付 preset 里没有指令投递行 | 新开（2026-10-11，**推翻此前所有「模型不服从」观察的前提**）：`autogamer` preset 的 `plugins` 只有 `autogamer-device-inner` + `dsh-tool-jobs`，既没有 `persona` 行也没有 skill 提供方/消费方行——已出货的 `skills/autogamer-flash/SKILL.md` **从未被挂进任何会话**，系统提示 3194 字符里没有 `run_device_action`/`report_task_status` 字样。于是 G41 缺的 live 证据、G44 剩的「收到明确指令仍不调工具」那半，测的都是**没拿到契约的模型**。官方口径：preset 的 config 只有 `id/name/description/order/plugins`（无 prompt 字段），prompt 投递靠 `@deepseek-ai/dsh-persona` 行；skill 是渐进披露——模型侧目录只有 `name`+`description`，正文要它自愿调 `skill` 工具才拿得到。接线方案见「G45 指令投递接线」条 |
+| G46 | 未汇报追问在交付形态下**从不触发** | 新开（2026-10-11 G45 接线后的首个干净真机轮实证）：T1 会话里模型做完 5 次设备动作、直接文本「已完成」收尾、没调 `report_task_status`，而会话日志只有 2 条 user 消息（目标 + 运行时上下文快照）、`turn/end` 一条，**没有任何追问消息**——G44 修好的那条兜底机制在真实交付形态下是死的。**根因候选（按 R21 定性）**：`markActed` 用的 `ctx.agents.currentInitiator()` 只存在于我们手写的 `src/dsh-types.ts:55` 镜像里，从未 live 验证；`tests/apply.spec.ts:112` 的双件把它定义成有值，于是 62/62 全绿而真机永不触发。官方 `docs/subsystems/core.zh.md:612` 确有 `currentInitiator()`（返回 `Agent` 或 `undefined`）且 `Agent.id: SessionId`（core.zh.md:67），所以键语义应当是对的——**要用探针判别到底是哪一环**（`turn/end` 没进监听 / `currentInitiator()` 返回 undefined / `followup()` 被拒）。**顺带记一条取证纪律**：插件 `ctx.logger` 的输出**不进 dsh web 的 stdout**（`web-server46.log` 里 `[route]` 与 `[turn]` 都是 0 条，而动作确实跑了），所以「日志里没有」不能当证据，判生效只认会话日志与 wire |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -270,54 +270,36 @@
   而是「基线有 flash 契约 / 插件侧根本没有」——G41 缺的那份 live 证据属无效前提下的观察，须接线后重测。
   **只有 G44 不受影响**：那条的指令是插件自己注入的追问文本，与投递缺失无关，其服从性结论仍成立。
 
-### G45 指令投递接线（2026-10-11，按 R22 三步序：查文档 → 本方案 → 实现）
+### 真机质量 spike 重跑（2026-10-11 深夜，G45 接线之后 —— D9 的正式裁决）
 
-- **What**：让 flash 契约真的进入模型上下文，然后才谈 D9 裁决与 G41/G44 的 live 结论。
-  范围只到 preset 的声明行 + skill 正文重切；不动插件 TS 代码，不做随包路径机制（那是 G31）。
-  明确出范围：`install_bundle`、G33 的策略迁移、G36 的 UI 卡片侧。
-- **官方口径（本轮读到的原文，非推断）**
-  - `dsh-agent-preset` 的 config 只有 `id` / `name` / `description` / `order` / `plugins`——**没有 prompt 字段**
-    （`--dump-config-schema` 的 `$defs/config97`）。prompt 投递在官方 shipped preset 里是**一行 `persona`**：
-    `packages/bundle/web-app/presets/standard.patch.yml` 逐字为
-    `{ id: persona, name: '@deepseek-ai/dsh-persona', config: { prefix: "You are a coding agent powered by the {{model}} model." } }`。
-  - skill 是**渐进披露**，不是上下文注入：`docs/subsystems/skills.zh.md` 说模型侧目录「仅使用 name 和 description，从不使用正文」，
-    正文要模型自己调 `skill({ name })` 才拿到（返回 `<skill_content name="…">`）。目录消息由**消费方**
-    `dsh-tool-skill` 在首个非空完整视图的 `agent/pre-step` 注入为持久 user-role `<system-reminder>`。
-    ⇒ **光放 skill 等于没放**：G44 剩下的毛病恰恰是「指令在上下文里也不服从」，把强约束排在一次自愿的工具调用之后是自杀。
-  - skill 族三层：提供方（`dsh-skill-filesystem` 扫目录 / 专用随包提供方如 `dsh-skill-badge`）→ `ctx.skills` 注册表
-    （**宿主层 + 每个 preset 层**，preset 常驻组合挂载的插件落进该 preset 的层）→ 消费方（`dsh-tool-skill`）。
-    官方 preset 只挂 `skill-filesystem` + `tool-skill` 两行、**不挂 `dsh-skill`**（服务定义在宿主层）。
-  - 本地提供方 rank：project-dsh 100 / project-agents 200 / **custom 300（`Config.customSkillDirs`）** / user-dsh 400 / user-agents 500 / bundled 600（`bundledSkillDir` 或 `DSH_BUNDLED_SKILL_DIR`）。
-    名字须 kebab-case，形态只接受 `<name>/SKILL.md` 与 `<name>.md`，**不支持嵌套 `**/SKILL.md`**；
-    frontmatter `disable-model-invocation` / `user-invocable` 省略即 `true`（我们的 skill 已可被模型调用）。
-    本机 `~/.dsh/skills` 不存在、仓库无 `.dsh/skills` 与 `.agents/skills` ⇒ 没有其他根会污染目录。
-  - rc.2 核对结果要记清：`--dump-config-schema` 认识 `dsh-skill-filesystem`（键含 `customSkillDirs` / `bundledSkillDir` /
-    `includeDefaultRoots` / `watch`）与 `dsh-tool-skill`（仅 `catalogDescriptionMaxLength`，默认 500），
-    **但不认识 `@deepseek-ai/dsh-persona`**——而本机 `--dump-config` 里 4 个内置 preset 都挂着 persona 行。
-    ⇒ persona 的 config 不在 schema 门禁覆盖内，R6 过不过都证明不了它生效；**判定只认 wire 里的 system 消息**（R9 的具体化）。
-- **How（两行分工，不重复内容）**
-  1. `persona` 行承载**每回合都必须生效的硬约束**，短（目标 ≤ 900 字符）：一次一个动作并写 `reason`；
-     终态唯一出口是 `report_task_status`，调用之后不得再动设备、不得再汇报；`#N` 只对最近一次
-     `get_ui_hierarchy` 有效，界面变过就重新观察；动作被拒绝不要原样重试；判断屏幕只能看截图。
-  2. `skill-filesystem`（`customSkillDirs: ["D:/DEV/autoGamer/plugins/autogamer-device/skills"]`）+ `tool-skill`
-     承载**按需读取的细则**（目标定位优先级、升级与验证语义、复杂任务的规划范式）。
-     同时把 `SKILL.md` 里与 persona 重复的硬约束条目**删掉**，两处漂移比漏一处更糟。
-  3. 交付形态与 spike overlay 同步改（`cordis.patch.yml` 与 `spike/web-live.patch.yml` 的 preset `plugins` 一致，G37 的教训）。
-     绝对路径只属 spike；安装后包目录未知 → 该问题归 G31，本轮不解，并在 G31 行补一句「含 skill 根路径的随包解析」。
-- **Verify**
-  - `cd plugins/autogamer-device && npm run test`（不应因声明变化而红；本轮无代码改动）
-  - R6：`"D:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd" --profile web --patch <abs spike/web-live.patch.yml> --dump-config`
-    exit 0 且 grep 不到 `unmatched`。**注意 R6 只合成声明树、不挂 preset**，这一步过了不代表投递成功。
-  - R7 开**新会话**，跑一条真机任务，然后在 `scripts/proxy-dump.log`（1235 取证代理）里断言三件事：
-    ① system 消息含 persona 的硬约束原文；② 出现 `<available_skills>` 目录消息且列有 `autogamer-flash`；
-    ③ `tools` 数组含 `skill`。三件缺一都不算投递成功（`spike/wire-tools.py` 是现成的按块解析器）。
-  - 三件齐全之后，才按 G43 复位跑 T1 / T2 / T3 三个真实设备任务，作 D9 的正式裁决。
-- **Done means**
-  - [ ] 声明行落地且 R6 绿；交付形态与 overlay 两处一致
-  - [ ] `SKILL.md` 与 persona 正文无重复条目（细则只在 skill，硬约束只在 persona）
-  - [ ] 新会话 wire 三件断言全中（system 含契约 / `<available_skills>` 含 autogamer-flash / `skill` 工具在列）
-  - [ ] G45 转已关闭（正文进 CHANGELOGS），并据此重判 G41 的服从性观察（G44 用自注入追问文本，不受影响）
-  - [ ] 重跑真机质量 spike（T1/T2/T3）作 D9 裁决
+对照条件：同一台 MuMu（emulator-5554）、同一个模型（qwen3.6-35b-a3b-mtp）、目标文本与上表**逐字相同**、
+每个任务一个**新会话**（R7）、初态用 `am start … category.HOME` 复位并核实 `mCurrentFocus=LawnchairLauncher`。
+**前提这次成立**：wire 里 system 消息 4052 字符、`You are AutoGamer…` 从第 50 字符开始，
+`run_device_action` / `report_task_status` 都在 tools 里（上表那轮这两样都不存在）。
+
+| 任务 | 基线（py flash） | 插件（G45 接线前） | **插件（G45 接线后）** |
+|---|---|---|---|
+| T1 打开设置→显示页 | 77.2s / 6 步 | ≈35s / 10 次请求，6 次 index 失败 | **17s / 5 步 / 达成**（截图核实停在「显示」页，浅色），零 index 报错 |
+| T2 打开设置→开深色主题 | 42.1s / 3 步 | 失控：47 请求 / 70s / 人工停止 | **22s / 7 步 / 达成**（截图核实开关已开、整机转深色），**回合自己收尾、没有退避循环** |
+
+T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → `click {index:1}` 返回
+**`effect=unchanged`** → 模型据此换坐标点 dock 图标（`effect=changed`）→ 点开关（`changed`）→ 再截图自查。
+**全程没有一次 index 解析失败，也没有原样重试被拒动作**（persona 第 4 条）。
+
+**D9 裁决：直通成立（在执行质量这一维）。** 两个任务全部达成、耗时约为基线的一半、
+并且带着基线没有的三样：逐动作效果判定、截图真进模型、闸门/连发/媒体四点此前已全通过。
+上一版判定「直通暂不成立」的两条理由（G42 编号定位、G41 终态不收敛）里，**G42 已 live 通过**，
+G41 的失控现象在这轮直接消失。
+
+**但裁决有两处必须写清的保留**：
+1. **终态语义仍未闭合**：两轮都**没有调用 `report_task_status`**——这次契约确实在上下文里，
+   所以 G44 的「模型不服从」第一次成为**前提成立的观察**（不再是 G45 那种假前提）。
+   回合是靠模型自己文本收尾结束的，`concludeTurn()` 的 live 证据**依旧缺失**（G41 保持未结案）。
+2. **兜底机制是死的**：会话日志里没有任何追问消息 → G46。修完 G46 才谈得上「终态唯一出口」。
+3. 样本只有 2 个任务、每任务 1 次，且都在设置应用内；换应用/输入类任务未测。
+
+**顺带把 G43 判据钉牢**：T2 达成后 `settings get secure ui_night_mode` **仍读 2**，而截图明确是深色。
+⇒ 这台 ROM 上该 setting 根本不是深色主题的真相来源，**达成与否只认截图**（上表基线那格拿它当过旁证，注意）。
 
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
