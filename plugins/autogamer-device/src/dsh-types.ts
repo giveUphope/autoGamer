@@ -11,11 +11,45 @@ export interface DshLogger {
   error(message: string): void;
 }
 
+/**
+ * Durable, content-addressed image reference. The host owns the bytes: a
+ * producer hands them to `ctx.attachments.saveImages()` and only the returned
+ * reference ever enters the session log — image bytes never do
+ * (docs/subsystems/attachment: "会话事件和模型可见的附件块包含该引用及其元数据，
+ * 绝不包含 … base64 数据"). `attachmentId` is opaque and provider-owned, so
+ * nothing here may parse or pattern-match it.
+ */
+export interface DshImageAttachment {
+  attachmentId: string;
+  mediaType: "image/png" | "image/jpeg" | "image/webp" | "image/gif";
+  bytes: number;
+  width: number;
+  height: number;
+  name?: string;
+}
+
+/** The `AttachmentStore` seam, narrowed to what this plugin calls. */
+export interface DshAttachments {
+  saveImages(
+    inputs: readonly {
+      data: Uint8Array;
+      /** Declared here, but validated by the host against the decoded bytes. */
+      mediaType: DshImageAttachment["mediaType"];
+      name?: string;
+    }[],
+  ): Promise<readonly DshImageAttachment[]>;
+}
+
 export interface DshContext {
   logger: DshLogger;
   tools: {
     register(definition: unknown): () => void;
   };
+  /**
+   * Host attachment service. Declared in `inject`, because cordis throws on the
+   * property GET of an undeclared service rather than returning undefined.
+   */
+  attachments: DshAttachments;
   get?(key: string): unknown;
   /**
    * Cordis effect: the callback runs IMMEDIATELY (it is the setup body) and

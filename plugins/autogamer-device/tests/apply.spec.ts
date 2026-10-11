@@ -7,6 +7,19 @@
  * assert the coordinates the py action server actually receives.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { parseImageSize } from "../src/coord.js";
+import type { DshImageAttachment } from "../src/dsh-types.js";
+
+/** A 1080x2400 PNG: signature + IHDR carrying the dimensions at byte 16/20. */
+function pngBytes(): Buffer {
+  const bytes = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write("IHDR", 12, "ascii");
+  bytes.writeUInt32BE(1080, 16);
+  bytes.writeUInt32BE(2400, 20);
+  return bytes;
+}
 
 const harness = vi.hoisted(() => ({
   calls: [] as { tool: string; args: Record<string, unknown> }[],
@@ -23,14 +36,7 @@ vi.mock("../src/actionClient.js", () => ({
     async callTool(tool: string, args: Record<string, unknown>) {
       harness.calls.push({ tool, args });
       if (tool === "take_screenshot") {
-        // 1080x2400 PNG: signature + IHDR with the dimensions at byte 16/20.
-        const bytes = Buffer.alloc(33);
-        Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
-        bytes.writeUInt32BE(13, 8);
-        bytes.write("IHDR", 12, "ascii");
-        bytes.writeUInt32BE(1080, 16);
-        bytes.writeUInt32BE(2400, 20);
-        return { content: [{ type: "text", text: bytes.toString("base64") }] };
+        return { content: [{ type: "text", text: pngBytes().toString("base64") }] };
       }
       if (tool === "get_ui_hierarchy") {
         return { content: [{ type: "text", text: "<hierarchy></hierarchy>" }] };
@@ -47,6 +53,7 @@ vi.mock("../src/actionClient.js", () => ({
 type ToolDefinition = {
   name: string;
   execute(args: Record<string, unknown>, exec: { signal: AbortSignal }): Promise<unknown>;
+  output?: { render(args: unknown, value: unknown): { type: string; text?: string; attachment?: unknown }[] };
 };
 
 const { apply, Config } = await import("../src/index.js");
@@ -59,7 +66,10 @@ const { apply, Config } = await import("../src/index.js");
  * which let a teardown-as-callback bug (G30: apply() disposed its own tool
  * registrations) pass CI while every live session lost the tool face.
  */
-function fakeContext(definitions: ToolDefinition[]) {
+function fakeContext(
+  definitions: ToolDefinition[],
+  attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+) {
   const cleanups: unknown[] = [];
   const context = {
     logger: { info: () => {}, warn: () => {}, error: () => {} },
@@ -69,6 +79,7 @@ function fakeContext(definitions: ToolDefinition[]) {
         return () => {};
       },
     },
+    ...(attachments ? { attachments } : {}),
     effect(setup: () => unknown): void {
       cleanups.push(setup());
     },
@@ -76,10 +87,13 @@ function fakeContext(definitions: ToolDefinition[]) {
   return { context, cleanups };
 }
 
-async function registerToolWith(config: Record<string, unknown>): Promise<ToolDefinition> {
+async function registerToolWith(
+  config: Record<string, unknown>,
+  attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+): Promise<ToolDefinition> {
   const definitions: ToolDefinition[] = [];
   harness.calls.length = 0;
-  const { context } = fakeContext(definitions);
+  const { context } = fakeContext(definitions, attachments);
   await apply(context as never, config as never);
   const tool = definitions.find((definition) => definition.name === "run_device_action");
   if (!tool) throw new Error(`run_device_action was not registered (got: ${definitions.map((d) => d.name).join(", ")})`);
@@ -171,5 +185,61 @@ describe("apply(): registration lifetime (G30 regression)", () => {
     const cleanup = cleanups[0] as () => void;
     cleanup();
     expect(harness.disposed).toBe(1);
+  });
+});
+
+describe("apply(): screenshot media path (G36)", () => {
+  const ref: DshImageAttachment = {
+    attachmentId: "opaque-id-from-the-store",
+    mediaType: "image/png",
+    bytes: 33,
+    width: 1080,
+    height: 2400,
+  };
+
+  it("commits bytes to the attachment store and renders [text, image]", async () => {
+    const saved: { data: Uint8Array; mediaType: string }[] = [];
+    const tool = await registerToolWith(Config(), {
+      saveImages: async (inputs) => {
+        saved.push(...(inputs as { data: Uint8Array; mediaType: string }[]));
+        return [ref];
+      },
+    });
+
+    const value = (await tool.execute({ action: "take_screenshot", reason: "look" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(saved).toHaveLength(1);
+    expect(saved[0].mediaType).toBe("image/png");
+    expect(parseImageSize(saved[0].data)).toEqual({ width: 1080, height: 2400 });
+    expect(value.image).toEqual(ref);
+    expect(value.screenshot).toBe("captured 1080x2400");
+
+    const blocks = tool.output!.render({}, value);
+    expect(blocks.map((block) => block.type)).toEqual(["text", "image"]);
+    expect(blocks[0].text).toBe("screenshot=captured 1080x2400");
+    expect(blocks[1].attachment).toBe(ref);
+  });
+
+  it("keeps encoded bytes out of the persisted tool value", async () => {
+    const tool = await registerToolWith(Config(), { saveImages: async () => [ref] });
+    const value = await tool.execute({ action: "take_screenshot", reason: "look" }, exec());
+    // The session log records the result value; only the reference may appear.
+    expect(JSON.stringify(value)).not.toContain(pngBytes().toString("base64"));
+  });
+
+  it("still reports dimensions when the store refuses the image", async () => {
+    const tool = await registerToolWith(Config(), {
+      saveImages: async () => {
+        throw new Error("AttachmentError: exceeds maxImageBytes");
+      },
+    });
+    const value = (await tool.execute({ action: "take_screenshot", reason: "look" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(value).toEqual({ screenshot: "captured 1080x2400" });
+    expect(tool.output!.render({}, value)).toEqual([{ type: "text", text: "screenshot=captured 1080x2400" }]);
   });
 });

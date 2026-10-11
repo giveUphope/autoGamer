@@ -15,8 +15,14 @@ import type { ActionClient } from "../actionClient.js";
 import type { DeviceBreaker } from "../breaker.js";
 import type { DeviceGate } from "../gate.js";
 import { classifyMessage } from "../classify.js";
-import { imageSizeFromBase64, toPixels, type ScreenSize } from "../coord.js";
-import type { ToolDefinitionInput } from "../dsh-types.js";
+import {
+  decodeImageBase64,
+  imageMediaTypeOf,
+  parseImageSize,
+  toPixels,
+  type ScreenSize,
+} from "../coord.js";
+import type { DshImageAttachment, ToolDefinitionInput } from "../dsh-types.js";
 import { findNodeCenterByIndex, findNodeCenterBySubstring } from "../hierarchy.js";
 import { unwrapText } from "../mcpText.js";
 
@@ -91,6 +97,15 @@ export interface RouterOptions {
   defaultDeviceKey: string;
   /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
   resolveScreenSize(key: string): Promise<ScreenSize | undefined>;
+  /**
+   * Commit screenshot bytes to the host attachment store and get back the
+   * durable reference the model and UI can use. Absent (or returning undefined)
+   * keeps the result text-only — bytes never go into the tool payload.
+   */
+  saveScreenshot?(
+    bytes: Uint8Array,
+    mediaType: DshImageAttachment["mediaType"],
+  ): Promise<DshImageAttachment | undefined>;
 }
 
 interface TargetInput {
@@ -182,12 +197,19 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         additionalProperties: true,
       },
       render: (_args, value) => {
-        const record = (value ?? {}) as Record<string, unknown>;
+        const record = { ...(value ?? {}) } as Record<string, unknown>;
+        // The attachment reference renders as an image block; it must not also
+        // be flattened into the text envelope (the host shape for a tool image
+        // result is [text, image]).
+        const image = record.image as DshImageAttachment | undefined;
+        delete record.image;
         const parts = Object.entries(record)
           .filter(([, v]) => v !== undefined)
           .map(([k, v]) => `${k}=${typeof v === "string" ? v.slice(0, 200) : JSON.stringify(v)}`);
         const text = parts.length > 0 ? parts.join("; ") : "action completed";
-        return [{ type: "text", text }];
+        return image?.attachmentId
+          ? [{ type: "text", text }, { type: "image", attachment: image }]
+          : [{ type: "text", text }];
       },
     },
     async execute(args, exec) {
@@ -336,20 +358,20 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       case "open_link":
         return { tool: "open_link", payload: { url: String(args.url ?? "") } };
       case "take_screenshot": {
-        // Screenshot bytes are withheld from the model for now (multimodal
-        // tool results are a spike item); dimensions come back instead.
         const base64 = unwrapText(await client.callTool("take_screenshot", {}));
-        const size = imageSizeFromBase64(base64);
         if (/^errorb/i.test(base64)) {
           throw new Error(`environment: ${base64.replace(/^errorb:?s*/i, "").trim()}`);
         }
+        const bytes = decodeImageBase64(base64);
+        const size = parseImageSize(bytes);
+        const mediaType = imageMediaTypeOf(bytes);
+        const image = mediaType ? await options.saveScreenshot?.(bytes, mediaType) : undefined;
         return {
           tool: "take_screenshot",
           payload: {},
           value: {
-            screenshot: size
-              ? `captured ${size.width}x${size.height} (base64 withheld; visual inspection via UI pending)`
-              : "captured (base64 withheld)",
+            screenshot: size ? `captured ${size.width}x${size.height}` : "captured",
+            ...(image ? { image } : {}),
           },
         };
       }

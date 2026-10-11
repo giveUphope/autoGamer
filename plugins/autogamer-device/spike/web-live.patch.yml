@@ -1,20 +1,17 @@
 # Live web-profile overlay for the S10 spike (applies last via --patch).
 #
-# Single-variable experiment for "our session sends no tools field at all":
-# preset-autogamer now carries the same top-level tool set preset-standard
-# declares (Windows leg only: tool-pwsh, not tool-bash) PLUS our own
-# autogamer-device-inner. Three outcomes discriminate cleanly:
-#   tools=0        -> the whole preset-autogamer row is not being adopted
-#                     (registry/entry linkage problem, not the inner row)
-#   tools=standard -> the built-in set resolves but our inner row does not
-#   tools=+2       -> both work; the earlier empty tool plane was caused by
-#                     the preset declaring only [inner, dsh-tool-jobs]
+# Preset shape here MATCHES cordis.patch.yml (the shipped delivery form):
+# the AutoGamer preset carries only our own device tool row plus the host's
+# tool-jobs row. The wide "standard + inner" list that used to sit here was a
+# bisect rig for G30; G30 is closed, so measurements taken on that shape would
+# not describe what we ship (gap tracked as G37).
+#
 # The root bundle copy stays disabled so exactly one instance can register.
 #
-# NOTE on the older claim "root-plane tool rows are invisible to sessions":
-# that came from reading the packaged app.asar and is NOT re-proven here. This
-# run only shows the root-plane copy does instantiate apply() (2 disposers)
-# while the session still received no tools.
+# LLM rig: baseURL 1235 = scripts/dump-proxy.mjs -> LM Studio on 1234, so the
+# wire shows exactly which tools the host sends. Set it back to 1234 to run
+# without the logging proxy (proxy must be listening, or every turn dies on
+# ECONNREFUSED).
 - id: llm-pi-ai
   name: "@deepseek-ai/dsh-llm-pi-ai"
   config:
@@ -25,6 +22,14 @@
         baseURL: http://127.0.0.1:1235/v1
         models:
           - id: qwen3.6-35b-a3b-mtp
+            # Declared input modalities. The schema default is [], which the host
+            # reads as NEGATIVE capability: an image tool result came back to the
+            # model as "[image omitted because this model accepts text only]"
+            # even though the route really does take pixels (verified directly
+            # against LM Studio). G36.
+            input:
+              - text
+              - image
 
 - id: agent-default-model
   name: "@deepseek-ai/dsh-agent-default-model"
@@ -48,45 +53,16 @@
     description: Single-layer device execution agent (flash/pro merged, S11 router).
     order: 50
     plugins:
-      - id: persona
-        name: "@deepseek-ai/dsh-persona"
-        config:
-          suffix: Your working directory is {{cwd}}.
-          prefix: You are a coding agent powered by the {{model}} model.
-      - id: agent-instructions
-        name: "@deepseek-ai/dsh-agent-instructions"
-        config:
-          maxBytes: 65536
-      - id: tool-pwsh
-        name: "@deepseek-ai/dsh-tool-pwsh"
-      - id: tool-fs
-        name: "@deepseek-ai/dsh-tool-fs"
-      - id: tool-fs-search
-        name: "@deepseek-ai/dsh-tool-fs-search"
-        config:
-          sampleOverCapGlobResults: false
-      - id: tool-jobs
-        name: "@deepseek-ai/dsh-tool-jobs"
-      - id: skill-filesystem
-        name: "@deepseek-ai/dsh-skill-filesystem"
-      - id: tool-skill
-        name: "@deepseek-ai/dsh-tool-skill"
-      - id: tool-ask-user
-        name: "@deepseek-ai/dsh-tool-ask-user"
-      - id: tool-todo
-        name: "@deepseek-ai/dsh-tool-todo"
-        config:
-          allowParallelInProgress: true
-      - id: tool-web
-        name: "@deepseek-ai/dsh-tool-web"
-        config:
-          fetch: true
-          searchTimeoutMs: 60000
-      - id: present
-        name: "@deepseek-ai/dsh-tool-present"
       - id: autogamer-device-inner
         name: autogamer-device
         config:
           actionServerCommand:
-            - node
-            - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs
+            - D:/DEV/autoGamer/.venv/Scripts/python.exe
+            - -m
+            - artemis.interfaces.cli.main
+            - mcp
+            - --type
+            - adb
+          actionServerEnv:
+            ADB_DEVICE_SERIAL: "emulator-5554"
+      - name: "@deepseek-ai/dsh-tool-jobs"

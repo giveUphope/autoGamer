@@ -39,8 +39,15 @@ export const Config: object = z.object({
   screenSize: z.tuple([z.number(), z.number()]),
 });
 
-/** ctx.tools is the only hard dependency; everything else is ours. */
-export const inject = ["tools"];
+/**
+ * `tools` and `attachments` must BOTH be declared: cordis refuses the property
+ * GET itself ("cannot get property \"attachments\" without inject", observed
+ * live 2026-10-11), so an undeclared service is a runtime error, not an
+ * undefined lookup. Declaring one that cannot resolve in this scope leaves the
+ * row pending — the G30 shape — so this list is a live-verified claim, not an
+ * aspiration.
+ */
+export const inject = ["tools", "attachments"];
 
 export type PluginConfig = {
   actionServerCommand: string[];
@@ -99,6 +106,22 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     logger,
     defaultDeviceKey: config.defaultDeviceKey,
     resolveScreenSize,
+    // Screenshots go to the host attachment store so the model gets a real
+    // image block and the log keeps only the content-addressed reference.
+    saveScreenshot: async (bytes, mediaType) => {
+      try {
+        const [ref] = await ctx.attachments.saveImages([
+          { data: bytes, mediaType, name: "device-screenshot" },
+        ]);
+        return ref;
+      } catch (error) {
+        // Admission can refuse one image (byte / pixel / dimension caps, or a
+        // header that fails to decode). A screenshot must still report its
+        // dimensions rather than fail the action.
+        logger.warn(`[media] attachment admission failed: ${(error as Error)?.message ?? error}`);
+        return undefined;
+      }
+    },
   })));
   ctx.tools.register(defineTool<any, any>(defineReportTaskStatus()));
 

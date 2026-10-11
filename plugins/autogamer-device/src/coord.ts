@@ -87,14 +87,34 @@ export function imageSizeFromBase64(base64: string): ScreenSize | undefined {
   return parseImageSize(head);
 }
 
-function atLeast(base64: string, bytes: number): Uint8Array {
-  // 4 base64 chars → 3 bytes; take enough head chars, strip data URLs.
-  const raw = base64.startsWith("data:") ? base64.slice(base64.indexOf(",") + 1) : base64;
-  const chars = Math.min(raw.length, Math.ceil((bytes / 3) * 4));
-  const binary = atob(raw.slice(0, chars));
+/** Full decode of a base64 screenshot (data-URL prefix tolerated). */
+export function decodeImageBase64(base64: string): Uint8Array {
+  const raw = stripDataUrl(base64);
+  return typeof Buffer === "undefined" ? binaryToBytes(atob(raw)) : new Uint8Array(Buffer.from(raw, "base64"));
+}
+
+/** Media type the host attachment store will accept, sniffed from the header. */
+export function imageMediaTypeOf(bytes: Uint8Array): "image/png" | "image/jpeg" | undefined {
+  if (isPng(bytes)) return "image/png";
+  if (isJpeg(bytes)) return "image/jpeg";
+  return undefined;
+}
+
+function stripDataUrl(base64: string): string {
+  return base64.startsWith("data:") ? base64.slice(base64.indexOf(",") + 1) : base64;
+}
+
+function binaryToBytes(binary: string): Uint8Array {
   const out = new Uint8Array(binary.length);
   for (let i = 0; i < binary.length; i += 1) out[i] = binary.charCodeAt(i);
   return out;
+}
+
+function atLeast(base64: string, bytes: number): Uint8Array {
+  // 4 base64 chars → 3 bytes; take enough head chars, strip data URLs.
+  const raw = stripDataUrl(base64);
+  const chars = Math.min(raw.length, Math.ceil((bytes / 3) * 4));
+  return binaryToBytes(atob(raw.slice(0, chars)));
 }
 
 export function toPixels(

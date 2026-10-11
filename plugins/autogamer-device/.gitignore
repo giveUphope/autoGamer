@@ -21,5 +21,6 @@ spike/dsh-dump*.json
 spike/dsh-dump*.err
 spike/dsh-schema*.json
 spike/dsh-schema*.err
-spike/dump-config.out
-spike/dump-config.err
+spike/dump-config*.out
+spike/dump-config*.err
+spike/mock-*.txt
