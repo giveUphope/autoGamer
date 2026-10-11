@@ -190,8 +190,9 @@
   (d) 终态补记**不**在本方案里做（`presentationMeta` 只在工具结果上存在，回合外没有可挂载的结果），改为把"未汇报"作为
   结构化 warn 日志 + `nudged` 状态暴露给后续 checker。
 - **Verify**：**先做两个前置实验**（任一失败方案要改，别先写代码）：
-  ① `inject` 里加 `agents`/`sessions` 后插件是否仍能挂上——G30 的教训是**声明了不可解析的服务会让行停在 pending**，
-     判据只认 roster 与 `cordis_inspect_query`（R9），复验必须开新会话（R7）；
+  ① ✅ **已做（2026-10-11）**：`inject` 临时加 `agents`/`sessions` → 重新 build → 冷重启 → R7 新会话，wire 里工具面仍是
+     `run_device_action` + `report_task_status` + jobs 三件（5 个），**没有停在 pending**——这两个服务在 preset 子作用域可解析，
+     G30 那个风险不成立。改动已回退（不写监听就占两个服务依赖是死代码），实施时重新加上即可；
   ② 自声明 `source.kind` 是否被 format V4 接受——用一次 followup 实测，看会话能否正常打开。
   然后：`npm run build` + `npm run test`（假 ctx 要能 emit `session/event`，锁三条：acted 未 reported 才追问、只追问一次、
   已汇报不追问）；live 按 G43 用 `cmd uimode night no` 复位 + 截图定案，跑一个模型倾向不汇报的任务，看是否被追问后补出汇报。
