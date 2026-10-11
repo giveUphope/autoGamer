@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#22 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#23 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -929,6 +929,42 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 - [x] 新阻塞有实测清单（`dist/` 缺失、`src/tests/spike/node_modules` 被正确过滤）
 - [ ] G50 的三条候选出路未验证 ⇒ 交付形态选哪条要先读文档再定（R25）
 
+### #23 G50 结案：tarball 路线端到端可用（`dist/` 天然在内），git 路线的代价是构建脚本授权
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（路线定稿；GitHub Release 那一发留成用户决定项）
+- **优先级**: 高（它决定「别人怎么装到一个能跑的 bundle」）
+- **来源**: 本机 `npm pack` + 一次完整「安装 → 加载 → 真机往返」；官方 `plugin-manager/README.md:50,54,64`、`references/host-plugin.md:7`、`install-spec.ts` 的 tarball 分支
+
+#### 问题描述
+
+#22 发现：从 GitHub 装出来的 bundle pnpm 层面 `exit 0`，但落地树**没有 `dist/`**——git 依赖只含已提交文件，`dist/` 是构建产物且被 gitignore，`package.json` 又没有 `prepare`/`prepack`。⇒ 「装成功」不等于「可用」。
+
+#### 整改方案与实施（按 G50 方案的顺序，先做零发布的那一发）
+
+1. **打包**：`npm run build` 后 `npm pack`，产出 20 个文件。实测清单：`dist/` 14 个 js（含 `dist/index.js` 9.5 kB）、`skills/autogamer-flash/SKILL.md`、`locale/{en,zh}.json`、`icon.svg`、`cordis.patch.yml`、`package.json`、`README.md`；`src/`、`tests/`、`spike/`、`node_modules/` **全部被 `files` 正确过滤**。⇒ tarball 从**已构建的工作目录**取文件，`dist/` 天然在内，不需要任何构建脚本授权。
+2. **安装**：先按 #22 清掉同名 junction，再 `pnpm add <绝对路径 .tgz>` ⇒ `Packages: +17 … added 17, done`、exit 0，依赖记为 `file:…tgz`；落地树核对 `dist/index.js` 在、`skills/…/SKILL.md` 在、`src/` 不在。
+3. **真加载**（这步才算「可用」）：起服务跑一条真机会话 ⇒ 工具面 7 个（`run_device_action`/`report_task_status`/`skill`/`plugin_manager`/`job_*`）、persona 契约在 system、`<available_skills>` 在上下文；会话日志显示 `run_device_action` 返回**带图片附件** → `turn/end` → **G44 的追问真的驱动出第 2 轮** → 模型补 `report_task_status` → 第 2 轮 `turn/end`。⇒ **packed 形态与开发态行为一致**，这是对交付形态最强的验证。
+4. **还原**：撤掉 packed 安装、删实体目录、用备份把 `package.json`/`pnpm-lock.yaml` 还原成 `link:`、`pnpm install` 重建，核对 reparse point 恢复且 `src/index.ts` 可透过链接访问。
+
+#### 路线定稿
+
+| 路线 | 结论 | 依据 |
+|---|---|---|
+| **③b GitHub Release 资产 tarball 的 URL** | **选它作为对外交付形状** | `parseInstallSpec` 把 `https://…x.tgz` 判成 `tarball` 并带 host ⇒ 地址可分享；`dist/` 天然在内；无需构建授权 |
+| ③a 本机 tarball | 已验通（本条），作为发布前自检 | 同上 |
+| ① `prepare` 脚本（git 自构建） | **不默认选** | 代价是每次都要用户批构建脚本：README:64「can grant permission … **after the user approves those scripts in the conversation**」「Approval … **permits commands with the host user's permissions**」；且 `host-plugin.md:7` 的官方取向是 bundle「needs no … install scripts, or build tool」 |
+| ② 提交 `dist/` | 兜底，不推荐 | 与 README:50「Prepare the checkout with `pnpm install` and `pnpm run build`」暗示的开发态习惯冲突，且污染仓库 |
+
+#### 验收标准
+
+- [x] `npm pack` 清单含 `dist/index.js` 与 `skills/**/SKILL.md`，`src`/`tests`/`spike` 被过滤
+- [x] `pnpm add <tgz>` ⇒ `added 17, done`、exit 0；落地树三事实核对（dist 在 / skills 在 / src 不在）
+- [x] 服务加载 packed 拷贝：7 工具 + persona + `<available_skills>`，真机动作返回图片附件
+- [x] 终态链路在 packed 形态下同样成立（未汇报 → 追问 → 第 2 轮补汇报 → 回合终结）
+- [x] 开发环境精确还原（`link:` + reparse point + 工作树干净）
+- [ ] **③b 的 GitHub Release 那一发未做**：`gh release create` 是 GitHub 端写操作，按 R19 留给用户决定
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -965,3 +1001,4 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
+| G50 | git 形态装出来的 bundle 缺 `dist/`（构建产物不在提交里） | tarball 路线端到端验通：`npm pack` 清单含 dist 与 skills、安装 exit 0、服务加载后 7 工具 + persona + 追问链路完整；对外形状定为 GitHub Release 资产 tarball 的 URL | 本文件 **#23** |

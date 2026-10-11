@@ -130,7 +130,6 @@
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
-| G50 | git 形态装出来的 bundle 不可用 | 新开（2026-10-12，#22 的附带发现）：GitHub 安装已能 `added 17` exit 0，但落地树里**没有 `dist/`**——git 依赖只含已提交文件，`dist/` 是构建产物且被 gitignore，`package.json` 又没有 `prepare`/`prepack` 脚本，没人编译。⇒ **pnpm 成功不等于 bundle 可用**。三条候选出路**都还没验证**（R25：先读机制文档再定，别连环试）：① `prepare` 脚本，但它会与 DSH 的构建脚本审批 `approvedBuilds` 相互作用；② 提交 `dist/`（脏）；③ 走 #19 已证可用的 **tarball 路线**（`npm pack` 从已构建工作目录取文件，天然带 `dist/`）。 |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -365,45 +364,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] skill 根路径不再写死绝对路径：官方 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 形态**live 走通**——`<available_skills>` 列出 `autogamer-flash`，模型调 `skill({name:"autogamer-flash"})` 拿回 1784 字符正文与 `skill_resources` 基目录
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [ ] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑
-### G50 交付形态选型：先读文档定的三条路线与取舍（2026-10-12，R22 + R25）
-
-- **What**：让「装出来的 bundle 可用」——git 形态缺 `dist/`（#22）必须解决。
-  范围：选一条路线并**在本机把它验通**；不改 py 侧；不发布 npm 包。
-  出范围：任何需要 GitHub 端写操作（建 Release、改仓库可见性）的动作都要先得到用户确认。
-- **官方口径（本轮逐字读，出处都是 `packages/boot/plugin-manager/README.md` 与官方 skill references）**
-  1. `:54` GitHub 连通性检查只管网络与超时，「Authentication, repository lookup and other failures are left to pnpm,
-     **including its HTTPS-to-SSH fallback**」⇒ #22 的更正与官方一致，`https://` spec 走 ssh 再回退是 pnpm 的既定行为。
-  2. `:64` **构建脚本审批是独立一道门**：「When pnpm 11 blocks dependency scripts, the failed installation reports
-     every pending package name … under `pendingBuilds`」；Web 侧有「**Allow these scripts and retry**」；
-     工具侧「can grant permission on the user's behalf through `approvedBuilds` on `install_bundle`,
-     **after the user approves those scripts in the conversation**」，且「Approval persists by package name in this profile,
-     **permits commands with the host user's permissions**」。⇒ 走 `prepare` 路线 = 每次新 profile 都要用户点一次构建授权。
-  3. `:50` 官方对开发形态的期待是**先构建**：「Prepare the checkout with `pnpm install` and `pnpm run build`.
-     Linked packages use that checkout's dependencies and peers; **rebuilding and restarting remain necessary after code changes**.」
-  4. `references/host-plugin.md:7`「A Host-only bundle needs no dependencies, **install scripts, or build tool**」；
-     官方随包出货的 bundle 走的是 **registry 发布件**（`badge-skill-bundle` 的 `files` 里是 `lib/index.js`，即发布前已构建）。
-  5. `parseInstallSpec`（#20 已读）：`https://…\/x.tgz` 会被判成 **`tarball` 形态并带 host**，
-     pnpm 文档也给了 GitHub 直接给 tarball 地址的例子 ⇒ **tarball 可以是一条可分享的 URL**，不必是本地文件。
-- **How（三条路线的取舍，按此顺序推进）**
-  1. **首选 ③b：Release 资产 tarball 的 URL**。`npm pack` 从**已构建的工作目录**取文件 ⇒ `dist/` 天然在内（#19 已证 `files` 白名单被 honored），
-     不需要构建脚本审批、不需要提交产物、地址可分享。**待用户确认的一步**：`gh release create` 是 GitHub 端写操作，不自己做。
-  2. **本轮先做 ③a：本机 tarball 验通**（零网络、零发布）：`npm pack` 我们的插件 → 用绝对路径 `install_bundle` 装 →
-     核对 `dist/index.js` 在不在、preset 是否挂载、`run_device_action` 是否真能跑。
-     这一发**只验 artifact 形状**，不碰 GitHub。
-  3. **① `prepare` 脚本**留作备选：它能让 git 形态自足，但代价是每次都要用户批构建脚本（口径 2），
-     且「permits commands with the host user's permissions」这句本身就说明它把信任面扩大了——**不默认选它**。
-  4. **② 提交 `dist/`** 只作最后兜底（脏，且与口径 3/4 的官方习惯相反）。
-- **Verify（③a 的可复跑判据）**
-  - `cd plugins/autogamer-device && npm run build && npm pack --dry-run` ⇒ 清单里必须有 `dist/index.js`、`cordis.patch.yml`、`locale/*.json`、`icon.svg`、`skills/**/SKILL.md`
-  - 装完后：`node_modules/autogamer-device/dist/index.js` 存在；`--dump-config` 里 `preset-autogamer` 合成；
-    新会话 wire 里 persona 契约仍在、工具面含 `run_device_action`/`report_task_status`/`skill`/`plugin_manager`
-  - 收尾：还原成 `link:` 开发态（#22 记过还原法：删实体拷贝 → 备份 manifest/lock → `pnpm install` → 核对 reparse point）
-- **Done means**
-  - [ ] ③a 本机 tarball 验通：`dist/` 在、preset 挂载、工具面完整（实测清单写回本条）
-  - [ ] 路线选择定稿并记进 CHANGELOGS（含「为什么不选 ①」的官方依据）
-  - [ ] ③b 需要 GitHub Release 的那一步，**列成给用户的决定项**，不自行执行
-  - [ ] G50 结案，`registry.md` 同步，两份门禁重跑
-
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
