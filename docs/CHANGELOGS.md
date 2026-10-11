@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#21 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#22 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -879,6 +879,56 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 - [x] 失败后 profile 三处状态（deps / bundles / 符号链接）与 `--dump-config` 全部原样
 - [ ] 权限方案未选定、未验证 ⇒ 交付路径仍不能宣称可用
 
+### #22 G49 根因确认：不是权限也不是传输，是「同名旧链接被 importPackage 顺着走」；同时暴露真正的交付阻塞
+
+- **日期**: 2026-10-12
+- **状态**: ✅ G49 结案；**另开 G50**（git 依赖不含构建产物 ⇒ 装出来的 bundle 不可用）
+- **优先级**: 高
+- **来源**: 三次单变量实验（bundled pnpm 11.7.0，服务停启各一次）+ 磁盘 reparse 属性检查
+
+#### 问题描述与结论
+
+#21 的「更正」把四条候选排除了三条（push / 传输 / Windows 权限 / 用户级配置），剩 (a) 服务占用、(b) 同名依赖就地替换。
+本轮按 R25 一次只动一个变量地跑完，结论是：
+
+- **(a) 否证**：**停掉 dsh 服务**后跑同一条命令，报错**逐字相同** ⇒ 与进程占用无关。
+- **(b) 成立**，但我上一轮那次「否证 (b)」**是无效的**——我当时只 `pnpm remove` 了 manifest 条目，
+  而 **`node_modules/autogamer-device` 那个 junction 仍在磁盘上**（正是 #19/#21 记的「remove 不删链接」行为），
+  变量根本没变。用 `os.lstat` 确认它是 reparse point（`st_file_attributes = 0x410` = DIRECTORY|REPARSE_POINT）、
+  用 `os.rmdir` **只删链接不碰目标**（删后核对仓库仍 17 项）之后，同一条 spec 立刻
+  `Packages: +17 … added 17, done`、**exit 0**。
+- **机制**：pnpm 的 `importPackage` 会**顺着这个 junction 走进我们的开发工作区**，把仓库自己的
+  `node_modules/.pnpm` 一起纳入，然后在目标路径重建里面的符号链接 → Windows 拒绝 → `ERR_PNPM_EPERM`。
+  错误里那个「源指向 `D:\DEV\autoGamer\plugins\autogamer-device\node_modules\.pnpm\…`」就是这么来的。
+- ⇒ **对真实用户（干净机器、没有源码 link 安装）这条路径本来就是通的**；
+  我们踩的是**开发机特有**的状态：同一个包先被 `link:` 装过，再换成 git 装。
+
+#### 顺带暴露的、更要紧的交付阻塞（→ G50）
+
+装成功之后核对落地的树：`README.md`、`cordis.patch.yml`、`icon.svg`、`locale/{en,zh}.json`、`package.json`、
+`skills/autogamer-flash/` 都在，`src`/`tests`/`spike`/`node_modules` 被 `files` 正确过滤——
+**但 `dist/` 不存在**，`dist/index.js` 缺失。
+原因：git 依赖只含**已提交**的文件，而 `dist/` 是构建产物、被 gitignore；`package.json` 里又**没有 `prepare`/`prepack` 脚本**，
+没人会在检出后编译。⇒ **pnpm 层面 `exit 0` 不等于 bundle 可用**。三条候选出路（**都未验证，别当结论**）：
+`prepare` 脚本（会与 DSH 的构建脚本审批 `approvedBuilds` 相互作用）、提交 `dist/`（不干净）、
+或走 #19 已证可用的 **tarball 路线**（`npm pack` 从已构建的工作目录取文件，天然带 `dist/`）。
+
+#### 环境还原（本轮把开发态改动了两次，全部复原）
+
+- 撤掉 git 安装；`dsh plugin add file:` 恢复时记录值变成 `file:` 且**落地成实体拷贝**（`readlink` 失败、无 reparse 位），
+  那样改 `src/` 不生效 ⇒ 删掉拷贝、用备份把 `package.json`/`pnpm-lock.yaml` 逐字节还原成 `link:`、
+  再 `pnpm install` 重建，最终核对：`autogamer-device` 是 reparse point 且 `src/index.ts` 可透过它访问、
+  仓库 17 项完好、工作树干净、服务重启无错误、`--dump-config` 里 `preset-autogamer` 正常合成。
+
+#### 验收标准
+
+- [x] (a) 否证：服务停止后同一命令报错逐字相同
+- [x] (b) 成立：清掉同名 junction 后 `added 17, done`、exit 0
+- [x] junction 身份由 `st_file_attributes` 判定，删除用 `os.rmdir`，删后核对仓库完整
+- [x] 开发环境精确还原（`link:` 值 + reparse point + 仓库与 git 状态无损）
+- [x] 新阻塞有实测清单（`dist/` 缺失、`src/tests/spike/node_modules` 被正确过滤）
+- [ ] G50 的三条候选出路未验证 ⇒ 交付形态选哪条要先读文档再定（R25）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -914,3 +964,4 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 | G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
+| G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
