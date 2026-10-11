@@ -157,9 +157,28 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 
 ---
 
+
+## R20 遇 DSH 行为问题先查官方一手资料取解法，不许先写猜测实现
+
+任何"宿主到底怎么做的 / 该挂在哪一层"的问题，**动手前先查官方一手资料**：`docs/subsystems/*.zh.md`（生成的服务与事件参考，含每个事件的派发模式与 scope 规则）、`docs/cordis-primer.zh.md`、`docs/cookbook/*`、三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）、公开仓库 `packages/**` 源码与 shipped preset。**查不到才允许做实验，实验必须有可观测判据（R9）**。官方自己的措辞也支持这条纪律：`presets/standard.patch.yml` 的 planning 段写着 "Do not ask the user where code lives or how current behavior works when you can find out."
+
+反例（本轮实际付过的学费）：`report_task_status` 的终态强制先在 preset 子插件里实现，`session/event` + `turn/end` 与 `agent/status` 双监听、61/61 单测全绿，live 一次都没触发。官方 `docs/subsystems/session.zh.md:1301` 早就写明 **`session/event` 是 scope-filtered dispatch：agent-scoped 监听器只收到"经该 agent 上下文进入的会话"的事件**——查这一段 30 秒就能定层，不必写一整套再回退。同一类：`goal-round-driver` 的 `inject = ['agents','goals','sessions']` 挂在 root 层，抄它即可。
+
+- **出处**：**文档口径** `docs/subsystems/session.zh.md:1299-1317`（`session/event` 派发模式与 scope 过滤）、`packages/bundle/web-app/presets/standard.patch.yml`（planning 段原文）、`packages/goal/goal-round-driver/src/index.ts`。
+- **判据**：新增/改动任何与宿主交互的代码前，在 `docs/todo.md` 对应条目里写明**查了哪份、原文怎么说**；只写"实测可用"或"看起来能跑"不算过。已有实现若被 live 否证，当场改正或回退，**不许留猜测代码**。
+
+
+## R21 手镜像的宿主契约必须标出处与版本，并区分"单测证明"与"live 证明"
+
+`src/dsh-types.ts` 里每一处手写镜像的宿主形状（服务方法、事件签名、结果字段）都必须带**出处 + 版本 + 是否 live 验证过**。宿主 npm 包在 rc.2 只随 app.asar 分发、npm 上的版本可能不同版（如 `@deepseek-ai/dsh-attachment` 是 `0.0.1-rc.1`），所以镜像有时不可避免——但它是**负债**，不是免费桩。凡"只有单测绿、没有 live 证据"的宿主交互，在 `docs/todo.md` 里必须标 🔶 并写明缺哪条证据；单测里的假 context 必须按真实语义实现（教训见 changelogs #10：假 ctx 没有 `effect`，让自注销缺陷在 CI 里隐身）。
+
+- **出处**：**文档口径** D15/R1（只用声明面）+ 本仓库 changelogs #10 的实测教训；`@deepseek-ai/dsh-llm` 的 `lib/types/*.d.ts` 引 `@deepseek-ai/dsh-attachment` 而本机未安装该版（tsc 因 skipLibCheck 静默放行，等于类型盲区）。
+- **判据**：审查表（`docs/todo.md`「宿主交互实现审查」）里每一项都有 已证 / 仅单测 / 猜测 三态之一；出现"猜测"项必须在本轮内改正、加探针或回退，不许长期挂账。
+
 ## 待补（诚实清单）
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**
-2. **仍未读，不许凭印象引用**：`docs/capability-seams.md`（63 KB，已取回）、`docs/tool-catalog.md`（102 KB，已取回，官方口径就该按关键词 grep 而非整读）、`docs/dsh-tool-call-timeout-policy`（R15 提到的包装层，其包 README 未读）、`packages/jobs/jobs/README.zh.md`（S2 长任务与 owner 语义）、`docs/subsystems/scope.zh.md`。
-3. **一条已定论的悬案**：`install_bundle` 在 CLI 侧没有等价物——本机 `dsh --help` 只列 `dsh`（boot）与 `dsh plugin`（= pnpm 转发，`--help` 打出来是 pnpm 11.7.0 的帮助），上游 `docs/cli-help.zh.md:29,71` 同述。所以 R2 表里第三层的两条可执行路径是**Web 侧边栏「插件」面板**与**在会话里让 agent 调 `plugin_manager`**（D17）；「shared by dsh CLI」那句里的 CLI 部分指的应是 `dsh plugin` 这层 pnpm 垫片，不是 install_bundle。G31 据此收口。
-4. **待查的真实字段名**：R14 的「并行安全属性」与 R15 的超时包装层入参，官方文本只给了名称描述没给字段名 —— 必须用 `cordis_inspect_query` 在装好的 Harness 上取真名（R1/R9 的口径），取到之前不许写代码。
+2. **已按 R20 补读**：`docs/subsystems/session.zh.md` 的 `session/event` 条目（1299-1317，scope-filtered dispatch 的原文，R20 的反例即出自此处）。
+3. **仍未读，不许凭印象引用**：`docs/capability-seams.md`（63 KB，已取回）、`docs/tool-catalog.md`（102 KB，已取回，官方口径就该按关键词 grep 而非整读）、`docs/dsh-tool-call-timeout-policy`（R15 提到的包装层，其包 README 未读）、`packages/jobs/jobs/README.zh.md`（S2 长任务与 owner 语义）、`docs/subsystems/scope.zh.md`。
+4. **一条已定论的悬案**：`install_bundle` 在 CLI 侧没有等价物——本机 `dsh --help` 只列 `dsh`（boot）与 `dsh plugin`（= pnpm 转发，`--help` 打出来是 pnpm 11.7.0 的帮助），上游 `docs/cli-help.zh.md:29,71` 同述。所以 R2 表里第三层的两条可执行路径是**Web 侧边栏「插件」面板**与**在会话里让 agent 调 `plugin_manager`**（D17）；「shared by dsh CLI」那句里的 CLI 部分指的应是 `dsh plugin` 这层 pnpm 垫片，不是 install_bundle。G31 据此收口。
+5. **待查的真实字段名**：R14 的「并行安全属性」与 R15 的超时包装层入参，官方文本只给了名称描述没给字段名 —— 必须用 `cordis_inspect_query` 在装好的 Harness 上取真名（R1/R9 的口径），取到之前不许写代码。

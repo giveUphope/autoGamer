@@ -16,7 +16,7 @@
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **57/57**（含 G41 终态 2 条、G42 编号 7 条）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
-| 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md) |
+| 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md)（**R20：遇 DSH 行为问题先查官方一手资料，别先写猜测实现**） |
 
 ## 一、最终形态
 
@@ -170,6 +170,24 @@
   [x] TS 不再依赖 PNG 解码，真机正反两例 `effect=changed` / `effect=unchanged`；[x] 阈值与兜底语义原样继承 `check_ui_change`（3 条行为锁）；
   [x] G39 并入已关闭行。**偏差**：工具最终落在 `adb_server.py` 而非最初写的 `action_server.py`——插件消费的是 `--type adb` 那个面，
   内部面的改动已全部撤销。
+
+### 宿主交互实现审查（2026-10-11，按 R21 三态：✅ live 已证 / 🔶 仅单测或声明面 / ❌ 猜测）
+
+| 项 | 位置 | 依据 | 态 | 处置 |
+|---|---|---|---|---|
+| `ctx.attachments.saveImages` 与 `ImageAttachmentRef` 形状 | `src/dsh-types.ts` | `docs/subsystems/attachment.zh.md` + `packages/attachment/attachment/src/types.ts` 的 `SaveImageAttachment{data,mediaType,name}` | ✅ | live 实证附件落盘且模型收到像素（changelogs #11）。**残留风险**：`@deepseek-ai/dsh-attachment` 本机未装（npm 只有 0.0.1-rc.1），dsh-llm 的 .d.ts 引它 → tsc 静默放行，是类型盲区；升级宿主时优先核对 |
+| `exec.concludeTurn()` 终结回合 | `src/tools/reportTaskStatus.ts` | `@deepseek-ai/dsh-tools` 类型原文 "The agent loop stops after committing this successful result batch" | 🔶 | 单测锁死，**live 未证**——模型至今不调 `report_task_status`（G44），所以这条从未被走到。G41 状态栏已注明 |
+| `inject` 必须声明才能读服务 | `src/index.ts` | 实测抛 `cannot get property "attachments" without inject` + `docs/cordis-primer.zh.md:11` | ✅ | 已入 S5 |
+| `session/event` 会送达 `turn/end` | 已回退 | 曾按事件名推断，live 只收到 `tool/call` | ❌→已清 | **猜测实现已全部回退**（不留死代码，插件侧回到 57/57）。正解见 R20：`session/event` 是 scope-filtered，agent-scoped 只听本上下文会话；回合边界要挂 Host 级插件（照 `goal-round-driver`） |
+| `source:{kind:'autogamer', plugin:…}` 追问消息源 | 已回退 | 无任何依据自造字段；且 R17 明载 `{kind:'plugin',plugin}` 已被 session format V4 拒绝 | ❌→已清 | 随上条回退。**遗留未知**：自声明 `MessageSourceMap` kind 能否过 V4，换到 Host 层后先验（`docs/subsystems/scope.zh.md` 仍未读） |
+| py 结果契约的字符串嗅探（`Success`/`Failed`/`Error executing tool`） | `normalizeOutcome` / `classifyMessage` | 实测 `--type adb` 面就是返回纯字符串（`adb_server.py` 各分支 `return "Success"`），非结构化 | ✅ 形态真实 | 但**按文本分类环境/任务失败很脆**，插件内部错误会被误记成 task 级——已登记 **G38**，与 S4 熔断语义同源 |
+| 0-1000 ↔ 像素换算、PNG/JPEG 头取尺寸 | `src/coord.ts` | G24 契约 + live 双证（真机 1600x900、mock 1080x2400） | ✅ | 保留 |
+| `#N` 编号可见元素列表 | `src/hierarchy.ts` | 先按 XML 猜（❌ 从未有测试）、后按实测 JSON 载荷重写 | ✅ | 现 7 条单测锁死 + live 两轮命中（`#28`/`#17` 达成 T2）。**旧 XML 解析器无测试正是缺陷存活原因**，已入 R21 判据 |
+| `EFFECT_SETTLE_MS=600`、`RENDER_HIERARCHY_BUDGET=6000` | `runDeviceAction.ts` | 前者经验值（无官方依据）；后者实测（27 元素被 200 字符截断） | 🔶 / ✅ | 沉降时长待与真机动画时长对表；若出现漏判 `changed` 优先调它 |
+| 设备闸门 WeakMap promise 链 | `src/gate.ts` | 官方样板 `tool-bash-persistent` 形态；已核宿主无信号量 | ✅ | live 两会话串行实证（S10 ③） |
+| `timeoutMs` 仅作声明 | 两处工具定义 | R15（注册表绝不执行它） | ✅ | 超时由 `ActionClient` 自实现并观测 `exec.signal` |
+
+**结论**：两处纯猜测（回合事件投递范围、追问消息源）已全部回退而非留库；其余每项都归到三态之一。真正的遗留是 **G44 需要换层重做**（Host 级插件），以及 `concludeTurn` 与 `source.kind` 两条 live 空白。
 
 ### G44 完整方案 spec（2026-10-11 定稿待实施：让 `report_task_status` 成为终态唯一出口）
 
