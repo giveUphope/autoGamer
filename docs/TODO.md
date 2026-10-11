@@ -8,11 +8,11 @@
 
 | 项 | 现状 |
 |---|---|
-| 阶段 | **P0 已出 D9 裁决（2026-10-11 深夜）**：G45 指令投递接线完成（CHANGELOGS **#14**），flash 契约真的进了 system（4052 字符、起于第 50 字符）；**真机 spike 重跑 T1 17s/5 步、T2 22s/7 步，两个任务全部达成且回合自己收尾**（基线 77.2s/6 步、42.1s/3 步；上一版插件侧 T2 是 47 请求失控人工停）⇒ **D9「直通」在执行质量这一维成立**。骨架 / 离线 spike / 安装流 / conformance ✅，S10 四点 ✅，G42 live ✅。**遗留：终态语义没闭合**——接线后模型仍不调 `report_task_status`（G44 前提这次成立）、G41 `concludeTurn` 的 live 证据仍缺、兜底追问从未触发（新开 **G46**） |
+| 阶段 | **P0 收官（2026-10-11 深夜）**：G45 指令投递接线完成（CHANGELOGS **#14**），flash 契约真的进了 system（4052 字符、起于第 50 字符）；真机 spike 重跑 **T1 17s/5 步、T2 22s/7 步，两个任务全部达成**（基线 77.2s/6 步、42.1s/3 步；接线前 T2 是 47 请求失控人工停）⇒ **D9「直通」在执行质量这一维成立**。**终态语义也已闭环**（CHANGELOGS **#15**）：`concludeTurn()` 拿到 live 证据（G41 ✅）、未汇报回合的兜底追问端到端可用（G44 ✅）、T1 重跑 8 次动作全用 `{index:N}` 句柄零坐标回退（G42 再证）。骨架 / 离线 spike / 安装流 / conformance ✅，S10 四点 ✅。**G46 当日撤回**——拿 wire 请求体推断「没汇报」是错的，据此立守则 **R24**：判「没发生」只认会话日志 |
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G46**：判别兜底追问为何从不触发（三个候选：`turn/end` 没进监听 / 手镜像的 `currentInitiator()` 在真宿主上返回 undefined / `followup()` 被拒），它和 G44 一起决定「终态唯一出口」是否真的存在——注意取证只认会话日志与 wire，**插件 `ctx.logger` 不进 dsh stdout**；**2)** G41 的 `concludeTurn()` live 证据（要么模型终于调了汇报工具，要么承认本地模型撑不起 S2 终态、改由插件侧强制）；**3)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31，含 skill 根路径的随包解析与 skill 接线）；**4)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**5)** P1 开工前注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面 |
+| 下一步（按序） | **1)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31，含 skill 根路径的随包解析与 skill 接线）——P0 的功能面已收官，这条是「怎么装」的最后一块；**2)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**3)** P1 开工：pro subagent（checker/validator 保真）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**4)** 一条未解释的残余观察（不当结论）：同一份 dist 在 23:12 那个服务实例上两轮都没触发追问，23:38 / 23:47 两个实例上稳定触发——再复现就按新号开 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **57/57**（含 G41 终态 2 条、G42 编号 7 条）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
@@ -132,10 +132,7 @@
 | G35 | 文档门禁脚本默认路径写死 | 新开（本机复现）：`scripts/check_doc_tables.py` 的 `DEFAULTS` 硬编码 `D:/DEV/autoGamer/...`，仓库位于其他路径的机器上直接运行即 `FileNotFoundError`，门禁不可复现；应像 `check_doc_registry.py` 一样从脚本位置推导仓库根后拼默认集 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
-| G41 | 终态不收敛：`report_task_status` 不结束回合 | **代码已落地**（`exec.concludeTurn()`，声明面原文为证 + 2 条单测锁）。G44 的机制已通（追问能送达模型），但 `concludeTurn` 的 live 证据**仍缺**。**原记的「模型收到明确指令后仍不调用该工具」前提作废**——按 G45，模型从未收到任何指令，所以这条不是服从性结论，要在接线后重测。原发现（2026-10-11 真机 spike T2，**严重**）：模型调用 `report_task_status(status=blocked)` 之后**回合继续跑**——它把「已汇报」当成「还没成」，进入自我救火式指数退避 （`wait` 2s→5s→10s→…→7200s），每轮再补一次 `report_task_status`，70 秒内 47 次模型请求、12+ 次汇报，**必须人工点「停止生成」才停**。S2 说「终态 = 汇报工具的 completed/blocked」，但 DSH 侧没有任何机制让一次工具调用终结回合——这是语义缺口不是模型毛病。方向：终态要么由工具返回结构告诉宿主停止（查官方是否有 tool→end-turn 的声明面形态），要么在插件侧 guard/pre-execute 拦住「已汇报后再动设备」，要么给 wait/重试设硬预算并让超出预算直接结束回合 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
-| G44 | 模型可以不调 `report_task_status` 就结束回合 | **机制已闭环**（CHANGELOGS #13）：`turn/end` 需 `{global:true}` 才收得到（R20 原文），且追问必须推迟出 append 边界（新守则 R23）；live 四段全通——追问被受理、驱动出第二轮、文本送达模型，实验② 同时结案（自声明 `source.kind:"autogamer"` 过 session format V4）。**剩模型服从性**：本地 qwen 收到明确指令后仍 1 秒空返回、不调工具——归入 D9 质量裁决的输入，不再算机制缺口。**指令来源要说清（G45 的教训）**：这条收到的指令是插件自己注入的追问文本，不依赖 persona/skill 投递，所以它**不受 G45 前提失效影响**，结论仍成立 |
-| G46 | 未汇报追问在交付形态下**从不触发** | 新开（2026-10-11 G45 接线后的首个干净真机轮实证）：T1 会话里模型做完 5 次设备动作、直接文本「已完成」收尾、没调 `report_task_status`，而会话日志只有 2 条 user 消息（目标 + 运行时上下文快照）、`turn/end` 一条，**没有任何追问消息**——G44 修好的那条兜底机制在真实交付形态下是死的。**根因候选（按 R21 定性）**：`markActed` 用的 `ctx.agents.currentInitiator()` 只存在于我们手写的 `src/dsh-types.ts:55` 镜像里，从未 live 验证；`tests/apply.spec.ts:112` 的双件把它定义成有值，于是 62/62 全绿而真机永不触发。官方 `docs/subsystems/core.zh.md:612` 确有 `currentInitiator()`（返回 `Agent` 或 `undefined`）且 `Agent.id: SessionId`（core.zh.md:67），所以键语义应当是对的——**要用探针判别到底是哪一环**（`turn/end` 没进监听 / `currentInitiator()` 返回 undefined / `followup()` 被拒）。**顺带记一条取证纪律**：插件 `ctx.logger` 的输出**不进 dsh web 的 stdout**（`web-server46.log` 里 `[route]` 与 `[turn]` 都是 0 条，而动作确实跑了），所以「日志里没有」不能当证据，判生效只认会话日志与 wire |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -286,17 +283,18 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 **`effect=unchanged`** → 模型据此换坐标点 dock 图标（`effect=changed`）→ 点开关（`changed`）→ 再截图自查。
 **全程没有一次 index 解析失败，也没有原样重试被拒动作**（persona 第 4 条）。
 
-**D9 裁决：直通成立（在执行质量这一维）。** 两个任务全部达成、耗时约为基线的一半、
-并且带着基线没有的三样：逐动作效果判定、截图真进模型、闸门/连发/媒体四点此前已全通过。
-上一版判定「直通暂不成立」的两条理由（G42 编号定位、G41 终态不收敛）里，**G42 已 live 通过**，
-G41 的失控现象在这轮直接消失。
+**D9 裁决：直通成立。** 两个任务全部达成、耗时约为基线的一半，并且带着基线没有的三样：逐动作效果判定、
+截图真进模型、闸门/连发/媒体四点此前已全通过；上一版判定「直通暂不成立」的两条理由
+（G42 编号定位、G41 终态不收敛）现在都有 live 反证。
 
-**但裁决有两处必须写清的保留**：
-1. **终态语义仍未闭合**：两轮都**没有调用 `report_task_status`**——这次契约确实在上下文里，
-   所以 G44 的「模型不服从」第一次成为**前提成立的观察**（不再是 G45 那种假前提）。
-   回合是靠模型自己文本收尾结束的，`concludeTurn()` 的 live 证据**依旧缺失**（G41 保持未结案）。
-2. **兜底机制是死的**：会话日志里没有任何追问消息 → G46。修完 G46 才谈得上「终态唯一出口」。
-3. 样本只有 2 个任务、每任务 1 次，且都在设置应用内；换应用/输入类任务未测。
+**裁决后复查（同日深夜，CHANGELOGS #15）改写了本页对终态的判断**：
+1. ~~终态语义仍未闭合~~ → **已闭合**。T1 重跑的会话日志里 `report_task_status` 的 `tool/call` 之后**直接** `turn/end`、
+   无后续 `step/start` ⇒ `concludeTurn()` live 生效（G41 ✅）；故意"只截图不汇报"的会话里追问真的落进日志
+   （`source.reason:"unreported-turn"`）并驱动出第二轮，模型在第二轮补出汇报（G44 ✅）。
+   **上面那条"接线后模型仍不调 `report_task_status`"是拿 wire 请求体数出来的假结论**——
+   终结回合的那次工具调用永远不会出现在后续请求体里（守则 **R24**）。
+2. ~~兜底追问是死的（G46）~~ → **G46 当日撤回**，登记为撤回条目（同 G40）。
+3. 样本只有 2 个任务、每任务 1 次，且都在设置应用内；换应用/输入类任务未测——这条保留，是 P1 的验收面。
 
 **顺带把 G43 判据钉牢**：T2 达成后 `settings get secure ui_night_mode` **仍读 2**，而截图明确是深色。
 ⇒ 这台 ROM 上该 setting 根本不是深色主题的真相来源，**达成与否只认截图**（上表基线那格拿它当过旁证，注意）。

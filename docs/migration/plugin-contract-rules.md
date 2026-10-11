@@ -193,6 +193,23 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 - **出处**：**文档口径** `docs/subsystems/session.zh.md:609,1301`、`packages/core/scope/README.zh.md:71,75`、cordis 4.0.4 `lib/types/events.d.ts:98-105`；**实测** 本仓库 CHANGELOGS #13（同步调用被拒的原文错误串）。
 - **判据**：插件里任何"事件回调 → 注入/append"的路径必须有边界外推迟，且单测要等一个宏任务再断言注入发生。
 
+## R24 判「某事没发生」只认会话日志；wire 与插件 logger 都无否证力的
+
+取证渠道的能力边界必须写死，否则会产出**看似严谨的假发现**（本仓库一天内两次：G40 的 UI 探针、G46 的 wire 推断）：
+
+1. **wire 请求体看不到终结回合的那次工具调用**。`report_task_status` 若带 `concludesTurn`，它是本轮**最后一个** tool call，
+   之后不再有模型请求，所以它**永远不会出现在任何请求体里**。拿 `proxy-dump.log` 数 `report_task_status` 得出「模型没汇报」，
+   在成功路径上必然得到假结论。
+2. **插件 `ctx.logger` 不进 dsh 的 stdout**。实测：真机动作确实跑了，但 `web-server*.log` 里 `[route]` / `[turn]` 各 0 条。
+   所以「日志里没有」不能作为证据。
+3. **唯一可信的是会话日志**：`~/.dsh/sessions/<workspace>/session-<id>/session.v4.jsonl.zstd`（zstd 帧流，
+   须用 `ZstdDecompressor().stream_reader` 读，`decompress()` 只会拿到第一帧＝1 条记录）。
+   它按序记 `turn/start`、`user/message`（含 `source.kind`/`source.reason`）、`tool/call`、`turn/end`（含 `reason.kind`）。
+   「追问是否发生」看有没有 `source.reason:"unreported-turn"` 的 user 消息 + 第二个 `turn/start`；
+   「`concludeTurn` 是否生效」看 `report_task_status` 的 `tool/call` 之后是否**直接** `turn/end` 而无新的 `step/start`。
+- **出处**：**实测** 本仓库 CHANGELOGS #15（G46 当日撤回，根因就是拿 wire 当否证依据）。
+- **判据**：任何「没发生」的结论，正文里必须写明是**从会话日志的哪条记录**读出来的；只写 wire/日志 grep 结果的，一律当未定论。
+
 ## 待补（诚实清单）
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**

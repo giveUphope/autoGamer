@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9, #10, #11, #12, #13, #14, #15 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -533,6 +533,50 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [ ] **重判结果**：接线后模型**依旧不调用 `report_task_status`**——G44 的服从性观察这次前提成立；
       G41 的 `concludeTurn()` live 证据仍缺；兜底追问从未触发，另开 **G46**
 
+### #15 终态闭环：`concludeTurn()` 拿到 live 证据，G44 的兜底追问实证可用（G46 当日撤回）
+
+- **日期**: 2026-10-11
+- **状态**: ✅ G41 / G44 关闭；G46 为当日撤回的错误归因
+- **优先级**: 高（S2 终态语义是 P0 的最后一块）
+- **来源**: 会话日志 `~/.dsh/sessions/--D-DEV-llm-endpoint-probe--/session-{429a5560,ccb9a927}/session.v4.jsonl.zstd` + 临时文件探针（已回退，`grep PROBE dist/` = 0）
+
+#### 问题描述
+
+G45 接线后重跑真机 spike，T1/T2 两轮都"没有调用 `report_task_status`、也没有追问"，据此开了 **G46**
+（"未汇报追问在交付形态下从不触发"），并怀疑 `markActed` 用的手镜像访问器 `ctx.agents.currentInitiator()`。
+
+**两条都是错的，根因是取证渠道**：`report_task_status` 带 `concludesTurn`，它若是本轮**最后一个** tool call，
+之后不再有模型请求，于是**永远不会出现在任何请求体里**——拿 `proxy-dump.log` 数它就是看不见。
+叠加"插件 `ctx.logger` 不进 dsh stdout"（真机动作跑了，但 `[route]`/`[turn]` 各 0 条），
+两条无否证力的渠道拼出了一个自洽的假发现。这与同日 G40（按固定 `aria-label` 找发送按钮）是同一类错误。
+
+#### 整改方案与实施
+
+1. **回退猜测**：临时文件探针（`appendFileSync` 打在 `initiator ->` / `event` / `consumeTurn` / `followup` 四个判定点）
+   跑一轮真机任务，直接读 `dist/` 确认探针已编译进去，定性后 **`git checkout src/index.ts` + 重新 build**，零残留。
+2. **探针结论**：`currentInitiator()` 返回的就是 session id（`initiator -> session-429a5560…`），
+   `turn/end` 收得到，`consumeTurn` 判定正确——**G46 不成立，撤回**（登记为撤回条目而非删除，同 G40）。
+3. **改读会话日志**（唯一可信渠道）取到两条 live 证据：
+   - `session-429a5560`（T1 重跑）：8 次 `run_device_action`（全部用 `{index:N}` 句柄，零坐标回退）
+     → `tool/call report_task_status` → **直接 `turn/end {kind:"completed"}`，其后无 `step/start`**
+     ⇒ **`concludeTurn()` 真机生效，G41 结案**。
+   - `session-ccb9a927`（故意"只截图不汇报"）：turn 1 以文本收尾未汇报 → 会话日志出现
+     `user/message` 且 `source {kind:"autogamer", reason:"unreported-turn"}` → `turn/start {turn:2}`
+     → 模型在第二轮**调用 `report_task_status`** 并终结 ⇒ **G44 的兜底追问端到端可用**。
+4. **守则新增 R24**：判「没发生」只认会话日志；wire 与插件 logger 都无否证力；并记下
+   `session.v4.jsonl.zstd` 是 zstd **帧流**，必须用 `stream_reader` 读（`decompress()` 只给第一帧＝1 条记录，
+   这正是我一开始误判"会话里没有追问"的第二个坑）。
+5. **未解释的残余观察（照实记，不当结论）**：同一份 dist 在 23:12 那个服务实例上两轮都没触发追问，
+   在 23:38 / 23:47 两个实例上稳定触发。若再次复现，按新号重开并先查服务实例差异。
+
+#### 验收标准
+
+- [x] 探针代码零残留（`git checkout` + `npm run build`，`grep -c PROBE dist/index.js` = 0，工作树干净）
+- [x] **G41 live**：`report_task_status` 的 `tool/call` 之后直接 `turn/end`，无后续 `step/start`（会话日志 `session-429a5560`）
+- [x] **G44 live**：未汇报回合被追问（`source.reason:"unreported-turn"` 落进日志）→ 第二轮模型补出 `report_task_status` 并终结（`session-ccb9a927`）
+- [x] **G46 撤回**并登记为撤回条目；守则补 **R24**，`registry.md` 同步
+- [x] 插件 vitest 62/62 仍绿（本轮无生产代码改动）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -560,3 +604,6 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 | G40 | 运行中 UI 不接受第二条消息（**当日撤回的错误归因**） | 探针按固定 `aria-label="发送消息"` 找按钮，把运行中主按钮切成「排队发送」误读成入口消失；改按按钮位 class 枚举后实测 QueueDock 原生可用、回合结束按序执行 | TODO「S10 ③/④」条 + 守则 R20 取证方法 |
 | G42 | `{index}` 元素定位整条不可用 | 按数组位置统一编号（模型所见与解析同源）+ 修掉 render 的 200 字符截断；7 条单测 + live 两轮命中 `#28`/`#17` | 本文件 **#11** 之后的修复轮（TODO「G41/G42 修复轮」条） |
 | G45 | 交付 preset 没有指令投递行，flash 契约从未进过模型 | `persona` 行（`config.prefix` 五条硬约束，文本内无 `{{}}`）同时进交付形态与 overlay；新会话 wire 断言 system 4052 字符、契约起于第 50 字符 | 本文件 **#14** |
+| G41 | 终态不收敛：`report_task_status` 之后回合继续跑 | `exec.concludeTurn()` live 实证：汇报的 tool/call 之后直接 `turn/end`、无后续 `step/start`（会话日志 `session-429a5560`） | 本文件 **#15** |
+| G44 | 模型可以不调 report_task_status 就结束回合 | `{global:true}` 监听 + 边界外 `followup()` 的兜底追问端到端可用：追问落进日志、第二轮模型补出汇报并终结 | 本文件 **#15** |
+| G46 | 追问从未触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status`——而终结回合的那次调用永不出现在请求体里；改读会话日志后机制完好，据此立守则 R24 | 本文件 **#15** |
