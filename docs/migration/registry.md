@@ -72,7 +72,6 @@
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 | G38 | 插件内部错误被归类成任务级失败（熔断语义被污染） |
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
-| G47 | `install_bundle` 的两项未验：失败是否真回滚 profile 文件、`files` 打包清单是否生效 |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
 
@@ -101,6 +100,7 @@
 | G40 | 运行中 UI 不接受第二条消息（**当日撤回的错误归因**） | 探针按固定 `aria-label="发送消息"` 找按钮，把运行中主按钮切成「排队发送」误读成入口消失；改按按钮位 class 枚举后实测 QueueDock 原生可用、回合结束按序执行 |
 | G46 | 未汇报追问在交付形态下从不触发（**当日撤回的错误归因**） | 拿 wire 请求体数 `report_task_status` 推断「没汇报也没追问」；实际那次汇报是**终结回合的最后一次工具调用**，永远不会出现在后续请求体里。改读会话日志后：追问与汇报都正常发生，详见 CHANGELOGS **#15** 与守则 **R24** |
 | G45 | 交付 preset 没有指令投递行：flash 契约从未进过模型，spike 与服从性观察的前提都不成立 | `persona` 行进交付形态与 overlay（文本内禁 `{{}}`）；新会话 wire 断言 system 4052 字符、契约起于第 50 字符；详见 CHANGELOGS **#14** |
+| G47 | `install_bundle` 的两项未验：失败是否真回滚 profile 文件、`files` 打包清单是否生效 | 一次性包三轮实测：两例失败后 profile 两文件 SHA256 不变；tarball 安装落地树恰等于 `files` 白名单；详见 CHANGELOGS **#19** |
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 从脚本自身位置推导仓库根；自测锚点改为动态取第一条 G 行；详见 CHANGELOGS **#16** |
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/{en,zh}.json 的 meta.title/description + 原创 icon.svg + exports/files；详见 CHANGELOGS **#17** |
 | G31 | 引入流仍靠手工：交付形态要迁 install_bundle | 一次性空 bundle 端到端验通 install_bundle（applied/注册/撤除干净）；随包 skill 路径改官方 !!js 解析；详见 CHANGELOGS **#18** |

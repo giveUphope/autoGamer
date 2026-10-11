@@ -130,7 +130,6 @@
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
-| G47 | `install_bundle` 两项未验 | 新开（2026-10-12，G31 结案时留下的两条）：① **失败路径没验过**——官方 JSDoc 承诺「A run that fails, is cancelled, or adds a package without a bundle patch restores `package.json` and `pnpm-lock.yaml` as they were」，源码里是 `catch → restoreFiles(files)`，但我们只走过成功安装，这条回滚出口从未被触发观测；② **packed file list 没验过**——本地目录安装被 pnpm 解析成 `link:`，官方明说 `files` 不过滤链接目录，所以「bundle 里到底哪些文件进得去」目前没有任何证据。方案见「G47 install_bundle 两项验证」条 |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -365,43 +364,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] skill 根路径不再写死绝对路径：官方 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 形态**live 走通**——`<available_skills>` 列出 `autogamer-flash`，模型调 `skill({name:"autogamer-flash"})` 拿回 1784 字符正文与 `skill_resources` 基目录
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [ ] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑
-### G47 install_bundle 两项验证：失败回滚 + packed file list（2026-10-12，R22 三步序）
-
-- **What**：把 G31 结案时留着的两条「未验」做掉——(1) 失败安装是否真把 profile 的 `package.json` 与
-  `pnpm-lock.yaml` 恢复原样；(2) `files` 的打包清单是否真生效。
-  明确出范围：**不发布到任何 registry，也不 push 仓库**（push 属用户专属决定，R19）。
-- **官方口径（本轮从 `packages/boot/plugin-manager/src/install-spec.ts` 与 `index.ts` 逐字读，非推断）**
-  - `parseInstallSpec` 只认四种形态：`registry` / `path` / `tarball` / `git`；**本地路径必须绝对**
-    （`a local path must be absolute`），`file:`/`link:` 前缀会被剥掉。
-  - **git 形态三种写法**：shorthand `github:`/`gitlab:`/`bitbucket:`/`gist:`、
-    `git://`/`git+https://`/scp 式 `git@host:`、以及普通仓库网页地址 `https://host/user/repo[.git][#ref]`
-    （`HOSTED_REPOSITORY_URL`）。`installBundle` 会先跑 `checkGithubConnection`，
-    **只有 network/timeout 才拦安装**，鉴权与传输回退归 pnpm。
-    ⇒ 「用 GitHub 仓库地址安装」官方支持；但一次**成功**的 git 安装需要一个可达（已 push）的仓库。
-  - URL 既非 git 亦非 tarball 直接拒：`a URL must point at a git repository or a tarball`。
-  - **tarball 形态**：绝对路径且以 `.tgz`/`.tar.gz` 结尾即 `kind:'tarball'`。
-    ⇒ **验 `files` 不必发布**：`npm pack` 产出的 tarball 正是「按 `files` 打包」那一步，
-    把它的绝对路径交给 `install_bundle` 就能测。
-  - 回滚出口是共用的：`installBundle` 先 `readRestoredFiles()` 快照，try 内任何抛出
-    （`invalid-spec` / 网络 / pnpm 非零退出 / `ambiguous-install` / **`not-bundle`** / `incompatible-version`）
-    都走 `catch → restoreFiles(files) → rethrow`。
-- **How（两个实验都用一次性产物，不碰在用的 autogamer-device；临时包放 gitignored 的 `scratch/`）**
-  1. **失败回滚**：造一个 pnpm 装得上但**没有 `dsh.bundle`** 的包（官方点名的 `not-bundle` 路径）。
-     安装前后对 profile 的 `package.json` + `pnpm-lock.yaml` 取 SHA256，**逐字节相同**才算过；
-     同时确认 `dsh.profile.bundles` 没被留下脏条目。
-  2. **git 形态第二例**：`target` 给一个不存在的公开仓库地址（`https://github.com/<确定不存在的用户>/<确定不存在的仓库>.git`）。
-     预期连接检查放行（host 可达）、pnpm 失败、同样回滚 ⇒ 顺带取得「git spec 被接受并路由」的实测证据。
-  3. **packed file list**：对 `plugins/autogamer-device` 跑 `npm pack` 得 tarball，用其**绝对路径**装一次；
-     检查装进 profile 的那棵树里有哪些文件（`dist/`、`cordis.patch.yml`、`locale/`、`icon.svg`、`skills/` 应在；
-     `src/`、`tests/`、`spike/` 不应在），并确认 preset 仍能挂载。验完 `remove_bundle` 撤掉、删 tarball。
-- **Verify**：哈希比对 + `npm pack --dry-run` 清单与安装后目录树三方对照（命令写进 Done means 的勾选证据里）。
-- **Done means**
-  - [ ] `not-bundle` 失败后 profile 两文件 SHA256 不变，且失败信息可见
-  - [ ] 不存在的 GitHub 仓库地址：spec 被接受、安装失败、同样回滚（记为 git 形态实测证据）
-  - [ ] tarball 安装成功，`files` 白名单生效的实测清单写进台账（哪些进、哪些被过滤）
-  - [ ] G47 结案进 CHANGELOGS，`registry.md` 同步，两份门禁重跑
-  - [ ] 若「成功的 git 安装」仍缺证据，明确记为「需要已 push 的仓库」的 user-only 待决项，不自己 push
-
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表

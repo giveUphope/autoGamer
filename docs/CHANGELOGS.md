@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#18 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#19 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -690,6 +690,65 @@ G45 接线时又留了一项：随包 skill 的根路径当时只能写绝对路
       `files` does not filter a linked directory」一致。我们在用的 `autogamer-device` 同样是 `link:`。
       ⇒ 要验 `files` 是否真过滤，必须走发布件或 tarball，本轮不假装验过。
 
+### #19 G47：`install_bundle` 的失败回滚与 packed file list，两条都拿到实测
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（顺带钉牢一条 spec 语法与一条残留事实）
+- **优先级**: 高（G31 结案时留下的两条「未验」）
+- **来源**: 官方源码 `packages/boot/plugin-manager/src/install-spec.ts`（`parseInstallSpec` 全文）与
+  `src/index.ts:485-594`（`installBundle` 的快照/回滚出口），加三轮 live 实测
+
+#### 问题描述
+
+G31 结案时明记两条没验：① 失败安装是否真把 profile 的 `package.json`/`pnpm-lock.yaml` 恢复原样；
+② `files` 打包清单是否生效（本地目录安装被 pnpm 解析成 `link:`，官方说 `files` 不过滤链接目录）。
+本轮把两条都做成了实测，并且**没有发布到任何 registry、也没有 push 仓库**。
+
+#### 整改方案与实施（三个实验，全部用 gitignored `scratch/` 下的一次性包）
+
+1. **失败回滚（官方点名的 `not-bundle` 路径）**：造一个 pnpm 装得上但没有 `dsh.bundle` 的包
+   `@local/dsh-not-a-bundle`，`install_bundle` 之。返回
+   `{"stage":"install","changed":false,"application":"failed","packageResult":{"exitCode":0,…}}`
+   ——pnpm 自己成功了（exitCode 0），是 `installBundle` 在 `manifest?.dsh?.bundle === undefined` 处拒掉的。
+   **安装前后对 profile 的 `package.json` 与 `pnpm-lock.yaml` 取 SHA256，两文件完全一致**，
+   `dependencies` 与 `dsh.profile.bundles` 都没留下脏条目 ⇒ 源码里 `catch → restoreFiles(files)` 那条出口实测成立。
+2. **GitHub 地址形态**：`target` 给 `https://github.com/<不存在的用户>/<不存在的仓库>.git`。
+   结果 `application:"failed"`、`changed:false`，pnpm `exitCode:1`，错误输出是
+   `Command failed with exit code 128: git ls-remote "git+ssh://git@github.com/…"`
+   ⇒ 三点结论：**(a) 普通仓库网页地址被官方接受并路由**（不是 `invalid-spec`）；
+   **(b) 一次成功的 git 安装需要一个可达（已 push）的仓库**，push 属用户专属决定（R19），本轮不做；
+   **(c) ⚠️ 实测到一个坑**：`https://github.com/…` 会被 pnpm 翻成 **`git+ssh://git@github.com/…`** 去 `ls-remote`，
+   本机没有 GitHub SSH 授权时，**连真实公开仓库也可能失败**；`parseInstallSpec` 另外接受显式
+   `git+https://…` 形态，将来走这条路要优先用显式 https。
+   本例同样完成回滚（两文件 SHA256 不变）。
+3. **packed file list**：造一次性包 `@local/dsh-pack-probe`，`files: ["index.js","cordis.patch.yml","kept/"]`，
+   另设备选项之外的 `dropped/drop.txt`。`npm pack` 产 tarball（`tar -tzf` 显示只含 4 个文件，`dropped/` 已被过滤），
+   再把 **tarball 的绝对路径**交给 `install_bundle`：`application:"applied"`，
+   profile 依赖记为 `file:…local-dsh-pack-probe-1.0.0.tgz`（**不是 `link:`**），
+   落地树里只有 `cordis.patch.yml` / `index.js` / `package.json` / `kept/keep.txt`，**`dropped/` 不存在**
+   ⇒ `files` 白名单端到端生效，且**验它不需要发布件**——`npm pack` 的 tarball 就是过 `files` 的那一步。
+4. **顺手钉一条 spec 语法**（`parseInstallSpec` 原文，免得以后再猜）：只认四种形态
+   `registry` / `path` / `tarball` / `git`；**本地路径必须绝对**（`a local path must be absolute`，
+   `file:`/`link:` 前缀会被剥掉）；git 三种写法 = shorthand `github:|gitlab:|bitbucket:|gist:`、
+   `git://`/`git+https://`/scp 式 `git@host:`、普通仓库网页地址 `https://host/user/repo[.git][#ref]`；
+   URL 既非 git 亦非 tarball 直接拒（`a URL must point at a git repository or a tarball`）。
+   `installBundle` 对 git 形态先跑 `checkGithubConnection`，**只有 network/timeout 才拦**，鉴权与传输回退归 pnpm。
+
+#### 验收标准
+
+- [x] 失败回滚：`not-bundle` 与「不存在的 GitHub 仓库」两例，profile 两文件 SHA256 **前后逐字节相同**，manifest 无脏条目
+- [x] packed file list：tarball 安装成功，落地树 = `files` 白名单（`kept/` 在、`dropped/` 无），依赖记为 `file:…tgz`
+- [x] 一次性产物全部撤除：`remove_bundle` 后 `@local/dsh-pack-probe` 不在 deps 与 bundles 里，
+      `autogamer-device` 仍是 `link:D:/DEV/autoGamer/plugins/autogamer-device` 原样在位
+- [x] 官方检查器复核：`--profile web --dump-config` 里 `preset-pack-probe` / `preset-probe-noop` 均已消失
+- [ ] **⚠️ 新记一条事实（不是缺陷，是行为）**：**失败的安装与 `remove_bundle` 都会把
+      `node_modules/@local/<pkg>` 那个符号链接留在原地**——实测残留过 `dsh-not-a-bundle`（失败装的）与
+      `dsh-probe-preset`（上一轮 remove 后源目录已删，链接变悬空），而 `pnpm-lock.yaml` 里 0 处提及。
+      与官方 JSDoc「downloaded files can stay」一致。⇒ **G31 说的「移除干净」只在 manifest/lock 层面成立**，
+      要清目录得手工删链接（本轮已手工清掉，全部是我自己产生的一次性产物）。
+- [ ] **仍缺的证据（明确挂账，不假装）**：一次**成功**的 GitHub 仓库安装。它需要一个已 push 且可达的仓库，
+      push 属用户专属决定（R19）；且实测 `https://` 形态会被翻成 `git+ssh://`，真要走通得先解决传输与授权。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -723,3 +782,4 @@ G45 接线时又留了一项：随包 skill 的根路径当时只能写绝对路
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 改从脚本自身位置推导仓库根；自测的注入锚点改为动态取差距表里第一条 G 行，不再绑定任何具体差距编号 | 本文件 **#16** |
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/en.json + locale/zh.json 的 meta.title/description、原创 icon.svg（684 B）、exports 与 files 登记；面板 live 已渲染中文标题与图标 | 本文件 **#17** |
 | G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
+| G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
