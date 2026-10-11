@@ -137,7 +137,7 @@
 
 ## 五、Checklist（R2' 里程碑）
 
-- [ ] **P0 骨架与 spike**：`autogamer-device` 包骨架（run_device_action 工具骨架 + 闸门 + preset；`cordis.patch.yml`/peerDependencies/`dsh plugin add`/`--dump-config`）+ **S10 四点 spike**（模型稳定性/效果验证/闸门阻塞/Inbox 连发）+ **MCP 直连质量 spike**（flash skill + py action server 跑 2-3 个真实设备任务，对比上游 flash 质量——spike 过=直通，不过=回退三段式）+ conformance 测试骨架
+- [x] **P0 骨架与 spike**：`autogamer-device` 包骨架（run_device_action 工具骨架 + 闸门 + preset；`cordis.patch.yml`/peerDependencies/`dsh plugin add`/`--dump-config`）+ **S10 四点 spike**（模型稳定性/效果验证/闸门阻塞/Inbox 连发）+ **MCP 直连质量 spike**（flash skill + py action server 跑 2-3 个真实设备任务，对比上游 flash 质量——spike 过=直通，不过=回退三段式）+ conformance 测试骨架。**2026-10-11 收官**：四点 ✅、质量 spike 两任务达成且快于基线（D9 = 直通，CHANGELOGS #14/#15）、终态语义 live 闭环（G41/G44 ✅）。**P0 遗留的只有「怎么装」**：`install_bundle`（G31）与 D17 的 `tool-plugin-manager`
 - [ ] **P1 设备工具与路由**：13 动作工具 TS 包装全量（闸门/熔断/效果验证/路由决策日志）+ **pro subagent**（checker/validator 保真，盘点 04 清单验收）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵（4 解除路径/fail-open-safe 不对称/auto 端点默认键/allowed_fails=1）
 - [ ] **P2 设备层补全**：helper TS 复刻（D13/G25）+ 录屏接回（D12/G23 契约 + graceful stop）+ mock driver + 诊断 admission（锁屏 fail-closed/多设备切换/emulator_manager 对接）+ 模拟器专属演进评估
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
