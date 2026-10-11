@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#19 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#20 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -749,6 +749,60 @@ G31 结案时明记两条没验：① 失败安装是否真把 profile 的 `pack
 - [ ] **仍缺的证据（明确挂账，不假装）**：一次**成功**的 GitHub 仓库安装。它需要一个已 push 且可达的仓库，
       push 属用户专属决定（R19）；且实测 `https://` 形态会被翻成 `git+ssh://`，真要走通得先解决传输与授权。
 
+### #20 G48：成功的 git 安装拿到证据，`files` 与 `path:` 子目录两问一并解决
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（对 GitHub 走网络那一发另开 **G49**，它需要用户决定）
+- **优先级**: 高（#19 留下的「一次成功的 git 安装」缺口）
+- **来源**: pnpm 官方 `pnpm add` 文档 "Install from a subdirectory of a Git repository"、
+  DSH `install-spec.ts` 的 `parseInstallSpec`、四轮 live 安装
+
+#### 问题描述
+
+#19 只证到「git spec 被接受并路由 + 失败完整回滚」，**从没拿到一次 `application:"applied"` 的 git 安装**。
+三件事因此悬着：git 形态到底装不装得上；`files` 白名单在 git 形态下是否还生效（#19 只证了 tarball）；
+我们的插件住在 monorepo 子目录 `plugins/autogamer-device`，能不能只装那个子目录。
+
+#### 整改方案与实施
+
+**把「需要 push」这个前提先摘掉**：在 gitignored 的 `scratch/` 里 `git init` 一个本地仓库当真仓库用，
+spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto>://`，
+`gitHost()` 对 file 协议取到空 host，`checkGithubConnection` 也不拦非 GitHub）。零网络、零第三方代码。
+
+1. **根目录形态**：仓库里放一个完整 bundle。安装返回
+   `{"stage":"enable","changed":true,"application":"applied", … "+ @local/dsh-git-probe git+file:///D:/DEV/autoGamer/scratch/git-probe"}`。
+2. **`files` 在 git 形态下的行为**：落地树只有 `cordis.patch.yml` / `index.js` / `package.json` / `kept/keep.txt`，
+   **`dropped/` 不存在、`.git` 也不存在** ⇒ pnpm 对 git 依赖同样走「按 `files` 打包」这条路。
+   ⇒ **#17 里那份 `files` 清单从此是承重的**：`dist/**/*.js`、`cordis.patch.yml`、`skills/**/SKILL.md`、
+   `locale/*.json`、`icon.svg` 少写一项，装出去就少一项。
+3. **子目录形态**：同一仓库里加嵌套包 `packages/inner/`，spec 用
+   `git+file:///…/git-probe#HEAD&path:/packages/inner` ⇒ `application:"applied"`，
+   依赖值原样记为该 spec，落地树同样只含白名单文件。
+   pnpm 文档给的正是这个语法（`#path:/<subdir>`，多参数用 `&` 组合），
+   而 DSH 的 `HOSTED_REPOSITORY_URL` fragment 段是 `#.+$`，**装得下带斜杠的 `&path:`**。
+   ⇒ **我们的 monorepo 布局可以从 GitHub 装**：`https://github.com/<owner>/<repo>#<ref>&path:/plugins/autogamer-device`。
+4. **踩到一个真坑并定位**：第一次子目录安装被拒——
+   `YAMLException: bad indentation of a mapping entry (7:58)`，指向补丁里的 `description` 行。
+   根因是**我自己的补丁**：`description: Inert preset used to verify the path: subdirectory spec.`
+   含「冒号+空格」却没加引号，YAML 非法。加引号后即通过。
+   ⇒ 教训：**补丁里任何带 `: ` 的文本（描述、persona 正文）都要引号包住或用块标量**；
+   与 G45 那条「persona 文本禁 `{{}}`」同类——声明面 YAML 的语法陷阱不被 R6 之外的检查兜住。
+5. **顺带修正 #19 的一条说法**：这次验证失败后宿主自己打了
+   `dsh: restored package.json, pnpm-lock.yaml, and node_modules.`
+   ⇒ 被拒的安装**会**连 node_modules 一起还原；#19 看到的残留链接是 `link:`/`file:` 指向我们后来删掉的目录所致，
+   不是宿主不清理。
+
+#### 验收标准
+
+- [x] 根目录 git 安装：`application:"applied"`、`changed:true`
+- [x] `files` 在 git 形态生效：落地树 = 白名单（`dropped/` 无、`.git` 无）
+- [x] `path:` 子目录安装：`application:"applied"`，依赖值原样带 `#HEAD&path:/packages/inner`
+- [x] 收尾干净：两个 probe bundle 撤除后不在 deps 与 `dsh.profile.bundles` 里，
+      `--dump-config` 里 0 条 probe preset、`preset-autogamer` 在位，`autogamer-device` 仍是原 link；
+      一次性仓库与 node_modules 残留已删
+- [ ] **对 GitHub 走网络的一发仍未做** ⇒ 另开 **G49**（需要已 push 的仓库，且要先解决
+      `https://github.com/…` 被 pnpm 翻成 `git+ssh://git@github.com/…` 的传输选型）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -783,3 +837,4 @@ G31 结案时明记两条没验：① 失败安装是否真把 profile 的 `pack
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/en.json + locale/zh.json 的 meta.title/description、原创 icon.svg（684 B）、exports 与 files 登记；面板 live 已渲染中文标题与图标 | 本文件 **#17** |
 | G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
+| G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
