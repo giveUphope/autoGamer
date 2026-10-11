@@ -55,7 +55,7 @@
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G4 | 熔断探测体：下一条真实消息动作即探测 |
 | G53 | 前端 `package-lock.json` 的 `resolved` 全是镜像 URL，`check_dependency_sources` 门禁在 CI 与本地都红（既有状态，非插件轨道引入） |
-| G54 | 本 fork 的 `on: push` 从不触发 workflow run（派发前历史 `total_count=0`），只能 `gh workflow run` 手动派发 |
+| G54 | 本 fork 的 `on: push` 从不触发 workflow run（两次 push 后 `total_count` 仍只有那次 `workflow_dispatch`） |
 | G52 | 追问路径仍只有 fake 事件总线证据：真实 `ctx.sessions` 驱动的 `turn/end` → `followup` 未进 Tier 1 |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
