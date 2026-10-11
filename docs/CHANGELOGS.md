@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#28 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#29 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1237,6 +1237,40 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
   把 `callTool("compare_ui_frames")` 改名 ⇒ 直接调用清单红；
   从 `inject` 摘掉 `attachments` ⇒ 消费面对账红
 
+### #29 G5 结案：conformance 契约改吃真实 DSH runtime，fixture 全部变成生成物
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（三层全部落地，CI 两个 OS 实测绿）
+- **优先级**: 高（P1 的每一条宿主契约断言都建立在这上面）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G5 conformance 吃真实 DSH runtime（2026-10-12 按 R22 三步序）」住在 `TODO.md`，结案即删，演进查 git 历史
+
+#### 问题描述
+
+`tests/conformance/contracts.spec.ts` 的头部自述就是差距本身：
+
+> "These tests lock the externally observable contracts this plugin depends on, using **fixtures recorded from live verification**. Re-capture the fixtures whenever the DSH runtime or the py action server upgrades"
+
+也就是**手镜像**：上游一升级就静默过期，而 S8 已写明上游发到 `0.2.1-alpha.2`。同一份 py 动作面声明当时存在**三处副本**（fixture JSON、`scripts/spike-mcp.mjs` 里的 `REAL_TOOLS` 字面量、`src/tools/runDeviceAction.ts` 的 `ACTION_TO_PY_TOOL`）。而 `ci.yml` 只有 `python-quality` / `frontend` / `package` 三个 job——**插件的契约测试从未在 CI 上跑过**。
+
+官方一手依据（声明面 + 公开包，未碰 asar）：`dsh --help` 给出 `--dump-config` / `--patch` 与 `dsh headless --json`；`docs/tool-catalog.md` 的生成器说明原文是 "this generator **BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`**, because a tool schema is not statically knowable"——**in-process 起真 runtime 读注册表是上游自己的做法**；`docs/subsystems/core.zh.md` 标明 "`scope/` 是这里唯一的非服务包"、"`dsh-base` 是默认产品组合，`dsh-sdk-minimal` 则声明一棵更小的独立配置树"。
+
+#### 整改方案与实施
+
+- **Tier 1 `tests/conformance/runtimeBoot.spec.ts`**：`new Context()` 上挂真实 DSH 服务包（`dsh-invariants` / `dsh-system-prompt` / `dsh-tools` / `dsh-agent` / `dsh-attachment`，均精确 `0.2.0-rc.2`）再挂本插件，契约由真 `ctx.tools.schemas()` 把关——工具名集合、`parameters.type === "object"`、`required ⊆ properties`、`ctx.tools.get` 可解析、**坏 config 必须由 loader reject**；再加一条从 `src/**/*.ts` 扫 `ctx.<name>` 消费面与 `inject` 对账。全程无模型、无网络、无设备，约 40ms。
+- **Tier 2 三条 fixture 全部改成生成物**：py 动作面由 `scripts/spike-mcp.mjs --write` 从真实 MCP server 生成（期望面 = `ACTION_TO_PY_TOOL`，`REAL_TOOLS` 副本删除）；旧控制台 SSE 由 `scripts/gen-sse-events.mjs` 从三个已核实发射漏斗（读实现确认：`engine.py:541` / `task_queue_service.py:256` / `llm.py:231`）与前端订阅面抽取；版本 pin 读**实际装好的** `@deepseek-ai/dsh-*` 版本并交叉校验 `$DSH_HOME/dsh-runtimes/*/runtime.json` 的 `desktopVersion`；事件词汇改读 `@deepseek-ai/dsh-session` 的 `KNOWN_SESSION_EVENT_TYPES`（59 项）与 `SESSION_FORMAT_VERSION`（=4）。
+- **Tier 3 `scripts/conformance-live.mjs`**：declared（`--dump-config`）与 live（`session.v4.jsonl.zstd`，R24）两层分开输出，注册与否明确标注只能靠 `cordis_inspect_query`/roster（R9）。
+- **CI 新增 `plugin-contracts` job**（ubuntu + windows）：`pnpm install --frozen-lockfile` → `gen-sse-events.mjs` 漂移检查 → `build` → `test`。
+- 落地过程中被真实包照出并一并修掉的：附件引用手镜像（**#27**）、抽取器看不见别名+常量导致 fixture 锁住假事实（**#28**）。
+- ⚠️ 两个坑写在这儿的理由：公开 `@deepseek-ai/*` 包的 `latest` 标签停在 `0.0.1-rc.1`，正确代际在 **`next`**——devDeps 必须写死精确版本；`pnpm` 装包在本机需要 `NODE_OPTIONS=--use-system-ca`（G51）。
+
+#### 验收标准
+
+- `cd plugins/autogamer-device && pnpm install --frozen-lockfile && pnpm run build && pnpm test` ⇒ **78 passed / 1 skipped**，`npx tsc --noEmit` ⇒ 0 error
+- `node scripts/gen-sse-events.mjs` ⇒ exit 0（`fixture matches the sources (26 server / 17 frontend names)`）；`ARTEMIS_MOCK_DRIVER=1 node scripts/spike-mcp.mjs` ⇒ exit 0；`AUTOGAMER_CONFORMANCE_PY=live npx vitest run tests/conformance` ⇒ 15 passed（真服务比对）
+- **CI 证据**：run `38167498398`（commit `5232265`）的 `DSH plugin contracts / ubuntu-latest` 与 `/ windows-latest` 均 **success**。⚠️ 该 run 是 `gh workflow run` 手动派发的——本 fork 的 `on: push` 从不触发 run（派发前历史 `total_count=0`），已按 **G54** 另立差距；同 run 里两个 `Python 3.12` job 失败于 `check_dependency_sources`（前端 lockfile 全镜像 URL），属既有状态，按 **G53** 另立，与本条无关
+- 变异校验（五条，各自确实变红）：`inject` 多写本图没有的服务 ⇒ 挂载红；摘掉 `Config` 导出 ⇒ reject 红；映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；`EMITTERS` 摘掉一个漏斗 ⇒ 覆盖守卫红；`inject` 少写 `attachments` ⇒ 消费面对账红
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1270,6 +1304,7 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 改从脚本自身位置推导仓库根；自测的注入锚点改为动态取差距表里第一条 G 行，不再绑定任何具体差距编号 | 本文件 **#16** |
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/en.json + locale/zh.json 的 meta.title/description、原创 icon.svg（684 B）、exports 与 files 登记；面板 live 已渲染中文标题与图标 | 本文件 **#17** |
 | G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
+| G5 | conformance 需要真实 DSH runtime（CI 起 DSH 跑契约测试） | 三层：Tier 1 在裸 cordis Context 上挂真实 DSH 服务包与本插件、契约由真 `ctx.tools.schemas()` 把关；Tier 2 三条 fixture 全改为生成物（live 抓取 / 源码抽取 / 真实安装态）；Tier 3 live 取证脚本；并新增 `ci.yml` 里此前不存在的 `plugin-contracts` job（ubuntu + windows 实测 success） | 本文件 **#29**（过程与变异校验见 #27/#28） |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |

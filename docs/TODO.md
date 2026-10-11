@@ -8,14 +8,14 @@
 
 | 项 | 现状 |
 |---|---|
-| 阶段 | **P0 收官（2026-10-11 深夜）**：G45 指令投递接线完成（CHANGELOGS **#14**），flash 契约真的进了 system（4052 字符、起于第 50 字符）；真机 spike 重跑 **T1 17s/5 步、T2 22s/7 步，两个任务全部达成**（基线 77.2s/6 步、42.1s/3 步；接线前 T2 是 47 请求失控人工停）⇒ **D9「直通」在执行质量这一维成立**。**终态语义也已闭环**（CHANGELOGS **#15**）：`concludeTurn()` 拿到 live 证据（G41 ✅）、未汇报回合的兜底追问端到端可用（G44 ✅）、T1 重跑 8 次动作全用 `{index:N}` 句柄零坐标回退（G42 再证）。骨架 / 离线 spike / 安装流 / conformance ✅，S10 四点 ✅。**G46 当日撤回**——拿 wire 请求体推断「没汇报」是错的，据此立守则 **R24**：判「没发生」只认会话日志 |
+| 阶段 | **P0 收官（2026-10-11 深夜）**：G45 指令投递接线完成（CHANGELOGS **#14**），flash 契约真的进了 system（4052 字符、起于第 50 字符）；真机 spike 重跑 **T1 17s/5 步、T2 22s/7 步，两个任务全部达成**（基线 77.2s/6 步、42.1s/3 步；接线前 T2 是 47 请求失控人工停）⇒ **D9「直通」在执行质量这一维成立**。**终态语义也已闭环**（CHANGELOGS **#15**）：`concludeTurn()` 拿到 live 证据（G41 ✅）、未汇报回合的兜底追问端到端可用（G44 ✅）、T1 重跑 8 次动作全用 `{index:N}` 句柄零坐标回退（G42 再证）。骨架 / 离线 spike / 安装流 ✅，**conformance 已吃真实 runtime（G5 结案，CHANGELOGS #29）**，S10 四点 ✅。**G46 当日撤回**——拿 wire 请求体推断「没汇报」是错的，据此立守则 **R24**：判「没发生」只认会话日志 |
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G5 三层已全部落地，只差一次 push 观察 CI 变绿**（方案与验收仍看 §五同名条目）：Tier 1 `runtimeBoot.spec.ts` 在裸 `new Context()` 上挂真实 DSH 服务包再挂本插件，契约由真 `ctx.tools.schemas()` 把关（两条变异校验已做）；Tier 2 三个 fixture 改为生成物——py 动作面 live 生成、旧 SSE 从三个已核实发射漏斗抽取（手抄的 15 项其实是真集 25 项的子集，且死信道是双向的）、版本 pin 读实际安装态、事件词汇改读 `KNOWN_SESSION_EVENT_TYPES`；Tier 3 `conformance-live.mjs` 分 declared/live 两层；`ci.yml` 补上此前根本不存在的 `plugin-contracts` job。顺带被真包照出手镜像类型缺陷并按 R21 修掉（CHANGELOGS **#27**），新发现的差距编号 **G52**。headless 仍只多了一条**声明面**事实（`--dump-config` exit 0、四行都在），**不推翻** wire 实测的「headless 无 preset registry、root 工具不进 headless agent」，live 面仍走 web；**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债：G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**4)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**5)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）。**2)** 低成本顺手项（G35、G32 已结，见 CHANGELOGS #16/#17）：G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**3)** P1 开工：pro subagent（checker/validator 保真）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**4)** 一条未解释的残余观察（不当结论）：同一份 dist 在 23:12 那个服务实例上两轮都没触发追问，23:38 / 23:47 两个实例上稳定触发——再复现就按新号开 |
+| 下一步（按序） | **1)** **G5 已结案**（CHANGELOGS **#29**：Tier 1 真 runtime 挂载 / Tier 2 三条 fixture 改生成物 / Tier 3 live 脚本 + 新增 `plugin-contracts` job，CI run 38167498398 双 OS success）。同轮顺手修掉两条被真实包与复审照出的手镜像（**#27** 附件品牌类型、**#28** fixture 锁住假死信道），新立 **G52/G53/G54**：**G52** = 用真实 `ctx.sessions` 驱动的 `turn/end` → `followup` 补进 Tier 1（真包已证明挂得上裸 Context）；**G53** = 前端 lockfile 全镜像 URL 让 `check_dependency_sources` 在 CI 与本地都红（既有状态，首次真跑才暴露）；**G54** = 本 fork 的 `on: push` 从不触发 run，只有手动派发能起——此后「CI 证据」必须写明是手动派发；**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债：G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**4)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**5)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）。**2)** 低成本顺手项（G35、G32 已结，见 CHANGELOGS #16/#17）：G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**3)** P1 开工：pro subagent（checker/validator 保真）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**4)** 一条未解释的残余观察（不当结论）：同一份 dist 在 23:12 那个服务实例上两轮都没触发追问，23:38 / 23:47 两个实例上稳定触发——再复现就按新号开 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
-| 测试面 | 插件 vitest **78 passed / 1 skipped**（G5 净增 12 条：Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
+| 测试面 | 插件 vitest **78 passed / 1 skipped**（G5 净增 12 条：Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
 | 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md)（**R20：遇 DSH 行为问题先查官方一手资料，别先写猜测实现**） |
 
 ## 一、最终形态
@@ -112,7 +112,8 @@
 |---|---|---|
 | G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
 | G4 | 熔断探测体 | 保留：S4 已定（下一条真实消息动作 = 探测；不对称策略保留） |
-| G5 | conformance 需真实 DSH runtime | 三层已落地（Tier 1 真 runtime 挂载 / Tier 2 生成式 fixture / Tier 3 live 脚本 + CI job），**待一次 push 观察 CI job 变绿才结案**——方案与验收见本节「G5 conformance 吃真实 DSH runtime」 |
+| G53 | 前端 lockfile 全镜像 URL 使 `check_dependency_sources` 门禁红 | 保留（**既有状态**，非插件轨道引入；CI 首次真跑才暴露）：把 `apps/showcase_ui_v2/package-lock.json` 的 `resolved` 重取为 `https://registry.npmjs.org/...` 再复跑门禁 |
+| G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：派发前历史 `total_count=0`，只有 `gh workflow run` 能起（run 38167498398）；查清是 fork 工作流开关、计费还是提交邮箱问题之前，「CI 证据」必须写明是手动派发 |
 | G52 | 追问路径仍只有 fake 事件总线的证据 | 保留：真实 `dsh-session` 已证明能挂到裸 `new Context()` 上（`ctx.sessions` = `SessionStore`），差的是用真 `turn/end` 驱动 G44 那条 `followup`（agent handle 需 `ctx.agents.setFactory`），补进 Tier 1 后 `apply.spec.ts` 的 fake 只留纯逻辑 |
 | G8 | 终态权威 | 收缩：汇报工具语义（S2）；exit code 映射随 py worker 消失 |
 | G10 | 动作中断语义 | 收缩：exec.signal → 取消 MCP 请求/释放闸门；录屏后补时补 graceful stop |
@@ -366,56 +367,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [x] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑（#17/#18/#26 + registry 已关闭行）
 
-### G5 conformance 吃真实 DSH runtime（2026-10-12 按 R22 三步序：查官方 → 本方案 → 实现）
-
-- **为什么现在做**：`tests/conformance/contracts.spec.ts` 的头部自述就是差距本身——"fixtures recorded from live verification. Re-capture the fixtures whenever the DSH runtime … changes"。S8 已写明上游发到 `0.2.1-alpha.2`，**升级即 fixture 静默过期**；P1 要断言的每一条宿主契约都建立在这份手镜像上（R21 意义上的纸面）。
-- **调研（官方一手，全部可复跑，未碰 asar）**
-  - 声明面 `dsh --help` 原文：`--dump-config  print the composed profile tree and exit`；`dsh headless --json  write newline-delimited run events to stdout instead of the final message`；`dsh acp  Serve automation clients over Agent Client Protocol stdio`；`dsh sdk  Serve DeepSeek Harness SDK clients over stdio JSON-RPC`。**这就是官方给「无人值守跑真实 runtime」留的门**。
-  - 官方自己的做法（`docs/tool-catalog.md` 生成器说明原文）："this generator **BOOTS each tool plugin on a real context and reads `ctx.tools.schemas()`**, because a tool schema is not statically knowable"。**in-process 起真 runtime 读注册表 = 上游同款做法**，不是我们发明的偏门。
-  - 服务分层（`docs/subsystems/core.zh.md`）："`scope/` 是这里唯一的非服务包"、"`dsh-base` 是默认产品组合，`dsh-sdk-minimal` 则声明一棵更小的独立配置树"——要起的是服务，`dsh-scope` 只是库。
-  - 知识顺序（官方 skill `cordis-plugin-development`）：inspection → `<packageDir>/README.md` → 安装包自带的 `lib/index.js` + `lib/types/**/*.d.ts`。
-  - **实测探针**（临时目录装公开 npm 包，非猜测）：`new Context()` 上依次 `ctx.plugin()` 挂 `dsh-invariants` / `dsh-system-prompt` / `dsh-tools` / `dsh-agent` / `dsh-attachment` 全部 `[ok]`，服务面 `invariants=InvariantRegistry, systemPrompt=SystemPrompt, tools=ToolRuntime, agents=AgentRegistry, attachments=AttachmentStore`，`sessions`/`llm` ABSENT（我们的 `inject` 不含它们，无需补）；再挂本插件 `dist/index.js` ⇒ **`ctx.tools.schemas()` 返回 `["run_device_action","report_task_status"]`，`parameters.type="object"`，`required=["action","reason"]` / `["status","summary"]`**；`typeof ctx.agents.currentInitiator === "function"`。全程**无模型、无网络（装完后）、无设备**。
-  - 依赖可得性：`@deepseek-ai/{dsh-system-prompt,dsh-invariants,dsh-agent,dsh-attachment,dsh-session}` **均存在 `0.2.0-rc.2`**；⚠️ 这些包的 `latest` 标签是陈旧的 `0.0.1-rc.1`，正确代际在 **`next`** 标签——**必须写死精确版本**，否则装到八百年前。本机装包需 `NODE_OPTIONS=--use-system-ca`（G51）。
-  - 真实事件词汇（从安装包 `lib/index.js` 直接 grep 得到，非手抄）：`session/created` `session/disposed` `session/event` `session/flush` `session/title` `turn/start` `turn/end` `tool/call` `tool/result` `tool/ptc-dispatch` `agent/created` `agent/disposed` `agent/inbox/spliced` `agent/pre-step` `agent/request`。
-  - 版本 pin 的机读权威源：`~/.dsh/dsh-runtimes/dsh-primary-runtime/runtime.json` 里有 `"desktopVersion": "0.2.0-rc.2"`（另有 `node`/`pnpm`/`python` 版本）——本机存在，CI 不存在。
-  - **两条必须记住的边界**：① headless 这次拿到的是**声明面**新事实——`dsh --profile headless --patch <交付 patch> --dump-config` **exit 0、grep 不到 unmatched**，dump 里 `preset-autogamer`/`persona`/`skill-filesystem`/`tool-plugin-manager` 行都在；它**不推翻**「headless 无 preset registry、root 工具不进 headless agent」那条 wire 实测结论（R24/R25：弱通道不改强结论），只是把旧结论从「headless 装不了我们的 patch」收窄成「合成树没问题、挂载不通」。② 因此 **Tier 3 的 live 面仍走 web profile**。
-- **方案（三层，按证据强度分层，不混为一谈）**
-  - **Tier 1｜真实 runtime 的 in-process 契约测试（新 `tests/conformance/runtimeBoot.spec.ts`，进 CI）**
-    - 加精确版本 devDeps：`@deepseek-ai/dsh-system-prompt` `@deepseek-ai/dsh-invariants` `@deepseek-ai/dsh-agent` `@deepseek-ai/dsh-attachment`（均 `0.2.0-rc.2`；`cordis`/`dsh-tools`/`dsh-scope`/`dsh-llm`/`schemastery` 已在）。
-    - 断言（把「只有我们自己的 fake 证明过」的断言换成真实注册表证明）：
-      1. 挂服务 + 挂本插件后 `ctx.tools.schemas()` 的名字集合恰为 `run_device_action`/`report_task_status`；
-      2. 每个 schema 的 `parameters.type === "object"` 且 `required` 非空——**changelogs #10 那个 400 整包被拒的契约，改由真实 registry 把关**；
-      3. `ctx.plugin(plugin, {actionServerCommand: "not-an-array"})` **必须 reject**（真实 Config 校验路径，今天只是我们直接调 `Config()` 自证）；
-      4. 用真 Config 默认值挂载成功，且 `ctx.agents.currentInitiator` 可解析（G44 依赖的服务面真实存在）。
-    - **探针步骤先做再写断言**（R25）：先确认在插件目录里挂载时 `defineTool` 只有一份 `@deepseek-ai/dsh-tools` 副本；若跨副本出现身份判定问题，按实测调整而不是绕过。
-  - **Tier 2｜fixture 改为从真 runtime/真源码生成（消灭手抄与三副本漂移）**
-    - py 动作面：现在同一份声明存在**三处**（`tests/fixtures/py-action-tools.json`、`scripts/spike-mcp.mjs` 里的 `REAL_TOOLS` 字面量、`src/tools/runDeviceAction.ts` 的 `ACTION_TO_PY_TOOL`）。改 `spike-mcp.mjs`：删掉本地 `REAL_TOOLS`，**从 `../dist/tools/runDeviceAction.js` import `ACTION_TO_PY_TOOL`**，用真实 `ActionClient.listTools()` 拉真机/mock 面比对，加 `--write` 生成 fixture（含 `captured`/`source`），漂移即非零退出。契约测试在能起服务时**直接比对 live 列表**，起不来时才回落到带 provenance 的 fixture（CI 无 uv/无设备时可判定地跳过 live 分支，并在输出里写明「本轮是 fixture 档」）。
-    - 旧控制台 SSE 事件名：本源在仓库内可机读（`artemis/data_engine/engine.py`、`apps/admin_console/services/task_queue_service.py`、`routers/tasks.py` 的 `_publish("<name>")`/`broadcast("<name>")`）。加 `scripts/gen-sse-events.mjs` 抽取事件名写 fixture，测试断言 **fixture == 抽取结果**（诚实标注：抽取器认字面量调用点，注解式/拼接的发射点会漏，属已知局限）。
-    - DSH peer 版本 pin：改为**读真实安装态**——所有 `@deepseek-ai/*` 已安装版本必须彼此相等且等于 peer pin；`runtime.json` 存在时再交叉校验 `desktopVersion`（不存在则跳过并打印原因）。事件词汇 fixture 换成上面 grep 到的真实集合。
-  - **Tier 3｜live 面脚本（不进 CI，R21 的「live 证明」那半）**：`scripts/conformance-live.mjs` 固化既有手法——R6 `--dump-config` exit 0 + **开新会话**（R7）+ 只认会话日志（R24）与 `cordis_inspect_query`（R9）判工具面；把 headless 的声明面新事实与 web 的 live 判据都写进脚本输出，避免下一次又靠回忆。
-  - **CI**：`ci.yml` 现在**没有任何插件 job**。新增 `plugin-contracts`（ubuntu + windows，Node 22.x 与 frontend job 同版本，`npm ci` + `npm run build` + `npm test`，缓存指向插件 package.json），让 Tier 1 真的每次 push 都跑。
-  - **明确不做**：不发布 npm 包；不引 model 调用（Tier 1 全程不调模型）；不在 CI 里装 DSH 桌面版或接真机；不碰 `apps/showcase_ui_v2` 与 py 测试面；不把 `apply.spec.ts` 的 fake 装配整套重写（行为单测继续用 fake，契约归契约）。
-- **Verify**
-  - `npm run build && npm test`（插件目录）全绿；新增 runtimeBoot 用例在**拔网**状态下也应绿（依赖已在 node_modules）。
-  - 变异校验（R21 习惯）：把 `inject` 里的 `agents` 摘掉 ⇒ 挂载应失败或工具消失；把 `Config` 从导出里去掉 ⇒ Tier 1 的第 3 条应失去保护；`ACTION_TO_PY_TOOL` 改一个不存在的工具名 ⇒ Tier 2 的 live 分支与 fixture 分支都应红。
-  - `node scripts/spike-mcp.mjs --write`（`ARTEMIS_MOCK_DRIVER=1`，仓库根跑）exit 0，`git diff` 只显示 `captured` 日期变化 = 无漂移。
-  - `node scripts/gen-sse-events.mjs`（不带 `--write`）exit 0 = 源码抽取与 fixture 一致。
-  - `python scripts/check_doc_tables.py && python scripts/check_doc_registry.py`。
-  - Tier 3：`node plugins/autogamer-device/scripts/conformance-live.mjs` 在实机 dsh 上跑通并打印工具名集合。
-- **Done means**
-  - [ ] Tier 1 用例落地并进 CI —— 用例与 `plugin-contracts` job 都已提交（`1df20b5` / `8e01190`），本地按同一序列 `pnpm install --frozen-lockfile` / gen-sse / build / vitest 全 exit 0；**剩「push 后 Actions 真跑绿一次」**，没这一条不结案
-  - [x] 三个 fixture 不再是手抄：py 动作面 = live 生成（`spike-mcp.mjs --write`）；SSE = 源码抽取（`gen-sse-events.mjs`）；版本 pin = 实际装好的 `@deepseek-ai/dsh-*` 版本一致，另与 `$DSH_HOME/dsh-runtimes/*/runtime.json` 的 `desktopVersion` 交叉校验；事件词汇改读 `KNOWN_SESSION_EVENT_TYPES`（真集 59 项）与 `SESSION_FORMAT_VERSION`（=4）
-  - [x] `REAL_TOOLS` 三副本收敛为一处权威（期望面由 `ACTION_TO_PY_TOOL` 推出）
-  - [x] Tier 3 脚本取代口头流程：`conformance-live.mjs` 分 declared / live 两层输出，headless 的声明面事实与 web 的 live 判据在同一条命令里
-  - [ ] 差距结案：G5 移入 CHANGELOGS 已关闭差距史 + `registry.md`，TODO 不留正文；本条 spec 一并删除
-- **落地时才知道的事（写方案时想不到，如实记）**
-  - **手镜像被真实包照出来了**：加完 devDeps 后 `tsc` 从 0 错变 1 错——我们把附件引用抄成 `attachmentId: string`，真类型是品牌化的 `AttachmentId`。已按 R21 改成 import 真类型，正文见 CHANGELOGS **#27**（基线实测：stash 掉 package.json/lock 后 0 错，恢复后 1 错，所以是「遮蔽被去掉」不是「我们写坏了」）
-  - **手抄的 SSE 清单是真集的子集**：服务端实际发射 **25** 项而非 15 项（`llm_stream`/`llm_retrying`/`task_paused`/`task_resumed`/`note_saved` 等此前没抄到）。抽取器需要「发射漏斗」而非动词猜测：三个漏斗（`DataEngine._publish`、`TaskQueueService._broadcast_event`、`_record_llm_event`→`_publish`）逐个读实现确认，`publish_startup_progress`（首参是 stage）、`artemis/graph` 的 `_event`/`_final_event`（langgraph 栈）、`helper_manager.py:685` 的 `emit`（provisioning 回调）经定位后显式排除
-  - **生成物自己也会撒谎**（复审抓到，正文见 CHANGELOGS **#28**）：`checker_event` 经 `publish = getattr(engine,"_publish")` 别名 + 模块常量发射，字面量式抽取看不见，于是 fixture 把它写成「前端订阅而服务端从不发射」的死信道——与 `inventory/05` 第 41 行直接矛盾，而契约测试把这条错事实锁住了。抽取器已升级为「先解析别名与常量再匹配」，服务端面 25→**26**，反向死信道归零；并补三条「生成器坏了要能红」的守卫（数量地板 / 每个漏斗至少贡献 1 名 / 未审发射点必须为空）。同轮还补了两处覆盖空洞：`compare_ui_frames` 是 `src/index.ts:174` 的**直接调用**、不在映射里，此前无断言覆盖；`inject` 只被证明「多写会红」，少写不红，现按 `src/**/*.ts` 的 `ctx.<name>` 消费面对账
-  - **公开包的 `latest` 标签是陈旧的**：`@deepseek-ai/dsh-*` 的 `latest` 停在 `0.0.1-rc.1`，正确代际在 **`next`**——devDeps 必须写死精确版本，否则装到八百年前还全绿
-  - **headless 只多了一条声明面事实**：`--dump-config` exit 0、我们的四行都在；这不推翻 wire 实测的「headless 无 preset registry、root 工具不进 headless agent」，只把它从「装不上」收窄成「合成树没问题、挂载不通」——live 面仍走 web
-  - 新发现的差距按 registry 取号 **G52**（真事件驱动 G44 追问路径）
-
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
@@ -423,7 +374,7 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - ✅ **MCP 直连 spike（离线）**：ActionClient ↔ `artemis mcp --type adb` 全链路；真实契约接线（13 工具名/像素坐标 0-1000 换算/字符串结果归一化含 `Error executing tool` 变体/`--type` 旗标）
 - ✅ **S1**：外部 SessionId 源码核实（幂等 adopt）+ live 组合验证（preset 注册、新任务默认标记、选择器可见）
 - ✅ **S10 前置定论**：headless 无 preset registry、root 工具不进 headless agent（4 轮实测+代理抓包）→ S10 转 web；pi-ai baseURL 需 `/v1` 前缀（日志代理实锤）
-- ✅ **conformance 骨架（G5/G18）**：tests/conformance/contracts.spec.ts——py 动作面 13 工具快照（fixture=live 抓取）、旧控制台 SSE 事件名 15 项快照含死信道清单（G18）、DSH peer 精确 pin
+- ✅ **conformance（G5 已结，CHANGELOGS #29 / G18 基线）**：契约不再吃手镜像——`runtimeBoot.spec.ts` 在真实 DSH 服务包上读 `ctx.tools.schemas()`；`contracts.spec.ts` 三条 fixture 全为生成物（py 动作面 14 项 live 抓取、旧控制台 SSE 由发射漏斗+订阅面抽取得到 **26/17** 项及单向死信道、DSH pin 取实际安装态），事件词汇改读 `KNOWN_SESSION_EVENT_TYPES`
 - ✅ **S10 ①（工具面 + 模型稳定性）通过（2026-10-10）**：从「AutoGamer 会话的请求体里根本没有 `tools` 键、模型幻觉出一个 `os` 工具」到「新会话里模型真实调用 `run_device_action` 三次、入参合法、按次重试」。根因与修法在 G30 关闭行与 changelogs #10；当时用来定性的同实例配对差分（标准模式 `tools=26` 且真跑 pwsh）留作方法——**插件侧 wire 差分比挂载诊断更快收敛**。这条留下两项仍可复用的资产：
   - **取证方法一（按钮态）**：主按钮位（class 含 `primary`）的 `aria-label` 会随回合状态变——空闲「发送消息」/运行中「停止生成」/运行中有草稿「排队发送」或「插话发送」。**按固定标签查按钮会把状态切换误读成入口消失**（G40 就是这么错出来又撤掉的）；要按按钮位 class 枚举再读标签。
   - **取证方法二（草稿合并）**：往非空草稿里 `insertText` 会把多条拼成一条用户消息（transcript 里出现「Q2…。Q1…。」），那是自动化的产物不是宿主行为；每次发送前必须先全选清空。
