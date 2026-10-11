@@ -385,3 +385,30 @@ api_base / api_key）都来自用户配置（`artemis.jsonc` 的 `default`/`node
 - [x] R6：overlay 三个版本各跑一次 `--dump-config`，均 exit 0 且 0 unmatched
 - [x] live（R7 新会话、纯交付形态 `tools=5`）：一次 `take_screenshot` → 附件落盘 → 宿主把图**提升为带真实 base64 的 user 消息**（wire 请求体 12KB→296KB、`image_url`×2）→ 模型答出「太空星球主题壁纸 + 顶部时间 17:06」；17:06 是本轮真实时刻，而上一轮从 XML 读到的是 14:30，证明确实读到了像素
 - [x] **否证一条猜测**：不需要给 preset 挂 `@deepseek-ai/dsh-tool-fs` 让模型用 `read_image` 去开那个只读路径——宿主自己完成提升。带 fs 的那轮验完已收回，overlay 仍是 `inner + tool-jobs`
+
+### #12 G39 路线 A：效果判定落到 py 动作面（真机 JPEG 让 TS 侧解码器失效）
+
+- **日期**: 2026-10-11
+- **状态**: ✅ 已完成
+- **优先级**: 高（S10 ② 效果验证的判定依据）
+- **来源**: 真机 live 一轮 `effect=unknown` + 仓库内上游实现盘点（`artemis/utils/image_diff.py`）
+
+#### 问题描述
+
+1. **TS 侧自研差分在真机上必然失效**：`artemis mcp --type adb` 的 `take_screenshot` 文档串自己写着返回 base64 **JPEG**（uiautomator2 路径），而 #11 之后补的 `src/frame.ts` 只会解 PNG。离线与 vitest 全绿，live 一轮 `back` 直接报 `result=Success; effect=unknown`。
+2. **加错了面**：`compare_ui_frames` 最初被加到 `artemis/mcp/action_server.py`（py 智能栈内部面），但插件消费的是 `artemis/mcp/adb_server.py`（`--type adb`）。靠 `tests/unit/mcp` 的 fixture 快照测试暴露（它只锁了内部面，说明**快照锁不住"哪个面被消费"这件事**）。
+3. **权威实现本来就在仓库里**：`check_ui_change`（cv2 灰度解码、遮状态栏 10%/导航栏 5%、全屏变化比例阈值 1e-4、tap 类走按屏对角缩放的 ROI、**解码失败按「有变化」兜底**）。且它在本 fork 里**没有活调用点**——只有定义与 validator 测试里的 mock，所以它的语义权威是那份测试而不是线上流量。
+
+#### 整改方案与实施
+
+1. `artemis/mcp/adb_server.py` 新增**只读**工具 `compare_ui_frames(before_b64, after_b64, action="tap", coordinates=None)` → `'{"changed": bool}'`；**不自己截图**（actuation 与 observation 上游刻意拆开，取帧时机归调用方），判定原样委托 `check_ui_change`，连"假定有变化"的兜底一起继承。
+2. 两份 pin 住的快照同步：`tests/fixtures/action_surfaces/adb_server_manifest.json`（13→14 工具）与插件侧 `tests/fixtures/py-action-tools.json` + `contracts.spec.ts` 的计数锁；重抓命令写回 fixture 的 `source` 字段。
+3. TS 侧删掉 `src/frame.ts` 及其解码器测试：`captureFrame` 改回吐 base64，新增 `compareFrames` 调 py 工具（传 **py 动作名**与**像素坐标**，好让 tap-ROI 规则真的生效）；`effect_diff` 随契约取消——判定是布尔。
+4. 中途否证一条自己的断言：曾写测试要求"坏 base64 返回 `Error:`"，实际 `b64decode("!!!")` 不抛错、空字节走 cv2 解码失败 → 兜底 `changed=true`。该契约不存在，测试删除而不是改代码去凑。
+
+#### 验收标准
+
+- [x] py：`tests/unit/mcp` 224 passed（新增 3 条行为锁：同帧→unchanged、半屏翻转→changed、坏字节→兜底 changed）；`ruff check` 对改动文件干净
+- [x] 插件：vitest 46/46（效果锁改为「调用 py 判定」的形状，含「tap 坐标必须传给 compare_ui_frames」一条）
+- [x] live（R7 新会话、真机）：`back` 从 Settings 回桌面 → `effect=changed`；再按一次 `back`（已在桌面）→ `effect=unchanged`。**正反两例都有**，且 MuMu 的动态壁纸没有造成假阳性
+- [x] 字节等值路线被实测排除的结论保留在案：静态三帧哈希全不同（动态壁纸），而真换屏灰度均值差 0.69 vs 动画噪声 ≤0.015
