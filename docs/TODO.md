@@ -298,6 +298,74 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 **顺带把 G43 判据钉牢**：T2 达成后 `settings get secure ui_night_mode` **仍读 2**，而截图明确是深色。
 ⇒ 这台 ROM 上该 setting 根本不是深色主题的真相来源，**达成与否只认截图**（上表基线那格拿它当过旁证，注意）。
 
+### G31/D17 交付形态：从手工引入迁到 `install_bundle`（2026-10-12，按 R22 三步序：查官方 → 本方案 → 实现）
+
+- **What**：把「怎么装」从手工路径迁到官方路径，并让 preset 具备自举安装能力（D17）。
+  范围：`cordis.patch.yml` 的 preset 行、bundle 的展示元信息（G31 顺带把 G32 的官方要求一次写全）、
+  skill 随包根路径的解析方式、以及一份**可复跑的验收判据**。
+  明确出范围：不改 py 动作面；不动 G36 的 UI 卡片半边；不改任何会话权限模式（R19）。
+- **官方口径（本轮逐字核过，非推断）**
+  1. **我们现在的做法是官方明令禁止的那种**：`cordis-plugin-development/SKILL.md:10`
+     「Do not write the profile's `package.json` or `cordis.patch.yml`, create packages under `$DSH_HOME`,
+     or run pnpm in the profile directory: **`install_bundle` performs those steps**」；
+     `editing-cordis-compositions/SKILL.md:52`「It runs package installation and bundle selection itself;
+     **do not reproduce those steps with shell commands**」。⇒ `dsh plugin add file:` + `--patch` overlay 只能当**测量仪器**，
+     交付判定必须走 `install_bundle`。
+  2. **preset 只能由 bundle 补丁承载**：`editing-cordis-compositions/SKILL.md:8`
+     「Agent presets are ordinary `@deepseek-ai/dsh-agent-preset` declarations carried by bundle patches.
+     Nothing edits a declaration in place: a preset is created or changed by **installing a bundle** whose patch declares or overrides it」
+     ⇒ 我们的 `cordis.patch.yml` 形态本来就是对的，缺的只是「装进去」这一步。
+  3. **`install_bundle` 的落点**：服务 `ctx.pluginManager`（`packages/boot/plugin-manager/src/index.ts:178`
+     `class PluginManager extends TypertRemoteService`），`@Remote installBundle(spec, options?)`（`:496-497`）；
+     `spec` 是「One package spec, including **local paths relative to the invocation directory**」（`:491-494`），
+     且「run that fails, is cancelled, or adds a package **without a bundle patch** restores `package.json` and `pnpm-lock.yaml` as they were」
+     ⇒ 本地开发用 `file:`/相对路径是官方支持面，失败自带回滚。
+  4. **模型侧只有一个工具**：`plugin_manager`（`src/tools.ts:19-21`，`action` 枚举含 `install_bundle`，
+     缺 `target` 直接 `throw new Error('target package spec is required')`）。
+     官方 README 给的启用形状就是 preset 里一行 `- id: tool-plugin-manager` + `disabled: false`
+     （「Preset-backed sessions use their preset's `tool-plugin-manager` entry」），
+     而 shipped `standard`/`ptc` preset 都把它 `disabled: true`，只有 Creator 模式开。
+     ⚠️ 代价要写清：README 同段「**installed Host code executes in-process outside the workspace sandbox**」。
+  5. **授权边界（R19 的具体化）**：README 原文「**Every tool action requires `danger-full-access` or approval for that call**.
+     Under lower sandbox modes, `ask` requests approval; `never`, rejection, cancellation, or an unavailable approval channel
+     prevents execution. **An approval leaves the session permission mode unchanged.**」
+     加上 `SKILL.md:10`「Every `plugin_manager` action, **including `list_plugins` and `list_bundles`**, also needs approval without Full access」，
+     以及构建脚本审批另算（`approvedBuilds`，Web 是整组批准、无单包选择）、豁免要 `acceptRisk: true` 且先警告崩溃/数据丢失风险。
+     ⇒ **我们绝不替用户放宽权限模式**；本机 web 会话现在是「完全权限」那是用户既设状态，用它在场做实验必须在正文里注明。
+  6. **skill 随包根路径有官方现成解法**（G31 卡住的那问）：shipped `web-app/presets/cordis.patch.yml:134-138` 逐字是
+     `customSkillDirs: [- !!js process.getBuiltinModule('node:path').join(…dirname(createRequire(baseUrl).resolve('<pkg>/package.json')), 'skills')]`
+     —— 即**在补丁里用 `!!js` + `createRequire(baseUrl)` 解析包目录**，`baseUrl` 是宿主注入的 loader 变量。
+     另一条官方路是专用提供方：`skill-badge/src/index.ts:18-22` 用 `new URL('../assets/dsh-badge.md', import.meta.url)`
+     在码里注册（`rank: BUNDLED_SKILL_RANK`、`inject: ['skills']`、`ctx.skills.registerProvider()`）。
+     旁证：`references/verification.md` 口径「querying one `entry` returns its `packageDir` … **never guess the path from `$DSH_PROFILE_DIR`**」。
+  7. **G32 的官方要求已经查全**（`references/host-plugin.md:31-36,51`）：Plugin Manager 与 Settings **不激活插件**就读
+     `locale/en.json` 的 `meta.title`/`meta.description` 与导出的 icon；须导出 `./locale/*.json` 与 `./icon`
+     并把 patch/locale/icon/运行时文件都留在 `files` 里；icon 限 SVG/PNG/JPEG/WebP、**≤256 KiB、必须留在包内**
+     （绝对路径、URL、越界符号链接一律拒绝）；缺字段回退 `package.json` 的 `name`/`description`、缺图用面板默认插画；
+     **Host-only 与 configuration-only bundle 都不豁免**；元数据诊断不阻断管理。
+- **How（按依赖顺序，每步都可单独回退）**
+  1. **先补 bundle 形状**（G32，纯声明、零风险）：加 `locale/en.json` + `locale/zh.json`（`meta.title`/`meta.description`）、
+     `icon.svg`，并在 `package.json` 的 `exports`/`files` 里登记。做完 `--dump-config` 仍须 exit 0。
+  2. **再开自举能力**（D17）：preset 的 `plugins` 加 `- id: tool-plugin-manager` + `disabled: false`。
+     这一步把「往宿主进程里装代码」的能力交给模型，**必须先向用户确认再落**（R19 精神 + 上面第 4/5 条代价）。
+  3. **最后换引入路径**（G31 本体）：`customSkillDirs` 从绝对路径改成第 6 条那个 `!!js` 解析；
+     若 `baseUrl` 在我们这个 bundle 的补丁里不可解析（它是宿主注入变量，**属未证事项**），退到码内 provider 方案。
+     然后走一次真实 `install_bundle`（`spec` 用本地路径），验收见下。
+- **Verify**
+  - 声明面：`"D:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd" --profile web --patch <abs cordis.patch.yml> --dump-config`
+    exit 0 且 grep 不到 `unmatched`（R6）；两份 YAML 的 preset 一致性由 `tests/deliveryShape.spec.ts` 机械守（已建）。
+  - 生效面（R9 只认官方检查器）：安装后**开新会话**（R7），判据是 roster 不 `broken` +
+    `plugin_manager` 的 `list_bundles`/`list_plugins` 里我们的 bundle 在册 + 会话工具面出现 `run_device_action`/`report_task_status`/`plugin_manager`；
+    **`dsh plugin` 是 pnpm 转发垫片，只证明装了不证明生效**，不许拿它当判据。
+  - 投递面：新会话 wire 的 system 消息仍含 persona 契约原文（防 G45 复发）。
+  - 授权面：`plugin_manager` 调用在**非**完全权限下必须走审批；我们不放宽模式，只观测。
+- **Done means**
+  - [ ] G32：locale/icon/exports/files 齐备，`--dump-config` 绿，插件面板显示自定标题与插画
+  - [ ] D17：preset 的 `tool-plugin-manager` 行落地**且事先得到用户确认**
+  - [ ] G31：`install_bundle` 真跑通一次（本地 spec），失败路径确认宿主按原文回滚 `package.json`/`pnpm-lock.yaml`
+  - [ ] skill 根路径不再写死绝对路径；`<available_skills>` 目录里出现 `autogamer-flash`，且 `skill` 工具在列
+  - [ ] 生效判定全部来自官方检查器（R9），overlay 降级为「仅测量仪器」并在正文注明
+  - [ ] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
