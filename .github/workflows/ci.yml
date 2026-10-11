@@ -105,6 +105,51 @@ jobs:
       - name: Build frontend for production
         run: npm run build
 
+  plugin-contracts:
+    name: DSH plugin contracts / ${{ matrix.os }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 20
+    strategy:
+      fail-fast: false
+      matrix:
+        os:
+          - ubuntu-latest
+          - windows-latest
+    defaults:
+      run:
+        working-directory: plugins/autogamer-device
+
+    steps:
+      - name: Check out repository
+        uses: actions/checkout@v4
+
+      # Before setup-node, so setup-node can wire the pnpm store cache.
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.3"
+          cache: pnpm
+          cache-dependency-path: plugins/autogamer-device/pnpm-lock.yaml
+
+      # The @deepseek-ai/* devDependencies are the real DSH runtime the
+      # conformance suite boots; no desktop install, no model, no device.
+      - name: Install locked plugin dependencies
+        run: pnpm install --frozen-lockfile
+
+      - name: Check the generated fixtures against their sources
+        run: node scripts/gen-sse-events.mjs
+
+      - name: Build the plugin
+        run: pnpm run build
+
+      - name: Run plugin contract tests
+        run: pnpm test
+
   package:
     name: Build and smoke-test Python packages
     runs-on: ubuntu-latest
