@@ -171,6 +171,34 @@
   [x] G39 并入已关闭行。**偏差**：工具最终落在 `adb_server.py` 而非最初写的 `action_server.py`——插件消费的是 `--type adb` 那个面，
   内部面的改动已全部撤销。
 
+### G44 完整方案 spec（2026-10-11 定稿待实施：让 `report_task_status` 成为终态唯一出口）
+
+**先记两条硬事实（声明面已核）**：`turn/end` 是**会话事件**（`agent.ts:387` `session.append('turn/end',{turn,reason})`），
+插件经 `ctx.on('session/event', (session, event) => …)` 观察；`followup/steer/inject` 是 **Agent 对象方法**
+（`agent.ts:163-171`），经 `ctx.agents.get(session.id)` 拿句柄。官方同款需求已有可照抄的实现：
+`packages/goal/goal-round-driver/src/index.ts`——`inject = ['agents','goals','sessions']`、
+`case 'turn/end'`、`agent.followup(createUserMessage({content, source:{kind:'goal',…}}))`、
+`ctx.on('agent/disposed', …)` 清态、`followup` 抛错时降级为 warn。
+
+- **What**：交付三件——① `src/turnLedger.ts`：按 agent 记 `{acted, reported, nudged}`（`run_device_action` 成功即 acted，
+  `report_task_status` 成功即 reported）；② `src/index.ts` 挂 `session/event` 监听，`turn/end` 且 `acted && !reported` 时
+  **至多一次** `agent.followup()` 追问，并要求模型以 `report_task_status` 收尾；③ 自声明消息源 kind（样例
+  `packages/experimental/webhook/src/types.ts` 的 `MessageSourceMap` 扩法），**不得**用已被 session format V4 拒绝的
+  `{kind:'plugin', plugin:<name>}` 包装（S9）。范围外：goal 机制（它管 Round 不管回合）、UI 卡片（P3）。
+- **How**：关键决策与理由——(a) **有界**：`nudged` 一次即止，第二次仍不汇报就只记 warn 不再追问，否则对着不调工具的模型是死循环；
+  (b) 追问文案必须显式要求调用 `report_task_status` 并禁止再动设备；(c) `agent/disposed` 里删态，避免 WeakMap 之外的泄漏；
+  (d) 终态补记**不**在本方案里做（`presentationMeta` 只在工具结果上存在，回合外没有可挂载的结果），改为把"未汇报"作为
+  结构化 warn 日志 + `nudged` 状态暴露给后续 checker。
+- **Verify**：**先做两个前置实验**（任一失败方案要改，别先写代码）：
+  ① `inject` 里加 `agents`/`sessions` 后插件是否仍能挂上——G30 的教训是**声明了不可解析的服务会让行停在 pending**，
+     判据只认 roster 与 `cordis_inspect_query`（R9），复验必须开新会话（R7）；
+  ② 自声明 `source.kind` 是否被 format V4 接受——用一次 followup 实测，看会话能否正常打开。
+  然后：`npm run build` + `npm run test`（假 ctx 要能 emit `session/event`，锁三条：acted 未 reported 才追问、只追问一次、
+  已汇报不追问）；live 按 G43 用 `cmd uimode night no` 复位 + 截图定案，跑一个模型倾向不汇报的任务，看是否被追问后补出汇报。
+- **Done means**：[ ] 两个前置实验各有结论并写回本条；[ ] 监听与有界追问实现且单测锁死；[ ] live 观察到「未汇报→被追问→补汇报」
+  完整闭环；[ ] **顺带给 G41 补上至今缺失的 live 证据**（`concludeTurn` 真机生效）；[ ] G44 并入已关闭行、G41 状态转绿；
+  [ ] 重跑真机质量 spike 作为 D9 的正式裁决。
+
 ### G41 / G42 修复轮（2026-10-11，插件侧 57/57）
 
 - **G41 终态**：官方机制存在——`execute(args, exec)` 的第二参就是 `ToolRunContext`，其 `concludeTurn()` 把成功的结果标记为本回合终点（声明面原文："The agent loop stops after committing this successful result batch"），且只存在于 `ToolExecutionSuccess`。`report_task_status` 现在调用它；S2 的终态从「提示词约定」变成「有强制点」。
