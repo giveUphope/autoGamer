@@ -72,7 +72,7 @@
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 | G38 | 插件内部错误被归类成任务级失败（熔断语义被污染） |
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
-| G49 | 对 GitHub 走网络的真实安装未做：需要已 push 的仓库，且要先定 `git+ssh` 与 `git+https` 传输选型 |
+| G49 | GitHub 安装被 Windows 跨卷符号链接权限挡住（`ERR_PNPM_EPERM`；push 与传输均已排除） |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
 

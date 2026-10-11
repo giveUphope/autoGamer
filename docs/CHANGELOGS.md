@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#20 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#21 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -800,8 +800,61 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 - [x] 收尾干净：两个 probe bundle 撤除后不在 deps 与 `dsh.profile.bundles` 里，
       `--dump-config` 里 0 条 probe preset、`preset-autogamer` 在位，`autogamer-device` 仍是原 link；
       一次性仓库与 node_modules 残留已删
-- [ ] **对 GitHub 走网络的一发仍未做** ⇒ 另开 **G49**（需要已 push 的仓库，且要先解决
-      `https://github.com/…` 被 pnpm 翻成 `git+ssh://git@github.com/…` 的传输选型）
+- [ ] ~~对 GitHub 走网络的一发仍未做 ⇒ 需要先解决 `https://` 被 pnpm 翻成 `git+ssh://` 的传输选型~~
+      **本条的传输判断已被 #21 推翻**：ssh 只是第一次尝试，pnpm 自己回退；真实公开仓库实测走 `git+https://` 且 `exitCode:0`。
+
+### #21 G49 实做：GitHub 发布与 `path:` 子目录都不是障碍，真正的墙是 Windows 符号链接权限
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 缺口已定性（障碍换了地方，未修）
+- **优先级**: 高（它决定「用户怎么装」这条交付路径能不能成立）
+- **来源**: 三轮 live 安装（公开示例仓库 / 我们 push 后的仓库）+ `git ls-remote` 对照实验
+
+#### 问题描述与**一条被推翻的错误归因**
+
+#20 里我写了一句：「`https://github.com/…` 会被 pnpm 翻成 `git+ssh://git@github.com/…`，
+本机无 GitHub SSH 授权时**连真实公开仓库也会失败**」。**这句是错的**，来源是把两个不相干的观测
+拼成了一条因果：那个 `git+ssh` 报错出自**不存在的仓库**，我据此外推到公开仓库。
+
+对照实验直接否证：
+- `git ls-remote https://github.com/octocat/Hello-World.git HEAD` ⇒ 通（拿到 sha，rc 0）。
+- `git ls-remote git+ssh://git@github.com/octocat/Hello-World.git HEAD` ⇒ `port 22: Connection refused`。
+- **但走 `install_bundle`**：`https://github.com/octocat/Hello-World.git` ⇒ pnpm `exitCode:0`、
+  `downloaded 1, added 1`，解析值是 **`git+https://github.com/octocat/Hello-World.git`**，
+  最后只因 `error.code:"not-bundle"` 被 DSH 拒。
+⇒ **ssh 只是第一次尝试，回退由 pnpm 负责**——官方 JSDoc 那句
+「only network failures or timeouts stop installation, while **pnpm owns authentication and transport fallback**」
+说的就是这个，我先前读了这句话却没把它跟观测对上。
+
+#### 实做与真正的障碍
+
+1. 按用户授权把 `main` push 到公开 fork `giveUphope/autoGamer`（`759af78..a4a0f44`）。
+   push 前做了泄露自查：`.env` 未被跟踪、看着敏感的 11 个文件全是应用源码（凭证校验器 / token meter /
+   helper 的 TokenReceiver），45 个未推提交的 diff 里 0 处 token 形态字符串、0 个转储或 cookie 文件。
+2. `install_bundle` target=`https://github.com/giveUphope/autoGamer#main&path:/plugins/autogamer-device`。
+   pnpm **成功抓取仓库并解析出子目录**（`resolved 17, downloaded 4, added 15`，还会 `-1` 换掉旧的 link 安装），
+   然后死在：
+   `[ERR_PNPM_EPERM] [importPackage C:\Users\…\node_modules\autogamer-device] EPERM: operation not permitted,
+   symlink 'D:\DEV\autoGamer\plugins\autogamer-device\node_modules\.pnpm\@deepseek-ai+cordis@4.0.4\…' -> 'C:\Users\…'`
+   ⇒ **障碍是 Windows 跨卷创建符号链接的权限**（D: → C:），与 GitHub、与 `path:` 语法、与传输都无关。
+3. **回滚第三次被观察到**：失败后 profile 的 `dependencies.autogamer-device` 仍是
+   `link:D:/DEV/autoGamer/plugins/autogamer-device`、`dsh.profile.bundles` 未变、
+   `node_modules/autogamer-device` 符号链接原样在位、`--dump-config` 里 `preset-autogamer` 仍合成。
+
+#### 结论与下一步（**未修，只是定性**）
+
+- 「发布到 GitHub + 子目录」这条路**语法与传输都成立**，#20 定死的地址形状不用改。
+- 要装通得先解决 pnpm 的符号链接权限，候选（**都还没测，不许当结论**）：
+  开 Windows 开发者模式或以具备权限的身份运行；给 profile 配 `node-linker=hoisted` 之类不走符号链接的布局；
+  或让 profile 与仓库同卷。**下一条做哪个要先定，别又写成猜测实现（R20/R22）。**
+
+#### 验收标准
+
+- [x] 公开仓库经 `install_bundle` 抓取成功（`exitCode:0`，解析为 `git+https://…`），仅因 `not-bundle` 被拒
+- [x] 我们 push 后的仓库经 `#main&path:/plugins/autogamer-device` 被正确解析并进入导入阶段
+- [x] 障碍定位到 `ERR_PNPM_EPERM` 的跨卷符号链接，且**给出完整错误原文**
+- [x] 失败后 profile 三处状态（deps / bundles / 符号链接）与 `--dump-config` 全部原样
+- [ ] 权限方案未选定、未验证 ⇒ 交付路径仍不能宣称可用
 
 ## 已关闭差距史（G*）
 
