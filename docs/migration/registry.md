@@ -72,7 +72,6 @@
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 | G38 | 插件内部错误被归类成任务级失败（熔断语义被污染） |
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
-| G51 | 本机 Node 的 TLS 信任被本地中间代理接管，走 https 的依赖安装要 `--use-system-ca` |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
 
@@ -103,6 +102,7 @@
 | G45 | 交付 preset 没有指令投递行：flash 契约从未进过模型，spike 与服从性观察的前提都不成立 | `persona` 行进交付形态与 overlay（文本内禁 `{{}}`）；新会话 wire 断言 system 4052 字符、契约起于第 50 字符；详见 CHANGELOGS **#14** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`（根因未定） | 单变量跑完：停服务报错不变→否证占用假说；清掉同名 junction 后 `added 17` exit 0→成立。机制=`importPackage` 顺着旧 `link:` 走进开发工作区重建符号链接被 Windows 拒；详见 CHANGELOGS **#22** |
 | G50 | git 形态装出来的 bundle 缺 `dist/`，pnpm 成功但不可用 | tarball 路线端到端验通（清单含 dist+skills、安装 exit 0、服务加载后工具面与终态链路完整）；对外交付形状定为 GitHub Release 资产 tarball URL；详见 CHANGELOGS **#23** |
+| G51 | 本机 Node TLS 信任被本地中间代理接管，走 https 的依赖安装要 `--use-system-ca` | 源码核对 + 两次 DSH 侧实测确认前置有效；README 已写安装前置并禁用关掉校验；详见 CHANGELOGS **#25** |
 | G47 | `install_bundle` 的两项未验：失败是否真回滚 profile 文件、`files` 打包清单是否生效 | 一次性包三轮实测：两例失败后 profile 两文件 SHA256 不变；tarball 安装落地树恰等于 `files` 白名单；详见 CHANGELOGS **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | `git+file://` 本地仓库两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；详见 CHANGELOGS **#20** |
 | G35 | 文档门禁脚本默认路径写死 | `DEFAULTS` 从脚本自身位置推导仓库根；自测锚点改为动态取第一条 G 行；详见 CHANGELOGS **#16** |

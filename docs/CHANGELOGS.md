@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#24 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#25 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1012,6 +1012,56 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 - [x] 上游未被误写（0 releases、0 相关 tag）；开发环境精确还原（`link:` + reparse point + `src` 可达 + 工作树干净）
 - [x] 两个陷阱都落到台账：R26（`gh` 显式 `--repo`）与 G51（Node TLS 信任）
 
+### #25 G51 复验：TLS 前置在 DSH 自己的 install_bundle 路径上成立，并顺带暴露一个自举死结
+
+- **日期**: 2026-10-12
+- **状态**: ✅ G51 结案（前置已写进 README）；⚠️ 记一条**未获得**的证据与一个结构性死结
+- **优先级**: 中（环境前置 + 交付路径的可用边界）
+- **来源**: 两次真实 DSH 侧 `install_bundle`（带/不带 flag 各一次）、`operations.ts:315` 与
+  `subprocess/src/index.ts:66-80` 源码核对
+
+#### 问题描述
+
+#24 的 URL 安装是**我直接用 pnpm 跑的**，没走 DSH 的 `install_bundle`。G51 因此留了两件事：
+把 TLS 前置变成可交付说明；以及确认**宿主自己**在这台机器上装不装得动。
+
+#### 机制核对（源码，非推断）
+
+`operations.ts:315`：`const environment = { ...(options.execution === 'cli' ? process.env : scrubbedParentEnv()), ...options.env }`
+——CLI 继承环境、服务路径先洗环境。而 `scrubbedParentEnv()`（`subprocess/src/index.ts:66-80`）
+只剔除匹配 `/KEY|PASSWORD|SECRET|TOKEN/i` 的名字与 `DSH_*` 前缀，**`NODE_OPTIONS` 不在其中**
+⇒ 只要宿主进程自己带着它启动，pnpm 子进程就能继承。这条决定了 README 该怎么写：是**启动前置**，不是随包配置。
+
+#### 两次实测
+
+1. **不带 flag**（宿主默认环境）：`plugin_manager install_bundle <Release URL>` ⇒
+   `application:"failed"`、`changed:false`，pnpm 输出
+   `[WARN] HEAD … error (UNABLE_TO_VERIFY_LEAF_SIGNATURE). Will retry in 10 seconds. 2 retries left.`
+   ⇒ **DSH 自己的路径同样被本机 TLS 信任卡住**，与 #24 的 pnpm 直跑结论一致，不是推断。
+2. **带 `NODE_OPTIONS=--use-system-ca` 启动宿主**：同一发 ⇒ **签名验证错误消失**，
+   改报 `ERR_PNPM_MISSING_TARBALL_INTEGRITY`（lockfile 条目没有 integrity 字段）。
+   这个新错误**是我自己造成的**：前一轮反复倒换 profile 的 `package.json`/`pnpm-lock.yaml` 备份，
+   留下了与 URL 对应的无 integrity 条目。
+   ⇒ 诚实结论：**Test B 只证明「TLS 这一层被 flag 解决」，没有拿到一发干净的 DSH 路径全流程成功**。
+
+#### 顺带挖到的结构性死结（交付路径的边界，值得记）
+
+要让 agent 用 `plugin_manager` 自装**同一个包**，前提是 `plugin_manager` 已经在会话里——
+而它由我们的 preset 提供，preset 又依赖这个 bundle 已安装。叠加 #22 的结论
+（同名旧 `link:` junction 会让 `importPackage` 走进开发工作区并报 `EPERM`），得到：
+**在开发机上「agent 自装同名新版本」这条路天然别扭**——先清 junction 就没工具可用，不清就撞 EPERM。
+⇒ 真实用户不受影响（首装走 Web 面板或 `install_bundle`，那时没有同名旧链接）；
+但这条边界要写进文档，别把自举说成无条件可用。
+
+#### 收尾与验收标准
+
+- [x] 机制有源码出处（`operations.ts:315` + `scrubbedParentEnv`），不是猜测
+- [x] 不带 flag 的 DSH 路径失败有**错误原文**（`UNABLE_TO_VERIFY_LEAF_SIGNATURE` + 两次重试）
+- [x] 带 flag 后 TLS 错误消失（换成另一个由我 own 的脏 lock 造成的错误，已如实归因）
+- [x] README 装上「⚠️ 本机 TLS 前置」段：启动带 `--use-system-ca`，并**明确禁止**用 `NODE_TLS_REJECT_UNAUTHORIZED=0`
+- [x] profile 清干净：`pnpm-lock.yaml` 无 URL 残留条目、`autogamer-device` 回到 `link:` 且 `src/index.ts` 可透过链接访问
+- [ ] **未获得**：一发从零开始、走 DSH `install_bundle` 的完整成功安装（需要干净 profile 或换机器验证）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1049,3 +1099,4 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
 | G50 | git 形态装出来的 bundle 缺 `dist/`（构建产物不在提交里） | tarball 路线端到端验通：`npm pack` 清单含 dist 与 skills、安装 exit 0、服务加载后 7 工具 + persona + 追问链路完整；对外形状定为 GitHub Release 资产 tarball 的 URL | 本文件 **#23** |
+| G51 | 本机 Node TLS 信任被本地中间代理接管，走 https 的依赖安装要 `--use-system-ca` | 机制有源码出处（`scrubbedParentEnv` 保留 `NODE_OPTIONS`）；不带 flag 时 DSH 自己的 install_bundle 报 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`，带 flag 后该错误消失；前置已写进 README，并禁止用 `NODE_TLS_REJECT_UNAUTHORIZED=0` | 本文件 **#25** |
