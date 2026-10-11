@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#26 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#27 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1126,6 +1126,43 @@ Creator preset（`preset-cordis`）本来就带着这个工具，所以**在 Cre
 - [x] 一致性：`tests/deliveryShape.spec.ts` 3/3 绿（两处 preset 仍同形）
 - [x] **live 复验修正没有关掉能力**：web profile（profileContext 存在）新会话工具面仍是 **7 个、含 `plugin_manager`**，宿主 0 启动错误
 - [x] #25 的过度陈述已在本条更正，并写清自举的真实起点在 Creator preset
+
+### #27 G5 的副产品：装上真实 DSH 包之后，手镜像的附件引用类型被 tsc 照出来了
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已修（类型层；运行时从未坏过）
+- **优先级**: 中——不炸线上，但它是守则 **R21** 明确禁止的那类断言：手抄的宿主类型会随上游静默失真
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+G5 Tier 1 要给插件加 4 个真实 `@deepseek-ai/*` devDeps（`dsh-system-prompt` / `dsh-invariants` / `dsh-agent` / `dsh-attachment`）。加完 `npx tsc --noEmit` 从 **0 错** 变成 1 错：
+
+```
+src/tools/runDeviceAction.ts(248,7): error TS2322
+  ... Type '{ type: "image"; attachment: DshImageAttachment; }' is not assignable to type 'ImageBlock'.
+    The types of 'attachment.attachmentId' are incompatible between these types.
+      Type 'string' is not assignable to type 'AttachmentId'.
+        Type 'string' is not assignable to type '{ readonly [BRAND]: "AttachmentId"; }'.
+```
+
+根因在 `src/dsh-types.ts`：`DshImageAttachment` 是**手镜像**，文件头当时的说法是 "DSH ships no type declarations (dist JS only, verified)"。真实声明是 `@deepseek-ai/dsh-attachment` `lib/types/types.d.ts:7` 的 `ImageAttachmentRef`——字段逐个对得上，唯独 `attachmentId` 是品牌类型 `AttachmentId`（`brandString`，仅编译期存在），我们抄成了 `string`。
+
+为什么以前不报：这条品牌在依赖没装齐时无法解析，tsc 把它当宽松类型放过；真包一到，品牌可解析，冲突立刻露出来。**基线实测**（不是推断）：`git stash` 掉 `package.json`/`pnpm-lock.yaml` 后 `pnpm install --frozen-lockfile` + tsc = 0 错，恢复后 = 1 错。
+
+运行时没有受损：`attachmentId` 我们只透传、从不解析（`src/index.ts:182` 的 `saveScreenshot`），所以这是纯类型缺陷。但「抄错一个品牌」正是 G5 要消灭的那种手镜像——上游一升级就变成假的安全感。
+
+#### 整改方案与实施
+
+- `plugins/autogamer-device/src/dsh-types.ts`：`DshImageAttachment` 从自写 interface 改为**真类型的别名**——`import type { ImageAttachmentRef, SaveImageAttachment } from "@deepseek-ai/dsh-attachment"`；`DshAttachments.saveImages` 直接用真签名 `readonly SaveImageAttachment[] → Promise<readonly ImageAttachmentRef[]>`（原镜像的入参形状与真 `SaveImageAttachment` 逐字段相同，行为不变）。
+- 同文件头注释改成「两类条目」规则：**凡是公开 `@deepseek-ai/*` 包能声明的，一律 import 不手抄**；只有在 Host 里才看得到的形状才允许手镜像，且必须带版本与出处。旧的「DSH 不发类型」陈述已经作废——包内带 `lib/types/**/*.d.ts`，公开 registry 可取。
+- 调用点零改动：`DshImageAttachment["mediaType"]` 的索引访问在别名上仍成立，`runDeviceAction.ts` 四处引用原样。
+
+#### 验收标准
+
+- `cd plugins/autogamer-device && npx tsc -p tsconfig.json --noEmit` ⇒ 0 error
+- `npm run build && npx vitest run` ⇒ 75 passed / 1 skipped（skipped 是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 分支）
+- 证伪口径（证明是修好而不是绕开）：把 `DshImageAttachment` 换回 `attachmentId: string` 的手镜像 ⇒ 上面那条 TS2322 立刻回来
 
 ## 已关闭差距史（G*）
 

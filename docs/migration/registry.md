@@ -55,6 +55,7 @@
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G4 | 熔断探测体：下一条真实消息动作即探测 |
 | G5 | conformance 需要真实 DSH runtime（CI 起 DSH 跑契约测试） |
+| G52 | 追问路径仍只有 fake 事件总线证据：真实 `ctx.sessions` 驱动的 `turn/end` → `followup` 未进 Tier 1 |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
 | G11 | 熔断判定信号：工具层错误分类，不再查 DB |
