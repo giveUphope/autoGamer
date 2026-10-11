@@ -15,7 +15,7 @@
 | 下一步（按序） | **1)** preset 挂 `tool-plugin-manager`（D17）+ 交付形态迁 `install_bundle`（G31，含 skill 根路径的随包解析与 skill 接线）——P0 的功能面已收官，这条是「怎么装」的最后一块；**2)** 低成本顺手项：G35（门禁脚本默认路径）、G32（bundle 展示元信息）、G34（裸 schema 输入自校验）、G38（内部错误归类）、G33（策略从工具正文迁 guard/pre-execute）；**3)** P1 开工：pro subagent（checker/validator 保真）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**4)** 一条未解释的残余观察（不当结论）：同一份 dist 在 23:12 那个服务实例上两轮都没触发追问，23:38 / 23:47 两个实例上稳定触发——再复现就按新号开 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
-| 测试面 | 插件 vitest **57/57**（含 G41 终态 2 条、G42 编号 7 条）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
+| 测试面 | 插件 vitest **67/67**（新增 5 条：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
 | 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md)（**R20：遇 DSH 行为问题先查官方一手资料，别先写猜测实现**） |
 
 ## 一、最终形态

@@ -79,16 +79,12 @@ const { apply, Config } = await import("../src/index.js");
 /**
  * Cordis-faithful context double. `effect(setup)` runs `setup` IMMEDIATELY and
  * keeps its returned function as the teardown (verified against upstream
- * mount.ts:208 / agent-preset-registry/src/index.ts:112 / app-boot
- * service.ts:110). The apply.spec.ts double used to omit `effect` entirely,
- * which let a teardown-as-callback bug (G30: apply() disposed its own tool
- * registrations) pass CI while every live session lost the tool face.
- */
-/**
- * Cordis-faithful context double: `effect` runs the callback immediately and
- * keeps its return value as the teardown; services are real lookups; and
- * `on(name, handler, options)` records the options so the scope-filter bypass
- * (G44 v2, `{ global: true }`) is itself under test.
+ * mount.ts:208 / agent-preset-registry/src/index.ts:112) — the double used to
+ * omit `effect` entirely, which let a teardown-as-callback bug (G30: apply()
+ * disposed its own tool registrations) pass CI while every live session lost
+ * the tool face. Services are real lookups, and `on(name, handler, options)`
+ * records the options so the scope-filter bypass (`{ global: true }`) is itself
+ * under test.
  */
 function fakeContext(
   definitions: ToolDefinition[],
@@ -167,6 +163,7 @@ function exec(): { signal: AbortSignal } {
 beforeEach(() => {
   harness.calls.length = 0;
   harness.clientOptions.length = 0;
+  harness.changed = true;
   harness.disposed = 0;
 });
 
@@ -417,8 +414,12 @@ describe("apply(): unreported turns are nudged (G44 v2)", () => {
     const tools = await registeredTools(CONFIG);
     await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
     tools.emit("turn/end");
+    // Rule R23: appending inside the emit is rejected by the host
+    // ("session append cannot reenter while another append is being published"),
+    // so the call must NOT have happened yet at this point in the same task.
+    expect(tools.followups).toHaveLength(0);
     // The followup is deferred out of the append/publication boundary, so let the
-    // macrotask run before asserting.
+    // macrotask run before asserting it landed.
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(tools.followups).toHaveLength(1);
     const text = JSON.stringify(tools.followups[0]);
@@ -452,5 +453,33 @@ describe("apply(): unreported turns are nudged (G44 v2)", () => {
     tools.emit("tool/call");
     await new Promise((resolve) => setTimeout(resolve, 0));
     expect(tools.followups).toHaveLength(0);
+  });
+});
+
+describe("apply(): the result envelope must not starve the hierarchy (G42)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("keeps a long hierarchy dump whole while clipping prose fields", async () => {
+    const t = await registeredTools(CONFIG);
+    const long = Array.from({ length: 40 }, (_, i) => `#${i} [10,20] clickable pkg=com.x label 设置项`).join("\n");
+    const rendered = t.runDeviceAction.output.render(
+      {},
+      { result: "Success", hierarchy: long, message: "x".repeat(400) },
+    ) as Array<{ text?: string }>;
+    const text = rendered.map((part) => part.text ?? "").join("");
+
+    expect(text).toContain(long); // the whole list reaches the model
+    expect(text).toContain(`${"x".repeat(200)}…`); // other fields keep the generic budget
+  });
+
+  it("renders the image as a block instead of flattening its reference", async () => {
+    const t = await registeredTools(CONFIG);
+    const rendered = t.runDeviceAction.output.render({}, {
+      result: "Success",
+      image: { attachmentId: "att-1", mediaType: "image/jpeg" },
+    }) as Array<{ type: string; text?: string }>;
+
+    expect(rendered.map((part) => part.type)).toEqual(["text", "image"]);
+    expect(rendered[0].text).not.toContain("att-1");
   });
 });

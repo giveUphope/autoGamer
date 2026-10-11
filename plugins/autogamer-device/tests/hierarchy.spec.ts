@@ -86,7 +86,7 @@ describe("hierarchy: the model must see the whole list", () => {
     const rendered = formatVisibleElements(parseVisibleElements(PAYLOAD)!);
     // The envelope used to clip every string at 200 chars, which cut a real
     // 27-element dump after 3 rows.
-    expect(rendered.length).toBeGreaterThan(200 * 0);
+    expect(rendered.length).toBeGreaterThan(200);
     const wide = formatVisibleElements(
       Array.from({ length: 27 }, (_, i) => ({
         index: i,
