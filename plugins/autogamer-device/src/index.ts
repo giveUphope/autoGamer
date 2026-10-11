@@ -8,8 +8,7 @@
 import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
-import { configuredScreenSize, decodeImageBase64, imageSizeFromBase64, type ScreenSize } from "./coord.js";
-import { grayscaleGrid } from "./frame.js";
+import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
 import type { DshContext } from "./dsh-types.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
@@ -110,10 +109,22 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     // Screenshots go to the host attachment store so the model gets a real
     // image block and the log keeps only the content-addressed reference.
     // Effect observation runs entirely in-tool: the router looks at the screen
-    // itself rather than trusting the model's account of what happened.
+    // itself rather than trusting the model's account of what happened. The
+    // verdict itself is the action server's (G39 route A).
     captureFrame: async () => {
       const base64 = unwrapText(await client.callTool("take_screenshot", {}));
-      return grayscaleGrid(decodeImageBase64(base64));
+      return base64.startsWith("Error:") ? undefined : base64;
+    },
+    compareFrames: async (before, after, action, coordinates) => {
+      const args: Record<string, unknown> = { before_b64: before, after_b64: after, action };
+      if (coordinates) args.coordinates = coordinates;
+      const answer = unwrapText(await client.callTool("compare_ui_frames", args));
+      if (answer.startsWith("Error:")) {
+        logger.warn(`[route] effect comparison refused: ${answer}`);
+        return undefined;
+      }
+      const parsed = JSON.parse(answer) as { changed?: unknown };
+      return typeof parsed.changed === "boolean" ? parsed.changed : undefined;
     },
     saveScreenshot: async (bytes, mediaType) => {
       try {

@@ -1,6 +1,6 @@
 {
-  "captured": "2026-10-09",
-  "source": "live MCP stdio listing of `uv run artemis mcp --type adb` (ARTEMIS_MOCK_DRIVER agnostic)",
+  "captured": "2026-10-11",
+  "source": "live MCP stdio listing of `uv run artemis mcp --type adb` (ARTEMIS_MOCK_DRIVER=1 node scripts/spike-mcp.mjs)",
   "pyActionServerTools": [
     "tap",
     "long_press_on",
@@ -14,9 +14,11 @@
     "erase_one_char",
     "press_key",
     "take_screenshot",
+    "compare_ui_frames",
     "get_ui_hierarchy"
   ],
   "notes": [
+    "2026-10-11: compare_ui_frames added (G39 route A) - the read-only effect verdict the plugin router calls, delegating to artemis/utils/image_diff.check_ui_change.",
     "Contract quirks locked by live capture (see docs/migration/inventory/03 + dsh-verification §一):",
     "legacy PIXEL coordinate contract — 0-1000 normalization happens in this plugin (src/coord.ts)",
     "results are plain strings: Success / Failed / Error: ... / Error executing tool ...",

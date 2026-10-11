@@ -463,6 +463,42 @@ async def take_screenshot(ctx: Context) -> str:
 
 
 @_tool()
+async def compare_ui_frames(before_b64: str, after_b64: str, action: str = "tap",
+                            coordinates: list[int] | None = None) -> str:
+    """Reports whether the screen visibly changed between two captured frames.
+
+    Pure computation on base64 frames the caller already holds -- nothing is
+    captured here, so the caller keeps ownership of when to look. The verdict
+    rules (status/nav bar masking, the full-screen change ratio, the widened ROI
+    check for taps, and assuming "changed" when a frame cannot be decoded) are
+    the same ones the Validator uses, from artemis.utils.image_diff.
+
+    Returns a JSON string such as '{"changed": true}', or 'Error: ...'.
+    """
+    import base64
+
+    from artemis.utils.image_diff import check_ui_change
+
+    try:
+        before = base64.b64decode(before_b64)
+        after = base64.b64decode(after_b64)
+    except Exception as e:
+        return f"Error: frame decode failed: {e}"
+
+    action_item: dict[str, Any] = {"action": action}
+    if coordinates and len(coordinates) == 2:
+        action_item["coordinates"] = [int(coordinates[0]), int(coordinates[1])]
+
+    try:
+        changed = bool(check_ui_change(before, after, action_item))
+    except Exception as e:
+        logger.exception("Failed to compare UI frames")
+        return f"Error: {e}"
+
+    return json.dumps({"changed": changed})
+
+
+@_tool()
 async def get_ui_hierarchy(ctx: Context) -> str:
     """Retrieves the current UI elements hierarchy from the device."""
     try:

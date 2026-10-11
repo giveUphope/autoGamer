@@ -3,7 +3,7 @@
  * Run from the repo root so `uv run` resolves the project env:
  *   ARTEMIS_MOCK_DRIVER=1 node plugins/autogamer-device/scripts/spike-mcp.mjs
  *
- * Verifies: the pipe (list + call round-trip), the real 13-tool surface,
+ * Verifies: the pipe (list + call round-trip), the real action-tool surface,
  * and result normalization. Actions may fail with adb-down messages when no
  * device/server is available — that still exercises the environment path.
  */
@@ -14,6 +14,8 @@ const REAL_TOOLS = [
   "tap", "long_press_on", "swipe", "back", "launch_app", "stop_app",
   "open_link", "focus_and_input_text", "focus_and_clear_text",
   "erase_one_char", "press_key", "take_screenshot", "get_ui_hierarchy",
+  // G39 route A: the read-only effect verdict the plugin router calls.
+  "compare_ui_frames",
 ];
 
 const command = (process.env.SPIKE_COMMAND ?? "uv run artemis mcp --type adb").split(" ");

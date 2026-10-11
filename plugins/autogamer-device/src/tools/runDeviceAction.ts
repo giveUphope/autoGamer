@@ -15,7 +15,6 @@ import type { ActionClient } from "../actionClient.js";
 import type { DeviceBreaker } from "../breaker.js";
 import type { DeviceGate } from "../gate.js";
 import { classifyMessage } from "../classify.js";
-import { frameDiff } from "../frame.js";
 import {
   decodeImageBase64,
   imageMediaTypeOf,
@@ -95,13 +94,6 @@ const EFFECT_OBSERVED_ACTIONS: ReadonlySet<DeviceAction> = new Set([
 /** Let navigation animations finish before the after-frame is taken. */
 const EFFECT_SETTLE_MS = 600;
 
-/**
- * Mean grayscale grid difference above which the screen counts as changed.
- * Measured on the live device: idle frames differ by <= 0.015 (animated
- * wallpaper) while a real navigation measured 0.69 — see src/frame.ts.
- */
-const EFFECT_CHANGED_MIN = 0.05;
-
 function settle(ms: number): Promise<void> {
   return new Promise((resolve) => {
     const timer = setTimeout(resolve, ms);
@@ -143,8 +135,19 @@ export interface RouterOptions {
     bytes: Uint8Array,
     mediaType: DshImageAttachment["mediaType"],
   ): Promise<DshImageAttachment | undefined>;
-  /** Downscaled grayscale of the current screen, for effect observation. */
-  captureFrame?(): Promise<Uint8Array | undefined>;
+  /**
+   * Effect observation, delegated to the action server's read-only
+   * `compare_ui_frames`: the verdict rules (status/nav masking, change ratio,
+   * tap ROI, and the "assume changed" fallback) are the device layer's, not
+   * ours to re-derive from pixels.
+   */
+  captureFrame?(): Promise<string | undefined>;
+  compareFrames?(
+    beforeB64: string,
+    afterB64: string,
+    action: string,
+    coordinates?: number[],
+  ): Promise<boolean | undefined>;
 }
 
 interface TargetInput {
@@ -339,20 +342,34 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     // model's reading of it. `unchanged` after a mutating action is the signal
     // the P1 validator ladder escalates on; for now it is reported verbatim.
     await settle(EFFECT_SETTLE_MS);
-    const diff = frameDiff(before, await captureFrameSafe());
-    const effect = diff === undefined ? "unknown" : diff > EFFECT_CHANGED_MIN ? "changed" : "unchanged";
-    logger.info(`[route] effect=${effect} diff=${diff?.toFixed(4) ?? "n/a"} action=${action} device=${key}`);
-    return {
-      ok: true,
-      value: { ...observed, effect, ...(diff === undefined ? {} : { effect_diff: Number(diff.toFixed(4)) }) },
-    };
+    const after = await captureFrameSafe();
+    const coordinates = Array.isArray(payload.coordinates) ? payload.coordinates : undefined;
+    const changed =
+      before && after ? await compareFramesSafe(before, after, tool, coordinates) : undefined;
+    const effect = changed === undefined ? "unknown" : changed ? "changed" : "unchanged";
+    logger.info(`[route] effect=${effect} action=${action} device=${key}`);
+    return { ok: true, value: { ...observed, effect } };
   }
 
-  async function captureFrameSafe(): Promise<Uint8Array | undefined> {
+  async function captureFrameSafe(): Promise<string | undefined> {
     try {
       return await options.captureFrame?.();
     } catch (error) {
       logger.warn(`[route] effect frame failed: ${(error as Error)?.message ?? error}`);
+      return undefined;
+    }
+  }
+
+  async function compareFramesSafe(
+    before: string,
+    after: string,
+    tool: string,
+    coordinates?: number[],
+  ): Promise<boolean | undefined> {
+    try {
+      return await options.compareFrames?.(before, after, tool, coordinates);
+    } catch (error) {
+      logger.warn(`[route] effect comparison failed: ${(error as Error)?.message ?? error}`);
       return undefined;
     }
   }

@@ -40,8 +40,9 @@ describe("conformance: py action server surface", () => {
     expect(Object.keys(ACTION_TO_PY_TOOL).sort()).toEqual([...ACTIONS].sort());
   });
 
-  it("fixture records the 13-tool legacy contract", () => {
-    expect(realTools).toHaveLength(13);
+  it("fixture records the 14-tool legacy contract", () => {
+    // 13 device verbs + compare_ui_frames (G39 route A, 2026-10-11).
+    expect(realTools).toHaveLength(14);
     expect(realTools).toContain("tap");
     expect(realTools).toContain("focus_and_input_text");
     expect(realTools).not.toContain("click"); // real name is `tap`

@@ -223,3 +223,51 @@ async def test_press_key_vocabulary_divergence_is_documented():
     assert "key" in ACTION_SPECS["press_key"].differences, (
         "the canonical manifest no longer documents the press_key vocabulary split"
     )
+
+
+# --- compare_ui_frames behaviour --------------------------------------------------------
+
+from artemis.mcp import adb_server  # noqa: E402  (the manifest tests import it lazily)
+
+
+
+def _png_b64(array) -> str:
+    import base64
+
+    import cv2
+    import numpy as np
+
+    ok, buf = cv2.imencode(".png", np.asarray(array, dtype=np.uint8))
+    assert ok
+    return base64.b64encode(buf.tobytes()).decode("ascii")
+
+
+@pytest.mark.asyncio
+async def test_compare_ui_frames_reports_identical_frames_as_unchanged():
+    import numpy as np
+
+    frame = _png_b64(np.full((400, 800), 120))
+    result = json.loads(await adb_server.compare_ui_frames(frame, frame, action="back"))
+    assert result == {"changed": False}
+
+
+@pytest.mark.asyncio
+async def test_compare_ui_frames_reports_a_navigation_as_changed():
+    import numpy as np
+
+    after_img = np.full((400, 800), 40, dtype=np.uint8)
+    after_img[:, 400:] = 240
+    result = json.loads(
+        await adb_server.compare_ui_frames(_png_b64(np.full((400, 800), 40)), _png_b64(after_img), "back")
+    )
+    assert result == {"changed": True}
+
+
+@pytest.mark.asyncio
+async def test_compare_ui_frames_keeps_the_assume_changed_fallback():
+    """Undecodable bytes must not read as "nothing happened" -- that would stall the router."""
+    import base64
+
+    junk = base64.b64encode(b"definitely not a jpeg").decode("ascii")
+    result = json.loads(await adb_server.compare_ui_frames(junk, junk, action="tap"))
+    assert result == {"changed": True}

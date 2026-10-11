@@ -8,7 +8,6 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseImageSize } from "../src/coord.js";
-import { encodePng } from "./support/png.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
 
 /** A 1080x2400 PNG: signature + IHDR carrying the dimensions at byte 16/20. */
@@ -25,8 +24,8 @@ function pngBytes(): Buffer {
 const harness = vi.hoisted(() => ({
   calls: [] as { tool: string; args: Record<string, unknown> }[],
   clientOptions: [] as Record<string, unknown>[],
-  /** Successive take_screenshot answers; empty means "always the same frame". */
-  frames: [] as string[],
+  /** What compare_ui_frames should answer; undefined means "no verdict". */
+  changed: true as boolean | undefined,
   disposed: 0,
 }));
 
@@ -39,8 +38,12 @@ vi.mock("../src/actionClient.js", () => ({
     async callTool(tool: string, args: Record<string, unknown>) {
       harness.calls.push({ tool, args });
       if (tool === "take_screenshot") {
-        const next = harness.frames.shift();
-        return { content: [{ type: "text", text: next ?? pngBytes().toString("base64") }] };
+        return { content: [{ type: "text", text: pngBytes().toString("base64") }] };
+      }
+      if (tool === "compare_ui_frames") {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ changed: harness.changed }) }],
+        };
       }
       if (tool === "get_ui_hierarchy") {
         return { content: [{ type: "text", text: "<hierarchy></hierarchy>" }] };
@@ -111,7 +114,6 @@ function exec(): { signal: AbortSignal } {
 beforeEach(() => {
   harness.calls.length = 0;
   harness.clientOptions.length = 0;
-  harness.frames.length = 0;
   harness.disposed = 0;
 });
 
@@ -251,38 +253,40 @@ describe("apply(): screenshot media path (G36)", () => {
   });
 });
 
-describe("apply(): effect observation (S10 ② / S11 step 3)", () => {
-  const FRAME = { width: 160, height: 90 };
-  const flat = (value: number) => encodePng(FRAME.width, FRAME.height, 0, () => value).toString("base64");
-  const split = () =>
-    encodePng(FRAME.width, FRAME.height, 0, (x) => (x < FRAME.width / 2 ? 40 : 240)).toString("base64");
-  const notAnImage = () => Buffer.from([0xff, 0xd8, 0xff, 0xe0, 0, 0, 0, 0]).toString("base64");
-
-  async function clickWith(frames: string[]): Promise<Record<string, unknown>> {
+describe("apply(): effect observation (S10 ② / G39 route A)", () => {
+  it("reports unchanged when the action server sees no screen change", async () => {
+    harness.changed = false;
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
-    harness.frames.push(...frames);
-    return (await tool.execute(
+    const value = (await tool.execute(
       { action: "click", target: { coordinate: [500, 500] }, reason: "observe" },
       exec(),
     )) as Record<string, unknown>;
-  }
-
-  it("reports unchanged when the after-frame matches the before-frame", async () => {
-    const value = await clickWith([flat(40), flat(40)]);
     expect(value.effect).toBe("unchanged");
-    expect(value.effect_diff).toBe(0);
   });
 
-  it("reports changed when the screen actually moved", async () => {
-    const value = await clickWith([flat(40), split()]);
+  it("reports changed when the action server sees the screen move", async () => {
+    harness.changed = true;
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute(
+      { action: "back", reason: "observe" },
+      exec(),
+    )) as Record<string, unknown>;
     expect(value.effect).toBe("changed");
-    expect(Number(value.effect_diff)).toBeGreaterThan(0.05);
   });
 
-  it("reports unknown rather than guessing on undecodable frames", async () => {
-    const value = await clickWith([notAnImage(), notAnImage()]);
+  it("hands the tap coordinates to the verdict so the ROI rule can apply", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "observe" }, exec());
+    const compare = harness.calls.find((call) => call.tool === "compare_ui_frames");
+    expect(compare?.args.action).toBe("tap");
+    expect(compare?.args.coordinates).toEqual([360, 800]);
+  });
+
+  it("reports unknown rather than guessing when no verdict comes back", async () => {
+    harness.changed = undefined;
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute({ action: "back", reason: "observe" }, exec())) as Record<string, unknown>;
     expect(value.effect).toBe("unknown");
-    expect(value).not.toHaveProperty("effect_diff");
   });
 
   it("takes no observation frames for read-only actions", async () => {
