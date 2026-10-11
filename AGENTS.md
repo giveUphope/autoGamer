@@ -28,7 +28,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 | 文档 | 什么时候读 |
 |---|---|
 | `docs/todo.md` | 任何 DSH 侧改动之前。方案本体：D1-D17 决策表、S1-S11 对接语义、差距清单 G*、P0-P4 checklist 与「P0 执行状态」 |
-| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R21，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」** |
+| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R22，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）** |
 | `docs/migration/registry.md` | **要引用或新增任何编号（D/S/G/R）之前**。编号唯一权威，含 `inventory/*` 与 `todo.md` 的 G 编号撞车冲突表；`scripts/check_doc_registry.py` 机械守着 |
 | `docs/migration/glossary.md` | 读方案时卡住词了：`realm`、`parking`、`PTC`、`roster`，尤其是 **`inject` 有两个意思**（服务依赖 vs 不唤醒的上下文追加） |
 | `docs/migration/README.md` | 第一次接触本迁移时的入口页；也是「哪几处别当真」的清单（旧 py 智能栈 prompt 文档、旧控制台研究、docker 材料等） |
@@ -114,7 +114,9 @@ While a task is queued/running it has no DB row; `/api/status` shows it via the 
 
 ## Change planning → todo ledger (habit)
 
-Applies to any non-trivial change. The moment the user confirms a plan/spec, **before**
+Applies to any non-trivial change. **Fixed order, no skipping (守则 R22): consult the official
+DSH docs first, then write the confirmed spec into `docs/todo.md`, then code - and the spec commit
+must land before the implementation commit.** The moment the user confirms a plan/spec, **before**
 implementation starts, write the confirmed spec into `docs/todo.md` as a themed entry. The
 entry must be self-sufficient: reading the entry alone must make clear what to do, how to do
 it, how to verify it, and what counts as done — no re-deriving state from code or chat:

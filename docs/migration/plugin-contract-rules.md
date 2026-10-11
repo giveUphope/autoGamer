@@ -175,6 +175,17 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 - **出处**：**文档口径** D15/R1（只用声明面）+ 本仓库 changelogs #10 的实测教训；`@deepseek-ai/dsh-llm` 的 `lib/types/*.d.ts` 引 `@deepseek-ai/dsh-attachment` 而本机未安装该版（tsc 因 skipLibCheck 静默放行，等于类型盲区）。
 - **判据**：审查表（`docs/todo.md`「宿主交互实现审查」）里每一项都有 已证 / 仅单测 / 猜测 三态之一；出现"猜测"项必须在本轮内改正、加探针或回退，不许长期挂账。
 
+## R22 功能实现三步序：查官方文档 → 写 todo 方案 → 才动代码
+
+任何功能/修复的实现，顺序固定为三步，**不许跳步**：
+
+1. **查**：按 R20 查官方一手资料（`docs/subsystems/*.zh.md`、`cordis-primer`、cookbook、三个官方 skill、公开 `packages/**`），把"查了哪份、原文怎么说"摘出来；
+2. **写**：把结论写进 `docs/todo.md` 一条自足方案（What / How / Verify / Done means，含范围外与前置实验），**方案先提交**；
+3. **做**：方案落地后在同一轮里勾验收项、记录偏差；被 live 否证的实现**当场回退**，不许留猜测代码（R21）。
+
+- **出处**：**仓库口径** AGENTS.md「Change planning → todo ledger」+ 本文件 R20/R21；触发实例：G44 第一版先写了 preset 层监听（61/61 单测）才去查 `session/event` 的 scope 规则，结果整轮回退。
+- **判据**：`git log` 里**方案提交必须早于实现提交**（同一功能的两条 commit 顺序可机械核对；无独立方案提交即视为跳步）；方案条目内必须出现"出处/原文"字样，只写"实测可用"不算过第 1 步。
+
 ## 待补（诚实清单）
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**
