@@ -40,6 +40,39 @@ export interface DshAttachments {
   ): Promise<readonly DshImageAttachment[]>;
 }
 
+/**
+ * Agent/session surface for the G44 turn-end enforcement. `agent.id` is the
+ * session id. Listener options mirror cordis 4.0.4 `EventOptions`
+ * (lib/types/events.d.ts:98-105) - `global` is what bypasses scope filtering.
+ */
+export interface DshAgent {
+  id: string;
+  followup(message: DshUserMessage): void;
+}
+
+export interface DshAgentsService {
+  get(id: string): DshAgent | undefined;
+  currentInitiator?(): DshAgent | undefined;
+}
+
+export interface DshSessionRef {
+  id: string;
+}
+
+export interface DshSessionEvent {
+  type: string;
+}
+
+export interface DshUserMessage {
+  role: "user";
+  content: { type: "text"; text: string }[];
+  source: Record<string, unknown>;
+}
+
+export interface DshEventOptions {
+  global?: boolean;
+}
+
 export interface DshContext {
   logger: DshLogger;
   tools: {
@@ -50,6 +83,17 @@ export interface DshContext {
    * property GET of an undeclared service rather than returning undefined.
    */
   attachments: DshAttachments;
+  agents: DshAgentsService;
+  /**
+   * Cordis typed events. `session/event` is scope-filtered, so the G44 listener
+   * passes `{ global: true }` (packages/core/scope/README.zh.md:75 - "带
+   * `{ global: true }` 的监听器绕过筛选").
+   */
+  on(
+    event: "session/event",
+    handler: (session: DshSessionRef, payload: DshSessionEvent) => void,
+    options?: DshEventOptions,
+  ): () => void;
   get?(key: string): unknown;
   /**
    * Cordis effect: the callback runs IMMEDIATELY (it is the setup body) and

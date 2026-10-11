@@ -6,7 +6,7 @@
  */
 import type { ToolDefinitionInput } from "../dsh-types.js";
 
-export function defineReportTaskStatus(): ToolDefinitionInput {
+export function defineReportTaskStatus(onReport?: () => void): ToolDefinitionInput {
   return {
     name: "report_task_status",
     description:
@@ -46,6 +46,7 @@ export function defineReportTaskStatus(): ToolDefinitionInput {
       // enforcement point rather than a prompt convention: without concluding the
       // turn the model kept acting (and re-reporting) after it had already
       // reported `blocked` — see G41.
+      onReport?.();
       exec.concludeTurn?.();
       return {
         status,

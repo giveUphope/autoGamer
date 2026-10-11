@@ -84,11 +84,21 @@ const { apply, Config } = await import("../src/index.js");
  * which let a teardown-as-callback bug (G30: apply() disposed its own tool
  * registrations) pass CI while every live session lost the tool face.
  */
+/**
+ * Cordis-faithful context double: `effect` runs the callback immediately and
+ * keeps its return value as the teardown; services are real lookups; and
+ * `on(name, handler, options)` records the options so the scope-filter bypass
+ * (G44 v2, `{ global: true }`) is itself under test.
+ */
 function fakeContext(
   definitions: ToolDefinition[],
   attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+  agentId = "agent-1",
 ) {
   const cleanups: unknown[] = [];
+  const listeners: Array<{ handler: (session: unknown, event: unknown) => void; options?: { global?: boolean } }> = [];
+  const followups: unknown[] = [];
+  const agent = { id: agentId, followup: (message: unknown) => { followups.push(message); } };
   const context = {
     logger: { info: () => {}, warn: () => {}, error: () => {} },
     tools: {
@@ -97,12 +107,44 @@ function fakeContext(
         return () => {};
       },
     },
+    agents: {
+      get: (id: string) => (id === agentId ? agent : undefined),
+      currentInitiator: () => agent,
+    },
+    on(event: string, handler: (session: unknown, payload: unknown) => void, options?: { global?: boolean }) {
+      if (event === "session/event") listeners.push({ handler, options });
+      return () => {};
+    },
     ...(attachments ? { attachments } : {}),
     effect(setup: () => unknown): void {
       cleanups.push(setup());
     },
   };
-  return { context, cleanups };
+  return {
+    context,
+    cleanups,
+    followups,
+    listenerOptions: () => listeners.map((l) => l.options),
+    emit: (type: string, id = agentId) => {
+      for (const l of listeners) l.handler({ id }, { type });
+    },
+  };
+}
+
+async function registeredTools(
+  config: Record<string, unknown>,
+  attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+) {
+  const definitions: ToolDefinition[] = [];
+  harness.calls.length = 0;
+  const double = fakeContext(definitions, attachments);
+  await apply(double.context as never, config as never);
+  const find = (name: string) => {
+    const tool = definitions.find((d) => d.name === name);
+    if (!tool) throw new Error(`${name} was not registered (got: ${definitions.map((d) => d.name).join(", ")})`);
+    return tool;
+  };
+  return { ...double, runDeviceAction: find("run_device_action"), reportTaskStatus: find("report_task_status") };
 }
 
 async function registerToolWith(
@@ -360,5 +402,48 @@ describe("apply(): element handles reach the device (G42)", () => {
     const lines = String(value.hierarchy).split("\n");
     expect(lines[0]).toMatch(/^#0 /);
     expect(lines[1]).toMatch(/^#1 .*显示$/);
+  });
+});
+
+describe("apply(): unreported turns are nudged (G44 v2)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("registers its session listener to bypass scope filtering", async () => {
+    const tools = await registeredTools(CONFIG);
+    expect(tools.listenerOptions()).toEqual([{ global: true }]);
+  });
+
+  it("follows up once when a turn ended after device actions without reporting", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    tools.emit("turn/end");
+    expect(tools.followups).toHaveLength(1);
+    const text = JSON.stringify(tools.followups[0]);
+    expect(text).toContain("report_task_status");
+    expect(text).toContain("Do not call run_device_action");
+  });
+
+  it("stays silent when the turn reported its outcome", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    await tools.reportTaskStatus.execute({ status: "completed", summary: "done" }, exec());
+    tools.emit("turn/end");
+    expect(tools.followups).toHaveLength(0);
+  });
+
+  it("never nudges twice for the same agent", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    tools.emit("turn/end");
+    await tools.runDeviceAction.execute({ action: "back", reason: "again" }, exec());
+    tools.emit("turn/end");
+    expect(tools.followups).toHaveLength(1);
+  });
+
+  it("ignores other session events", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    tools.emit("tool/call");
+    expect(tools.followups).toHaveLength(0);
   });
 });

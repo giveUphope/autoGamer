@@ -146,6 +146,8 @@ export interface RouterOptions {
    * tap ROI, and the "assume changed" fallback) are the device layer's, not
    * ours to re-derive from pixels.
    */
+  /** Records that this agent acted in the current turn (G44 ledger). */
+  onAction?(): void;
   captureFrame?(): Promise<string | undefined>;
   compareFrames?(
     beforeB64: string,
@@ -270,6 +272,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       const key = (args.device_serial as string | undefined) ?? options.defaultDeviceKey;
       const risk = action === "stop_app" ? "risky" : "normal";
       logger.info(`[route] action=${action} device=${key} risk=${risk} reason=${String(args.reason)}`);
+      options.onAction?.();
 
       if (!breaker.canAdmit(key)) {
         logger.warn(`[route] blocked by breaker: device=${key}`);

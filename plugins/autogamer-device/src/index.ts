@@ -10,7 +10,8 @@ import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
 import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
-import type { DshContext } from "./dsh-types.js";
+import type { DshContext, DshUserMessage } from "./dsh-types.js";
+import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction } from "./tools/runDeviceAction.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -47,7 +48,7 @@ export const Config: object = z.object({
  * row pending — the G30 shape — so this list is a live-verified claim, not an
  * aspiration.
  */
-export const inject = ["tools", "attachments"];
+export const inject = ["tools", "attachments", "agents"];
 
 export type PluginConfig = {
   actionServerCommand: string[];
@@ -99,6 +100,47 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // instantiation skips const-generics inference, which exceeds TS's stack on
   // our 13-parameter literal; the official compiler still validates the whole
   // shape when this runs.
+  // G44: the report tool has to be the only way a turn ends. `session/event` is
+  // scope-filtered, so the listener registers with { global: true } - without it
+  // a preset-scoped listener only sees tool events and turn/end never arrives
+  // (packages/core/scope/README.zh.md:75; cordis EventOptions.global).
+  const ledger = new TurnLedger();
+  const agentIdOfCall = (): string | undefined => {
+    try {
+      return ctx.agents.currentInitiator?.()?.id;
+    } catch (error) {
+      logger.warn(`[turn] initiator lookup failed: ${(error as Error)?.message ?? error}`);
+      return undefined;
+    }
+  };
+
+  ctx.on(
+    "session/event",
+    (session, event) => {
+      if (event?.type !== "turn/end") return;
+      if (!ledger.consumeTurn(session.id)) return;
+      const agent = ctx.agents.get(session.id);
+      if (!agent) {
+        logger.warn(`[turn] ${session.id} ended without a report but no agent handle`);
+        return;
+      }
+      logger.warn(`[turn] ${session.id} acted without reporting; nudging once`);
+      const message: DshUserMessage = {
+        role: "user",
+        content: [{ type: "text", text: REPORT_NUDGE }],
+        // A self-declared kind: the retired {kind:'plugin', plugin} wrapper is
+        // rejected by session format V4 (rule R17).
+        source: { kind: "autogamer", reason: "unreported-turn" },
+      };
+      try {
+        agent.followup(message);
+      } catch (error) {
+        logger.warn(`[turn] followup refused: ${(error as Error)?.message ?? error}`);
+      }
+    },
+    { global: true },
+  );
+
   ctx.tools.register(defineTool<any, any>(defineRunDeviceAction({
     gate,
     breaker,
@@ -106,6 +148,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     logger,
     defaultDeviceKey: config.defaultDeviceKey,
     resolveScreenSize,
+    onAction: () => ledger.markActed(agentIdOfCall()),
     // Screenshots go to the host attachment store so the model gets a real
     // image block and the log keeps only the content-addressed reference.
     // Effect observation runs entirely in-tool: the router looks at the screen
@@ -141,7 +184,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       }
     },
   })));
-  ctx.tools.register(defineTool<any, any>(defineReportTaskStatus()));
+  ctx.tools.register(
+    defineTool<any, any>(defineReportTaskStatus(() => ledger.markReported(agentIdOfCall()))),
+  );
 
   // Tool registration ownership belongs to the tools registry itself (its
   // entries are cordis effects on this plugin's fiber, exactly like the
