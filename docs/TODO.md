@@ -130,6 +130,7 @@
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G38 | 插件内部错误被归类成任务级失败 | 新开（2026-10-11 实测）：`dispatch` 的错误分类只看消息前缀（`environment:` 之外一律 `task`），所以 `cannot get property "attachments" without inject` 这类**我们自己的缺陷**记成了任务级失败、进了熔断语义，模型还连试三次。方向：内部异常单独收敛（既不记设备熔断也不记任务失败），并把「重试无益」的信号带进结果文本 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
+| G48 | 成功的 git 安装无证据 | 新开（2026-10-12，#19 留下的缺口）：#19 只证到「git spec 被接受并路由 + 失败完整回滚」，**一次 `application:"applied"` 的 git 安装从未发生**。三件事因此还悬着：① 我们的插件在仓库子目录（`plugins/autogamer-device`），要装得通必须用 pnpm 的 `#<ref>&path:/<subdir>` 形态，而 DSH 侧 `HOSTED_REPOSITORY_URL` 的 fragment 是 `#.+$`，**正则上容得下**，但没人真跑过一次；② `files` 白名单在 **git 形态**下是否生效（#19 只证了 tarball 形态生效；pnpm 文档没写这条）；③ 实测到 `https://github.com/…` 会被 pnpm 翻成 `git+ssh://git@github.com/…`，本机无 GitHub SSH 授权时**连真实公开仓库也可能失败**，显式 `git+https://` 是另一形态但未验。方案见「G48 成功的 git 安装」条 |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -364,6 +365,38 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] skill 根路径不再写死绝对路径：官方 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 形态**live 走通**——`<available_skills>` 列出 `autogamer-flash`，模型调 `skill({name:"autogamer-flash"})` 拿回 1784 字符正文与 `skill_resources` 基目录
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [ ] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑
+### G48 成功的 git 安装：本地 git 仓库先证传输与 `files`，push 留给你（2026-10-12，R22）
+
+- **What**：拿到「一次 `application:"applied"` 的 git 形态安装」的证据，并回答两个具体问题：
+  `files` 白名单在 git 形态下是否生效、monorepo 子目录（`path:` 参数）能不能走通。
+  明确出范围：**不 push 任何仓库**（push 属用户专属决定，R19），**不拉第三方代码**。
+- **官方/权威口径**
+  - pnpm 文档（`pnpm add` 的 "Install from a subdirectory of a Git repository"）：
+    支持 `#path:/<subdir>`，且多参数用 `&` 组合，例 `RexSkz/test-git-subdir-fetch.git#beta&path:/packages/simple-react-app`。
+  - DSH 侧 `parseInstallSpec`：`HOSTED_REPOSITORY_URL = /^https?:\/\/[^/]+\/[^/]+\/[^/#]+(?:\.git)?(?:#.*)?$/i`
+    ——fragment 段是 `#.+$`，**装得下 `&path:` 这种带斜杠的参数**；`GIT_URL` 另接受 `git+<proto>://`，
+    故 `git+file://` 也在语法内（`gitHost()` 走 `new URL(...).host`，file 协议下为空串）。
+  - `installBundle` 只对 git 形态跑 `checkGithubConnection`，且「only network failures or timeouts stop installation」。
+- **How（把「需要 push」这个前提先摘掉）**
+  1. 在 gitignored 的 `scratch/git-probe/` 里 `git init` 一个**本地仓库**，内容是一个真 bundle：
+     `package.json`（含 `dsh.bundle.patch` 与 `files` 白名单）+ `cordis.patch.yml`（声明一个没人选的 inert preset）
+     + 白名单内文件 `kept/keep.txt` + 白名单外文件 `dropped/drop.txt`，提交后 `git add`/`commit`。
+  2. 用 **`git+file:///<绝对路径>`** 作为 spec 走一次 `install_bundle`。
+     这一发同时回答三件事：git 形态能否 `application:"applied"`；落地树里有没有 `dropped/`（= `files` 在 git 形态下是否生效）；
+     profile 依赖被记成什么值（`git+file:…#…` 还是别的）。
+  3. 再补一发**子目录**：把同一个仓库改成「包在子目录 `packages/probe/` 里」的布局，
+     spec 加 `#HEAD&path:/packages/probe`，验 `path:` 参数在 DSH→pnpm 这条链上是否真被吃进去。
+  4. 验完 `remove_bundle` 撤掉、删 scratch、清掉 `node_modules/@local` 的残留链接（#19 已证宿主会留）。
+  5. **对 GitHub 的真发**留作待决项：写清「需要已 push 的仓库 + 建议显式 `git+https://`」，等你决定。
+- **Verify**：`--dump-config` 里 probe preset 出现/消失；profile `package.json` 的 `dependencies` 与 `dsh.profile.bundles`；
+  落地树 `find` 清单；工具返回的 `application`/`stage`/`changed` 原文。
+- **Done means**
+  - [ ] 一次 git 形态安装拿到 `application:"applied"`（本地 `git+file://` 形态即可算证到传输）
+  - [ ] `files` 在 git 形态下是否生效有实测结论（`dropped/` 在或不在）
+  - [ ] `path:` 子目录形态在 DSH→pnpm 链上是否可用有实测结论
+  - [ ] GitHub 真发的**前置条件与风险**写进台账（含 `git+ssh` 翻译那条），并明确标为 user-only 待决
+  - [ ] G48 结案进 CHANGELOGS，`registry.md` 同步，两份门禁重跑
+
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
