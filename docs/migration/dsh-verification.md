@@ -4,7 +4,7 @@
 > 核实对象：本机 Electron 桌面安装（`D:\DeepSeek Harness\`）内嵌 runtime；源码提取：`resources/app.asar → D:\tmp\dsh-ref\dsh\`（临时解包，不入 repo）；真实运行数据参照：`C:\Users\78557\.dsh\`（web profile 活配置、`sessions/--D-DEV-autoGamer--/` 真实会话 v3/v4 并存）。
 > 方法：4 路并行子代理对 48 项方案假设做源码级核实（jobs / session+Inbox / 插件缝+审批 / SDK+CLI）。
 > 维护规则：DSH 升级（尤其 rc→正式）必须重验本表全部「⚠️修正」项。
-> **来源口径变更（2026-10-10，用户裁定，见 todo.md D15）**：此后不得再解包 `app.asar` 取证据，核实面收窄到声明面——`dsh --dump-config-schema` / `--help` / 随包 README / 已安装 npm 包产物。本文件是裁定之前写成的：其中 37 处 `lib/index.js:NN` 形式的包内代码行引用属**历史口径**，结论本身未被推翻，但重新引用时要按声明面复验一遍；README 与 CLI 旗标类证据（28 处）不受影响。已由声明面重验过的：插件 `Config` 必须是原生 Schemastery schema、preset 子项挂载形态（`dsh --dump-config` 合成产物可证）、py 动作面 13 工具（live 抓取入 fixture）、DSH peer 精确 pin。
+> **来源口径变更（2026-10-10，用户裁定，见 TODO.md D15）**：此后不得再解包 `app.asar` 取证据，核实面收窄到声明面——`dsh --dump-config-schema` / `--help` / 随包 README / 已安装 npm 包产物。本文件是裁定之前写成的：其中 37 处 `lib/index.js:NN` 形式的包内代码行引用属**历史口径**，结论本身未被推翻，但重新引用时要按声明面复验一遍；README 与 CLI 旗标类证据（28 处）不受影响。已由声明面重验过的：插件 `Config` 必须是原生 Schemastery schema、preset 子项挂载形态（`dsh --dump-config` 合成产物可证）、py 动作面 13 工具（live 抓取入 fixture）、DSH peer 精确 pin。
 
 ## 结论速览（触发方案修改的 12 项）
 
@@ -93,7 +93,7 @@
 | 11 | ⚠️ workflow/workflow-ptc = 模型提交 JS 编排脚本（agent()/parallel()/pipeline()），**阻塞父 turn、同步、无持久化**——不是任务队列，勿与 Inbox/schedule 混淆 | dsh-workflow/README.md:32-53 |
 | 12 | ✅ 279 个 dsh* 包全部 0.2.0-rc.2；peerDeps 惯例：dsh-\* 精确版本、cordis ~4.0.4；自研插件 peerDependencies 建议精确 pin + 升级走 conformance | 全树 package.json |
 
-## 方案修改对照（第一轮，已回写 todo.md）
+## 方案修改对照（第一轮，已回写 TODO.md）
 
 | 位置 | 修改 |
 
@@ -147,7 +147,7 @@
 | 9 | 一句话：auto-review=实验性 per-tool-call LLM 审查（三期审批参考实现）；persona=preset 内 per-agent 人设行；`ctx.systemPrompt` registry=一期注入 autogamer 操作指引的挂点；invariants=运行时自检注册表（调试用） | 各包 README |
 | 10 | ✅ 用户文件上传端到端原生（`ctx.fileUpload.upload` 进度/取消 + Host staged receipt + admission 落 attachments）——二期用户附图无需自建路由 | dsh-client-file-upload；dsh-attachment-local |
 
-### 5.3 对方案的最终影响（已回写 todo.md）
+### 5.3 对方案的最终影响（已回写 TODO.md）
 
 1. **G19 缩小 70%**：QueueDock（排队 chips/编辑/插队）+ jobs 头部 roster + timeline 按 turn/step 分组 + goal 轮 turn-trigger 卡全部原生；插件侧只剩「轮次时间线视图、排队 goal 轮视觉区分、轮状态徽标」，挂 `conversation.chat.node`/`chat.turnTail`，数据源 `goal` projection。
 2. **凭据管理删自建**（二期）：dsh-credentials 承接存储/掩码/rotation/分层；自建仅连通性测试。

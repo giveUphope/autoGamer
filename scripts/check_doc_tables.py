@@ -10,7 +10,7 @@ broken table). Per table it proves:
   - every row has exactly as many cells as that table's own header
   - no table spills past its `## ` section
   - decision ids D1..Dn are contiguous, match the range the heading claims, and
-    (in todo.md only) appear exactly once; gap ids likewise
+    (in TODO.md only) appear exactly once; gap ids likewise
 
 Usage:
   python -X utf8 scripts/check_doc_tables.py [file ...]
@@ -23,7 +23,7 @@ from pathlib import Path
 
 DEFAULTS = [
     r"D:/DEV/autoGamer/AGENTS.md",
-    r"D:/DEV/autoGamer/docs/todo.md",
+    r"D:/DEV/autoGamer/docs/TODO.md",
     r"D:/DEV/autoGamer/docs/migration/README.md",
     r"D:/DEV/autoGamer/docs/migration/registry.md",
     r"D:/DEV/autoGamer/docs/migration/glossary.md",
@@ -147,13 +147,13 @@ def read(path):
 
 
 def unique_flag_for(path):
-    return path.endswith("todo.md")
+    return path.endswith("TODO.md")
 
 
 def selftest():
     for path in DEFAULTS:
         report(check(read(path), path, unique_ids=unique_flag_for(path)), path)
-    todo_path = next(p for p in DEFAULTS if p.endswith("todo.md"))
+    todo_path = next(p for p in DEFAULTS if p.endswith("TODO.md"))
     good = read(todo_path)
     uniq = unique_flag_for(todo_path)
     expect_caught(

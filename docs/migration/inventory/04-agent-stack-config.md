@@ -1,10 +1,10 @@
 # 迁移盘点 · 智能栈与配置
 
-> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/TODO.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
 
 > 范围: worker 进程入口/启动退出契约、`artemis/agents/**`、`artemis/graph/**`、`artemis/llm/**` + `services/llm.py` + `token_meter`、`artemis/memory/**`、`artemis/tools/**`、`artemis/config/**` + `admin_console/services/model_service.py` + `task_preset_catalog.py`。
 > 基线: cc6b20c；日期: 2026-10-09。
-> 覆盖标注约定:【已覆盖 D#/S#/G#】= todo.md 已记录，此处不展开；【缺失】= todo.md 未写、无人记录即丢；【矛盾】= 与 todo.md 现有条目冲突，需修订；【部分】= 有条目但语义细节缺。
+> 覆盖标注约定:【已覆盖 D#/S#/G#】= TODO.md 已记录，此处不展开；【缺失】= TODO.md 未写、无人记录即丢；【矛盾】= 与 TODO.md 现有条目冲突，需修订；【部分】= 有条目但语义细节缺。
 > 处置: ①一期黑盒保留 py / ②二期 DSH 重写 / ③DSH 原生承接 / ④需决策。
 
 ---
@@ -27,7 +27,7 @@
 4. 连接 screen client（helper 安装/升级事件在此发出）→ keyguard 检查（锁定则拒绝执行，绝不猜 PIN，agent.py:215-237）→ app 安装 → Chrome Web Accessibility 强制标志（写 /data/local/tmp chrome-command-line + `am force-stop com.android.chrome`，agent.py:239-285——**设备变更，无人审批**）→ 屏幕录制启动。
 5. profile 分叉：`flash` → FlashRunner；否则 langgraph `get_graph(context).astream(...)`，`recursion_limit=request.max_steps`（agent.py:602-625）。
 
-【缺失】todo.md 只有"DataEngine.start_session 持久化"一句话（AGENTS.md 有），**锁→start_session 的先后边界**是"排队任务不得提前发布 active session"这条不变量的载体，DSH 侧必须保住等价语义（job 只有在闸门放行后才算 session 开始）。
+【缺失】TODO.md 只有"DataEngine.start_session 持久化"一句话（AGENTS.md 有），**锁→start_session 的先后边界**是"排队任务不得提前发布 active session"这条不变量的载体，DSH 侧必须保住等价语义（job 只有在闸门放行后才算 session 开始）。
 
 ### 1.3 env 变量全集（worker 读到的）
 
@@ -85,7 +85,7 @@
 
 - 队列无法可移植地给 worker 发信号 → 写 marker 文件（临时目录，session/pid 双键，TTL 3600s，**pid marker 记录进程创建时间防 PID 复用**）；worker 内 `watch_for_cancel_request` 轮询，命中即走与 Ctrl+C 相同的优雅路径：停录屏并 remux、编译 trace 目录、释放设备锁（artemis/sdk/agent.py:183-204；artemis/runtime/cancel_requests.py:40-142；task_queue_service.py:124-159）。
 - Windows 上外部 TerminateProcess 不会触发 Python 的 SIGTERM 处理（run.py:407-415 的 SIGTERM→KeyboardInterrupt 钩子在 Windows 只对 `os.kill` 类信号有效）；**优雅取消在 Windows 只能走 marker 文件**。
-- **矛盾**：todo.md 模块映射 C 区把 `cancel_requests` 标为"✅ 删除（`JobRegistry.kill`/`agent.cancel` 原生承接）"。一期 py worker 黑盒运行时，若 DSH `JobRegistry.kill` 在 Windows 走进程树强杀，录屏 remux/trace 编译/锁释放全部跳过，且 worker 不会写 `cancelled` 终态。**取消通道在一期必须保留：DSH 侧 kill 前先写 cancel marker（或复用 `request_cancel`），宽限 `ARTEMIS_CANCEL_GRACE_SECONDS` 后再硬杀。**【需修订 todo.md + 纳入 P1 spike】
+- **矛盾**：TODO.md 模块映射 C 区把 `cancel_requests` 标为"✅ 删除（`JobRegistry.kill`/`agent.cancel` 原生承接）"。一期 py worker 黑盒运行时，若 DSH `JobRegistry.kill` 在 Windows 走进程树强杀，录屏 remux/trace 编译/锁释放全部跳过，且 worker 不会写 `cancelled` 终态。**取消通道在一期必须保留：DSH 侧 kill 前先写 cancel marker（或复用 `request_cancel`），宽限 `ARTEMIS_CANCEL_GRACE_SECONDS` 后再硬杀。**【需修订 TODO.md + 纳入 P1 spike】
 
 ### 1.6 stdout 面（job output ring 能看到什么）
 
@@ -111,15 +111,15 @@
 | checker/committee | 无 | checker 梯级 + committee(默认关) |
 
 - 验证梯级 `off/final/checkpoints/strict`（config/agent.py:241-260）：off=Operator 自报完成无审计；final=仅出口审计（**工厂默认**，midway off）；checkpoints=每个 plan checkpoint+出口；strict=checkpoints + repair 预算加大（4/5/30）+ assert 失败 halt。`verification_level_for_checker` 反推梯级（agent.py:281-291），`run_tuning_for_profile` 把 pro 的梯级+explorer 模式写进会话 device_info（agent.py:294-311，model_service 反推的依据）。
-- [vlm] 说明：todo.md 说"旧线 [vlm] 路由已验证"——py 侧**没有**名为 [vlm] 的路由键；多模态按节点配置（`video_analyzer`/`object_detector`/`explorer` 节点 + `is_multimodal` 默认 true，llm/router.py:100-102）。flash 层级要求 Gemini ER 模型做空间坐标（artemis.jsonc:39-49 注释），非 ER 模型检测会失败。【部分，防止二期照抄不存在的 [vlm] 键】
+- [vlm] 说明：TODO.md 说"旧线 [vlm] 路由已验证"——py 侧**没有**名为 [vlm] 的路由键；多模态按节点配置（`video_analyzer`/`object_detector`/`explorer` 节点 + `is_multimodal` 默认 true，llm/router.py:100-102）。flash 层级要求 Gemini ER 模型做空间坐标（artemis.jsonc:39-49 注释），非 ER 模型检测会失败。【部分，防止二期照抄不存在的 [vlm] 键】
 - Explorer 层级解析优先级：显式参数 > `ARTEMIS_EXPLORER_VERSION` > per-agent `explorer_versions` > profile 模式 > default（config/agent.py:352-383）。层级=flash(1 turn)/pro(3 turn)/ultra(8 turn+zoom+OCR+image processor)；caching 默认 ultra on、pro off（explorer/tiers.py:72-93）。
 
-处置：①一期黑盒；②二期→DSH profiles + per-agent AgentOptions（todo.md 已映射）；**但 flash/pro 行为差异表和验证梯级语义是二期 skills/agent 定义的转化基线**，todo.md 目前只有一行"逐 agent 渐进搬迁"。【部分】
+处置：①一期黑盒；②二期→DSH profiles + per-agent AgentOptions（TODO.md 已映射）；**但 flash/pro 行为差异表和验证梯级语义是二期 skills/agent 定义的转化基线**，TODO.md 目前只有一行"逐 agent 渐进搬迁"。【部分】
 
 ### 2.2 model_service / 端点库（admin_console/services/model_service.py + artemis/config/endpoint_library.py + config/llm.py）
 
 - 端点库 = `endpoint_library.json` 保存的选择记录（name/api_format/api_base/model 四字段），**是保存的选择不是运行时输入**；运行时模型来自 artemis.jsonc `default` 块（endpoint_library.py:15-52）。
-- **pin 机制**：队列把选中记录名经 `ARTEMIS_MODEL_ENDPOINT` 传给 worker；config 层把它折算成 default 块覆盖（覆盖字段 = provider/model/provider_label + ENDPOINT_OWNED_KEYS(api_base/api_key/api_key_env/fallback)，config/llm.py:215-256）。**未知名字直接 RuntimeError 拒启**（不静默回退——"静默跑在没人选的模型上是最要避免的失败"）；记录缺 api_format/model 同样拒绝。【缺失】todo.md 只写"model_service 端点库/固定端点/profile 反推 → DSH 原生"。pin 的 fail-loud 语义与覆盖字段清单是 DSH per-agent model 选项要对齐的行为。
+- **pin 机制**：队列把选中记录名经 `ARTEMIS_MODEL_ENDPOINT` 传给 worker；config 层把它折算成 default 块覆盖（覆盖字段 = provider/model/provider_label + ENDPOINT_OWNED_KEYS(api_base/api_key/api_key_env/fallback)，config/llm.py:215-256）。**未知名字直接 RuntimeError 拒启**（不静默回退——"静默跑在没人选的模型上是最要避免的失败"）；记录缺 api_format/model 同样拒绝。【缺失】TODO.md 只写"model_service 端点库/固定端点/profile 反推 → DSH 原生"。pin 的 fail-loud 语义与覆盖字段清单是 DSH per-agent model 选项要对齐的行为。
 - **profile 反推**（model_service.resolve_session_profile，model_service.py:101-165）：device_info.profile → running 提交参数 → agent/trace 名单（planner/validator/...→pro，flashrunner→flash）→ llm trace payload，四级回退。纯展示层，DSH session log 原生后可删。【已覆盖映射表"✅ 原生"】
 - 节点继承：`default` 块展开进 12 个 agent 节点 + 4 个 utils 节点（outputter/hopper/video_analyzer/object_detector），节点覆写深合并（config/llm.py:158-212）；`history_analyzer` 缺省继承 operator，`validator_pixel_safety_net`/`planner_validation` 共享轻量 judge 默认（default 端点 temperature 0），`output_analyzer` 继承 log_analyzer（config/llm.py:63-87, 132-145）。【缺失——节点清单与继承规则是 DSH AgentOptions 表的直接输入】
 - 无内置端点：default 未配置 → 一切模型解析 RuntimeError 带配置指引（services/llm.py:963-968）。
@@ -148,7 +148,7 @@
 - Anthropic：reasoning_effort→thinking_budget 映射 low=2048/medium=8192/high=32768，开 thinking 时 temperature 强制 1.0（router.py:330-337）。
 - Gemini ER 模型名（不可解析版本）假定支持 thinking_level（google/provider.py:140-144）。
 
-处置：①一期保留；②二期→DSH LLM seam。**重试策略表、fallback 判定（auth 可/bad_request 不可）、流式 partial 丢弃、暂停文件、Google safety/patch 这五点是 DSH provider adapter 的验收基线**，todo.md 未拆。【部分→缺失】
+处置：①一期保留；②二期→DSH LLM seam。**重试策略表、fallback 判定（auth 可/bad_request 不可）、流式 partial 丢弃、暂停文件、Google safety/patch 这五点是 DSH provider adapter 的验收基线**，TODO.md 未拆。【部分→缺失】
 
 ### 2.4 多 agent 流水线（逐角色）
 
@@ -175,10 +175,10 @@
 ### 2.5 graph / langgraph（Pro 编排）
 
 - 拓扑（graph.py:948-1055）：`START → planner → convergence →(gate)→ perception → operator → execution_check →(有 decisions→validator→summarizer→convergence | 无→convergence) →(gate)→ ... → exit_settlement →(continue→perception | end→END)`。
-- **没有 langgraph checkpointer**：`graph_builder.compile()` 无 checkpointer 参数，无 interrupt/resume。**"断点续跑"在 py 线不存在**——进程死=任务死，与 D5"运行中任务死亡标 failed 不重入"完全一致。【矛盾（易误读）】todo.md 写"graph/（langgraph 编排 + checkpoints）……checkpoint 语义由 session log 承接"——此 checkpoint 是**计划校验检查点**（check_ledger.jsonl），不是执行位置断点；二期别去 DSH session log 里找 resume 语义，直接按"无断点续跑"设计。
+- **没有 langgraph checkpointer**：`graph_builder.compile()` 无 checkpointer 参数，无 interrupt/resume。**"断点续跑"在 py 线不存在**——进程死=任务死，与 D5"运行中任务死亡标 failed 不重入"完全一致。【矛盾（易误读）】TODO.md 写"graph/（langgraph 编排 + checkpoints）……checkpoint 语义由 session log 承接"——此 checkpoint 是**计划校验检查点**（check_ledger.jsonl），不是执行位置断点；二期别去 DSH session log 里找 resume 语义，直接按"无断点续跑"设计。
 - **checkpoints 真身**：plan 驱动的校验调度 + append-only verdict 账本，存 session trace 目录：`check_ledger.jsonl`（判定账）、`run_outcome.json`（机器可读终局）、`check_streams.jsonl`（checker 自身推理转写，单条 20k 截断）（graph/checkpoints.py:58-68）。三不变量：append-only（判定不改写过去）/释放与判定分离（fail-open 只影响释放，inconclusive 原样记录）/check 任务零副作用（副作用只在 harvest 点与 settlement）（checkpoints.py:15-29）。
 - run_outcome 语义：goal 轴 × test 轴；`task_status=blocked` 仅当 verify 未满足且预算耗尽（或 user_stop/assert_halt 门闩）；assert 失败计 tests.failed 但任务可 completed（§1.4）。
-- **task_plan.md 写入通道的机器规则**（graph.py:515-806）——Pro 最重的暗规则集，todo.md 零记录：
+- **task_plan.md 写入通道的机器规则**（graph.py:515-806）——Pro 最重的暗规则集，TODO.md 零记录：
   1. 机器频道拒绝（带回滚）：计划要结束时不得留未完成嵌套子目标；`[Loop:continuous]` 里程碑**只有用户显式 stop（user_stop_requested）才能删除/打勾**，意图绝不从措辞推断（graph.py:533-555）。
   2. 手滑整文件重写检测：状态未变但文本漂移的顶层 milestone → 拒绝并回滚（graph.py:558-575）；声明式 update_note（target/replacement）豁免。
   3. check 行确定性保护：被删/改的声明 check 行纯文本合并回来（内容驱动、与开关无关）；**用户指导豁免**：注入指导时在场的 check 行解除保护可被删改，之后新增的恢复保护（graph.py:645-691; perception.py:95-115）。
@@ -189,7 +189,7 @@
 - State 通道（state.py:30-163）：全字段显式 `extra="forbid"`；`user_stop_requested` 用 sticky_or reducer（一旦 True 永不回落）；`operator_feedback` append-only 注入（[checker]/[planner]/[final check] 源标签）。visibility.py 是节点级读写字段清单（`ARTEMIS_STRICT_STATE=1` 测试期执法）——**这是每个 agent 能看/能写什么的权威声明**，二期权限模型可直接翻译。【缺失】
 - convergence_gate 终局路由（graph.py:872-945）：assert_halt 门闩 → checker_success=False 回 operator → 计划文件缺失 continue → 无顶层子目标也进 settlement（final review 对象是原始 goal 不是 plan）→ 全勾但存在 [Loop:continuous] 且无用户停止 → 继续。
 
-处置：①一期黑盒；②二期 DSH agent loop 替换时，上述 plan 写入规则 + run_outcome + Loop:continuous 语义是**必须搬进 skills/工具守卫的行为基线**，量级远超 todo.md 目前的"DSH agent loop 原生替代"一句话。
+处置：①一期黑盒；②二期 DSH agent loop 替换时，上述 plan 写入规则 + run_outcome + Loop:continuous 语义是**必须搬进 skills/工具守卫的行为基线**，量级远超 TODO.md 目前的"DSH agent loop 原生替代"一句话。
 
 ### 2.6 memory
 
@@ -255,7 +255,7 @@ S/F/A/T 四区：S=字节级稳定系统前缀；F=冻结历史+压缩块；A=�
 | （隐式）Chrome accessibility 强制 | 写 /data/local/tmp + force-stop Chrome，任务启动时自动 | 同上，隐式设备变更，可经 AgentConfig.force_web_accessibility 关 | sdk/agent.py:239-285 |
 | （隐式）keyguard | **拒绝**替用户解锁（不猜 PIN） | 正向安全不变量，二期必保 | sdk/agent.py:215-237 |
 
-【部分】S6 只有抽象分级原则；本表是逐工具落地输入。**"破坏性=run_adb_command 参数审查"这个事实 todo.md 未记录。**
+【部分】S6 只有抽象分级原则；本表是逐工具落地输入。**"破坏性=run_adb_command 参数审查"这个事实 TODO.md 未记录。**
 
 ---
 
@@ -286,7 +286,7 @@ S/F/A/T 四区：S=字节级稳定系统前缀；F=冻结历史+压缩块；A=�
 5. **会话续聊上下文继承（notes 注入 planner）未入 S1**：conversation≡session 若一对一成立则原生免费，但"只继承 notes 不继承原文"的预算决定要显式化（§2.6.4）。
 6. **`ARTEMIS_TASK_WORKER=1` 缺席 env 清单**：不设则 worker 走 daemon 派发分支，S5"入口不变"悄悄失效（§1.3）。
 7. **LLM 端点熔断 + 暂停 + fallback 判定的可靠性行为未成文**：DSH LLM seam 若只做重试，auth 可 fallback / bad_request 不 fallback / 进程内 3 次 30s 熔断 / 8 次跨类上限都会漂移（§2.3）。
-8. **graph 无断点续跑**：todo.md"checkpoint 语义由 session log 承接"易误读成有 resume 语义；py 侧 checkpoint=校验账本非执行断点（§2.5）。
+8. **graph 无断点续跑**：TODO.md"checkpoint 语义由 session log 承接"易误读成有 resume 语义；py 侧 checkpoint=校验账本非执行断点（§2.5）。
 9. **`injected_instruction.json` 中途指导通道未入对接语义**：release_loop（[Loop:continuous] 的唯一合法解锁）也走这里（§2.5, §6 新 S9）。
 10. **结构化最终结果只在 DB 不在 stdout**：一期 job output ring 拿不到机器可读结果，依赖 DataEngine SQLite 可达（§1.6）。
 
@@ -294,7 +294,7 @@ S/F/A/T 四区：S=字节级稳定系统前缀；F=冻结历史+压缩块；A=�
 
 ---
 
-## 6. 对 docs/todo.md 的修订建议
+## 6. 对 docs/TODO.md 的修订建议
 
 1. **S2 修正**：补"py worker 退出码不编码任务结果（0 含 blocked/flash-failed）；终态以 DataEngine DB 行为权威，job outcome 仅 UI 层；stdout 特征行（`Task ended blocked`/`Task execution failed`）可作一期辅助判定"。
 2. **S5 修正**：env 清单补全——`ARTEMIS_TASK_WORKER=1`（worker 分支开关，必设）、`ARTEMIS_DEVICE_QUEUE_TICKET`、`ADB_DEVICE_SERIAL`、凭证组、`LLM_PAUSE_TIMEOUT_SECONDS`；补"取消走 cancel marker 文件（`request_cancel`），kill 仅作 45s 宽限后的兜底"。

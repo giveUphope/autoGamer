@@ -1,10 +1,10 @@
 # 迁移盘点 · 核心运行时与持久化
 
-> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/TODO.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
 
 > 范围: `artemis/runtime/**`、`artemis/data_engine/**`、`artemis/interfaces/cli/**`、`artemis/sdk/**`、worker 进程 `ARTEMIS_*` env 契约、`tests/unit/data_engine` 基线; 基线: cc6b20c; 日期: 2026-10-09
 >
-> 方法: 逐文件精读 + 全局 grep。每条含行为语义、证据 (file:line)、todo.md 覆盖状态、处置建议。todo.md 已覆盖的只标号不展开。
+> 方法: 逐文件精读 + 全局 grep。每条含行为语义、证据 (file:line)、TODO.md 覆盖状态、处置建议。TODO.md 已覆盖的只标号不展开。
 
 ---
 
@@ -12,7 +12,7 @@
 
 ### 1.1 device_lock.py —— 跨进程设备互斥与 FIFO 队列
 
-todo.md 定位: 映射表「device_lock.py 946 行 → 跨进程场景消失, 收缩为进程内闸门 + 熔断 (D2/D3)」——**方向已覆盖**, 但以下语义细节是自建盘点未记录的迁移输入 (尤其双跑期与孤儿对账):
+TODO.md 定位: 映射表「device_lock.py 946 行 → 跨进程场景消失, 收缩为进程内闸门 + 熔断 (D2/D3)」——**方向已覆盖**, 但以下语义细节是自建盘点未记录的迁移输入 (尤其双跑期与孤儿对账):
 
 **锁文件格式** (`DeviceLockOwner`): JSON `{pid, process_created_at, token(uuid4), device_id, description, acquired_at(ISO-UTC), session_id?, ingress?, lock_scope?}`, 写在 `<temp>/device-locks/artemis-device-<clean_id>.lock`, 创建用 `O_CREAT|O_EXCL` 原子占位 (device_lock.py:45-69, 141, 551-581)。
 
@@ -38,7 +38,7 @@ todo.md 定位: 映射表「device_lock.py 946 行 → 跨进程场景消失, �
 
 ### 1.2 data_engine —— SQLite 持久化与会话/步骤生命周期
 
-todo.md 定位: 映射表「data_engine + repositories + SQLite → session log, ✅ 删除自建」+ S5「终态留痕: DB/trace 仍由 DataEngine 写入 (一期)」——**去向已覆盖**, 但以下契约是一期黑盒 worker 继续依赖、且旧控制台只读共存期 (G7) 仍然生效的:
+TODO.md 定位: 映射表「data_engine + repositories + SQLite → session log, ✅ 删除自建」+ S5「终态留痕: DB/trace 仍由 DataEngine 写入 (一期)」——**去向已覆盖**, 但以下契约是一期黑盒 worker 继续依赖、且旧控制台只读共存期 (G7) 仍然生效的:
 
 **DB 完整 schema** (SQLite, WAL, 连接 timeout 30s, 进程内 RLock 串行写; storage.py:70, 87-99, 103-104):
 
@@ -76,7 +76,7 @@ todo.md 定位: 映射表「data_engine + repositories + SQLite → session log,
 
 ### 1.3 daemon / server lifecycle
 
-todo.md 定位: 映射表「runtime daemon/server lifecycle → DSH launcher/profiles, ✅ 大部分删除」——**去向已覆盖**, 保留细节:
+TODO.md 定位: 映射表「runtime daemon/server lifecycle → DSH launcher/profiles, ✅ 大部分删除」——**去向已覆盖**, 保留细节:
 
 - **server_info 元数据文件**: `{pid, port, host, started_at, cwd, sys_executable, cmdline, lifecycle_token}`, 路径 = app_dir 或 ROOT_DIR 的 `server-info.json` (server_lifecycle.py:55-80; config/paths.py:162-166)。clear 支持按 port/token 定向删, 防误删别的实例 (server_lifecycle.py:100-124)。
 - **优雅停机 = 应用层请求, 不是 OS 信号**: POST `/api/system/shutdown` + `X-Artemis-Lifecycle-Token` 头 (token 来自 server_info; 无 token/端口不符 → 回退杀进程)。原因注释: Windows 上 taskkill /F 与 os.kill(SIGTERM) 都绕过 FastAPI shutdown hook, 而 hook 要负责取消任务 worker、落终态、释放锁/IPC (server_lifecycle.py:127-156, 357-366)。**S7/`JobRegistry.kill` 语义对照: DSH kill 是硬杀, 等价于 force 路径 → 优雅清理依赖 py worker 自己的 cancel marker 路径 (1.5) 而非信号**。
@@ -90,7 +90,7 @@ todo.md 定位: 映射表「runtime daemon/server lifecycle → DSH launcher/pro
 
 ### 1.4 trace_store —— status.json 与 trace 目录
 
-todo.md 定位: 映射表 C「trace_store ✅ 删除, session log 原生」——**去向已覆盖**, 但删除前的消费耦合没记录:
+TODO.md 定位: 映射表 C「trace_store ✅ 删除, session log 原生」——**去向已覆盖**, 但删除前的消费耦合没记录:
 
 - **status.json 字段**: `{trace_id, task_desc, model, conversation_id, status(running→completed/failed/cancelled; success 归一为 completed), device_serial, start_time, end_time, error, result, pid?, hierarchy_backend?...}` (trace_store.py:221-246, 285-326, 346-357)。
 - **原子写**: temp + fsync + `os.replace`(带 5 次重试抗 Windows sharing violation); 读三态: 缺文件→静默 None; 坏 JSON→WARNING 并隔离为 `status.json.corrupt`; 其它 IO→WARNING None (trace_store.py:74-118, 249-277)。
@@ -102,7 +102,7 @@ todo.md 定位: 映射表 C「trace_store ✅ 删除, session log 原生」—�
 
 ### 1.5 cancel_requests —— 跨进程协作取消
 
-todo.md 定位: 映射表 C「✅ 删除, JobRegistry.kill/agent.cancel 原生」——**去向已覆盖, 但一条生命周期映射矛盾必须记录**:
+TODO.md 定位: 映射表 C「✅ 删除, JobRegistry.kill/agent.cancel 原生」——**去向已覆盖, 但一条生命周期映射矛盾必须记录**:
 
 - **机制**: daemon 在 `<temp>/cancel-requests/` 写 `session-<sid>.cancel` 和/或 `pid-<pid>.cancel` (JSON: requested_at/reason/session_id/pid/process_created_at); worker 侧 `watch_for_cancel_request` 后台协程按 0.5s (`ARTEMIS_CANCEL_POLL_SECONDS`) 轮询, 命中后**先删标记再**调 `on_cancel` → Agent.stop_current_task() → 与 Ctrl+C 同一条收尾路径 (录像 remux、trace 编译改名、设备锁释放) (cancel_requests.py 全文; sdk/agent.py:183-204)。
 - **PID 标记防复用**: pid 标记仅在记录的 process_created_at 与本进程一致 (±1s) 时才生效 (cancel_requests.py:145-165)。
@@ -112,7 +112,7 @@ todo.md 定位: 映射表 C「✅ 删除, JobRegistry.kill/agent.cancel 原生�
 
 ### 1.6 awake_service / awake_lease —— 屏幕常亮
 
-todo.md 定位: 映射表 C「二期 TS, autogamer-device 内」——**去向已覆盖**, 语义要点 (TS 重写时全部要继承):
+TODO.md 定位: 映射表 C「二期 TS, autogamer-device 内」——**去向已覆盖**, 语义要点 (TS 重写时全部要继承):
 
 - **双策略**: 首选 USB-scoped `svc power stayon usb` + 验证 (`stay_on_while_plugged_in==2` 且 dumpsys `mStayOn=true`); 验证失败降级 **5s 主机心跳** `input keyevent KEYCODE_UNKNOWN` (awake_service.py:87-150)。策略归属 USB 电源而非进程/任务——拔线即恢复用户自身息屏行为。
 - **只碰 Artemis 认领的设备**: 无显式 target 时只对 `device_pool.get_claimed_serials()` (活跃锁+活 ticket) 中的设备施策, **不碰同一 ADB server 上无关用户设备**; 2s 监控线程自动注册新插入/停拔线的 (awake_service.py:153-186, 261-300)。`ARTEMIS_KEEP_DEVICE_AWAKE` 可关 (默认开); `ARTEMIS_CLOUD_MODE=1` 全禁。
@@ -122,7 +122,7 @@ todo.md 定位: 映射表 C「二期 TS, autogamer-device 内」——**去向�
 
 ### 1.7 helper_manager —— 无障碍 helper 生命周期
 
-todo.md 定位: 映射表 C「helper_manager.py 931 → 二期 autogamer-device; 一期保留」——**去向已覆盖**, 契约细节:
+TODO.md 定位: 映射表 C「helper_manager.py 931 → 二期 autogamer-device; 一期保留」——**去向已覆盖**, 契约细节:
 
 - **四段生命周期**: Provision (持久设备态: 装 bundled APK + secure settings 启服务) / Attach (每进程×设备×会话: `adb forward --no-rebind tcp:0`→固定设备端口 18888, **tcp:0 由 adb 分配宿主端口**, 复用同 serial 已有 forward 使多进程共享隧道) / Serve (HTTP, 传输错误 reattach 一次) / Detach (只删自己 owns 的 forward; 拔线 adb 自动清, transport_id 变化 = 重建信号) (helper_manager.py:15-59, 813-829, 846-1001)。
 - **Token 安全模型**: 设备 loopback 端口对手机上所有 app 可达 → helper 除 /ping 外要求 `X-Artemis-Token`; token 是**每主机一个随机 secret**, 存 `<temp>/helper-token/session.token` (0o600, 48 hex), 同机所有 Artemis 进程共享; 经显式组件 `am broadcast` 下发 (仅 adb shell uid 能发, receiver 有 WRITE_SECURE_SETTINGS 守卫); 每次 attach 都推, helper 回 401 (重绑后丢 token) 再推 (helper_manager.py:39-47, 308-368)。
@@ -238,7 +238,7 @@ enqueue: `reserve(description, device_id=pending, scope)` → spawn worker (env:
 
 ---
 
-## 4. 对 docs/todo.md 的修订建议
+## 4. 对 docs/TODO.md 的修订建议
 
 ### 新增差距
 

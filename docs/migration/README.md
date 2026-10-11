@@ -7,13 +7,13 @@
 
 | 你要做的事 | 先读 | 再读 | 大概 |
 |---|---|---|---|
-| 第一次进这个项目，想知道它要变成什么 | 本页 § 二 | `todo.md` 第一、二节 | 5 分钟 |
-| 改 `plugins/autogamer-device` 的任何代码 | `plugin-contract-rules.md`（R2、R6-R15） | `todo.md` 的 S 段对应条 | 10 分钟 |
+| 第一次进这个项目，想知道它要变成什么 | 本页 § 二 | `TODO.md` 第一、二节 | 5 分钟 |
+| 改 `plugins/autogamer-device` 的任何代码 | `plugin-contract-rules.md`（R2、R6-R15） | `TODO.md` 的 S 段对应条 | 10 分钟 |
 | 改 `*.patch.yml` 或 preset 声明 | `plugin-contract-rules.md` R2-R8 | `registry.md` 查编号 | 5 分钟 |
-| 判断「我这次改动到底生效没有」 | `plugin-contract-rules.md` R9 + R7 | `todo.md` 顶部「当前状态」 | 3 分钟 |
+| 判断「我这次改动到底生效没有」 | `plugin-contract-rules.md` R9 + R7 | `TODO.md` 顶部「当前状态」 | 3 分钟 |
 | 想知道某个编号（`G30` / `R13` / `D7`）是什么 | `registry.md` | 定义所在文档 | 1 分钟 |
 | 看不懂某个词（realm、parking、PTC、熔断） | `glossary.md` | — | 1 分钟 |
-| 要动 py 侧（驱动、action server、诊断栈） | `todo.md` D8/D9 + 第五节「一期改造登记」 | `inventory/02`、`inventory/03` 的相关段 | 按需 |
+| 要动 py 侧（驱动、action server、诊断栈） | `TODO.md` D8/D9 + 第五节「一期改造登记」 | `inventory/02`、`inventory/03` 的相关段 | 按需 |
 | 做 UI（toolview、卡片、录屏展示） | `plugin-contract-rules.md` R18 | `inventory/05` | 10 分钟 |
 | 怀疑某个能力要丢了 | `feature-inventory.md` | `inventory/0N` 明细 | 按需 |
 
@@ -27,7 +27,7 @@
 
 | 文档 | 体量（实测） | 定位 | 可信度口径 |
 |---|---|---|---|
-| `docs/todo.md` | 177 行 / 34.9 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
+| `docs/TODO.md` | 177 行 / 34.9 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
 | `registry.md` | 141 行 / 10.1 KB | **编号唯一权威**：D17 / S11 / G34 / R19 一览 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
 | `glossary.md` | 88 行 / 8.4 KB | 术语翻译表（含 `inject` 的两个意思） | 现行权威 |
 | `plugin-contract-rules.md` | 166 行 / 19.6 KB | **守则 R1-R19**：每条带出处与判据 | 现行权威；与 todo 冲突时以守则为准并回改 todo |

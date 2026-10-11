@@ -1,9 +1,9 @@
 # 迁移盘点 · 设备驱动、媒体与诊断
 
-> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/TODO.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
 
 > 范围: `artemis/drivers/**`、`artemis/mcp/**`、`artemis/controllers/**`、`artemis/clients/**`、`artemis/core/diagnostics/**`、`artemis/utils/**`(概述)、`apps/admin_console/services/media_service.py` + `routers/media.py`(媒体对外面)、相关测试。基线: **cc6b20c**; 日期: **2026-10-09**。
-> 目的: 找出 docs/todo.md 没写、但迁移中若无人记录就会丢失的行为、不变量与契约。已覆盖项只标注决策号/表格行, 不展开重复。
+> 目的: 找出 docs/TODO.md 没写、但迁移中若无人记录就会丢失的行为、不变量与契约。已覆盖项只标注决策号/表格行, 不展开重复。
 
 ---
 
@@ -11,7 +11,7 @@
 
 ### 1.1 Mock driver 行为面(TS mock 插件的复刻基线)
 
-todo.md 状态: 已覆盖「mock driver 转 TS 插件」(剩余自建清单 ⑤, todo.md:153), **但无行为契约**。以下为二期复刻必须逐条对齐的最小行为面:
+TODO.md 状态: 已覆盖「mock driver 转 TS 插件」(剩余自建清单 ⑤, TODO.md:153), **但无行为契约**。以下为二期复刻必须逐条对齐的最小行为面:
 
 | 行为 | 语义 | 证据 |
 |---|---|---|
@@ -32,7 +32,7 @@ todo.md 状态: 已覆盖「mock driver 转 TS 插件」(剩余自建清单 ⑤,
 
 ### 1.2 设备驱动能力清单(AndroidAdbDriver —— autogamer-device TS 重写的功能基线)
 
-todo.md 状态: 模块级已覆盖(映射表 `drivers/` 行, todo.md:116; P2, todo.md:205), 能力细目**缺失**。
+TODO.md 状态: 模块级已覆盖(映射表 `drivers/` 行, TODO.md:116; P2, TODO.md:205), 能力细目**缺失**。
 
 连接与构造:
 - 构造参数: `device_id`、`adb_client`(adbutils `AdbClient(host, port)`)、`ui_adb_client`(可为 None)、`width=1080`、`height=2400`(artemis/drivers/android/adb_driver.py:75-88)。
@@ -71,13 +71,13 @@ App 管理:
 - 优先级: cloud(`ARTEMIS_CLOUD_MODE=1` → RemoteAdbClient/RemoteUIAutomatorClient) > mock(`ARTEMIS_MOCK_DRIVER=1` 或 platform=="mock") > 默认 AndroidAdbDriver(artemis/drivers/factory.py:34-72)。
 - ADB endpoint: `settings.ADB_HOST/ADB_PORT`(默认 **127.0.0.1:5037**, artemis/config/constants.py:111-112)。
 - driver 缓存在 `ctx._active_driver`(factory.py:75-80)——也是测试注入缝。
-- 完整 driver 级 env 清单(todo.md S5 只列了 worker 的 3 个, **这些没写**): `ARTEMIS_MOCK_DRIVER`、`ARTEMIS_CLOUD_MODE`、`ARTEMIS_HIERARCHY_BACKEND`(auto/helper/uiautomator)、`ARTEMIS_DEVICE_ID`、`ADB_DEVICE_SERIAL`、`ADB_HOST`/`ADB_PORT`、`ADB_SERVER_SOCKET`(tcp:host:port, 子进程与 py client 的真实寻址通道)、`ADB_VENDOR_KEYS`、`ARTEMIS_IPC_PORT`(mcp stdio 模式置空防 SQLite WAL 竞争, artemis/mcp/adb_server.py:84-86)、`ARTEMIS_DISABLE_ORIGIN_GUARD`(security.py:113)、`ARTEMIS_TRACES_DIR`(paths.py:112)。
+- 完整 driver 级 env 清单(TODO.md S5 只列了 worker 的 3 个, **这些没写**): `ARTEMIS_MOCK_DRIVER`、`ARTEMIS_CLOUD_MODE`、`ARTEMIS_HIERARCHY_BACKEND`(auto/helper/uiautomator)、`ARTEMIS_DEVICE_ID`、`ADB_DEVICE_SERIAL`、`ADB_HOST`/`ADB_PORT`、`ADB_SERVER_SOCKET`(tcp:host:port, 子进程与 py client 的真实寻址通道)、`ADB_VENDOR_KEYS`、`ARTEMIS_IPC_PORT`(mcp stdio 模式置空防 SQLite WAL 竞争, artemis/mcp/adb_server.py:84-86)、`ARTEMIS_DISABLE_ORIGIN_GUARD`(security.py:113)、`ARTEMIS_TRACES_DIR`(paths.py:112)。
 
-处置建议: env 契约表并入 todo.md S5(worker 契约)或 G7 外部接入迁移清单——**DSH 侧 spawn py worker 时必须透传**。
+处置建议: env 契约表并入 TODO.md S5(worker 契约)或 G7 外部接入迁移清单——**DSH 侧 spawn py worker 时必须透传**。
 
 ### 1.4 录屏管线(触发/分段/编解码/产物)
 
-todo.md 状态: 已覆盖「录屏栈留 py(D8 例外); 录屏经 spillPath 交接; mp4 托管/路由转 autogamer-media」(映射表 media_service 行, todo.md:117; S5, todo.md:68)。**产物格式契约与时间线语义缺失**——没有它 autogamer-media/前端无法消费。
+TODO.md 状态: 已覆盖「录屏栈留 py(D8 例外); 录屏经 spillPath 交接; mp4 托管/路由转 autogamer-media」(映射表 media_service 行, TODO.md:117; S5, TODO.md:68)。**产物格式契约与时间线语义缺失**——没有它 autogamer-media/前端无法消费。
 
 触发: worker 内 `third_party/mobile_use/sdk/agent.py:540-558`, 由 `video_recording_tools_enabled` 门控(= scrcpy 且 ffmpeg 同时存在, artemis/utils/video.py:567-569; 缺失时 prompt 不 advertise 视频工具, artemis/agents/operator/prompts.py:203-207, graph/graph.py:1013)。输出目录 = `{traces}/{trace_name}/`。
 
@@ -101,7 +101,7 @@ scrcpy 命令(artemis/utils/video.py:48-76): `--serial {id} --no-window --record
 
 ### 1.5 media_service(623 行)行为面
 
-todo.md 状态: 已覆盖拆分方向(todo.md:117)。**逐项职责与安全契约未记录**:
+TODO.md 状态: 已覆盖拆分方向(TODO.md:117)。**逐项职责与安全契约未记录**:
 
 - **MKV→MP4 按需转换**(`ensure_browser_playable_video`, media_service.py:44-98): mp4 直通; mkv/webm 转 mp4(两级: 15s copy remux → 30s ultrafast 重编码, 100-149); **liveness 门**: mtime 距今 < **10s**(`LIVE_RECORDING_GRACE_SECONDS`)判定 scrcpy 仍在写, 不转(否则把几秒的残片冻结成 recording.mp4, 151-167); 陈旧 mp4(早于源 mtime)判为中跑扫描残片, 重转(65-78)。转换结果缓存 `_playable_cache`(含**失败缓存**), 防 `/api/sessions` 轮询每跳 45s ffmpeg(37-41 注释)。
 - **孤儿恢复**(`recover_orphaned_recording`, 205-258): 硬杀 worker 留下 `recording.mkv`(可播但未 remux)+ 可能的中跑残片 mp4; 恢复 = remux 覆盖残片→删 raw→**把临时 trace 目录改名成 worker 会用的终态名**(无状态标记时 `{name}_FAIL_{yyyy-mm-ddTHH-MM-S}`, 179-203)。调用方两处: ① 任务结束时 task_queue_service.py:883; ② **服务启动时** `recover_orphaned_recordings_on_launch`(task_queue_service.py:1947-1985, server.py:158 spawn)——输入是 DB `video_recordings` 中 status ∈ recording/finalizing 的行(session_repository.py:175-199), 成功后 `mark_recording_ready`。**liveness 门同样适用**(还活着就不碰, media_service.py:237-239)。
@@ -114,7 +114,7 @@ todo.md 状态: 已覆盖拆分方向(todo.md:117)。**逐项职责与安全契�
 
 ### 1.6 媒体对外路由与鉴权
 
-todo.md 状态: 「mp4 托管/HTTP 服务无原生」已覆盖方向(todo.md:117), **路由清单与鉴权模型未记录**。
+TODO.md 状态: 「mp4 托管/HTTP 服务无原生」已覆盖方向(TODO.md:117), **路由清单与鉴权模型未记录**。
 
 | 路由 | 行为 | 证据 |
 |---|---|---|
@@ -128,11 +128,11 @@ todo.md 状态: 「mp4 托管/HTTP 服务无原生」已覆盖方向(todo.md:117
 
 鉴权: **无 token**, 全部走 `SameOriginBoundaryMiddleware`(纯 ASGI): Host 头必须在 localhost/IP/`ARTEMIS_ALLOWED_HOSTS` 白名单; 带 Origin 的请求必须同源; `ARTEMIS_DISABLE_ORIGIN_GUARD=1` 整体旁路(apps/admin_console/core/security.py:100-138)。mp4 的"鉴权"= **路径逃逸守卫 + 扩展白名单**, 不是身份验证——DSH 侧 autogamer-media 复刻时须保留同样的"只能拿到媒体文件"保证。
 
-处置建议: 路由表+守卫语义并入 todo.md media_service 行的交接说明; 二期 autogamer-media 验收含"恶意路径拿不到非媒体文件"用例。
+处置建议: 路由表+守卫语义并入 TODO.md media_service 行的交接说明; 二期 autogamer-media 验收含"恶意路径拿不到非媒体文件"用例。
 
 ### 1.7 诊断(diagnostics)
 
-todo.md 状态: E 区已列模块并定向「一期保留 py doctor; 二期部分转 autogamer-queue admission 探测」(todo.md:144-145, 180-181)。**检查项清单/阈值/机制细节缺失**。注: todo.md:144 写 "~3000 行"、todo.md:180 写 "~2400 行", 实测约 **4300 行**, 两处自相矛盾且均偏低(见 §4)。
+TODO.md 状态: E 区已列模块并定向「一期保留 py doctor; 二期部分转 autogamer-queue admission 探测」(TODO.md:144-145, 180-181)。**检查项清单/阈值/机制细节缺失**。注: TODO.md:144 写 "~3000 行"、TODO.md:180 写 "~2400 行", 实测约 **4300 行**, 两处自相矛盾且均偏低(见 §4)。
 
 **doctor 检查项全集**(ReadinessEngine 默认探针 + doctor 专属, artemis/core/diagnostics/engine.py:64-82, readiness.py:30-60):
 1. `python_runtime`(阻断): Python 版本。
@@ -165,7 +165,7 @@ todo.md 状态: E 区已列模块并定向「一期保留 py doctor; 二期部�
 
 ### 1.8 mcp 动作执行层(action_server/executor/session/specs/manifest/actuators)
 
-todo.md 状态: 「一期保留(worker 内), 二期 → autogamer-device 工具执行管线承接」已覆盖(todo.md:141, 177-178)。**协议语义与教训未记录**:
+TODO.md 状态: 「一期保留(worker 内), 二期 → autogamer-device 工具执行管线承接」已覆盖(TODO.md:141, 177-178)。**协议语义与教训未记录**:
 
 - **进程内 MCP**: `build_action_server(actuator)` 造 FastMCP("artemis_actions"), 只注册 actuator `capabilities()` 声明的工具——缺的工具对消费者不可见(artemis/mcp/action_server.py:69-201)。返回协议: `CallToolResult.structuredContent = ActionResult`; `isError=False` 保留给协议级失败, **设备拒绝动作 = isError=False + ok=False**(作为观察到达模型而非异常, 15-31)。
 - **ActionResult 语义**(action_types.py): ok/code/message/detail(`detail` 给诊断不进 LLM)+ normalized_coordinates/duration_ms; ActionCode 枚举 OK/INVALID_ARGS/TARGET_NOT_FOUND/DEVICE_ERROR/PACKAGE_NOT_FOUND/TIMEOUT/UNSUPPORTED(31-40)。`ObserveResult.hierarchy_ok=False` 时调用方**必须保留旧元素索引不得清空**(83-87)。
@@ -182,7 +182,7 @@ todo.md 状态: 「一期保留(worker 内), 二期 → autogamer-device 工具�
 
 ### 1.9 controllers / clients
 
-todo.md 状态: 「二期进 autogamer-device(TS 重写或 CLI 间接调用); 一期保留」已覆盖(todo.md:142, 183-184)。依赖关系未记录:
+TODO.md 状态: 「二期进 autogamer-device(TS 重写或 CLI 间接调用); 一期保留」已覆盖(TODO.md:142, 183-184)。依赖关系未记录:
 
 - **UnifiedMobileController**(controllers/unified_controller.py, 649 行)抽象两件事: ① 驱动无关的输入/观察面(继承 third_party 基类, 真实动作都委派 driver); ② **完整录屏生命周期**(§1.4)——所以它的二期去向其实是两半: 控制面进 autogamer-device, 录屏半留 py。分段缓存按 `(video_id, generation, start, end)` 键控(57, 113-132)。
 - **screen_client_factory**(clients/screen_client_factory.py): 层级三后端 `ARTEMIS_HIERARCHY_BACKEND`= auto(默认)/helper/uiautomator; auto = helper 优先 + **逐调用** u2 兜底; 健康的 helper 永不触发 `u2.connect`(**u2.connect 会推送自家 APK 并卸载 Maestro**, docstring 20-23); helper 失败后 **30s 降级窗**内直接走 u2(`retry_after`, 133-160); 降级前先 `adb get-state` 快判(5s 超时)——**手机不在手时绝不浪费 u2 多次重连超时**(DeviceOfflineError, 60-75, 206-210); 回 helper 前**必须停 u2 server**(其 UiAutomation 连接让所有 a11y 服务解绑, 231-238); `disconnect(stop_server=True)` 同理(为下一个任务/进程还回 helper, 277-285)。后端切换史(backend_history+listener)进报告。
@@ -193,7 +193,7 @@ todo.md 状态: 「二期进 autogamer-device(TS 重写或 CLI 间接调用); �
 
 ### 1.10 utils/CV/OCR 栈(职责概述)
 
-todo.md 状态: 「D8 例外整区保留(opencv/scipy 强依赖)」已覆盖(todo.md:174-175), 无需展开。职责速览(迁移时知道谁被谁调即可):
+TODO.md 状态: 「D8 例外整区保留(opencv/scipy 强依赖)」已覆盖(TODO.md:174-175), 无需展开。职责速览(迁移时知道谁被谁调即可):
 - `coordinates.py`(606): swipe 参数解析(direction/target/gesture 兼容)、智能滑动向量(40% 重叠锚)、0-1000 归一/反归一、action dict 归一——**actuator/executor 的坐标大脑**。
 - `ui_filter.py`(651): 层级清洗——越界/最小尺寸(短边 0.5% 动态下限, 385-389)、语义空节点、父子冗余剪枝、固定系统条(状态栏/导航栏)钳制; adb_driver 与 observe 共用。
 - `task_tree.py`(1174)、`plan_grammar.py`(513): 任务计划 md 的双通道语法(机器通道解析); `notes.py`(470): 笔记工具后端。
@@ -216,7 +216,7 @@ todo.md 状态: 「D8 例外整区保留(opencv/scipy 强依赖)」已覆盖(tod
 | 同步 u2 在事件循环线程上 asyncio.wait_for 打不中 → 专属线程+独立 loop | device_smoke.py:33-39, 192-233 |
 | ADB restart/heal 必须剥离 ADB_SERVER_SOCKET, 否则打到远程 endpoint | engine.py:327-335; adb_keys.py:213-228; adb_server_connection.py:274-278 |
 
-处置建议: 这些是**跨语言有效的经验**, 应在二期 spike(尤其 G6 Windows 落地)时作为检查单; 建议把此表并入 todo.md G6。
+处置建议: 这些是**跨语言有效的经验**, 应在二期 spike(尤其 G6 Windows 落地)时作为检查单; 建议把此表并入 TODO.md G6。
 
 ---
 
@@ -298,12 +298,12 @@ todo.md 状态: 「D8 例外整区保留(opencv/scipy 强依赖)」已覆盖(tod
 
 ---
 
-## 4. 对 docs/todo.md 的修订建议
+## 4. 对 docs/TODO.md 的修订建议
 
 1. **新增差距 G8 · 录像产物与 trace 媒体契约**: manifest v2 字段、`recording{,_NNN}.(mkv|mp4)` 命名、首帧锚定(session.start_time=首帧)、trace 目录 `_PASS_/_FAIL_/_TESTFAIL_` 终态命名与孤儿改名、`image://{sha256}` 截图引用——绑定到「剩余自建清单 ③ autogamer-media」与 S5 spillPath 交接, 作为其验收规格。(来源 §1.4/1.5)
 2. **新增差距 G9 · 设备工具坐标与结果契约**: 0-1000 归一化坐标域、元素索引 client 端解析、target_description 记录不上 wire、ActionResult(ok/code/message/detail, 设备拒绝≠异常)、动作名归一表——绑定 P2/autogamer-device。(来源 §1.8)
 3. **新增差距 G10 · 层级后端互斥与降级语义**: helper(18888/X-Artemis-Token)与 u2 的 UiAutomation 单例互斥、auto 模式 30s 降级窗、u2 用后 stop_server、离线快判——绑定 P2; 若二期决定不复刻 helper, 需显式决策并记录对 Mobly/Appium 共存能力的放弃。
-4. **映射表修正**: ① `media_service 568 行` → 实为 **623 行**(media_service.py 实测); ② diagnostics 行数 todo.md:144(~3000)与 todo.md:180(~2400)自相矛盾, 实测约 **4300 行**(含 probes 1963/engine 441/smoke 364/emulator 501/keys 270/endpoint 330/parity 216); ③ E 区"提交前就绪检查"建议点名 **submission gate 的锁屏确认+多设备切换语义**为 admission 必须继承项(现 G4 只覆盖 env 级判定)。
+4. **映射表修正**: ① `media_service 568 行` → 实为 **623 行**(media_service.py 实测); ② diagnostics 行数 TODO.md:144(~3000)与 TODO.md:180(~2400)自相矛盾, 实测约 **4300 行**(含 probes 1963/engine 441/smoke 364/emulator 501/keys 270/endpoint 330/parity 216); ③ E 区"提交前就绪检查"建议点名 **submission gate 的锁屏确认+多设备切换语义**为 admission 必须继承项(现 G4 只覆盖 env 级判定)。
 5. **S5 环境变量契约补全**: 在 S5 清单追加 driver/观察面 env: `ARTEMIS_MOCK_DRIVER`、`ARTEMIS_CLOUD_MODE`、`ARTEMIS_HIERARCHY_BACKEND`、`ARTEMIS_DEVICE_ID`、`ADB_DEVICE_SERIAL`、`ADB_HOST/PORT/SERVER_SOCKET/VENDOR_KEYS`、`ARTEMIS_DISABLE_ORIGIN_GUARD`(双跑期 DSH→py worker 透传集)。
 6. **checklist P2 补充验收基线引用**: autogamer-device/mock 的验收 = 本草稿 §1.1-1.2 能力清单 + §1.9 互斥不变量 + §2 契约表; `koffi/隐藏桌面` 之外补"Windows MKV 文件锁、CTRL_BREAK flush"两条已有经验(并入 G6 检查单)。
 7. **删除项确认**: `drivers/android/recorder.py`、`drivers/android/input_ime.py`、`drivers/cloud/cloud_driver.py` 全仓无消费方(§1.2), 可在映射表标注「死代码, 直接删除, 不迁移」。

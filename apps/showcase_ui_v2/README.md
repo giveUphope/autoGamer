@@ -393,7 +393,7 @@ M0–M6 之外的挂起项收尾（对应各里程碑已知边界与调研报告
 
 | 项 | 内容 |
 | --- | --- |
-| 工程收尾 | `ipc_service.py` 删除 Angular 时代遗留别名 `filter_event_for_angular`；`package.json` 补 `engines: node>=20.19.0`（对齐 Vite 7 要求与 start.sh 校验）；`make release-ui` 一键构建 + 同步 wheel 回退资源；`changelogs.md` 补迁移完成记录 |
+| 工程收尾 | `ipc_service.py` 删除 Angular 时代遗留别名 `filter_event_for_angular`；`package.json` 补 `engines: node>=20.19.0`（对齐 Vite 7 要求与 start.sh 校验）；`make release-ui` 一键构建 + 同步 wheel 回退资源；`../../../docs/CHANGELOGS.md` 补迁移完成记录 |
 | 深度 i18n | 见上文 M6 已知边界的修订说明 |
 | 打字机与轮换短语 | `useTypewriter` composable（双泳道 text/thought、母本节奏 667 chars/s 等价移植、live 判定零常驻定时器、`isReset` 单次 rewind）；planning loader 16 条轮换短语（2800ms，loader 可见才轮转） |
 | 未消费端点接入 | `GET /api/tasks/presets` → 启动器推荐任务 chips（点击填入不直接提交，失败静默；chip 文案与填入的目标文本按 preset id 取 zh-CN 覆盖，无覆盖时退回后端英文目录原文）；`GET /api/sessions/{id}/tree` → 时间线工具条"轨迹树"抽屉（a-tree，按 trace 树节点归一渲染）；回放调试组（`/api/replay/tools 与 /api/replay/config`、`replay_steps`、`steps/{n}/replay`、`replay_traces`）→ 时间线工具条"步骤回放"抽屉（设备/工具选择 + **真实执行二次确认** + 结果折叠展示） |

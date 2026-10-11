@@ -3,11 +3,11 @@
 Why this exists: the docs cross-reference each other by bare ids (D7, S11, G30,
 R13). A mechanical sweep found 14 gap ids referenced with no findable row and
 three ids (G8/G10/G11) carrying different meanings in docs/migration/inventory
-than in docs/todo.md. docs/migration/registry.md is the declared authority; this
+than in docs/TODO.md. docs/migration/registry.md is the declared authority; this
 script proves it stays true.
 
 Judgments (each fails loudly, none of them prints-and-forgets):
-  1. registry lists exactly the ids that todo.md / plugin-contract-rules.md define
+  1. registry lists exactly the ids that TODO.md / plugin-contract-rules.md define
   2. every id referenced anywhere in the tracked markdown corpus exists in registry
   3. ids that inventory/* defines with a different meaning are all listed as clashes
   4. the "closed" ids are individual registry rows, not folded back into one line
@@ -25,7 +25,7 @@ import subprocess
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
-TODO = ROOT / "docs" / "todo.md"
+TODO = ROOT / "docs" / "TODO.md"
 RULES = ROOT / "docs" / "migration" / "plugin-contract-rules.md"
 REGISTRY = ROOT / "docs" / "migration" / "registry.md"
 INVENTORY_GLOB = "docs/migration/inventory"
@@ -160,7 +160,7 @@ def check() -> list[str]:
         row = re.search(rf"^\| {ident} \|", read(REGISTRY), re.M)
         if row is None:
             problems.append(
-                f"{ident} is only folded into todo.md's 已关闭 row and has no registry row"
+                f"{ident} is only folded into TODO.md's 已关闭 row and has no registry row"
             )
 
     # 5. pointers inside registry.md must resolve
@@ -212,7 +212,7 @@ def selftest() -> None:
     todo = todo_bytes.decode("utf-8")
     tampered = todo.replace("G30", "G77", 1)
     if tampered == todo:
-        raise SystemExit("FAIL: selftest anchor not found in todo.md")
+        raise SystemExit("FAIL: selftest anchor not found in TODO.md")
     TODO.write_bytes(tampered.encode("utf-8"))
     try:
         problems = check()
@@ -223,7 +223,7 @@ def selftest() -> None:
     finally:
         TODO.write_bytes(todo_bytes)
     if TODO.read_bytes() != todo_bytes:
-        raise SystemExit("FAIL: selftest did not restore todo.md byte-for-byte")
+        raise SystemExit("FAIL: selftest did not restore TODO.md byte-for-byte")
     print("SELFTEST: reference gate fires on both injected defects")
 
 

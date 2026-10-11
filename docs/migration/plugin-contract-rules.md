@@ -2,7 +2,7 @@
 
 > 用途：`autogamer-device` 后续每一笔改动动手**之前**先对照本表；每条都给「判据」，要求能由命令或产物机器作答，不接受"看着没问题"。
 > 依据：上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) @ master 的官方 skill / 包 README / 源码，加上本机 0.2.0-rc.2 实测。逐条标 **文档口径**（官方文字）、**源码口径**（上游源码）、**实测口径**（本机产物）。
-> 覆盖范围：R1-R19 已改写 `todo.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
+> 覆盖范围：R1-R19 已改写 `TODO.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
 
 ---
 
@@ -165,22 +165,22 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 反例（本轮实际付过的学费）：`report_task_status` 的终态强制先在 preset 子插件里实现，`session/event` + `turn/end` 与 `agent/status` 双监听、61/61 单测全绿，live 一次都没触发。官方 `docs/subsystems/session.zh.md:1301` 早就写明 **`session/event` 是 scope-filtered dispatch：agent-scoped 监听器只收到"经该 agent 上下文进入的会话"的事件**——查这一段 30 秒就能定层，不必写一整套再回退。同一类：`goal-round-driver` 的 `inject = ['agents','goals','sessions']` 挂在 root 层，抄它即可。
 
 - **出处**：**文档口径** `docs/subsystems/session.zh.md:1299-1317`（`session/event` 派发模式与 scope 过滤）、`packages/bundle/web-app/presets/standard.patch.yml`（planning 段原文）、`packages/goal/goal-round-driver/src/index.ts`。
-- **判据**：新增/改动任何与宿主交互的代码前，在 `docs/todo.md` 对应条目里写明**查了哪份、原文怎么说**；只写"实测可用"或"看起来能跑"不算过。已有实现若被 live 否证，当场改正或回退，**不许留猜测代码**。
+- **判据**：新增/改动任何与宿主交互的代码前，在 `docs/TODO.md` 对应条目里写明**查了哪份、原文怎么说**；只写"实测可用"或"看起来能跑"不算过。已有实现若被 live 否证，当场改正或回退，**不许留猜测代码**。
 
 
 ## R21 手镜像的宿主契约必须标出处与版本，并区分"单测证明"与"live 证明"
 
-`src/dsh-types.ts` 里每一处手写镜像的宿主形状（服务方法、事件签名、结果字段）都必须带**出处 + 版本 + 是否 live 验证过**。宿主 npm 包在 rc.2 只随 app.asar 分发、npm 上的版本可能不同版（如 `@deepseek-ai/dsh-attachment` 是 `0.0.1-rc.1`），所以镜像有时不可避免——但它是**负债**，不是免费桩。凡"只有单测绿、没有 live 证据"的宿主交互，在 `docs/todo.md` 里必须标 🔶 并写明缺哪条证据；单测里的假 context 必须按真实语义实现（教训见 changelogs #10：假 ctx 没有 `effect`，让自注销缺陷在 CI 里隐身）。
+`src/dsh-types.ts` 里每一处手写镜像的宿主形状（服务方法、事件签名、结果字段）都必须带**出处 + 版本 + 是否 live 验证过**。宿主 npm 包在 rc.2 只随 app.asar 分发、npm 上的版本可能不同版（如 `@deepseek-ai/dsh-attachment` 是 `0.0.1-rc.1`），所以镜像有时不可避免——但它是**负债**，不是免费桩。凡"只有单测绿、没有 live 证据"的宿主交互，在 `docs/TODO.md` 里必须标 🔶 并写明缺哪条证据；单测里的假 context 必须按真实语义实现（教训见 changelogs #10：假 ctx 没有 `effect`，让自注销缺陷在 CI 里隐身）。
 
 - **出处**：**文档口径** D15/R1（只用声明面）+ 本仓库 changelogs #10 的实测教训；`@deepseek-ai/dsh-llm` 的 `lib/types/*.d.ts` 引 `@deepseek-ai/dsh-attachment` 而本机未安装该版（tsc 因 skipLibCheck 静默放行，等于类型盲区）。
-- **判据**：审查表（`docs/todo.md`「宿主交互实现审查」）里每一项都有 已证 / 仅单测 / 猜测 三态之一；出现"猜测"项必须在本轮内改正、加探针或回退，不许长期挂账。
+- **判据**：审查表（`docs/TODO.md`「宿主交互实现审查」）里每一项都有 已证 / 仅单测 / 猜测 三态之一；出现"猜测"项必须在本轮内改正、加探针或回退，不许长期挂账。
 
 ## R22 功能实现三步序：查官方文档 → 写 todo 方案 → 才动代码
 
 任何功能/修复的实现，顺序固定为三步，**不许跳步**：
 
 1. **查**：按 R20 查官方一手资料（`docs/subsystems/*.zh.md`、`cordis-primer`、cookbook、三个官方 skill、公开 `packages/**`），把"查了哪份、原文怎么说"摘出来；
-2. **写**：把结论写进 `docs/todo.md` 一条自足方案（What / How / Verify / Done means，含范围外与前置实验），**方案先提交**；
+2. **写**：把结论写进 `docs/TODO.md` 一条自足方案（What / How / Verify / Done means，含范围外与前置实验），**方案先提交**；
 3. **做**：方案落地后在同一轮里勾验收项、记录偏差；被 live 否证的实现**当场回退**，不许留猜测代码（R21）。
 
 - **出处**：**仓库口径** AGENTS.md「Change planning → todo ledger」+ 本文件 R20/R21；触发实例：G44 第一版先写了 preset 层监听（61/61 单测）才去查 `session/event` 的 scope 规则，结果整轮回退。

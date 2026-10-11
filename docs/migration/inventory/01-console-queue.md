@@ -1,9 +1,9 @@
 # 迁移盘点 · 队列与控制台后端
 
-> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/todo.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
+> **编号警示**：本文里 `**Gn · …**` 形式的「新增差距」段落属于早期编号方案，与 `docs/TODO.md` 现行 G 编号**不是同一套**（G8/G9/G10/G11/G12 已撞车，冲突表见 [registry.md](../registry.md)）。引用内容时写「`inventory/0N` 的 X 段」，不要写 `Gn`。
 
 > 范围: `apps/admin_console/**`（routers / services / core / database / schemas / server.py / replay_manager.py）+ `tests/unit/admin_console/**`；基线: cc6b20c；日期: 2026-10-09
-> 目的：记录 docs/todo.md（D1–D8 / G1–G7 / 全模块映射表 / P0–P4）**未写明、迁移中若无人记录即会丢失**的行为、不变量与契约。todo.md 已覆盖的条目只标注出处、不展开。
+> 目的：记录 docs/TODO.md（D1–D8 / G1–G7 / 全模块映射表 / P0–P4）**未写明、迁移中若无人记录即会丢失**的行为、不变量与契约。TODO.md 已覆盖的条目只标注出处、不展开。
 
 ---
 
@@ -242,7 +242,7 @@ todo 映射表已定「回放 → DSH trajectory replay（session log fork/repla
 
 ---
 
-## 4. 对 docs/todo.md 的修订建议
+## 4. 对 docs/TODO.md 的修订建议
 
 **新增差距（G8+）：**
 - **G8 · worker 进程 env/CLI 完整契约表**：S5 的清单是子集，补 §2.2 全表（尤其 ARTEMIS_SUBMITTED_AT/TASK_INGRESS/TASK_WORKER/IPC_PORT/DEVICE_QUEUE_TICKET/ADB_ENDPOINT_ID/ADB_DEVICE_SERIAL/endpoint env/PYTHONPATH 重组/stderr 合并/Windows creationflags），并声明「py 侧零新增」的前提是这套 env 原样保留。

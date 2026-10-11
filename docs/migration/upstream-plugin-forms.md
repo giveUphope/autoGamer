@@ -1,6 +1,6 @@
 # 上游插件形态与工具形态调研（2026-10-10）
 
-> 来源口径：`github.com/deepseek-ai/deepseek-harness` @ `master` 的公开文档与源码，符合 [todo.md](../todo.md) 的 D15（声明面 + 公开上游，不解包 app.asar）。每条标 **文档口径** / **源码口径**；本机尚未复验的写 **未实测**。
+> 来源口径：`github.com/deepseek-ai/deepseek-harness` @ `master` 的公开文档与源码，符合 [TODO.md](../TODO.md) 的 D15（声明面 + 公开上游，不解包 app.asar）。每条标 **文档口径** / **源码口径**；本机尚未复验的写 **未实测**。
 > 取用方式：`gh api repos/deepseek-ai/deepseek-harness/...`（仓库确认为 public、default branch `master`，描述「DeepSeek Harness: Everything is a Plugin」）。原文副本落在 `plugins/autogamer-device/spike/sandbox/`（gitignored，只作取证现场，不作引用依据）。
 
 ## 一、为什么要查
@@ -26,7 +26,7 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 - **收回「外部插件名不能进 preset 子项」**：没有任何官方文档这样说；相反 composition-reference:29 承认 installed bundles 的插件。而 01:51 那次 `tools=16` **同时变了两个量**（plugins 集合 + 旧会话→新会话），按事实 4，光「换成新会话」这一项就足以解释「此前无 `tools` 键」。所以那次的正确读法是：**旧会话沿用其启动时的 preset revision**，与外部性无关。
 - **收回「裸 `- name:`（无 id）子项产不出工具」**：与 `agent-preset/README.zh.md:48` 直接冲突——「**子插件可省略行 ID，由 Loader 分配**」。这条实测差异的真实原因还没定性（可能同样是 revision 混淆），不许再当作约束写进方案。
 
-两条都是我自己写进 `todo.md` 并已提交的（`1f05039`），现在按本节修订。
+两条都是我自己写进 `TODO.md` 并已提交的（`1f05039`），现在按本节修订。
 
 ## 四、对方案的冲击（改哪条、为什么）
 

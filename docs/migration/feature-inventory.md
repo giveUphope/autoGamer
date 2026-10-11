@@ -15,9 +15,9 @@
 | [inventory/04-agent-stack-config.md](inventory/04-agent-stack-config.md) | worker 启动退出契约/智能栈/LLM/配置 | 退出码真相（S2 矛盾）、task_plan.md 写入暗规则、工具敏感分级表（S6 输入）、LLM 可靠性/暂停协议、env 全集按语义分组 |
 | [inventory/05-frontend-integration.md](inventory/05-frontend-integration.md) | showcase_ui_v2 + mcp_server + artemis-client + 脚本 | SSE 事件×前端消费矩阵（含死信道）、4-step merge 不变量、跨线程竞态五件套、通知通道矩阵、SDK 公开面、dev/构建链 |
 
-> 注：各 inventory 文件 §4（修订建议）写于统一编号之前，其 G 编号是草案编号；**权威编号以本文 G8–G29 为准**，其建议已由主代理汇总落进 `docs/todo.md`（2026-10-09）。
+> 注：各 inventory 文件 §4（修订建议）写于统一编号之前，其 G 编号是草案编号；**权威编号以本文 G8–G29 为准**，其建议已由主代理汇总落进 `docs/TODO.md`（2026-10-09）。
 
-## 与 todo.md 的硬矛盾（P0 前必须消化，已回改 todo.md）
+## 与 TODO.md 的硬矛盾（P0 前必须消化，已回改 TODO.md）
 
 1. **S2 退出码映射与 py 真相相反**：verifier 判 blocked / flash 自报 failed 的任务退出码为 **0**（CLI 不检查任务结果，run.py:463-473 只对异常与取消设非零）；协作取消退出 **130**。按 S2 原文「0→completed / 非0→failed」会把失败任务标成 completed。py 真相：**DataEngine DB 终态权威，退出码仅兜底**（task_queue_service.py:310-333）。
 2. **cancel_requests 被映射表标「✅ 删除」，但它是 Windows 下唯一优雅取消通道**：worker 以 CREATE_NO_WINDOW 创建，`JobRegistry.kill` 硬杀时收不到任何 Python 信号；录屏 remux / trace 编译 / 锁释放 / cancelled 终态全靠 cancel marker 文件协议 + 45s 宽限（默认 `ARTEMIS_CANCEL_GRACE_SECONDS`）。
@@ -26,7 +26,7 @@
 5. **「graph checkpoint 由 session log 承接」易误读**：py 无 langgraph checkpointer、**无断点续跑**（进程死=任务死，恰与 D5 一致）；checkpoint 是计划校验账本（check_ledger.jsonl），不是执行位置。
 6. **「旧线 [vlm] 路由已验证」不存在**：py 无 [vlm] 路由键，多模态按节点配置（video_analyzer/object_detector/explorer + is_multimodal）。
 
-## 统一差距清单（G8–G29，已同步进 docs/todo.md 差距表）
+## 统一差距清单（G8–G29，已同步进 docs/TODO.md 差距表）
 
 ### A. 一期对接语义修正（阻塞 P0 spike）
 
