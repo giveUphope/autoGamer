@@ -50,11 +50,16 @@ describe("conformance: py action server surface", () => {
   });
 
   it("the fixture is a generated record, not a list someone maintains by hand", () => {
-    expect(typeof fixture.captured).toBe("string");
+    // Same builder the --write path uses, so a hand-typed name or a name added
+    // out of order fails here even without a live server (the live drift check
+    // is `node scripts/spike-mcp.mjs`, which CI runs).
+    const generated = buildFixture(realTools);
     expect(String(fixture.source)).toContain("spike-mcp.mjs");
-    // Same builder the --write path uses: if the fixture drifted from the
-    // mapping, this is where it shows up.
-    expect(buildFixture(realTools).pyActionServerTools).toEqual(realTools);
+    expect(fixture.source).toBe(generated.source);
+    expect(/^\d{4}-\d{2}-\d{2}$/.test(String(fixture.captured)), "captured must be a date stamp").toBe(true);
+    expect(realTools, "the generator emits a sorted, deduplicated list").toEqual(
+      [...new Set(realTools)].sort(),
+    );
   });
 
   // Opt-in, because it costs a real server spawn: `AUTOGAMER_CONFORMANCE_PY=live`.
