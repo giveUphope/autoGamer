@@ -365,6 +365,45 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] skill 根路径不再写死绝对路径：官方 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 形态**live 走通**——`<available_skills>` 列出 `autogamer-flash`，模型调 `skill({name:"autogamer-flash"})` 拿回 1784 字符正文与 `skill_resources` 基目录
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [ ] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑
+### G50 交付形态选型：先读文档定的三条路线与取舍（2026-10-12，R22 + R25）
+
+- **What**：让「装出来的 bundle 可用」——git 形态缺 `dist/`（#22）必须解决。
+  范围：选一条路线并**在本机把它验通**；不改 py 侧；不发布 npm 包。
+  出范围：任何需要 GitHub 端写操作（建 Release、改仓库可见性）的动作都要先得到用户确认。
+- **官方口径（本轮逐字读，出处都是 `packages/boot/plugin-manager/README.md` 与官方 skill references）**
+  1. `:54` GitHub 连通性检查只管网络与超时，「Authentication, repository lookup and other failures are left to pnpm,
+     **including its HTTPS-to-SSH fallback**」⇒ #22 的更正与官方一致，`https://` spec 走 ssh 再回退是 pnpm 的既定行为。
+  2. `:64` **构建脚本审批是独立一道门**：「When pnpm 11 blocks dependency scripts, the failed installation reports
+     every pending package name … under `pendingBuilds`」；Web 侧有「**Allow these scripts and retry**」；
+     工具侧「can grant permission on the user's behalf through `approvedBuilds` on `install_bundle`,
+     **after the user approves those scripts in the conversation**」，且「Approval persists by package name in this profile,
+     **permits commands with the host user's permissions**」。⇒ 走 `prepare` 路线 = 每次新 profile 都要用户点一次构建授权。
+  3. `:50` 官方对开发形态的期待是**先构建**：「Prepare the checkout with `pnpm install` and `pnpm run build`.
+     Linked packages use that checkout's dependencies and peers; **rebuilding and restarting remain necessary after code changes**.」
+  4. `references/host-plugin.md:7`「A Host-only bundle needs no dependencies, **install scripts, or build tool**」；
+     官方随包出货的 bundle 走的是 **registry 发布件**（`badge-skill-bundle` 的 `files` 里是 `lib/index.js`，即发布前已构建）。
+  5. `parseInstallSpec`（#20 已读）：`https://…\/x.tgz` 会被判成 **`tarball` 形态并带 host**，
+     pnpm 文档也给了 GitHub 直接给 tarball 地址的例子 ⇒ **tarball 可以是一条可分享的 URL**，不必是本地文件。
+- **How（三条路线的取舍，按此顺序推进）**
+  1. **首选 ③b：Release 资产 tarball 的 URL**。`npm pack` 从**已构建的工作目录**取文件 ⇒ `dist/` 天然在内（#19 已证 `files` 白名单被 honored），
+     不需要构建脚本审批、不需要提交产物、地址可分享。**待用户确认的一步**：`gh release create` 是 GitHub 端写操作，不自己做。
+  2. **本轮先做 ③a：本机 tarball 验通**（零网络、零发布）：`npm pack` 我们的插件 → 用绝对路径 `install_bundle` 装 →
+     核对 `dist/index.js` 在不在、preset 是否挂载、`run_device_action` 是否真能跑。
+     这一发**只验 artifact 形状**，不碰 GitHub。
+  3. **① `prepare` 脚本**留作备选：它能让 git 形态自足，但代价是每次都要用户批构建脚本（口径 2），
+     且「permits commands with the host user's permissions」这句本身就说明它把信任面扩大了——**不默认选它**。
+  4. **② 提交 `dist/`** 只作最后兜底（脏，且与口径 3/4 的官方习惯相反）。
+- **Verify（③a 的可复跑判据）**
+  - `cd plugins/autogamer-device && npm run build && npm pack --dry-run` ⇒ 清单里必须有 `dist/index.js`、`cordis.patch.yml`、`locale/*.json`、`icon.svg`、`skills/**/SKILL.md`
+  - 装完后：`node_modules/autogamer-device/dist/index.js` 存在；`--dump-config` 里 `preset-autogamer` 合成；
+    新会话 wire 里 persona 契约仍在、工具面含 `run_device_action`/`report_task_status`/`skill`/`plugin_manager`
+  - 收尾：还原成 `link:` 开发态（#22 记过还原法：删实体拷贝 → 备份 manifest/lock → `pnpm install` → 核对 reparse point）
+- **Done means**
+  - [ ] ③a 本机 tarball 验通：`dist/` 在、preset 挂载、工具面完整（实测清单写回本条）
+  - [ ] 路线选择定稿并记进 CHANGELOGS（含「为什么不选 ①」的官方依据）
+  - [ ] ③b 需要 GitHub Release 的那一步，**列成给用户的决定项**，不自行执行
+  - [ ] G50 结案，`registry.md` 同步，两份门禁重跑
+
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
