@@ -6,10 +6,13 @@
  *   node plugins/autogamer-device/scripts/gen-sse-events.mjs          # check for drift
  *   node plugins/autogamer-device/scripts/gen-sse-events.mjs --write  # regenerate fixture
  *
- * Known limitation, stated rather than hidden: this reads literal event-name
- * arguments at call sites. A name built by concatenation or passed through a
- * variable is invisible to it — the same limitation the hand-written fixture
- * had, except now it fails loudly (regenerate and diff) instead of silently.
+ * What it resolves: a literal name at the call site (`_publish("x"`), a module
+ * constant (`publish(CHECKER_EVENT` with `CHECKER_EVENT = "checker_event"`), and
+ * an alias bound to a funnel (`publish = getattr(engine, "_publish", None)`).
+ * A name computed at runtime is still invisible — that is a real limit of
+ * reading source instead of running it; the guard is that any *other*
+ * emitter-shaped call is reported (`findUnreviewedEmitters`), so a new funnel or
+ * an indirect call has to be looked at rather than silently dropped.
  */
 import { readFileSync, readdirSync, writeFileSync, existsSync } from "node:fs";
 import { dirname, join, relative, resolve } from "node:path";
@@ -39,10 +42,17 @@ const REVIEWED_EXCLUSIONS = [
 ];
 
 /** Names may contain hyphens (`keep-alive`); the router writes those frames by hand. */
-const emitterPattern = (name) => new RegExp(`\\b${name}\\(\\s*f?["']([a-z][a-z0-9_-]*)["']`, "g");
 const RAW_SSE_PATTERN = /["']event:\s*([a-z][a-z0-9_-]*)/g;
 
-const SERVER_PATTERNS = [...EMITTERS.map(emitterPattern), RAW_SSE_PATTERN];
+/** `publish = getattr(engine, "_publish", None)` — the funnel reached by another name. */
+const aliasPattern = (funnel) =>
+  new RegExp(`\\b([a-z_][a-z0-9_]*)\\s*=\\s*getattr\\([^,]+,\\s*["']${funnel}["']`, "g");
+
+/** Module-level `CHECKER_EVENT = "checker_event"`. */
+const CONSTANT_PATTERN = /^([A-Z][A-Z0-9_]{2,})\s*=\s*f?["']([a-z][a-z0-9_-]*)["']/gm;
+
+/** One call: a callee plus either a literal name or an all-caps constant. */
+const CALL_PATTERN = /\b([a-z_][a-z0-9_]*)\(\s*(?:f?(["'])([a-z][a-z0-9_-]*)\2|([A-Z][A-Z0-9_]{2,}))\s*[,)]/g;
 
 const FRONTEND_PATTERNS = [
   /\beventSource\??\.addEventListener\(\s*["']([a-z][a-z0-9_-]*)["']/g,
@@ -73,15 +83,68 @@ function collect(text, patterns) {
   return names;
 }
 
+/** Repository-wide, because a constant is routinely defined in one module and published from another. */
+function readConstants(sources) {
+  const constants = new Map();
+  for (const text of sources.values()) {
+    for (const match of text.matchAll(CONSTANT_PATTERN)) constants.set(match[1], match[2]);
+  }
+  return constants;
+}
+
+/** Per-file: local name → the funnel it is bound to. */
+function readAliases(text) {
+  const aliases = new Map();
+  for (const funnel of EMITTERS) {
+    for (const match of text.matchAll(aliasPattern(funnel))) aliases.set(match[1], funnel);
+  }
+  return aliases;
+}
+
+/** Event names one file publishes, resolved to the funnel each came from. */
+function emissionsFrom(text, constants) {
+  const out = [];
+  const aliases = readAliases(text);
+  for (const match of text.matchAll(CALL_PATTERN)) {
+    const [, callee, , literal, constant] = match;
+    const funnel = EMITTERS.includes(callee) ? callee : aliases.get(callee);
+    if (!funnel) continue;
+    const name = literal ?? constants.get(constant);
+    if (name) out.push({ funnel, name });
+  }
+  return out;
+}
+
+/** Per-funnel contributions — the guard against an extractor that quietly
+ *  stops seeing one funnel while still producing a self-consistent fixture. */
+export function namesByEmitter(repoRoot = REPO_ROOT) {
+  const sources = readServerSources(repoRoot);
+  const constants = readConstants(sources);
+  const byFunnel = Object.fromEntries(EMITTERS.map((funnel) => [funnel, new Set()]));
+  for (const text of sources.values()) {
+    for (const { funnel, name } of emissionsFrom(text, constants)) byFunnel[funnel].add(name);
+  }
+  return Object.fromEntries(Object.entries(byFunnel).map(([funnel, names]) => [funnel, [...names].sort()]));
+}
+
 /** Local calendar date, matching the dates used throughout docs/. */
 const localDate = () => new Date(Date.now() - new Date().getTimezoneOffset() * 60_000).toISOString().slice(0, 10);
 
-export function extractLegacySseEvents(repoRoot = REPO_ROOT) {
-  const server = new Set();
+function readServerSources(repoRoot) {
+  const sources = new Map();
   for (const root of SERVER_ROOTS) {
-    for (const file of pythonFiles(join(repoRoot, root))) {
-      for (const name of collect(readFileSync(file, "utf8"), SERVER_PATTERNS)) server.add(name);
-    }
+    for (const file of pythonFiles(join(repoRoot, root))) sources.set(file, readFileSync(file, "utf8"));
+  }
+  return sources;
+}
+
+export function extractLegacySseEvents(repoRoot = REPO_ROOT) {
+  const sources = readServerSources(repoRoot);
+  const constants = readConstants(sources);
+  const server = new Set();
+  for (const text of sources.values()) {
+    for (const { name } of emissionsFrom(text, constants)) server.add(name);
+    for (const name of collect(text, [RAW_SSE_PATTERN])) server.add(name);
   }
   const frontend = collect(readFileSync(join(repoRoot, FRONTEND_FILE), "utf8"), FRONTEND_PATTERNS);
   const sorted = (set) => [...set].sort();
@@ -102,24 +165,26 @@ export function buildFixture() {
     notes: [
       "队列 UI 信源是 /api/status 的 queue_paused/queue_holds 轮询字段，不是 SSE（G18）",
       "DSH 侧对应物为 session/event + readSessionState catch-up（已核实原生支持，G20）",
-      "两份差集都是实测抽取结果：死信道是双向的，旧 fixture 只记了服务端发射的那一半",
+      "两份差集都由抽取算出。旧手抄只记了服务端→前端那一半；本轮算得前端订阅的 17 项全部有真实发射方（反向死信道为空）",
+      "checker_event 走 `publish = getattr(engine, '_publish')` 别名 + 模块常量发射（graph/checkpoints.py:72,166,174）——抽取器解析别名与常量，手抄清单曾把它误判成死信道",
     ],
   };
 }
 
-/** Candidates that look like emitters but are not in the reviewed `EMITTERS`
- *  list — reported so a new funnel is a decision, not silent drift. */
+/** Callee names reviewed and deliberately kept out of the event vocabulary;
+ *  anything else that looks like an emitter is reported instead of dropped. */
 export function findUnreviewedEmitters(repoRoot = REPO_ROOT) {
-  const candidate = /\b([A-Za-z_][A-Za-z0-9_]*)\(\s*f?["']([a-z][a-z0-9_-]*)["']/g;
+  const sources = readServerSources(repoRoot);
+  const constants = readConstants(sources);
   const found = new Set();
-  for (const root of SERVER_ROOTS) {
-    for (const file of pythonFiles(join(repoRoot, root))) {
-      for (const match of readFileSync(file, "utf8").matchAll(candidate)) {
-        const [, callee, name] = match;
-        if (EMITTERS.includes(callee) || REVIEWED_EXCLUSIONS.includes(callee)) continue;
-        if (!/(?:^|_)(?:publish|broadcast|emit)(?:_|$)|(?:_|^)event$/.test(callee)) continue;
-        found.add(`${callee}("${name}") ${relative(repoRoot, file)}`);
-      }
+  for (const [file, text] of sources) {
+    const aliases = readAliases(text);
+    for (const match of text.matchAll(CALL_PATTERN)) {
+      const [, callee, , literal, constant] = match;
+      if (EMITTERS.includes(callee) || aliases.has(callee)) continue;
+      if (REVIEWED_EXCLUSIONS.includes(callee)) continue;
+      if (!/(?:^|_)(?:publish|broadcast|emit)(?:_|$)|(?:_|^)event$/.test(callee)) continue;
+      found.add(`${callee}(${literal ?? constants.get(constant) ?? constant}) ${relative(repoRoot, file)}`);
     }
   }
   return [...found].sort();

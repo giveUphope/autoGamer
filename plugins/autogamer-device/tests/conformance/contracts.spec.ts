@@ -17,7 +17,8 @@ import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION } from "@deepseek-ai/
 import { Config } from "../../src/index.js";
 import { ACTION_TO_PY_TOOL, ACTIONS } from "../../src/tools/runDeviceAction.js";
 import { buildFixture, mappedPyTools } from "../../scripts/spike-mcp.mjs";
-import { extractLegacySseEvents } from "../../scripts/gen-sse-events.mjs";
+import { extractLegacySseEvents, findUnreviewedEmitters, namesByEmitter } from "../../scripts/gen-sse-events.mjs";
+import { typescriptFiles } from "../support/srcFiles.js";
 
 /** Minimal view of a Schemastery object node (the package exports no type name). */
 type SchemaObject = {
@@ -62,9 +63,26 @@ describe("conformance: py action server surface", () => {
     );
   });
 
+  it("covers every py tool this plugin calls, including the ones outside the mapping", () => {
+    // `compare_ui_frames` (G39 route A) is called directly from index.ts, so a
+    // mapping-only check would not notice the server renaming it.
+    const direct = new Set<string>();
+    for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
+      for (const match of readFileSync(file, "utf8").matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) direct.add(match[1]);
+    }
+    expect([...direct].sort(), "src should still contain direct call sites").toEqual([
+      "compare_ui_frames",
+      "get_ui_hierarchy",
+      "take_screenshot",
+    ]);
+    const unreachable = [...direct].filter((tool) => !realTools.includes(tool));
+    expect(unreachable, "the plugin calls py tools the server does not expose").toEqual([]);
+    expect(realTools.length, "the recorded surface should never shrink silently").toBeGreaterThanOrEqual(14);
+  });
+
   // Opt-in, because it costs a real server spawn: `AUTOGAMER_CONFORMANCE_PY=live`.
-  // CI does the same comparison with `node scripts/spike-mcp.mjs`, which exits
-  // non-zero on drift and keeps `npm test` timing-independent.
+  // CI keeps `npm test` timing-independent; run the same comparison locally with
+  // `node scripts/spike-mcp.mjs`, which exits non-zero on drift.
   it.skipIf(process.env.AUTOGAMER_CONFORMANCE_PY !== "live")(
     "the live action server still exposes the recorded surface",
     async () => {
@@ -96,6 +114,22 @@ describe("conformance: legacy web-console SSE event names (G18 baseline)", () =>
     }
   });
 
+  it("keeps a floor and per-funnel coverage so the extractor cannot rot quietly", () => {
+    // The test above compares the fixture against the same generator, so a
+    // generator that lost an emitter would move both sides together. These are
+    // the independent bounds: enough names, and every reviewed funnel speaking.
+    const server = fixture.serverEventNames as string[];
+    expect(server.length, "server-side emissions should never shrink silently").toBeGreaterThanOrEqual(20);
+    const byFunnel = namesByEmitter();
+    expect(Object.keys(byFunnel).sort()).toEqual(["_broadcast_event", "_publish", "_record_llm_event"]);
+    for (const [funnel, names] of Object.entries(byFunnel)) {
+      expect(names.length, `${funnel} contributes no names - the extractor stopped seeing it`).toBeGreaterThan(0);
+      for (const name of names) expect(server, `${name} from ${funnel} is missing`).toContain(name);
+    }
+    // Nothing emitter-shaped may be left unreviewed, or the vocabulary is a subset.
+    expect(findUnreviewedEmitters(), "unreviewed emitter-shaped calls exist").toEqual([]);
+  });
+
   it("keeps the events the DSH plugin must replace in view", () => {
     const serverEvents = fixture.serverEventNames as string[];
     for (const required of [
@@ -116,15 +150,24 @@ describe("conformance: DSH peer version pin", () => {
   const scopeDir = fileURLToPath(new URL("../../node_modules/@deepseek-ai", import.meta.url));
 
   it("pins every installed harness package to one verified generation", () => {
-    const pin = manifest.peerDependencies?.["@deepseek-ai/dsh-agent-preset"];
-    expect(pin, "peerDependencies must state the verified generation").toBeTruthy();
+    const peers = Object.entries(manifest.peerDependencies ?? {});
+    expect(peers.length, "peerDependencies must state the verified generation").toBeGreaterThan(0);
+    for (const [pkg, range] of peers) {
+      expect(pkg, "peer dependency should target @deepseek-ai scope").toMatch(/^@deepseek-ai\//);
+      expect(range, `${pkg} must pin the same generation`).toBe(peers[0][1]);
+    }
+
     const installed = readdirSync(scopeDir)
       .filter((name) => name.startsWith("dsh-"))
       .map((name) => [name, JSON.parse(readFileSync(join(scopeDir, name, "package.json"), "utf8")).version as string]);
     expect(installed.length, "no @deepseek-ai/dsh-* packages installed").toBeGreaterThan(0);
     for (const [name, version] of installed) {
-      expect(version, `${name} is not the pinned generation`).toBe(pin);
+      expect(version, `${name} is not the pinned generation`).toBe(peers[0][1]);
     }
+    // The pin must be carried by something the test graph actually boots, or it
+    // could drift away from the runtime it claims to describe.
+    const peerNames = peers.map(([pkg]) => pkg.replace("@deepseek-ai/", ""));
+    expect(installed.map(([name]) => name).filter((name) => peerNames.includes(name))).toContain("dsh-tools");
   });
 
   it("cross-checks the pin against a locally installed DSH runtime when there is one", () => {

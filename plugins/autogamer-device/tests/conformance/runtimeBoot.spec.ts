@@ -14,8 +14,11 @@
  * request-rejected bug (changelogs #10) lived exactly in that gap.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
 import * as pluginModule from "../../src/index.js";
+import { typescriptFiles } from "../support/srcFiles.js";
 
 /** The services our plugin's `inject` list resolves through, in mount order. */
 const SERVICE_PACKAGES = [
@@ -94,6 +97,21 @@ describe("conformance: real DSH runtime tool registry (G5 Tier 1)", () => {
     const tool = ctx.tools.get("run_device_action");
     expect(tool?.name).toBe("run_device_action");
     expect(typeof tool?.execute).toBe("function");
+  });
+
+  it("declares every Host service its own code touches", () => {
+    // The mount above proves the other direction (a declared-but-absent service
+    // never loads). This one catches under-declaration, which is silent until
+    // the first property access throws `cannot get property … without inject`.
+    const builtins = new Set(["logger", "effect", "on", "emit", "once", "off", "extend", "plugin", "inject", "get", "provide", "root"]);
+    const srcRoot = fileURLToPath(new URL("../../src", import.meta.url));
+    const consumed = new Set<string>();
+    for (const file of typescriptFiles(srcRoot)) {
+      for (const match of readFileSync(file, "utf8").matchAll(/\bctx\.([a-zA-Z_]+)/g)) consumed.add(match[1]);
+    }
+    expect([...consumed].sort(), "src should still reach for Host services").not.toHaveLength(0);
+    const services = [...consumed].filter((name) => !builtins.has(name)).sort();
+    expect(services, "src consumes services that are not declared in `inject`").toEqual([...pluginModule.inject].sort());
   });
 
   it("rejects a malformed config through the real Config validation path", async () => {
