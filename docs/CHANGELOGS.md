@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#27 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#28 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1163,6 +1163,79 @@ src/tools/runDeviceAction.ts(248,7): error TS2322
 - `cd plugins/autogamer-device && npx tsc -p tsconfig.json --noEmit` ⇒ 0 error
 - `npm run build && npx vitest run` ⇒ 75 passed / 1 skipped（skipped 是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 分支）
 - 证伪口径（证明是修好而不是绕开）：把 `DshImageAttachment` 换回 `attachmentId: string` 的手镜像 ⇒ 上面那条 TS2322 立刻回来
+
+### #28 G5 落地后的测试复审：生成的 fixture 里躺着一条错事实
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已修（抽取器 + 三条新守卫 + 两处被证伪的陈述）
+- **优先级**: 高（不是格式问题——是**自动化契约测试锁定了一个与自家文档矛盾的事实**）
+- **分类**: 四 · DSH 插件轨道
+- **来源**: 本轮测试复审子代理报告，逐条自己复核后才动手
+
+#### 问题描述
+
+Tier 2 把旧控制台 SSE 契约改成从源码抽取，抽出来的 `sse-events.json` 写着：
+
+```
+frontendSubscribesButServerNeverEmits: ["checker_event"]
+```
+
+即「前端订阅 `checker_event`，服务端从不发射」——**假的**。发射点在
+`artemis/graph/checkpoints.py`：
+
+```python
+CHECKER_EVENT = "checker_event"                                  # :72
+publish = getattr(engine, "_publish", None)                      # :166
+publish(CHECKER_EVENT, {"ts": now, ...})                         # :174
+```
+
+callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取器两个条件都不满足，
+于是这个事件根本没进 `serverEventNames`，反过来掉进「死信道」差集。
+`docs/migration/inventory/05-frontend-integration.md` 第 41 行早就写明 `checker_event`
+是活的（"走通用日志分支入 sessionLogs …二期 Checker 重写时是事件基线"）。
+
+三重放大：① `contracts.spec.ts` 把这条错事实**断言锁定**；② 脚本头注释写着
+"会响不会静默漏"，而 `findUnreviewedEmitters` 同样只认字面量首参，对这条**一声不响**；
+③ 更结构性的一条——测试是「fixture 对同一个生成器」比，生成器少认一个漏斗时两边一起错，
+测试恒绿。
+
+同轮另有两处同类：`contracts.spec.ts` 里 `expect(buildFixture(realTools).pyActionServerTools).toEqual(realTools)`
+是自己比自己（恒成立，`56a7996` 已修）；测试注释与 `3507d5c` 提交信息都写「CI 用
+`spike-mcp.mjs` 做同一比对」，而 `ci.yml` 里**根本没有那一步**——假出处陈述。
+
+#### 整改方案与实施
+
+- `plugins/autogamer-device/scripts/gen-sse-events.mjs`：抽取从「认字面量」升级为**先解析再匹配**——
+  `readConstants`（仓库级 `NAME = "literal"` 常量表）、`readAliases`（`alias = getattr(obj, "<funnel>")`）、
+  `CALL_PATTERN`（首参允许字面量或全大写常量）；`findUnreviewedEmitters` 改用同一解析，
+  解析不出漏斗的发射形态一律报告；新增 `namesByEmitter` 导出每个漏斗的贡献名字集合。
+- `tests/fixtures/sse-events.json` 重新生成：服务端 **25 → 26**（`checker_event` 归位），
+  反向死信道由 1 → **0**；notes 里那句「死信道是双向的」随实测改掉（现在是「前端订阅的 17 项
+  全部有真实发射方」）。
+- 三条新守卫补上「生成器坏了要能红」这一环（`contracts.spec.ts`）：
+  ① 服务端事件名数量地板 `>= 20`；② `namesByEmitter()` 的键集合必须恰为三个已核实漏斗、
+  **每个至少贡献 1 个名字**、且其名字都在 `serverEventNames` 里；③ `findUnreviewedEmitters()` 为空。
+- 覆盖空洞补上：`compare_ui_frames`（G39 路线 A）是 `src/index.ts:174` **直接调用**、不在
+  `ACTION_TO_PY_TOOL` 里，此前任何断言都不覆盖它。新增测试从 `src/**/*.ts` 抽出
+  `client.callTool("<literal>")` 全集，既断言等于已知清单（新增直接调用必须显式登记），
+  又断言每个都在记录的 py 面上。
+- 方向补全：`inject` 此前只被证明「声明的服务本图都有」（多写会红），**少写不红**——
+  新增 `declares every Host service its own code touches`，从 `src/**/*.ts` 扫 `ctx.<name>`
+  消费面（扣掉 cordis 内建），断言等于 `inject` 声明面。
+- 两处假陈述就地更正：测试注释与 README 改为「live 比对是本地 opt-in
+  （`AUTOGAMER_CONFORMANCE_PY=live` 或 `node scripts/spike-mcp.mjs`），CI 不做」。
+- 共用一个 `tests/support/srcFiles.ts` 的递归枚举，避免两份 spec 各写一遍遍历
+  （新增源文件时必须一起被看见）。
+
+#### 验收标准
+
+- `node plugins/autogamer-device/scripts/gen-sse-events.mjs` ⇒ `fixture matches the sources (26 server / 17 frontend names)`，exit 0
+- `node -e "...namesByEmitter()..."` ⇒ `_publish 14 / _broadcast_event 9 / _record_llm_event 5`；`findUnreviewedEmitters()` ⇒ `[]`
+- `cd plugins/autogamer-device && npx vitest run` ⇒ **78 passed / 1 skipped**；`npx tsc --noEmit` ⇒ 0 error
+- 变异校验（三条新守卫各自会红，均已实做）：
+  从 `EMITTERS` 摘掉 `_record_llm_event` ⇒ 数量地板与键集合两条同红；
+  把 `callTool("compare_ui_frames")` 改名 ⇒ 直接调用清单红；
+  从 `inject` 摘掉 `attachments` ⇒ 消费面对账红
 
 ## 已关闭差距史（G*）
 

@@ -73,6 +73,10 @@ dsh --profile web --patch <abs>/spike/web-live.patch.yml --dump-config
   `$DSH_HOME/dsh-runtimes/*/runtime.json` 的 `desktopVersion` 交叉校验；`turn/end` 这类事件名改由
   `@deepseek-ai/dsh-session` 的 `KNOWN_SESSION_EVENT_TYPES` 判定。⚠️ 公开包的 `latest` 标签是陈旧的
   `0.0.1-rc.1`，正确代际在 `next`——devDeps 要写死精确版本。
+- **抽取器要「先解析再匹配」**：发射点是 `publish = getattr(engine,"_publish")` 这种别名 +
+  `CHECKER_EVENT` 常量时，只认字面量会把活事件算成死信道（changelogs **#28** 就栽在这儿）。
+  `gen-sse-events.mjs` 因此解析模块常量与 `getattr` 别名，并把「未被审核的发射形态」「每个漏斗
+  至少贡献 1 个名字」做成断言——生成物自己也会撒谎，得有能红的地方。
 - `Config` 必须是 **原生 Schemastery** schema；用 zod 会被宿主拒（`Config is not a native
   Schemastery schema`），而**缺 Config 声明会让该行被判 `config=absent`，preset 子挂载被静默
   跳过**——这就是 missing-tools 的根因。已锁死：`tests/conformance/contracts.spec.ts`。
