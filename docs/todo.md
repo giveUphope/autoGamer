@@ -135,7 +135,7 @@
 | G41 | 终态不收敛：`report_task_status` 不结束回合 | 新开（2026-10-11 真机质量 spike T2，**严重**）：模型调用 `report_task_status(status=blocked)` 之后**回合继续跑**——它把「已汇报」当成「还没成」，进入自我救火式指数退避 （`wait` 2s→5s→10s→…→7200s），每轮再补一次 `report_task_status`，70 秒内 47 次模型请求、12+ 次汇报，**必须人工点「停止生成」才停**。S2 说「终态 = 汇报工具的 completed/blocked」，但 DSH 侧没有任何机制让一次工具调用终结回合——这是语义缺口不是模型毛病。方向：终态要么由工具返回结构告诉宿主停止（查官方是否有 tool→end-turn 的声明面形态），要么在插件侧 guard/pre-execute 拦住「已汇报后再动设备」，要么给 wait/重试设硬预算并让超出预算直接结束回合 |
 | G42 | `{index}` 目标定位整条不可用 | 新开（同一轮 spike）：工具 schema 与 flash skill 都写着「优先用元素 index」，但两处都是空的：① `get_ui_hierarchy` 透传的是 **JSON 元素列表**，而 `findNodeCenterByIndex` 还在用正则找 `<node>` XML 标签，永远匹配不上；② 就算改成解析 JSON，该载荷的 `index` 是**容器内序号**（实测 21 个元素只有 5 个不同值 0-5），根本无法当全局句柄。基线侧没这个问题——它用 py 的编号可见元素列表（`artemis/utils/visualization.format_minimal_list_with_elements`，由 `observe_screen` 融合产出）。后果实测：T1 里模型连吃 6 次 `element index 1 not found` 才退回坐标。修法二选一：**A** 插件侧按同一规则把 JSON 列表拍平成全局编号（与基线同口径，P1「hierarchy wiring」的正主）；**B** 在 A 之前先从 schema 与 skill 里摘掉 `{index}`，别继续广告一条走不通的路 |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
-| G44 | 模型可以不调 `report_task_status` 就结束回合 | 新开（2026-10-11 live）：最近一轮 1 轮 3 步、13 秒，模型直接以文本「任务已完成」收尾，**全程没调用汇报工具**，所以 G41 的 `concludeTurn()` 根本没被触发——终态语义（S2 的双轴 `completed/blocked + tests_failed`）在「模型选择闭嘴」这条路径上仍然是空的，checker/validator 也拿不到结构化终态。方向：汇报义务要么由 skill 强化并在缺汇报时由路由器补记，要么把终态判定挪出模型自觉（回合结束事件里由插件读最后一步状态落盘） |
+| G44 | 模型可以不调 `report_task_status` 就结束回合 | 新开（2026-10-11 live），**同日干净重跑再次复现**：模型 4 动作达成目标后直接文本收尾，全程未调汇报工具——`concludeTurn` 因此一次也没被走到。最近一轮 1 轮 3 步、13 秒，模型直接以文本「任务已完成」收尾，**全程没调用汇报工具**，所以 G41 的 `concludeTurn()` 根本没被触发——终态语义（S2 的双轴 `completed/blocked + tests_failed`）在「模型选择闭嘴」这条路径上仍然是空的，checker/validator 也拿不到结构化终态。方向：汇报义务要么由 skill 强化并在缺汇报时由路由器补记，要么把终态判定挪出模型自觉（回合结束事件里由插件读最后一步状态落盘） |
 | 已关闭 | G1（模式矛盾）/G2（UI 降级）/G6（Windows 沙箱）/G7（双跑）/G9（worker env）/G12（LLM 暂停）/G15（共享锁）/G16（notes）/G18（SSE）/G19（轮次视图）/G20（catch-up）/G21（通知→按需）/G22（SDK）/G29（注入）/G30（preset 工具可见性：effect 语义反转自注销 + 裸注册未编译，changelogs #10）/G37（live overlay 收回交付形态：R6 exit 0 + R7 新会话实测工具面恰为 5 个）/G39（效果判定归属：裁定路线 A，py 动作面新增只读 compare_ui_frames，changelogs #12）/G40（**撤回**：探针按固定 `aria-label` 查按钮，把运行中的「排队发送」误读成入口消失；实测 QueueDock 原生可用） | 随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -177,7 +177,7 @@
   **先排除了一条歧路**：`@deepseek-ai/dsh-tool-goal`（`create_goal` / `update_goal(complete|blocked)`、`blockedAfterConsecutiveRounds`）管的是**自主 Round 的续行**，不是回合内的工具循环，别拿它当终结手段。
 - **G42 编号定位**：改成**一套编号两处用**——`parseVisibleElements` 按数组位置赋 0..n-1 句柄，模型看到的列表与解析器用的是同一个序号；无面积节点先丢弃不占号。旧的 XML 解析器**从来没有测试**，这就是缺陷能活下来的原因，`tests/hierarchy.spec.ts` 补上 6 条。
 - **live 才暴露的真根因**：模型找不到目标其实是我们自己的展示层截断——`output.render` 把每个字符串字段 `slice(0, 200)`，27 个元素的层级到模型手里只剩 3 行。现在 `hierarchy` 单独给 6000 字符预算。
-- **状态**：两项都**单测锁死**；**live 尚未定论**——本该验证 targeting 的那一轮初态是错的（见 G43），且那一轮模型压根没调汇报工具（见 G44）。**待办：按 G43 的正确复位重跑 T2，确认 `#N` 定位与 `concludeTurn` 在真机上各自生效。**
+- **状态（2026-10-11 干净重跑后）**：**G42 live 通过**——初态用 `cmd uimode night no` 复位（截图核实浅色）、从桌面起跑，模型 4 次动作达成 T2：`launch_app` → `get_ui_hierarchy` → `click {index:26}`（显示行）→ `click {index:17}`（开关），**全程零 index 报错**，截图定案深色已开；同一任务基线是 42.1s/3 步，插件侧 ≈15s/4 动作且带效果判定。**G41 仍未 live 验证**：这一轮模型依旧直接文本收尾、没调 `report_task_status`（G44 再次成立），所以 `concludeTurn()` 的真机效果还没被走到——它目前只有单测与声明面依据。
 
 ### 真机质量 spike 结果（2026-10-11，D9 直通 vs 回退三段式的裁决材料）
 
