@@ -805,6 +805,29 @@ spec 走 `git+file:///…`（`parseInstallSpec` 的 `GIT_URL` 接受 `git+<proto
 
 ### #21 G49 实做：GitHub 发布与 `path:` 子目录都不是障碍，真正的墙是 Windows 符号链接权限
 
+> ⚠️ **本条的根因判断已被后续文档调研推翻（同日，见下方「更正」）**。标题里的「Windows 符号链接权限」
+> 是**从一条错误串外推出来的**，不是证据。编号 #21 不变，正文保留原样以便追溯，结论以本块与 TODO 的 G49 行为准。
+> 推翻它的三条本地事实：
+> 1. profile 里**本来就存在 pnpm 建的跨卷目录符号链接**——`node_modules/autogamer-device -> D:/DEV/autoGamer/plugins/autogamer-device`
+>    就是早前 `dsh plugin add file:`（pnpm 转发）建下的。若 Windows 在本机不让建跨卷链接，这条链接不可能在那时成功。
+> 2. **`nodeLinker: hoisted` 早就是 profile 的现状**（`profiles/web/pnpm-workspace.yaml` 里写着，
+>    `pnpm config get node-linker` 从 profile 目录回 `hoisted`）。⇒ #21 列的「候选②」是**空操作**，
+>    我把它当成未试方案推荐了出来。
+> 3. 用户级 `C:\Users\78557\.npmrc` 只有一行 `registry=https://registry.npmmirror.com/`，
+>    profile 之上也没有杂散的 `pnpm-workspace.yaml`（上游 discussion #1477 记录的那类「pnpm 向上找到 `~` 的
+>    `.modules.yaml` 导致 store 版本冲突」的坑，本机**没有**命中）。
+>
+> **现在能站住的描述只有**：错误原文是
+> `ERR_PNPM_EPERM [importPackage C:\…\profiles\web\node_modules\autogamer-device] symlink
+> 'D:\DEV\autoGamer\plugins\autogamer-device\node_modules\.pnpm\@deepseek-ai+cordis@4.0.4\…' -> 'C:\…'`
+> ——**符号链接的源指向我们仓库自己的 `node_modules/.pnpm`**，而当时 **dsh 服务正在运行并加载着这个包**，
+> 且 pnpm 输出里有 `Packages: +17 -1`（要换掉同名旧依赖）。
+> ⇒ 未定的候选收敛为两类，且**都还没做判别实验**：
+> (a) Windows 的「文件被占用」型 EPERM（运行中的服务锁住同名包目录，替换失败）；
+> (b) 同名 `link:` 依赖被 git 依赖就地替换时，pnpm 把旧链接目标的 store 路径带进了新解析。
+> 下一步按 **守则 R25** 的要求：先读机制文档定判别实验的设计，**一次只测一个变量**，不许连环试。
+
+
 - **日期**: 2026-10-12
 - **状态**: ✅ 缺口已定性（障碍换了地方，未修）
 - **优先级**: 高（它决定「用户怎么装」这条交付路径能不能成立）

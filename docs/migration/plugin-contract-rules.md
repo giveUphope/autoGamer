@@ -210,6 +210,23 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 - **出处**：**实测** 本仓库 CHANGELOGS #15（G46 当日撤回，根因就是拿 wire 当否证依据）。
 - **判据**：任何「没发生」的结论，正文里必须写明是**从会话日志的哪条记录**读出来的；只写 wire/日志 grep 结果的，一律当未定论。
 
+## R25 定根因必须先读机制文档，再一次只测一个变量；禁止「改一处→重跑→再看」的连环试错
+
+一条错误串**只能证明那次失败发生了，不能证明因果**。要把现象升级成根因结论，必须先做两件事之一：
+读机制文档（pnpm/Windows/DSH 自己的配置发现链与语义），或拿到一条**否证性**的本地事实。
+然后设计**一次**只动一个变量的判别实验。理由：本仓库同一天内三次栽在同一种错误上——
+
+| 次序 | 我看到的 | 我外推出的结论 | 真相 | 错在哪 |
+|---|---|---|---|---|
+| G40 | UI 探针找不到 `aria-label="发送消息"` | 运行中入口被禁 | 运行中主按钮改文案为「排队发送」 | 拿单个选择器失败当机制缺失 |
+| G46 | wire 请求体里数不到 `report_task_status` | 汇报与追问都没发生 | 终结回合的那次调用**永不出现在后续请求体** | 拿无否证力的渠道当反证（→ R24） |
+| #21 | `git+ssh://…` 与 `ERR_PNPM_EPERM` 两条报错 | ①公开仓库也会因 ssh 失败 ②墙是 Windows 跨卷符号链接权限 | ①pnpm 自己回退，公开仓库实测 `git+https` 抓取成功；②profile 里本就躺着 pnpm 建的跨卷链接，且 `nodeLinker: hoisted` 早是现状 | 把两条不相关的报错各外推一次；**没查本机现状就推荐了空操作方案** |
+
+- **判据**：写进台账的每条根因，必须附「读的是哪份机制文档 / 哪条本地否证事实」；
+  只有错误原文的，一律写成「未定候选 + 待做的单次判别实验」，不许写成结论。
+  推荐方案前先核它是否**已经是现状**（#21 的 `node-linker` 就是这么露馅的）。
+- **出处**：**仓库口径**，本文件 R20/R21/R24 的延伸；触发实例三见 CHANGELOGS #21 的「更正」块。
+
 ## 待补（诚实清单）
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**
