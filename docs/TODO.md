@@ -391,6 +391,24 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### G53 修复轮（2026-10-12 按 R22 三步序：查现状 → 本方案 → 改写）
+
+**第 1 步「查」的原文与出处**：
+
+- `scripts/check_dependency_sources.py:55-58`：凡带 `resolved` 的包须 `https://registry.npmjs.org`（R25 先核现状）。
+- 现状（本机实测）：221/221 个 `resolved` 全是 `registry.npmmirror.com`，`integrity` 零缺失，路径全为标准形
+  `/<pkg>/-/<file>.tgz`；写入来源是用户级 npm registry（`npm config get registry` = npmmirror，无项目级 `.npmrc`）；
+  lockfile 自 `f9a7081` 未动。npmjs 同路径等价（镜像原样代理），故 host 改写不改变取包内容（integrity 钉住）。
+- 排除项：不用 `npm install --package-lock-only` 重取整份（会抖版本与元数据）。
+
+- **What**：仅改 221 个 `resolved` 的 host（npmmirror→`registry.npmjs.org`），版本/integrity/余字段逐字节不动；
+  复跑门禁；抽查同路径可达（直连不通则只认形状+门禁）。复发条件记入关账：带镜像 registry 跑 `npm install`
+  会再次写回镜像域（本次不加项目级 `.npmrc`，不替用户做网络策略决策）。
+- **How**：`python -X utf8` 脚本原地改写后 `git diff` 审 host-only；`node_modules` 已在，前端 `npm test` 跑一次证无影响。
+- **Verify**：`python scripts/check_dependency_sources.py` exit 0；`git diff --stat` 仅 1 文件；
+  `grep -c npmmirror apps/showcase_ui_v2/package-lock.json` 为 0；前端 `npm test` 绿；双门禁。
+- **Done means**：[ ] 门禁绿；[ ] diff 纯 host；[ ] 前端测试绿；[ ] G53 关闭（prose 进 CHANGELOGS）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
