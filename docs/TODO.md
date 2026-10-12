@@ -394,6 +394,24 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### G57 判别轮（2026-10-12 按 R22 三步序：查官方 → 本方案 → 探针）
+
+**第 1 步「查」的原文与出处**（R20：scope/realm 行为先查一手资料，不许先写猜测实现）：
+
+- `@deepseek-ai/dsh-scope@0.2.0-rc.2/README.zh.md:31`：「`createScope(ctx, key)` 在 `ctx` 的 fiber 下创建作用域」；`lib/types/index.d.ts:71-72` 原文 "The scoped context inherits the minting plugin's **dependency API** and owns every registration made through it."
+- 同文件 §设计理念：「交出带作用域的上下文，也会交出创建该上下文的插件的**服务解析范围**（解析沿创建者 fiber 的依赖链行进），因此作用域应由具备这些带作用域注册所需依赖的插件来创建。」
+- 同文件 §已知限制：「**只有感知作用域的 API 才会隔离状态**；仅仅通过带作用域的上下文调用任意 Cordis 服务，并不会改变该服务仍为上下文全局这一事实。」；§父链：「注册视图沿链**向下**继承，事件放行沿链**向上**扩展」。
+- 现状证据（G52 探针已删，结论见 CHANGELOGS **#32** 偏差段）：`presetScope.ctx.plugin(...)` 挂载不报错，但 scope 与 root 的 `schemas()` 双空；裸 `new Context()` 挂载双工具齐在（Tier 1 现有形态）；bundle 挂载的真实 preset realm live 可用（#15/#18）——故属测试台装配问题。
+
+- **What**：一次只动一个变量的判别探针（R25），查清 scope 挂载不可见的机制。输出只能是机制结论 + 测试台修正（或"root 挂载即保真"定论），不含产品代码改动。**范围外**：改交付形态、动宿主侧 preset realm、任何 live/VLM/设备。
+- **How**（任一步给出肯定答案即停并写回，不连环试）：
+  1. 复现：`followup.spec.ts` 的 boot 原样 + `presetRealm.ctx.plugin(ours, 同 config)`（awaited），读 scope/root 的 `schemas()` 与 `get()`。复现双空→ (2)；工具齐在→ G52 探针装配与此不同，diff 装配（await？config？服务启动顺序？）并以本次为准。
+  2. 极简注册对照：同一 `scope.ctx` 上直接 `tools.register()` 一个 trivial 工具。若 trivial 可见而 ours 不可见→ ours 激活失败，沿 `Config`/`inject` 单变量查（摘一项 inject、传/不传 config）；若 trivial 亦不可见→ 读法或 scope 问题（挂载前后对照、改读 `get()`、查 `scopeOf` 标签）。
+  3. apply 是否执行：`scope.ctx` 上挂计数器探针插件判 `plugin()` 是否执行到 apply。
+  4. 继承条件：scope 改由「服务齐备后的 root」vs「裸 Context」创建，对照→ 落成「`createScope` 依赖 API 继承条件」一句话结论（对应上文 §设计理念）。
+- **Verify**：探针脚本放 `spike/probe-g57*.mjs`（gitignored 现场，用完即删，`git status` 无遗留）；结论写回本条；若改测试台装配则另起实现提交 + 变异校验；双门禁重跑。
+- **Done means**：[ ] 复现/证伪记录；[ ] 机制结论带官方出处；[ ] 测试台修正或"无需修正"定论 + 单测锁；[ ] G57 关闭（prose 进 CHANGELOGS）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
