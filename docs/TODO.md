@@ -113,7 +113,7 @@
 | G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
 | G4 | 熔断探测体 | 保留：S4 已定（下一条真实消息动作 = 探测；不对称策略保留） |
 | G53 | 前端 lockfile 全镜像 URL 使 `check_dependency_sources` 门禁红 | 保留（**既有状态**，非插件轨道引入；CI 首次真跑才暴露）：把 `apps/showcase_ui_v2/package-lock.json` 的 `resolved` 重取为 `https://registry.npmjs.org/...` 再复跑门禁 |
-| G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**两次 push 零 run**（`a4a0f44..5232265` 与 `5232265..1d24416` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来；Actions `enabled:true`、workflow `state:active` 都不管用——查清是 fork 开关、计费还是提交邮箱之前，任何「CI 证据」必须写明是手动派发 |
+| G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**三次 push 零 run**（`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来。fork 级开关已排除（2026-10-12 只读核对）：repo `fork:true` 但 `disabled:false`、Actions `enabled:true` + `allowed:all`、CI workflow `state:active`——三个全绿。剩下候选收窄到 API 看不见的账号级（用量/标记）与提交身份；下次推送即第四数据点。在此之前任何「CI 证据」必须写明是手动派发 |
 | G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红 | 新开（2026-10-12 做 #31 时顺手实测，既有状态、与本轮改动无关）：`uv run ruff format --check scripts/` ⇒ `1 file would be reformatted`（`check_dependency_sources.py:55` 那一行过长），而 `.github/workflows` 的 `python-quality` job 跑的是 `ruff format --check .` ⇒ 该 job 必红。修法一条命令：`uv run ruff format scripts/check_dependency_sources.py`。与 **G53**（同一脚本的**运行时**门禁红）是两件事，别合并关闭 |
 | G8 | 终态权威 | 收缩：汇报工具语义（S2）；exit code 映射随 py worker 消失 |
 | G10 | 动作中断语义 | 收缩：exec.signal → 取消 MCP 请求/释放闸门；录屏后补时补 graceful stop |
