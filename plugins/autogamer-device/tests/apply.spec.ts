@@ -93,6 +93,7 @@ function fakeContext(
 ) {
   const cleanups: unknown[] = [];
   const listeners: Array<{ handler: (session: unknown, event: unknown) => void; options?: { global?: boolean } }> = [];
+  const guards: Array<(execution: { name: string; arguments: unknown }) => string | undefined> = [];
   const followups: unknown[] = [];
   const agent = { id: agentId, followup: (message: unknown) => { followups.push(message); } };
   const context = {
@@ -100,6 +101,10 @@ function fakeContext(
     tools: {
       register(definition: unknown) {
         definitions.push(definition as ToolDefinition);
+        return () => {};
+      },
+      guard(guard: (execution: { name: string; arguments: unknown }) => string | undefined) {
+        guards.push(guard);
         return () => {};
       },
     },
@@ -120,6 +125,7 @@ function fakeContext(
     context,
     cleanups,
     followups,
+    guards: () => guards,
     listenerOptions: () => listeners.map((l) => l.options),
     emit: (type: string, id = agentId) => {
       for (const l of listeners) l.handler({ id }, { type });
@@ -481,5 +487,27 @@ describe("apply(): the result envelope must not starve the hierarchy (G42)", () 
 
     expect(rendered.map((part) => part.type)).toEqual(["text", "image"]);
     expect(rendered[0].text).not.toContain("att-1");
+  });
+});
+
+describe("apply(): breaker refusal lives in a registry guard (G33)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("registers exactly one guard", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, CONFIG as never);
+    expect(double.guards()).toHaveLength(1);
+  });
+
+  it("lets other tools and the report outlet through untouched", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, CONFIG as never);
+    const [guard] = double.guards();
+    expect(guard({ name: "job_submit", arguments: {} })).toBeUndefined();
+    expect(guard({ name: "report_task_status", arguments: { status: "completed" } })).toBeUndefined();
+    // Fresh breaker: our own tool is admitted too.
+    expect(guard({ name: "run_device_action", arguments: { action: "back" } })).toBeUndefined();
   });
 });

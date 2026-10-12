@@ -163,6 +163,24 @@ function assertPositiveDuration(value: unknown, field: string): void {
   }
 }
 
+/**
+ * Transport calls made while BUILDING the device call (hierarchy fetch,
+ * screenshot for its dimensions). A dead action server here is environment by
+ * definition (classifyTransportError) — rethrow prefixed so the dispatch
+ * classifier cannot mistake it for a task failure or a plugin-internal defect.
+ */
+async function callTransport(
+  client: { callTool(name: string, args: Record<string, unknown>): Promise<unknown> },
+  tool: string,
+  payload: Record<string, unknown>,
+): Promise<unknown> {
+  try {
+    return await client.callTool(tool, payload);
+  } catch (error) {
+    throw new Error(`environment: action transport failed: ${error instanceof Error ? error.message : String(error)}`);
+  }
+}
+
 export interface RouterOptions {
   gate: DeviceGate;
   breaker: DeviceBreaker;
@@ -219,7 +237,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         y: toPixels(target.coordinate[1], size.height),
       };
     }
-    const xml = unwrapText(await client.callTool("get_ui_hierarchy", {}));
+    const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}));
     if (typeof target.index === "number") {
       const center = findNodeCenterByIndex(xml, target.index);
       if (center) return center;
@@ -278,6 +296,13 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       reason: { type: "string", required: true, description: "One sentence on why this action moves the task forward." },
     },
     timeoutMs: 45_000,
+    /**
+     * S3/R14 并发声明：只读观察动作可并发，变更类独占（缺省 exclusive，fail-closed）。
+     * 宿主调度只定"谁可并行"，同一设备的串行仍由工具内闸门强制。
+     */
+    isConcurrencySafe: (args) =>
+      (args as { action?: unknown }).action === "take_screenshot" ||
+      (args as { action?: unknown }).action === "get_ui_hierarchy",
     output: {
       // Payloads are action-dependent (waited_ms for wait, the MCP record for
       // device calls), so the object is explicitly OPEN (official rule:
@@ -315,13 +340,8 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       logger.info(`[route] action=${action} device=${key} risk=${risk} reason=${String(args.reason)}`);
       options.onAction?.();
 
-      if (!breaker.canAdmit(key)) {
-        logger.warn(`[route] blocked by breaker: device=${key}`);
-        throw new Error(
-          `environment: device ${key} is cooling down after environment-level failures — report progress and continue after the next message`,
-        );
-      }
-
+      // No admission check here: cooling-down refusal lives in the registry
+      // guard (S4/R13/G33). The breaker below only RECORDS the outcome.
       const handle = await gate.acquire(key, exec.signal);
       try {
         const result = await dispatch(action, args, key, exec).catch((error) => {
@@ -546,7 +566,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         assertNonEmptyString(args.url, "url");
         return { tool: "open_link", payload: { url: String(args.url ?? "") } };
       case "take_screenshot": {
-        const base64 = unwrapText(await client.callTool("take_screenshot", {}));
+        const base64 = unwrapText(await callTransport(client, "take_screenshot", {}));
         if (/^errorb/i.test(base64)) {
           throw new Error(`environment: ${base64.replace(/^errorb:?s*/i, "").trim()}`);
         }

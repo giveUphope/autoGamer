@@ -13,6 +13,7 @@ import type { ImageAttachmentRef, SaveImageAttachment } from "@deepseek-ai/dsh-a
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { MessageId, MessageSourceMap, UserMessage } from "@deepseek-ai/dsh-llm";
+import type { ToolGuard } from "@deepseek-ai/dsh-tools";
 
 /**
  * Our message source, declared the way the host says to declare one:
@@ -99,6 +100,12 @@ export interface DshContext {
   logger: DshLogger;
   tools: {
     register(definition: unknown): () => void;
+    /**
+     * Monotonic execution guard (S4 熔断拒绝出口，R13)：plain-context 注册即全局生效，
+     * 返回 reason 拒绝、返回 undefined 放行，且后续监听器无法翻转（`@deepseek-ai/dsh-tools`
+     * lib/types/index.d.ts:514-522, 646-655）。
+     */
+    guard(guard: ToolGuard): () => void;
   };
   /**
    * Host attachment service. Declared in `inject`, because cordis throws on the

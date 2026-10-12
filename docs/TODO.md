@@ -12,7 +12,7 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债：G33（策略从工具正文迁 guard/pre-execute）；G34/G38 已结案（CHANGELOGS **#33**）；**4)** CI 侧：G53（前端 lockfile 全镜像 URL 令 `check_dependency_sources` 红）、G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）、G55（`check_dependency_sources.py` 不合 `ruff format`）；**5)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）。 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧：G53（前端 lockfile 全镜像 URL 令 `check_dependency_sources` 红）、G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）、G55（`check_dependency_sources.py` 不合 `ruff format`）；**5)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）。 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **83 passed / 1 skipped**（复测：`pnpm --config.verify-deps-before-run=false test`；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
@@ -63,7 +63,7 @@
 **S3 设备闸门（工具内的执行机制；策略出工具）**
 - 闸门 = per-device 弱表 promise 链（官方样板 tool-bash-persistent：WeakMap<owner,Promise> + tracked pending 支持取消）+ `dsh-deque`；lockKey = endpoint+serial
 - 阻塞获取（排队以 turn 进行中呈现）；parking（auto 单 ticket park 一台空闲设备）与全局并发上限（G28）内部化
-- **与宿主并发约定对齐（守则 R14）**：官方已经规定「独立只读调用可并发，变更类调用独占执行并按提交顺序」，所以我们只补「同一设备跨会话串行」这半边；`take_screenshot` / `get_ui_hierarchy` 应声明为可并发。属性字段名官方文本没给，必须先 `cordis_inspect_query` 取真名（R14 判据），取到之前不许按英文字面猜着写
+- **与宿主并发约定对齐（守则 R14）**：官方已经规定「独立只读调用可并发，变更类调用独占执行并按提交顺序」，所以我们只补「同一设备跨会话串行」这半边；`take_screenshot` / `get_ui_hierarchy` 已声明为可并发，字段名为 `isConcurrencySafe`（`@deepseek-ai/dsh-tools` 类型原文，G33 落地时从已安装产物取得）
 
 **S4 设备熔断（状态在插件，拒绝出口用 guard）**
 - closed →open（连续环境级失败 ≥ allowed_fails，工程默认 1）→ half-open（下一条真实消息动作即探测）→ 成功 closed
@@ -127,7 +127,6 @@
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
 | G28 | parking + 全局并发 N | 保留：闸门工具内部语义 |
-| G33 | 策略内建在工具正文里 | 新开（守则 R13）：熔断冷却拒绝、审批与超时判断现在都写在 `run_device_action` 正文内，与官方「尽量不要把部署策略内建到工具中」相反。迁移方向：单调拒绝改 `ctx.tools.guard()`、需要 await 的改 `tools/pre-execute` 返回 `ask`、结果观测改 `tools/result`，并显式声明并发安全属性（字段名待 `cordis_inspect_query` 取，见守则待补 4） |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
@@ -391,35 +390,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - ✅ **G30 关闭（2026-10-10，两轮官方检查器分级实证 + 两处真根因）**：调研改判的「asar 锚点拒挂」假设也被官方面否证（roster/插件页/清单全绿、新会话创建成功、`autogamer-device-inner` 运行中）——正确的定性路径是**功能轮差分**：新会话里 preset 其他子行的工具全部在模型清单上（fs/pwsh/jobs/web/present…），唯独缺我们两个，而行状态「运行中」⇒ 注册后立即被注销；第二轮修掉注销后 400 前移（tools[11]/[12] schema 非法）⇒ 裸注册未编译。双根因修复见 changelogs #10（effect 语义反转 + defineTool 编译），vitest 38/38 含 2 条回归锁，live 实证模型真实调用 `run_device_action` 三次。教训入册：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛**；测试假 context 必须实现 effect 且按 cordis 语义。原 Fix A（file: URL 子行）与 Fix B（根行兜底)作废——锚点假设不成立
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
-
-### G33 迁移轮（2026-10-12 按 R22 三步序：查类型 → 本方案 → 实现）
-
-**第 1 步「查」的原文与出处**（R20：扩展点选型先查一手资料）：
-
-- 守则 **R13**（`docs/cookbook/adding-a-tool.zh.md:61`、`packages/core/tools/README.zh.md:85,89,141）：「尽量不要把部署策略内建到工具中」；
-  落点已在 S4：「冷却期拒绝」= `guard()`，状态归插件。
-- `@deepseek-ai/dsh-tools@0.2.0-rc.2/lib/types/index.d.ts:522`：`ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined`
-  （"monotonic…no allow result"）；`:655`：plain-context guard 全局生效；`ToolExecution` 带 `name` + `arguments: unknown`（`:223-227`）。
-- `schema.d.ts:199-203` + `index.d.ts:716-723`：`isConcurrencySafe?(args)`——"Only an exact `true` is parallel"，余者 fail-closed exclusive。
-  即 R14 要的「并行安全属性」真名，不必再 `cordis_inspect_query`（待补 4/5 关闭）。
-- 不动项的判据（R13「选工具内部必须写出为什么」）：超时留 `ActionClient` 自实现（R15 明许二选一）；
-  审批无 ask 路径可迁（D11 的 `run_adb_command` 不存在）；结果观测（breaker 记录）留工具内——分类依赖 dispatch 的 G38 三态，
-  搬出去等于在边界外复制一份 taxonomy，违背「够用即最弱」，且状态更新是同步内存写、不是部署策略。
-
-- **What**：① `apply` 内注册 `ctx.tools.guard`——只看 `run_device_action` 调用（name 判定，别家不动；
-  `report_task_status` 永不拦，终态出口），key 取 `device_serial` 或 default，`canAdmit` 假则拒（沿用现有文案）；
-  删 `execute` 内 canAdmit 拒绝分支（出口唯一化，记录保留）。② 定义加
-  `isConcurrencySafe: take_screenshot/get_ui_hierarchy → true`（S3 只读可并发；余者缺省 exclusive）。
-  ③ `DshContext.tools` 补 `guard` 镜像（`import type ToolGuard`，R21 要求公开包一律 import）；`apply.spec.ts` fakeContext 补 guard stub。
-  **范围外**：超时、审批、结果观测搬移、live/VLM/设备。
-- **How**：guard 纯同步查 breaker（`canAdmit` 本就同步）；fake stub 收 guard fn 供断言注册存在；
-  Tier1 新测 `tests/conformance/breakerGuard.spec.ts`（真 registry）：坏 `actionServerCommand` 致传输 env 失败开闸 →
-  同 key 下一次被 guard 拒（`cooling down`、无设备往返、agent-less 即可）→ 异 key 仍放行（报传输失败而非 cooling）；
-  classifier 经真 `get()` 断言（screenshot/hierarchy true，click 非 true）。
-- **Verify**：`pnpm --config.verify-deps-before-run=false run build` + 全量 `vitest`；变异：摘 guard 注册 ⇒ 拒测红；
-  分类器改全 true ⇒ 分类测红；`grep -n "cooling down" src/tools/runDeviceAction.ts` 无命中（文案只活在 guard 侧）；
-  `contracts.spec.ts` 无影响（分类器不上 wire）；双门禁。
-- **Done means**：[ ] guard 同 key 拒 / 异 key 放；[ ] classifier 三断言；[ ] execute 无拒绝分支；[ ] 全绿；[ ] G33 关闭（prose 进 CHANGELOGS）。
 
 ## 六、文档索引
 

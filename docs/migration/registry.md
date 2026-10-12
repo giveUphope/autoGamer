@@ -69,7 +69,6 @@
 | G26 | PID-liveness 协议：仅用于 action server 进程管理 |
 | G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
 | G28 | parking 与全局并发上限的内部语义 |
-| G33 | 策略内建在工具正文里，与官方「不要内建策略」相反 |
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 | G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
 
@@ -112,6 +111,7 @@
 | G52 | 追问路径仍只有 fake 事件总线证据 | 新增 Tier 1 `tests/conformance/followup.spec.ts`：真 `dsh-session` 提交 `turn/end`、真 `AgentRegistry` 解析句柄、真 `ToolRuntime.execute` 标记 acted，并在两个 realm 之间观察到 scope 筛选确实排除非 global 监听；顺带摘掉追问消息的手镜像（缺 `UserMessage.id`）；详见 CHANGELOGS **#32** |
 | G56 | mock 与 `ActionClient` 握手超时 | 手拼应答缺 `jsonrpc` 字段被 SDK 读侧拒收；补帧字段后真 SDK 握手通过；详见 CHANGELOGS **#35** |
 | G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见 | 裸 scope 注册本就生效（`register()` 打 scope 标签，读须传 scope；旧「双空」是误读）；详见 CHANGELOGS **#34** |
+| G33 | 策略内建在工具正文里 | 冷却拒绝迁 `guard()`，只读动作声明 `isConcurrencySafe`；顺带修掉 `starting` 失败缓存与组装期传输分类；详见 CHANGELOGS **#36** |
 | G34 | 裸 schema 注册的输入自校验缺口 | 输入语义校验入工具（coordinate 存在即判、不静默回退，text 非空、duration 正数、key 可解、swipe 起止成对、package/url 非空），11 条单测锁死；详见 CHANGELOGS **#33** |
 | G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe）；详见 CHANGELOGS **#33** |
 

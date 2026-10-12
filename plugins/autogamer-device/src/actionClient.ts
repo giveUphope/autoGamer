@@ -69,7 +69,16 @@ export class ActionClient {
       env: this.options.env,
     });
     const client = new Client({ name: "autogamer-device", version: "0.1.0" });
-    await client.connect(transport);
+    try {
+      await client.connect(transport);
+    } catch (error) {
+      // A failed connect must not poison later calls: ensure() caches this
+      // promise, so without resetting it every subsequent call would rethrow
+      // the same stale connection error instead of respawning the server.
+      this.starting = undefined;
+      await transport.close().catch(() => undefined);
+      throw error;
+    }
     this.client = client;
     this.starting = undefined;
     return client;

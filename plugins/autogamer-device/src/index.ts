@@ -156,6 +156,17 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     { global: true },
   );
 
+  // S4 熔断拒绝出口（R13/G33）：冷却期的拒绝走单调同步 guard，不写进工具正文。
+  // 只看 run_device_action 调用——别家工具不动，report_task_status（终态出口）永不拦。
+  // plain-context 注册即全局生效；agent-less 执行同样被拒（guardReason 先读全局层）。
+  ctx.tools.guard((execution) => {
+    if (execution.name !== "run_device_action") return undefined;
+    const serial = (execution.arguments as { device_serial?: unknown } | null)?.device_serial;
+    const key = typeof serial === "string" && serial.length > 0 ? serial : config.defaultDeviceKey;
+    if (breaker.canAdmit(key)) return undefined;
+    return `device ${key} is cooling down after environment-level failures — report progress and continue after the next message`;
+  });
+
   ctx.tools.register(defineTool<any, any>(defineRunDeviceAction({
     gate,
     breaker,

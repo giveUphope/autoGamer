@@ -65,10 +65,15 @@ describe("conformance: py action server surface", () => {
 
   it("covers every py tool this plugin calls, including the ones outside the mapping", () => {
     // `compare_ui_frames` (G39 route A) is called directly from index.ts, so a
-    // mapping-only check would not notice the server renaming it.
+    // mapping-only check would not notice the server renaming it. Build-phase
+    // transport calls go through the `callTransport` wrapper (G33: a dead
+    // server must classify environment, never task/internal), which the
+    // extractor reads with the same spelling.
     const direct = new Set<string>();
     for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
-      for (const match of readFileSync(file, "utf8").matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) direct.add(match[1]);
+      const text = readFileSync(file, "utf8");
+      for (const match of text.matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) direct.add(match[1]);
+      for (const match of text.matchAll(/callTransport\(\s*client\s*,\s*"([a-z_]+)"/g)) direct.add(match[1]);
     }
     expect([...direct].sort(), "src should still contain direct call sites").toEqual([
       "compare_ui_frames",

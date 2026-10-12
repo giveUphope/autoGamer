@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#35 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#36 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1508,6 +1508,43 @@ G52 探针（已删）留下一句未判定的观察：`presetScope.ctx.plugin(.
 - [x] 变异校验：帧字段删掉 ⇒ 三条全挂（mock 只打 `ready`、无请求完成，即 G56 原样复现；已还原）
 - [x] 文档门禁双 exit 0
 
+### #36 G33：熔断拒绝对迁 guard，只读动作声明可并发
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（纯离线；超时与审批不在本轮：前者 R15 明许自实现，后者无 ask 路径）
+- **优先级**: 中（R13 义务项；顺带挖出两个真 bug）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G33 迁移轮」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`run_device_action` 正文内同时做三件事：闸门串行（执行机制，应留）、熔断记录（状态，应留，S4）与
+冷却期拒绝 `throw environment: …cooling down`（部署策略，按 R13 该出工具）。另 `defineTool` 的并发
+分类器位一直空着（S3 只读可并发未声明，R14 欠真名）。
+
+#### 整改方案与实施
+
+1. `src/index.ts`：注册 `ctx.tools.guard`——只看 `run_device_action`（别家与 `report_task_status` 永不拦），
+   key 取 `device_serial` 或 default，`canAdmit` 假则拒（文案沿用）；`src/tools/runDeviceAction.ts` 删拒绝分支
+   （记录保留），加 `isConcurrencySafe: take_screenshot/get_ui_hierarchy → true`；真名出自已安装产物
+   （`dsh-tools` types：`ToolGuard`、`DefineToolOptions.isConcurrencySafe`），S3 落字。
+   `DshContext.tools` 补 `guard` 镜像（`import type ToolGuard`）；`apply.spec.ts` fake 补 guard stub。
+2. 测试：`tests/conformance/breakerGuard.spec.ts`（真 registry：坏命令开闸→同 key 拒 `cooling down`、
+   异 key 放行报传输失败、report 直通、分类器四断言）+ fake 侧注册/放行两锁。
+3. 偏差（实施中按 R25 单变量查清的两个真 bug，同轮修掉、各有变异签名）：
+   - `ActionClient.start()` 失败不清 `starting` 缓存→此后每次重抛同一 stale `Connection closed`（注释称会重建，
+     实则失败路径永不）：catch 里清缓存 + 关 transport。锁 `tests/actionClient.spec.ts`（计数文件 `xx`；去修法即 `x`）。
+   - 组装期三处直调传输（层级取值、截图分支）绕过 environment 分类→误走 internal：加 `callTransport` 包
+     `environment:` 前缀。锁即异 key 用例（修前报 `internal: Connection closed`）。
+   - 另：`defineTool` 对分类器先验参（非法入参直接 false）——分类测试须传合法参，另加非法参断言锁 fail-closed。
+
+#### 验收标准
+
+- [x] `pnpm test` ⇒ **105 passed / 1 skipped**（净增 7）；`pnpm run build` 0 error
+- [x] 变异校验：摘 guard 注册 ⇒ 拒测红；分类器改全 true ⇒ 分类测红；`starting` 不清 ⇒ 计数 `x`；
+      `contracts.spec.ts` 的直接调用提取器同步跟进 `callTransport` 拼写（#28 守卫按设计变红一次）
+- [x] `grep -n "cooling down" src/tools/runDeviceAction.ts` 无命中；文档门禁双 exit 0
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1547,6 +1584,7 @@ G52 探针（已删）留下一句未判定的观察：`presetScope.ctx.plugin(.
 | G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe） | 本文件 **#33** |
 | G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见 | 裸 scope 注册本就生效：`register()` 经 `layers.effect` 打 scope 标签，`schemas()/get()` 须传 scope 读；旧「双空」是无参全局视图误读，root 空是 D16 隔离语义 | 本文件 **#34** |
 | G56 | mock 与 `ActionClient` 握手超时（`SdkError: Request timed out`） | 手拼应答缺 `jsonrpc` 字段被 SDK 读侧 zod 拒收；补帧字段后真 SDK 握手通过（list/call/截图尺寸三锁） | 本文件 **#35** |
+| G33 | 策略内建在工具正文里，与官方「不要内建策略」相反 | 冷却拒绝迁 `ctx.tools.guard()`（只看本工具，终态出口永不拦），只读动作声明 `isConcurrencySafe`；顺带修掉 `starting` 失败缓存与组装期传输分类两 bug | 本文件 **#36** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
