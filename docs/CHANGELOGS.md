@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#47 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#48 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实，#48 更正 #47 一处勾早了的验收。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1935,6 +1935,40 @@ spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上
 - [ ] 遗留（不在本轮范围）：757 个 `w/crlf` 的本机副本要等**重新检出**才变 LF，
       本轮不强推（`git restore`/`checkout-index -f` 对"内容已等同 blob"的文件是 no-op）；
       新克隆与 CI 从此固定为 LF
+
+### #48 更正 #47 验收里一条勾早了的框：`*.cmd` 并非都是 `w/crlf`
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已更正（提交 `03993bf` 落地后立即实测发现）
+- **优先级**: 低（一条验收判据的精确性，无产品影响）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+#47 的验收勾了「`git ls-files --eol` 里 `.bat`/`.cmd` 显示 `w/crlf`」，实测只有一个成立：
+
+```
+i/lf  w/crlf  attr/text eol=crlf    start.bat
+i/lf  w/lf    attr/text eol=crlf    plugins/autogamer-device/spike/run-headless.cmd
+```
+
+`run-headless.cmd` 的**工作树副本是 LF**（早前有工具就地写过它），而属性要求 CRLF——
+按 R27 第 1 条，这条勾当时不该打：它没有对应的一条已跑命令。#47 编号已发布，正文不改写，错记在此。
+
+#### 整改方案与实施
+
+不新增代码改动，只把判据改成**可复跑且当前为真**的形式：`attr/text eol=crlf` 已对两个文件生效
+（属性侧正确，这是 `.gitattributes` 真正的交付物），工作树副本何时变 CRLF 属"重新检出"那一条遗留项
+（#47 已勾 `[ ]` 写明：757 个 `w/crlf` 与这 1 个反向差异都要等新检出）。
+顺带记下这条观察：spike 的 `.cmd` 在 LF 下由 cmd.exe 执行，标签/`goto` 有已知故障面——
+若 spike 复跑出现"文件能跑但流程不对"，先看这里。
+
+#### 验收标准
+
+- [x] `git ls-files --eol | grep -E "\.(bat|cmd)$"` ⇒ 两行都是 `attr/text eol=crlf`（属性生效，与检出状态无关）
+- [x] `git ls-files --eol | grep -c -- "-text"` ⇒ 28（在库二进制未被误当文本）
+- [x] `git ls-files --eol | grep -c "w/mixed"` ⇒ 0
+- [x] 复跑命令写进本条，后续任何人可自行核对
 
 ## 已关闭差距史（G*）
 
