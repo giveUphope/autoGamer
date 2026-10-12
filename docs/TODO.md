@@ -12,10 +12,10 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43** 已结案（CHANGELOGS **#42**：`scripts/spike_reset.py`，UI/平台命令复位 + 截图判据，dry-run 可跑；live deferred）；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧全绿（G53/G55/G58 已结案，见 CHANGELOGS **#37/#38/#43**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 智能层离线片已结案（CHANGELOGS **#40**：validator 梯 + prompt 级 checker + skills；熔断矩阵见 #39）；R6 已补跑（双 patch exit 0/0 unmatched，审计节进树）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机，且先重装 bundle，见 **G59**）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）、G43（#42）、G58（#43）、G8/G10/G11/G13/G14/G24（#44）。 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43** 已结案（CHANGELOGS **#42**：`scripts/spike_reset.py`，UI/平台命令复位 + 截图判据，dry-run 可跑；live deferred）；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧全绿（G53/G55/G58 已结案，见 CHANGELOGS **#37/#38/#43**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 智能层离线片已结案（CHANGELOGS **#40**：validator 梯 + prompt 级 checker + skills；熔断矩阵见 #39）；R6 已补跑（双 patch exit 0/0 unmatched，审计节进树）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机，且先重装 bundle，见 **G59**）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）、G43（#42）、G58（#43）、G8/G10/G11/G13/G14/G24（#44）。**7)** 偏差关账轮已结（CHANGELOGS **#45**，2026-10-12 拉取后核对）：§零 的测试面数与 `docs/migration/README.md` 体量表 **9 行**都是陈旧抄件（体量门禁在 `419b9df` 即红，而 #44 的验收框自证「文档门禁双 exit 0」），已按实测更正；根因是 `measured()` 数工作树字节、随 checkout 换行符漂，现改成 LF 规范化并已加两处锁（`--selftest` 的 (i) 例 + `tests/unit/scripts/test_doc_table_sizes.py`）。**新立 G60 未办**：两枚文档门禁从未接进 CI，修它要改 `.github/workflows/*` 并先定 `workflow_dispatch` 那条门槛——属共享基建，**须用户点头**。 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
-| 测试面 | 插件 vitest **83 passed / 1 skipped**（复测：`pnpm --config.verify-deps-before-run=false test`；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
+| 测试面 | 插件 vitest **148 passed / 1 skipped**（18 个 test file）（复测：`pnpm --config.verify-deps-before-run=false test`，本轮在 `419b9df` 上实跑核准——旧值 83 是 `#40`/`#44` 两轮净增 21+7 之后没回抄的陈旧抄件，见 CHANGELOGS **#45**；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed + 1 skipped**（动作面 14 工具，本轮实跑核准）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`——两枚**从未进过 CI**，见 **G60**。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
 | 读不动时 | 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，进哪份查 [导航](migration/README.md)，动手前查 [守则](migration/plugin-contract-rules.md)（**R20：遇 DSH 行为问题先查官方一手资料，别先写猜测实现**） |
 
 ## 一、最终形态
@@ -119,6 +119,7 @@
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**三次 push 零 run**（`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来。fork 级开关已排除（2026-10-12 只读核对）：repo `fork:true` 但 `disabled:false`、Actions `enabled:true` + `allowed:all`、CI workflow `state:active`——三个全绿。剩下候选收窄到 API 看不见的账号级（用量/标记）与提交身份；下次推送即第四数据点。在此之前任何「CI 证据」必须写明是手动派发 |
 | G59 | 本机 `--dump-config-schema` 常驻失败，live 前需重装 bundle | 新开（2026-10-12 补 R6 时实测，既有状态）：`dsh` 在 PATH（`~/AppData/Local/Programs/DeepSeek Harness/.../bin/dsh.cmd`，0.2.0-rc.2），R6 双 patch 均 exit 0/0 unmatched 且审计节进树；但 `--dump-config-schema` 裸跑同败（`Cannot find package 'autogamer-device'`），profile `dependencies` 为空、两处 patch 模板皆空——残留引用在宿主合成侧，与本轮 YAML 无关。live 复验前需重装 bundle（动用户 profile，用户决策）；`--dump-config` 不受影响 |
 | G60 | 两枚文档门禁从未接进 CI | 新开（2026-10-12，偏差关账轮实测）：`check_doc_registry.py` 与 `check_doc_tables.py` 在两处被引用为「门禁」，但 `.github/workflows/*` 里没有任何 step 跑它们——体量表在 HEAD `419b9df` 已红两日，靠 `#44` 验收框自证「双 exit 0」而无人复核，正是这样漂过的。方向：把两枚脚本并入 CI 的 deterministic Python job，但那条 step 现挂 `if: github.event_name == 'workflow_dispatch'`（因 **G54** `on: push` 从不出 run），改它要先定「文档门禁是否值得为它单独开一个可被 push 触发的 job」，且属共享基建改动，**须用户点头**。本轮只做的：把体量口径变成 EOL 无关，并在 `tests/unit/scripts/` 放一条 pytest，让 CI 已有的 `uv run pytest tests/unit` 至少能收到这个口径 |
+| G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变 | 新开（2026-10-12 同轮，**根因层**，比 #45 修的表象更靠上）：本机 `core.autocrlf=true` 且仓库没有 `.gitattributes`，于是同一份 blob 落到工作树的字节数取决于「最后一个写它的进程」——实测 `tests/unit/test_config_package.py` blob 纯 LF（37083 字节、CR=0）而工作树 37932 字节、849 个 CR 且与 57 行 LF **混在同一个文件里**；`docs/migration/inventory/03-*.md` 同样 blob CR=0 / 工作树多 310。**后果不止体量表**：`uv run ruff format --check` 在本机报该文件「would be reformatted」而 CI 不报（CI 检出纯 LF），pre-commit 若真去格式化就会把 849 行换行符一起改进提交。**本轮只做了绕行**（把体量口径变成 LF 规范化，见 #45），没动根因。方向：加 `.gitattributes`（`* text=auto eol=lf` 或至少 `*.py text eol=lf`）后 `git add --renormalize .` 一次，代价是全仓 blob 可能重写——**共享状态级改动，须用户点头**；在那之前，任何按字节量的判据都必须先规范化 |
 | G17 | 共存鉴权 | 收缩：旧控制台只读（SameOrigin 原样即可）；DSH 认证（一次性 token→签名 cookie）为插件轨道 |
 | G23 | 录像产物契约 | 保留（录屏接回时的验收规格：manifest v2/命名/首帧锚定/`image://{sha256}`/安全模型=根约束+白名单） |
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
@@ -136,41 +137,6 @@
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节
-
-### 偏差关账轮（2026-10-12 拉取后核对：三处被实测证伪的抄件 + 它们的共同根因）
-
-- **What**：只修**已量证不符**的派生事实，不碰任何产品代码。三处——
-  ① `docs/TODO.md` §零「测试面」行写插件 vitest `83 passed / 1 skipped`，本轮复跑实为
-     **148 passed / 1 skipped（18 个 test file）**；py 侧 `tests/unit/mcp` 实为 **224 passed + 1 skipped**（原行只报 passed）。
-  ② `docs/migration/README.md` §三 体量表 **4 行**与实测不符（`upstream-plugin-forms.md` 11.8→11.7、
-     `dsh-verification.md` 37.2→37.0、`feature-inventory.md` 13.9→13.8、`inventory/01…05` 216.9→215.9），
-     即 `scripts/check_doc_tables.py` 在 HEAD `419b9df` **就是红的**——而 CHANGELOGS **#44** 的验收框写着「文档门禁双 exit 0」，
-     那条框在它自己的提交上即假。**#44 正文不得改写**（编号永久），错由本轮新条目如实记。
-  ③ 根因（②为什么刷一次还会漂）：`measured()` 数的是**工作树字节**，而工作树换行符取决于最后写它的进程——
-     本机 `core.autocrlf=true`、无 `.gitattributes`，`docs/migration/inventory/03-*.md` 工作树比 blob 多 310 字节 CR，
-     其余文件则全是 LF。`2ab17cb` 那次 `--refresh-sizes` 量的是 CRLF 工作树，文件后来被 LF 重写，1406 行 ≈ 1.4 KB 就这么差出来了。
-     ⇒ 同一条 commit 在两台机器量出两个数，**光刷新只把漂移推到下一台机器上**。
-  **范围外**：不改插件/py 代码；不改 `#44` 正文；**不把两枚文档门禁接进 CI**——那是本轮新立的 **G60**
-  （改 `.github/workflows/*` 属共享基建，且 `if: github.event_name == 'workflow_dispatch'` 的现有形状要先重定，须用户点头）。
-- **How**：① `measured()` 改成**先剥 CR 再计数**（`raw.replace(b"\r\n", b"\n")`），把派生量与 checkout EOL 解耦，
-     这是唯一让「刷新后的数在两个 OS 都成立」的修法；② README §三 表下「体量口径」那句随之改写——原文「按文件**真实**字节数」
-     正是它把自己绑到工作树的；③ 4 行一律 `--refresh-sizes` 生成，不手打（手打过一次：`e7f3589` 只改了 `TODO.md` 那一格）；
-     ④ §零 测试面行按实测重写并保留复测命令；⑤ EOL 不变性给**两处可执行判据**：
-     `--selftest` 增一例（同一内容写成 CRLF 与 LF 两份临时文件，行数与 KB 必须相同）＋
-     `tests/unit/scripts/test_doc_table_sizes.py`（CI 的 `uv run pytest tests/unit` 会收到它——这也是本口径唯一进得了 CI 的路径）。
-- **Verify**：`uv run python -X utf8 scripts/check_doc_tables.py` ⇒ 全 OK；
-  `uv run python -X utf8 scripts/check_doc_tables.py --selftest` ⇒ 比原先多一例且全过；
-  **变异校验**：把 `measured()` 改回 `len(raw)` ⇒ 新 selftest 例与那条 pytest 双双变红；
-  `uv run python -X utf8 scripts/check_doc_registry.py` ⇒ OK；`uv run pytest tests/unit/scripts -q` ⇒ 绿；
-  `git grep -n "83 passed"` ⇒ 空。
-- **Done means**：
-  - [ ] §零 测试面数＝实测（148/1、18 files；py 224 passed + 1 skipped），复测命令仍可直接跑
-  - [ ] 体量表 4 行由脚本生成，`check_doc_tables.py` 转绿
-  - [ ] `measured()` 与 EOL 无关，且被 selftest 例 + pytest 两处锁住
-  - [ ] 「体量口径」那句与实现一致（不再写「真实字节数」）
-  - [ ] **G60** 按 registry 取号登记：`docs/TODO.md` §四 一行 + `registry.md` 现行在册一行，§零「下一步」留一行指针
-  - [ ] CHANGELOGS **#45** 三段齐（问题含实测数字与出处、修法、可复跑验收），并如实记下 `#44` 那条假验收；两门禁重跑
-  - [ ] 本条结案即删（活文档规则），演进依据留 git
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 

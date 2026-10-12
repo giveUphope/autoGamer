@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#44 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#45 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1788,6 +1788,73 @@ spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上
   （并发拒对、串行/异 agent/异 target 全错），补 `delete` 后转绿；另 admit 系两测初版误把闸门排队读成
   拒绝，已改按“排队非拒绝”断言
 - [x] 文档门禁双 exit 0
+
+### #45 派生事实第三处漂移：抄件是陈的，而量它的尺子绑在 checkout 的换行符上
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（抄件按实测更正 + 量法与 EOL 解耦并两处锁死）；**G60/G61 新立未办**
+- **优先级**: 中（不改产品行为，但它是 `#30`/`#31` 那条规则自己的失效）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「偏差关账轮」住在 `TODO.md`（spec 提交 `4f7868a` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+拉取 29 个提交（`61f23a1` → `419b9df`）后逐条核对状态页，量出三处**已发布文档里的不符**：
+
+1. `docs/TODO.md` §零「测试面」行写插件 vitest `83 passed / 1 skipped`；同一份 `419b9df` 上实跑
+   `pnpm --config.verify-deps-before-run=false test` 得 **148 passed / 1 skipped（18 个 test file）**。
+   `#40` 净增 21、`#44` 净增 7，两轮都写了自己的验收数却没有回抄 §零——即 `#31` 立规则要防的那种抄件。
+   py 侧同一行写 `tests/unit/mcp` `224 passed`，实跑为 **224 passed + 1 skipped**（漏了 skipped 那格）。
+2. `docs/migration/README.md` §三 体量表 **9 行**与实测不符，`scripts/check_doc_tables.py` 在 HEAD
+   `419b9df` **就是红的**（FAIL: size table）。而 `#44` 的验收框写着「文档门禁双 exit 0」——
+   **那条框在它自己的提交上即假**。#44 正文按「编号一经发布不得改写」保持原样，错记在此。
+3. ②为什么刷一次还会漂：`measured()` 取的是**工作树字节数**，而工作树换行符取决于最后写它的进程——
+   本机 `core.autocrlf=true`、仓库无 `.gitattributes`，实测 `docs/migration/inventory/03-*.md`
+   工作树 46472 字节 / blob 46162 字节（差 310 个 CR），其余文件工作树与 blob 相同。
+   表里的数字出自 `2ab17cb`（体量改为脚本生成那次）的 **CRLF 工作树**，之后那些文件以 LF 重写，
+   1406 行 ≈ 1.4 KB 就差了出。**同一条 commit 在两台机器量出两个数**——规范化后复测，
+   `inventory/01…05` 那一格从 215.9 KB 变成 215.6 KB，正是那 310 个 CR。
+4. 附带查出**为什么没人发现**：两枚文档门禁（`check_doc_registry.py` / `check_doc_tables.py`）
+   在两处文档里被称做「门禁」，但 `.github/workflows/*` 里**没有任何 step 跑它们**（搜索命中 0）。
+   红的体量表可以存活两日，靠的就是人工自证。登记为 **G60**。
+5. 同一根因在测试面也咬了一口：`uv run ruff format --check` 报 `tests/unit/test_config_package.py`
+   「would be reformatted」，而该文件 blob 是**纯 LF**（37083 字节、CR=0），工作树却是 37932 字节、
+   849 个 CR 与 57 行 LF **混在同一文件里**——CI 检出纯 LF 所以不报，这条红是本机独有的，
+   不是代码缺陷。登记为 **G61**（根因层：仓库无 `.gitattributes`，字节口径随 checkout 变）。
+   本轮**没有**顺手 `ruff format` 那个文件：那会把 849 行换行符一起写进提交，属未登记的越界改动。
+
+#### 整改方案与实施
+
+- **`scripts/check_doc_tables.py`**：`measured()` 先 `raw.replace(b"\r\n", b"\n")` 再数行与字节，
+  把派生量与 checkout 换行符解耦——只 `--refresh-sizes` 是把漂移推到下一台机器上，不换量法修不好。
+  模块 docstring 补上这条口径与出处；`--selftest` 增 **(i) 不变量例**（同一内容写成 CRLF 与 LF 两份临时文件，
+  必须量出同一行数与 KB，且行数仍为 4——防「剥 CR」把行数也剥错）。
+- **两处可执行判据**：`--selftest` 的 (i) 是一处；另一处是新增 `tests/unit/scripts/test_doc_table_sizes.py`
+  三条（EOL 无关 / 多文件行求和 / 改旧值必报），走 CI 已有的 `uv run pytest tests/unit`——这是本口径目前唯一进得了 CI 的路径。
+- **`docs/migration/README.md`**：§三 表下「体量口径」那句原文是「**KB** 按文件**真实**字节数除以 1024」，
+  「真实」正是把工作树绑进度量的那个词，改为「按 **LF 规范化后**的字节数」；9 行由 `--refresh-sizes` 生成，不手打
+  （上一回合 `e7f3589` 就是手打了 `TODO.md` 一格，其余没动）。
+- **`docs/TODO.md`**：§零 测试面行按实测改写并保留复测命令；§零「下一步」补第 7 条（本轮结案 + G60 指针）；
+  §四 差距清单加 **G60** 行，`docs/migration/registry.md` 现行在册同步一行（取号按 registry）。
+
+#### 验收标准
+
+- [x] `uv run python -X utf8 scripts/check_doc_tables.py` ⇒ 全 OK（含 `(size table)` 那一行）
+- [x] `uv run python -X utf8 scripts/check_doc_tables.py --selftest` ⇒ 注入缺陷全过 + `OK [i]` 不变量例
+- [x] **变异校验**：把 `measured()` 改回 `len(raw)` ⇒ 新 pytest 两条变红
+      （`test_size_does_not_track_line_endings`、`test_multi_file_row_is_a_sum_across_line_endings`），
+      `--selftest` 的 (i) 报 `((200, '1.0') vs (200, '1.2'))`——做出一次才恢复
+- [x] **变异校验顺手照出两处「虚锁」，都已修**：① 第一版两处判据都用 4 行样本，KB 只保留一位小数
+      （一步 = 102.4 字节），于是 CRLF 与 LF **量出同一个数**，摘掉规范化也照样绿——样本加宽到 200/400 行才咬得住；
+      ② (i) 原先排在 (a)–(h) 之后，而未规范化的测量会让前面那些读真实文档的检查先红先退出，
+      **根本走不到 (i)**——已提到 `selftest()` 开头。两处都是「测试通过但不证明任何东西」的形态
+- [x] `uv run python -X utf8 scripts/check_doc_registry.py` ⇒ OK（现行 114 号，registry 行数与来源一致）
+- [x] `uv run python -X utf8 -m pytest tests/unit/scripts -q` ⇒ 绿；`uv run ruff check` ⇒ 干净
+- [x] `git grep -n "83 passed" -- docs/TODO.md AGENTS.md plugins docs/migration/README.md` ⇒ 空
+      （陈旧值只可能留在已结案条目的正文里：`#32` 那格记的是它当时的实测数，编号不得改写，属正确保留）；
+      §零 的两个数与实跑一致
+- [ ] **G60 未办**：两枚门禁接进 CI 需改 `.github/workflows/*`，且要先定「deterministic Python tests」那条
+      `if: github.event_name == 'workflow_dispatch'` 的门槛（受 **G54** 牵制）——**待用户决策**
 
 ## 已关闭差距史（G*）
 

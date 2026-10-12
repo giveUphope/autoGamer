@@ -56,6 +56,7 @@
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G60 | 两枚文档门禁（`check_doc_registry.py` / `check_doc_tables.py`）从未接进 CI，抄件漂移只靠本地人工自证 |
+| G61 | 仓库无 `.gitattributes`：工作树换行符由 checkout 决定，字节口径在本机不可信（体量表与 `ruff format --check` 都栽过） |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |

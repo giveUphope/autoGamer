@@ -16,6 +16,9 @@ A second, different duty lives here too: docs/migration/README.md's 体量 table
 COPY of derived facts (line counts, KB) - hand-copied, it goes stale on every edit
 (it did, twice: changelogs #30). So the ruler verifies each row against the real file
 and `--refresh-sizes` rewrites the column instead of a human typing numbers again.
+Sizes are counted on CR-stripped bytes, so one commit measures the same number on a
+CRLF and an LF checkout (changelogs #45: the table was refreshed on a CRLF worktree
+and went stale when those files were rewritten as LF).
 
 Usage:
   python -X utf8 scripts/check_doc_tables.py [file ...]
@@ -25,6 +28,7 @@ Usage:
 
 import re
 import sys
+import tempfile
 from pathlib import Path
 
 ROOT = Path(__file__).resolve().parents[1]
@@ -203,7 +207,9 @@ def row_targets(cell, base):
 def measured(paths):
     total_lines = total_bytes = 0
     for p in paths:
-        raw = p.read_bytes()
+        # Worktree bytes, not blob bytes: with core.autocrlf the same content lands as
+        # CRLF or LF depending on what last wrote it, so un-normalized sizes drift per OS.
+        raw = p.read_bytes().replace(b"\r\n", b"\n")
         total_lines += raw.count(b"\n")
         total_bytes += len(raw)
     return total_lines, f"{total_bytes / 1024:.1f}"
@@ -265,6 +271,26 @@ def refresh_sizes():
 
 
 def selftest():
+    # (i) invariant, not an injected defect: identical content must measure identically
+    #     whatever line endings the checkout happens to have written it with. It runs
+    #     FIRST because every check below reads the real docs, and an un-normalized
+    #     measurement makes those go red and exit before this one is ever reached.
+    #     The body is 200 lines on purpose - KB is printed to one decimal (102.4 bytes a
+    #     step), so a short sample measures the same either way (changelogs #45).
+    body = b"line\n" * 200
+    with tempfile.TemporaryDirectory() as tmp:
+        lf = Path(tmp) / "lf.md"
+        crlf = Path(tmp) / "crlf.md"
+        lf.write_bytes(body)
+        crlf.write_bytes(body.replace(b"\n", b"\r\n"))
+        if measured([lf]) != measured([crlf]):
+            raise SystemExit(
+                f"FAIL: 体量 tracks the checkout's line endings "
+                f"({measured([lf])} vs {measured([crlf])})"
+            )
+        if measured([lf]) != (200, "1.0"):
+            raise SystemExit(f"FAIL: normalized measurement moved: {measured([lf])}")
+    print("OK [i]: a CRLF checkout measures the same as an LF one")
     for path in DEFAULTS:
         report(check(read(path), path, unique_ids=unique_flag_for(path)), path)
     todo_path = next(p for p in DEFAULTS if unique_flag_for(p))
