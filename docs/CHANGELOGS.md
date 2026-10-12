@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#49 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#50 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2009,6 +2009,58 @@ FAIL: docs/TODO.md
 - [x] G54 行单物理行、3 cells；`git status` 干净
 - [x] **变异校验**：同一行内再插一个换行 ⇒ `check_doc_tables.py` 报 `does not close with a pipe`
       且 `echo $?` 为 1（证明修复后的判据仍有牙，且这次不会被管道吃掉）
+
+### #50 离线 action 面悄悄少了 `compare_ui_frames`：漂移锁改吃生成的 fixture
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（mock 补第 14 个工具 + 三种判定分支，锁换成吃生成的 fixture 并做过变异校验）
+- **优先级**: 中（不影响真机，但影响「离线能验的东西」与 P2 的 mock 交付）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+为把离线端到端演练真跑一遍，用插件自己的 `ActionClient` 打了两遍同一个脚本：
+
+```
+ARTEMIS_MOCK_DRIVER=1 node plugins/autogamer-device/scripts/spike-mcp.mjs
+  [spike] tools (14): back, compare_ui_frames, ... tap          ← 真 py 面
+  take_screenshot → environment error: connect to adb server failed [WinError 10061]
+
+SPIKE_COMMAND="node plugins/autogamer-device/scripts/mock-action-server.mjs" node .../spike-mcp.mjs
+  [spike] tools (13)                                            ← mock 面（修之前）
+```
+
+两件事一起暴露：① **`ARTEMIS_MOCK_DRIVER=1` 并不能让 `artemis mcp --type adb` 离线**——那一面仍要连
+adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 action 面」的唯一去处是插件自带的
+`scripts/mock-action-server.mjs`；② 那个 mock 只列 **13 个工具，缺 `compare_ui_frames`**，而 py 面自
+**#12**（G39 路线 A）起就是 14 个。也就是说**效果验证这条路径在离线环境里根本不存在**，而
+`tests/mockServer.spec.ts` 当初的断言是一份**手抄的 13 名列表**，与 mock 一起腐在同一处——
+正是 `#30`/`#45` 反复处理的那类「第四份抄件」。
+
+#### 整改方案与实施
+
+- `scripts/mock-action-server.mjs`：TOOLS 补 `compare_ui_frames`；新增 `effectVerdict()`，
+  按 py 契约形状返回 `{"changed": bool, "ratio": number}`（插件 `compareFrames` 就 `JSON.parse` 后读布尔
+  `changed`，见 `src/index.ts:204`），判定由 `MOCK_EFFECT=changed|unchanged|error` 选，**默认 changed**。
+  这样离线也能跑正例、反例与拒绝分支，不再只能验「有管道」。
+- `tests/mockServer.spec.ts`：把那份手抄列表换成**吃生成的 fixture**
+  `tests/fixtures/py-action-tools.json`（唯一权威是 `spike-mcp.mjs --write` 从真 py 面抓的 14 项），
+  比较两侧排序后的集合；另加两条锁：mock 返回形状符合 G39 契约、`unchanged` 与 `error` 两分支。
+  `MOCK_EFFECT` 经构造器 `env` 传（`ActionClient` 是**替换**子进程 env 而非合并，第一版我用
+  `process.env` 赋值，测出来 verdict 仍是 `true`，据此改成显式传 env）。
+
+#### 验收标准
+
+- [x] `SPIKE_COMMAND="node plugins/autogamer-device/scripts/mock-action-server.mjs" node plugins/autogamer-device/scripts/spike-mcp.mjs` ⇒
+      `[spike] tools (14): …`、`take_screenshot → OK: iVBOR…`、exit 0（全程离线）
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **150 passed / 1 skipped**（18 文件，净增 2）
+- [x] **变异校验**：从 mock 的 TOOLS 里摘掉 `compare_ui_frames` ⇒
+      `expected [ 'back', 'erase_one_char', …(11) ] to deeply equal [ 'back', 'compare_ui_frames', …(12) ]`
+      该锁变红（`exit=1`），恢复后转绿——证明这条锁真在观察
+- [x] `pnpm run build` ⇒ exit 0
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0（按 **#49** 的形状跑，不拿管道退出码当判据）
+- [ ] 未做（明确留白）：真机那一侧未复跑（本机无设备/无 `dsh`）；mock 的 PNG 仍是 33 字节 IHDR 桩，
+      不含真实像素，所以像素级 ROI 分支在离线路径上仍只能靠单测
 
 ## 已关闭差距史（G*）
 

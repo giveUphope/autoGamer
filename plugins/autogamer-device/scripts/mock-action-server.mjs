@@ -9,6 +9,7 @@ const TOOLS = [
   "tap", "long_press_on", "swipe", "back", "launch_app", "stop_app",
   "open_link", "focus_and_input_text", "focus_and_clear_text",
   "erase_one_char", "press_key", "take_screenshot", "get_ui_hierarchy",
+  "compare_ui_frames",
 ];
 
 /**
@@ -28,8 +29,23 @@ const SCREENSHOT_PNG = (() => {
   return bytes.toString("base64");
 })();
 
+/**
+ * compare_ui_frames answers in the py action surface's own shape (G39 route A):
+ * JSON text with a boolean `changed`, which is exactly what `compareFrames`
+ * parses. MOCK_EFFECT picks the verdict so the offline drill can exercise both
+ * branches and the refusal path (`Error:` prefix) without a device.
+ */
+const effectVerdict = () => {
+  const mode = process.env.MOCK_EFFECT ?? "changed";
+  if (mode === "error") return "Error: mock refusing to compare frames";
+  const changed = mode !== "unchanged";
+  return JSON.stringify({ changed, ratio: changed ? 0.42 : 0.0 });
+};
+
 function mockText(toolName) {
-  return toolName === "take_screenshot" ? SCREENSHOT_PNG : "Success";
+  if (toolName === "take_screenshot") return SCREENSHOT_PNG;
+  if (toolName === "compare_ui_frames") return effectVerdict();
+  return "Success";
 }
 
 function handle(message) {

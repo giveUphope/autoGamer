@@ -9,9 +9,12 @@
  * scoped to their own file, so that mock does not apply here).
  */
 import { afterEach, describe, expect, it } from "vitest";
+import pyActionTools from "./fixtures/py-action-tools.json" with { type: "json" };
 import { ActionClient } from "../src/actionClient.js";
 import { decodeImageBase64, parseImageSize } from "../src/coord.js";
 import { unwrapText } from "../src/mcpText.js";
+
+const fixtureTools: string[] = pyActionTools.pyActionServerTools;
 
 const clients: ActionClient[] = [];
 
@@ -28,26 +31,51 @@ function mockClient(): ActionClient {
   return client;
 }
 
+/** Same server with one verdict knob set, mirroring how the router calls it. */
+async function withEffect(mode: string, use: (client: ActionClient) => Promise<unknown>) {
+  const client = new ActionClient({
+    command: [process.execPath, "scripts/mock-action-server.mjs"],
+    env: { MOCK_EFFECT: mode },
+    callTimeoutMs: 10_000,
+  });
+  try {
+    return await use(client);
+  } finally {
+    await client.dispose();
+  }
+}
+
 describe("mock action server handshake (G56)", () => {
-  it("completes the SDK handshake and lists the mock tools", async () => {
+  it("lists the same action surface as the live py server", async () => {
     const tools = await mockClient().listTools();
-    expect(tools.slice().sort()).toEqual(
-      [
-        "tap",
-        "long_press_on",
-        "swipe",
-        "back",
-        "launch_app",
-        "stop_app",
-        "open_link",
-        "focus_and_input_text",
-        "focus_and_clear_text",
-        "erase_one_char",
-        "press_key",
-        "take_screenshot",
-        "get_ui_hierarchy",
-      ].sort(),
-    );
+    // The fixture is generated from the real `artemis mcp --type adb` listing
+    // (spike-mcp.mjs --write). Comparing against it, instead of a second
+    // hand-typed list, is what catches drift: this mock kept serving 13 tools
+    // for a day after `compare_ui_frames` made the py surface 14 (changelogs #12),
+    // so the offline path silently lacked effect verification.
+    expect(tools.slice().sort()).toEqual([...fixtureTools].sort());
+  });
+
+  it("answers compare_ui_frames in the py contract shape (G39 route A)", async () => {
+    const result = await mockClient().callTool("compare_ui_frames", {
+      before_b64: "aaa",
+      after_b64: "bbb",
+      action: "back",
+    });
+    const parsed = JSON.parse(unwrapText(result)) as { changed?: unknown; ratio?: unknown };
+    expect(parsed.changed).toBe(true);
+    expect(typeof parsed.ratio).toBe("number");
+  });
+
+  it("can serve the unchanged verdict and a refusal, both offline", async () => {
+    // ActionClient replaces the child env with what it is given (that is why
+    // MOCK_DELAY_MS is passed the same way below), so the verdict knob has to
+    // come through the constructor, not through process.env of this test.
+    const verdict = await withEffect("unchanged", (client) => client.callTool("compare_ui_frames", {}));
+    expect(JSON.parse(unwrapText(verdict)).changed).toBe(false);
+
+    const refused = await withEffect("error", (client) => client.callTool("compare_ui_frames", {}));
+    expect(unwrapText(refused).startsWith("Error:")).toBe(true);
   });
 
   it("answers take_screenshot with a decodable 1080x2400 PNG", async () => {
