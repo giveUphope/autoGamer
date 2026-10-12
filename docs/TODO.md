@@ -394,6 +394,51 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### P1 智能层方案（2026-10-12 按 R22 三步序：查上游+宿主 → 本方案 → 实现）
+
+**第 1 步「查」的原文与出处**：
+
+- 上游保真数（`artemis/agents/validator/` + `tests/unit/agents/test_validator.py`）：预检最多 3 次、间隔 0.4s，
+  `XML_BYPASSED` 不重试直转 pixel（`precondition_xml.py:64-93`）；burst 永不重试（单 dispatch，中止后续）；
+  `launch_app` 单次不重试；连败 `consecutive_failures==3` 开 incident 交 Operator 自行恢复；分类
+  `disappeared/shifted/occupied/general`（`categories.py`）；checker 零副作用三不变量 + midway/final 审计
+  （`inventory/04:161,179`，S11 已编码）。
+- 宿主（`@deepseek-ai/dsh-agent/README.md:32,43`）：`ctx.agents.create/resume` + `parentAgent` 可建运行时子 agent，
+  `setup()` 预装其作用域世界；但 Dev Note 明示子通道之外无共享状态/流式输出——verdict 管道须自建
+  （读子会话日志），每审一会话加模型成本。**用户已决**：checker 走 prompt 级（本问答轮），不建子 agent。
+- S11（TODO §三）：单层路由五步 + 保真对照（validator 梯原样、checker 三不变量走 `presentationMeta`/storage、
+  run_outcome 双轴、预算）；严格度梯级是路由器配置；上游 `--verification-level` 默认 `final`。
+
+- **What**（三片，可独立落地验收）：
+  - P1-a validator 确定性梯（code，只读+执行机制，不属 R13 策略）：预执行目标解析失败→重取层级最多 3 次
+    （round-trip 即等待，不另 sleep；上游 0.4s 由本机 600ms 沉降覆盖）；层级不可解析/空→直接 task 失败
+    （不编造目标；对应 `XML_BYPASSED` 无重试）；`launch_app`/burst 语义=单 dispatch 不重试（沿用）；
+    执行后 `effect=unchanged`（仅变更类）→ 用新层级坐标重解一次 → 仍 unchanged → 回值带 pixel 指引文本
+    （令模型截图目视重定）+ category（能判则 `disappeared/shifted/occupied`，否则 `general`）；
+    同设备连败计数到 3 → 结果带 `incident:{consecutive_failures:3}` + 审计请求文本，成功清零
+    （对应上游 incident 交恢复——此处交模型下一 turn）。
+  - P1-b checker prompt 级 + 事实落盘：preset `persona` 加审计纪律节（checkpoint/exit 结构化自审、
+    verdict 形状）；validator  verdict（`effect`/`incident`/`category`）经 `output.presentationMeta` 进
+    `tool/result.meta`（R16，不自写事件）；`report_task_status` 双轴已在。
+  - P1-c skills：`autogamer-flash` 补严格度梯级节 + plan/goal 脚手架 doc；不新增 goal 工具（S11 可选，
+    本轮只给 doc，工具按需再立项）。
+  - 严格度 `strictness`（plugin Config，默认 `final` 对齐上游）：`off`= 单次无梯无 incident；
+    `final`= 全梯 + 审计提示只在 exit 路径；`checkpoints`= 全梯 + incident 带里程碑审计提示；
+    `strict`= 全梯 + 每个变更动作结果带自检提示。梯开关与审计面正交，可单测穷举。
+  **范围外**：子 agent checker（已否决）、goal 工具代码、模型侧服从（live 验收）、VLM 像素定位代码（TS 无 CV，
+  pixel 层=模型指引）。
+- **How**：梯状态机放 `runDeviceAction.ts` dispatch 内外（预：resolve 循环；后：effect 分支升级），连败计数放
+  RouterOptions 外？——放模块级 per-device Map 随插件实例（与 gate/breaker 同命，重启清零，旧 stop 语义一致），
+  不进 breaker（它是健康态，incident 是任务态）；`presentationMeta` 在两处 `defineTool` 输出上加
+  （run: `{effect, incident?, category?}`，report: 已有形状不动）；persona 文本改两处 YAML（交付 + overlay，
+  G37 教训逐字一致）；skill 改 `skills/autogamer-flash/SKILL.md` + 同步锁。单测：梯（预 3 次零调用证明？预重试每次都调
+  hierarchy——断调用次数；post 坐标重试一次；pixel 指引文本；incident@3 与成功清零；launch_app 不重试）、
+  strictness 四档行为差、meta 字段、`deliveryShape` 式 persona/skill 文本锁。
+- **Verify**：`build` + 全量 `vitest`；变异：预次数 3→1/去 post 重试/去 incident/去 meta 各红其锁；
+  `contracts.spec.ts`（schema 未变）与 R6（YAML 改动）照旧；双门禁。
+- **Done means**：[ ] P1-a 梯锁全绿；[ ] P1-b meta+persona 锁；[ ] P1-c skill 锁；[ ] 全绿；
+  [ ] P1-a/b/c 分片关账（prose 进 CHANGELOGS，可分条）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
