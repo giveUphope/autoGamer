@@ -16,19 +16,22 @@ src/index.ts                      插件入口：Config（原生 Schemastery）+
 src/tools/runDeviceAction.ts      执行工具：闸门 → MCP 转发 → 错误分类 → 路由日志
 src/tools/reportTaskStatus.ts     终态汇报（completed / blocked + tests_failed 双轴）
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
+src/devicePool.ts                 闸门之上的调度：parking / 只认已认领 / 全局并发 N / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）
+src/turnLedger.ts                 回合账本：动过手却没汇报终态的回合（G44）
 src/classify.ts                   工具层错误分类（environment / task）
 src/coord.ts                      0-1000 归一坐标换算 + 截图取尺寸（含 configuredScreenSize）
 src/actionClient.ts               py action server 的 MCP stdio 客户端包装
-src/mcpText.ts / src/hierarchy.ts 文本解包 / 层级索引定位
+src/mcpText.ts / src/hierarchy.ts 文本解包 / 层级解析：`#N` 按**节点身份**跟随到当前位置（G67）
+src/observations.ts               活观察快照：每个 (agent, device) 只存模型最后一次所见的那份列表
 skills/autogamer-flash/           flash 执行策略 skill
 scripts/mock-action-server.mjs    离线 mock action server（take_screenshot 回真 PNG 头）
 scripts/spike-mcp.mjs             真 py 动作面取证 + fixture 生成（--write）
 scripts/gen-sse-events.mjs        从 py 发射漏斗与前端订阅抽取旧 SSE 契约（--write）
 scripts/conformance-live.mjs      live 取证：declared（dump-config）与 live（会话日志）两层
 spike/                            live overlay 与取证现场（多数已 gitignore，含 token 的别提交）
-tests/                            vitest：gate / breaker / classify / coord / apply /
-                                  conformance（contracts=生成式 fixture，runtimeBoot=真实 DSH runtime 挂载）
+tests/                            vitest：gate / breaker / classify / coord / devicePool / liveObservation /
+                                  apply / conformance（contracts=生成式 fixture，runtimeBoot=真实 DSH runtime 挂载）
 ```
 
 ## 引入与验证（按守则 R2 的三层）

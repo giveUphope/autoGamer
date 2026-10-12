@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#60 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#61 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README Layout 漏掉的三个模块并给它一枚双向锁。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2574,6 +2574,38 @@ text/content-desc/resource-id（无标签退到 center+class），bounds 只是 
 - [x] 两枚文档门禁 + `--selftest` ⇒ exit 0（`registry.md` 的 G67 行随结案从「现行在册」移入「已关闭」）
 - [ ] 留白（R21 分层）：以上是**单测证明**。`{index}` 在真机上是否真的跟随移动后的同一节点、
       以及模型被拒后的下一步行为，要等 P1 live 验收（前置 **G59** 重装 bundle + 本机 `dsh` 不在 PATH）
+
+### #61 README 的 Layout 抄件已漏三个模块；加一枚双向锁让它不能再腐烂
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（文档层派生抄件；无 G 号，属既有规则「派生事实只留一处权威」的落地）
+- **优先级**: 中（不改变行为，但 README 是包内形状的入口页，抄件比没有更误导）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+`AGENTS.md` 把 `plugins/autogamer-device/README.md` 定为「安装流与**包内形状**说明」，其 Layout 块逐文件列举
+`src/`。那份清单是文件树的**手抄件**，没有任何东西在它过期时改变它：本轮 G67 新增 `src/observations.ts` 时
+实测（`comm -13` 比对提交版 README 与磁盘）漏的是 **三个**：`devicePool.ts`（**#55** 就该进）、
+`turnLedger.ts`（G44）、`observations.ts`（**#60** 本轮新增）——`dsh-types.ts` 本就在文件另一节列着，不是漏项。
+计数：提交版 README 出现 11 个 `src/(tools/)?\*.ts` 名，磁盘 14 个文件。
+同一条规则此前已因别的抄件立过两次案（`#30` 的状态副本、`#45` 的体量表）。
+
+#### 整改方案与实施
+
+- 补齐清单（`README.md` Layout）：`devicePool.ts` / `turnLedger.ts` / `observations.ts`，
+  并把 `hierarchy.ts` 那行从「层级索引定位」改成「`#N` 按**节点身份**跟随到当前位置（G67）」——
+  #60 之后按位置定位这句话本身就是错的。
+- 新增 `tests/readmeLayout.spec.ts` 两个方向的锁：**每个** `src/`、`src/tools/` 下的 `.ts` 都要在 README 出现，
+  且 README 提到的 `src/*.ts` 名字都必须在磁盘上存在。测试直接读文件系统与 README，不引新依赖。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **182 passed / 1 skipped**（基线 180，净增这 2 条）
+- [x] **变异校验两条**（R27，且按新加的第 6 条先自证变异生效）：① 抹掉 Layout 里 `src/observations.ts` 那一行 ⇒
+      `lists every module under src/ and src/tools/` 红；② 插入一个不存在的 `src/wasNeverRenamed.ts` ⇒
+      `names no module that has since been renamed or removed` 红。两条都改完跑、跑完还原并复验全绿
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0（README 体量行随 `--refresh-sizes` 重生成）
 
 ## 已关闭差距史（G*）
 
