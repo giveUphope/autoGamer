@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#59 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#60 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2498,6 +2498,83 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
 - [ ] 留白（R21 分层）：本机无设备 ⇒ 锁态的**真实取值**只有 monkeypatch 级证据；
       「真机上锁屏设备确实被拒、且 unknown 与 unlocked 表现不同」要等设备在场
 
+### #60 G67 结案：`{index}` 句柄改按节点身份解析，「stale 句柄永不可点」从文案变成代码
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（离线面；真机/宿主留白见验收最后一条）
+- **优先级**: 高（这是一条被代码违反的**安全**不变量，不是保真度装饰）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G67」住在 `TODO.md` §五（spec 提交 `e8030c9` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`inventory/04-agent-stack-config.md:203` 的原文口径是「一有更新观察，旧观察的 UI 列表……即删——
+**刻意浅：只有活观察带索引元素列表，stale [n] 索引永不成为可点目标**」，并且该文档自己标注
+「（安全理由，重写时必须保留）」。本插件此前的实现正面临方违反：`runDeviceAction.ts` 的两条梯
+（预执行重取、`effect=unchanged` 后重解）拿到**新鲜**层级后按**数组位置**取第 N 个节点，
+屏幕一变就静默点到「现在坐在位置 N 的那个别的元素」——与不变量要求的恰好相反，而且完全不打字。
+`#40` 结案时把这条写作「新层级坐标重解一次」，是**当时没跟安全不变量对表**（#40 正文不改写，
+在此登记它被 #60 更正的那半句）。
+
+本轮另有两处**自己写错并当场回写**的判断（R28）：① 前身条目 G27-a 设计成「层级指纹比对 + 拒」，
+实现前发现它会否掉 #40 已结的功能，停手未写一行码；② 停手时我在 G66 行写了「`parsed_bounds`
+是身份重解的先决条件，顺序必须 ①bounds→②身份→③守卫」——**这条不成立**：身份用
+text/content-desc/resource-id（无标签退到 center+class），bounds 只是 `shifted`/`occupied`
+包含判定的消费者，两条链彼此独立。两处都已在 `TODO.md` 原句上改回。
+
+#### 整改方案与实施
+
+- **`src/observations.ts`（新）**：`LiveObservations` 按 `(agent, device)` 只存**最新一次模型可见的**
+  元素列表；一次新观察即替换旧的，不累积、不设 TTL——安全性来自执行时对新层级复核身份，
+  不来自过期时间。写入点**只有** `get_ui_hierarchy` 的工具结果出口（真正交给模型渲染那份）；
+  validator 梯内部的重取不写，否则等于执行自己给自己的句柄续期。
+- **`src/hierarchy.ts`**：新增 `resolveHandle(observed, fresh, index)`，四类出口
+  （`unobserved` / `unknown` / `gone` / `resolved`）。身份签名取 `labelOf()`——
+  与 `formatVisibleElements` 渲染给模型看的标签**同一个函数**（派生事实只留一处权威，
+  模型看到的和代码解析的不会分家）。`text/content-desc/resource-id` 是**锚定**标签，跟到哪儿都算同一节点；
+  只有 class 名不锚定，位移超过 `MAX_HANDLE_SHIFT = 100` 设备像素就判 `gone`——上界取自
+  py 侧 `_is_valid_shift` 的 `100.0 * scale_factor`（`precondition_xml.py:396`），
+  `scale_factor` 在此恒为 1，因为插件从不工作在缩放截图空间；无标签节点退化签名 `@x,y`，
+  一旦移动即认不出并按 py「宁可误判为 disappeared」（`:392-395`）落回拒绝。
+  删掉 `findNodeCenterByIndex`（位置解析本身就是 hazard，不留第二扇门）；
+  `findNodeCenterBySubstring` 改吃已解析列表，梯子不再二次解析同一 payload。
+- **`src/tools/runDeviceAction.ts`**：两条梯共用 `resolveTarget()`，`{index}` 一律走身份；
+  `handlePrecheck()` 把「从未观察该设备」与「`#N` 不在活观察里」判为**不可重试**并在取数之前拒绝
+  （重取修不好调用方的 bug，白烧 3 次 RPC），`gone` 与 `{text}` 未命中仍可重取——#40 那两条
+  已结行为（晚出现的目标在 3 次重取内命中、目标移动后按新坐标重试）因此原样成立。
+  拒绝文案只指向「重新 `get_ui_hierarchy`」或「改用 `{coordinate}` 并说明依据」，不静默退回位置。
+- **测试同步**：既有 `{index}` 用例改为「先观察再点」——`validatorLadder` 加 `observe()` helper
+  并插入 12 处、`dedup` 5 处、`apply` 1 处直接调 `get_ui_hierarchy`；helper 观察后清空调用计数，
+  使 `hierarchyCalls()` 仍只数执行期重取。`dedup` 的「另一个 agent」用例一度**超时死锁**：
+  我把第二方的观察插在第一方 still-holding 设备之后，而闸门对同设备串行 ⇒ 观察排队不返回；
+  改成两方各自先观察（也正是真实用法）。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **180 passed / 1 skipped**
+      （基线 169，净增 11：`tests/liveObservation.spec.ts` 9 条 + `hierarchy.spec.ts` 2 条身份解析锁）；
+      `run build` ⇒ 0 error
+- [x] py 侧本片零改动 ⇒ `uv run python -X utf8 -m pytest tests/unit -q` ⇒ **2604 passed / 7 skipped**（同基线，零回归）
+- [x] 主锁是「树在前面插了节点 ⇒ 仍点同一 text 的节点」与「`#4` 在新树里存在但从未被观察 ⇒ 拒且**零次取数**」，
+      两条都是位置解析会静默放行形状的东西
+- [x] **变异校验五条，各自报出断言**（逐条改、逐条跑、跑完还原并复验 180 全绿；R27）：
+      ① 回到 #40 的做法（路由不预检 + 句柄无观察也按数组位置点）⇒ 4 条红，含
+      `refuses before fetching anything, and never reaches the device` 与
+      `refuses a handle that is in the fresh tree but never was in the observation`；
+      ② 去掉「句柄不在活观察里」这一拒 ⇒ 同后一条红；③ 梯子的内部重取给快照续期 ⇒ 6 条红（含
+      `does not let the ladder's own re-fetch extend the observation`）；④ 找不到就静默点旧位置 ⇒
+      `hierarchy.spec` 与 5 条 ladder/observation 锁红；⑤ 取消 class 名的位移上界 ⇒
+      `only follows a bare class name a short way` 红
+- [x] **①一开始两次改错，都不算证据**（如实记，这是 R27 第 5 条的同类）：第一次插入的代码有**语法错**
+      （三元表达式少一个 `}`），跑出来的红是编译失败而不是断言；第二次重构后把改动落在
+      `handleFromObservation` 里 `fresh.find(...)`——但那个函数根本看不见 `fresh`，等价于没改，
+      于是「仍然全绿」被我自己读成「锁是虚的」。第三次把改动落回**行为**（路由去掉预检 + 解析处
+      带回退）才拿到 4 条断言名。⇒ 变异校验的判据是「这条改动在语义上真的反转了行为」，
+      红与绿都必须先确认改动生效（这条已是第二次踩到，成文进 **R27 第 6 条**）
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0（`registry.md` 的 G67 行随结案从「现行在册」移入「已关闭」）
+- [ ] 留白（R21 分层）：以上是**单测证明**。`{index}` 在真机上是否真的跟随移动后的同一节点、
+      以及模型被拒后的下一步行为，要等 P1 live 验收（前置 **G59** 重装 bundle + 本机 `dsh` 不在 PATH）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2562,3 +2639,4 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
 | G63 | py 动作面 fixture 从未在 CI 被重新比对（§零 的旧表述是假陈述，见 #53） | `python-quality` 加 `Set up Node.js` + 一步用 `--type mock` 重导比对；`spike-mcp.mjs` 未改（默认模式本就是漂移检查） | 本文件 **#54** |
 | G65 | 锁屏判定进不了插件（admission 的 fail-closed 半边） | `list_devices` 加默认关的 `include_lock_state`，复用现成双采样确认探针出三态；插件按「没问≠不可判」区分放行与拒绝 | 本文件 **#59** |
 | G64 | 设备 roster 的真来源（TS 重复枚举 vs 加只读 py 工具） | 用户选「加只读 py 工具」：`adb_server.py` 新增只读 `list_devices`（复用现成 device_pool 与 try_list_devices 的 fail-open），插件 `rosterSource` + `discoverDevices`（默认 false，保住 #55 的零变化承诺） | 本文件 **#56** |
+| G67 | `{index}` 句柄按数组位置重解（违反 `inventory/04:203` 的安全不变量） | `LiveObservations` 存模型最后一次所见的列表，`resolveHandle` 按节点身份（text/desc/resource-id，无标签退 center+class，class 名带 100px 位移上界）跟随到当前位置；从未观察/句柄不在列表 ⇒ 取数之前就拒；更正 #40 的「按位置重解」半句 | 本文件 **#60** |

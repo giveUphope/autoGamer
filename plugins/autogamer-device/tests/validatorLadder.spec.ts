@@ -1,7 +1,11 @@
 /**
  * P1-a validator ladder locks. Direct-drives defineRunDeviceAction with a
  * scripted stub client (hierarchy payloads, tap outcomes, and effect verdicts
- * consumed in order), so every rung is observable without a device:
+ * consumed in order), so every rung is observable without a device. Since G67 a
+ * `{index}` handle only means something against what the model was last shown,
+ * so every index-target case observes a hierarchy first (see `observe()`):
+ * that call is the model's own observation, and the log is cleared after it so
+ * `hierarchyCalls()` still counts only the ladder's re-fetches:
  * pre-execution retries, the bypass fast path, the post-execution coordinate
  * retry, pixel guidance + category, the incident counter, and the four
  * strictness levels.
@@ -81,6 +85,18 @@ function exec(): { signal: AbortSignal } {
   return { signal: new AbortController().signal };
 }
 
+/**
+ * G67: give the model its live observation of `payload`, then reset the call
+ * log so the assertions below count only what the action itself fetched.
+ */
+async function observe(tool: ReturnType<typeof setup>, payload = WITH_TARGET): Promise<void> {
+  harness.hierarchies.push(payload);
+  await tool.execute({ action: "get_ui_hierarchy", reason: "t" }, exec() as never);
+  harness.calls.length = 0;
+}
+
+const GONE = /^task: #1 \("显示"\) from the live hierarchy is no longer on device/;
+
 function hierarchyCalls(): number {
   return harness.calls.filter((call) => call.tool === "get_ui_hierarchy").length;
 }
@@ -99,6 +115,7 @@ beforeEach(() => {
 describe("validator ladder: pre-execution retries", () => {
   it("finds a late-appearing target within 3 fetches", async () => {
     const tool = setup();
+    await observe(tool);
     harness.hierarchies.push(WITHOUT_TARGET, WITH_TARGET);
     harness.compares.push(true);
     const value = (await tool.execute(
@@ -109,26 +126,29 @@ describe("validator ladder: pre-execution retries", () => {
     expect(hierarchyCalls()).toBe(2);
   });
 
-  it("fails after exactly 3 fetches when the target never appears", async () => {
+  it("fails after exactly 3 fetches when the observed target never comes back", async () => {
     const tool = setup();
+    await observe(tool);
     harness.hierarchies.push(WITHOUT_TARGET, WITHOUT_TARGET, WITHOUT_TARGET, WITH_TARGET);
     await expect(
       tool.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
-    ).rejects.toThrow(/^task: no element #1/);
+    ).rejects.toThrow(GONE);
     expect(hierarchyCalls()).toBe(3);
   });
 
   it("resolves once with strictness off", async () => {
     const tool = setup("off");
+    await observe(tool);
     harness.hierarchies.push(WITHOUT_TARGET, WITH_TARGET);
     await expect(
       tool.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
-    ).rejects.toThrow(/^task: no element #1/);
+    ).rejects.toThrow(GONE);
     expect(hierarchyCalls()).toBe(1);
   });
 
   it("fails fast on an unreadable hierarchy without retrying", async () => {
     const tool = setup();
+    await observe(tool);
     harness.hierarchies.push("not-json{{{", WITH_TARGET, WITH_TARGET);
     await expect(
       tool.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
@@ -148,6 +168,7 @@ describe("validator ladder: pre-execution retries", () => {
 describe("validator ladder: post-execution retry", () => {
   it("reruns once with fresh coordinates after an unchanged effect", async () => {
     const tool = setup();
+    await observe(tool);
     harness.hierarchies.push(WITH_TARGET);
     harness.compares.push(false, true);
     // Re-resolution sees the target at its moved bounds.
@@ -166,6 +187,7 @@ describe("validator ladder: post-execution retry", () => {
 
   it("reports disappeared with guidance when the target is gone", async () => {
     const tool = setup();
+    await observe(tool);
     harness.hierarchies.push(WITH_TARGET);
     harness.compares.push(false);
     harness.hierarchies.push(WITHOUT_TARGET);
@@ -205,6 +227,7 @@ describe("validator ladder: post-execution retry", () => {
 
   it("returns a bare unchanged with strictness off", async () => {
     const tool = setup("off");
+    await observe(tool);
     harness.hierarchies.push(WITH_TARGET);
     harness.compares.push(false);
     const value = (await tool.execute(
@@ -219,6 +242,7 @@ describe("validator ladder: post-execution retry", () => {
 
   it("leaves unknown verdicts alone (fail-open: no ladder, no count)", async () => {
     const tool = setup();
+    await observe(tool);
     harness.hierarchies.push(WITH_TARGET);
     harness.compares.push(undefined);
     const value = (await tool.execute(
@@ -283,6 +307,8 @@ describe("validator ladder: incident ledger", () => {
 
   it("an unknown verdict neither counts nor resets", async () => {
     const tool = setup();
+    // Observed before the streak: a successful look is a success like any other.
+    await observe(tool);
     for (let i = 0; i < 2; i += 1) {
       await expect(
         tool.execute({ action: "press_key", key: "frob", reason: "t" }, exec() as never),
@@ -300,6 +326,7 @@ describe("validator ladder: incident ledger", () => {
 describe("validator ladder: strictness prompts", () => {
   it("adds a self-check to mutating successes only under strict", async () => {
     const strict = setup("strict");
+    await observe(strict);
     harness.hierarchies.push(WITH_TARGET);
     harness.compares.push(true);
     const strictValue = (await strict.execute(
@@ -309,6 +336,7 @@ describe("validator ladder: strictness prompts", () => {
     expect(strictValue.self_check).toContain("Self-check");
 
     const fin = setup("final");
+    await observe(fin);
     harness.hierarchies.push(WITH_TARGET);
     harness.compares.push(true);
     const finalValue = (await fin.execute(
@@ -322,6 +350,7 @@ describe("validator ladder: strictness prompts", () => {
 describe("validator ladder: unchanged streaks and mid-ladder transport death", () => {
   it("accumulates unchanged streaks to an incident", async () => {
     const tool = setup("checkpoints");
+    await observe(tool);
     for (let i = 0; i < 3; i += 1) {
       harness.hierarchies.push(WITH_TARGET, WITH_TARGET);
       harness.compares.push(false, false);
@@ -360,6 +389,8 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
       captureFrame: async () => "frame",
       compareFrames: async () => false,
     });
+    // The first fetch is the model's observation; the ladder's re-fetch dies.
+    await failing.execute({ action: "get_ui_hierarchy", reason: "t" }, exec() as never);
     await expect(
       failing.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
     ).rejects.toThrow(/^environment: action transport failed/);

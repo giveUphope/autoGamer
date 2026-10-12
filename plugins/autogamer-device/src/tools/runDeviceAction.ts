@@ -23,7 +23,15 @@ import {
   type ScreenSize,
 } from "../coord.js";
 import type { DshImageAttachment, JsonValue, ToolDefinitionInput } from "../dsh-types.js";
-import { findNodeCenterByIndex, findNodeCenterBySubstring, formatVisibleElements, parseVisibleElements } from "../hierarchy.js";
+import {
+  findNodeCenterBySubstring,
+  formatVisibleElements,
+  handleFromObservation,
+  parseVisibleElements,
+  resolveHandle,
+  type VisibleElement,
+} from "../hierarchy.js";
+import { LiveObservations } from "../observations.js";
 import { unwrapText } from "../mcpText.js";
 
 export interface RouterLogger {
@@ -292,6 +300,12 @@ export interface RouterOptions {
   /** Per-device consecutive task-failure counts; owned per plugin instance. */
   incidents?: ActionIncidents;
   /**
+   * G67: the `#N` list each agent was last shown, per device. Owned by the
+   * plugin instance so it outlives one tool call; the ladder's own internal
+   * re-fetches never write it (only the model-visible result does).
+   */
+  observations?: LiveObservations;
+  /**
    * Calling-agent identity for the G13 in-flight dedup key. Absent in
    * direct-drive tests, where every call shares the "anonymous" lane.
    */
@@ -333,6 +347,8 @@ interface TargetInput {
 export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInput {
   const { pool, breaker, client, logger } = options;
   const incidents = options.incidents ?? new ActionIncidents();
+  const observations = options.observations ?? new LiveObservations();
+  const agentOfCall = (): string => options.agentIdOfCall?.() ?? "anonymous";
   const inflight = new Set<string>();
 
   async function resolvePixelTarget(
@@ -359,24 +375,89 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     if (!seeksHierarchy) {
       throw new Error("task: this action needs a target — {coordinate:[x,y]} (0-1000), {index}, or {text}");
     }
+    // A handle is only meaningful against the list the model was shown, so two
+    // cases are caller bugs rather than a transient screen and are refused
+    // before the first fetch (G67): no observation at all, and a number that was
+    // never in the list. Re-fetching cannot fix either - only the identity of a
+    // node the model DID see can come back.
+    if (typeof target.index === "number") {
+      const pre = handlePrecheck(target.index, key);
+      if (pre) throw new Error(pre);
+    }
     const attempts = isLadderOn(options.strictness) ? RESOLVE_ATTEMPTS : 1;
     let lastError = "";
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}, signal));
-      if (parseVisibleElements(xml) === undefined) {
+      const fresh = parseVisibleElements(xml);
+      if (fresh === undefined) {
         throw new Error("task: hierarchy unreadable (not a node list) — re-run get_ui_hierarchy");
       }
-      if (typeof target.index === "number") {
-        const center = findNodeCenterByIndex(xml, target.index);
-        if (center) return center;
-        lastError = `task: no element #${target.index} in the current hierarchy (re-run get_ui_hierarchy and use a #N handle)`;
-        continue;
-      }
-      const center = findNodeCenterBySubstring(xml, target.text as string);
-      if (center) return center;
-      lastError = `task: no element matching text "${target.text}" in the current hierarchy`;
+      const hit = resolveTarget(target, fresh, key);
+      if ("center" in hit) return hit.center;
+      if (!hit.retryable) throw new Error(hit.refusal);
+      lastError = hit.refusal;
     }
     throw new Error(lastError);
+  }
+
+  /** The live observation for this agent + device, or undefined if it never looked. */
+  function currentObservation(key: string): VisibleElement[] | undefined {
+    return observations.get(agentOfCall(), key);
+  }
+
+  /**
+   * Refusals that no amount of re-fetching can turn into a resolution: the
+   * handle has no live list to belong to, or is not in it. Undefined means the
+   * handle is at least addressable and worth resolving.
+   */
+  function handlePrecheck(index: number, key: string): string | undefined {
+    const handle = handleFromObservation(currentObservation(key), index);
+    if (handle.status === "unobserved") {
+      return `task: no live hierarchy for device ${key} — call get_ui_hierarchy first, then use a #N handle from its output`;
+    }
+    if (handle.status === "unknown") {
+      return (
+        `task: #${index} is not in the live hierarchy for device ${key} ` +
+        `(it listed ${handle.elementCount} elements) — re-run get_ui_hierarchy and pick a #N from it`
+      );
+    }
+    return undefined;
+  }
+
+  /**
+   * Resolve one target against an already-parsed hierarchy. `{index}` follows
+   * the handle's identity into the new tree (G67) instead of taking array
+   * position N again; `{text}` matches content as it always did. `retryable`
+   * marks the ladder's own case — a node that is simply not on this screen yet.
+   */
+  function resolveTarget(
+    target: TargetInput,
+    fresh: VisibleElement[],
+    key: string,
+  ): { center: { x: number; y: number } } | { refusal: string; retryable: boolean } {
+    if (typeof target.index === "number") {
+      const pre = handlePrecheck(target.index, key);
+      if (pre) return { refusal: pre, retryable: false };
+      const hit = resolveHandle(currentObservation(key), fresh, target.index);
+      if (hit.status === "resolved") return { center: hit.center };
+      if (hit.status === "gone") {
+        const label = hit.label ? ` ("${hit.label}")` : "";
+        return {
+          refusal:
+            `task: #${target.index}${label} from the live hierarchy is no longer on device ${key} — ` +
+            `re-run get_ui_hierarchy, or use {coordinate:[x,y]} and say what you saw`,
+          retryable: true,
+        };
+      }
+      // handlePrecheck rules both of these out, so reaching here is our own bug.
+      return { refusal: `task: #${target.index} cannot be resolved against the live hierarchy`, retryable: false };
+    }
+    const center = findNodeCenterBySubstring(fresh, target.text as string);
+    if (center) return { center };
+    return {
+      refusal: `task: no element matching text "${target.text}" in the current hierarchy`,
+      retryable: true,
+    };
   }
 
   async function requireScreenSize(key: string): Promise<ScreenSize> {
@@ -635,6 +716,9 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       // cut a real hierarchy dump mid-JSON and make it unparseable.
       const elements = parseVisibleElements(unwrapText(structured));
       if (elements) {
+        // G67: this is the ONLY place the live observation is written. What the
+        // model is shown now defines which #N handles exist next turn.
+        observations.record(agentOfCall(), key, elements);
         return {
           ok: true,
           value: { hierarchy: formatVisibleElements(elements), element_count: elements.length },
@@ -740,12 +824,11 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       (typeof tgt.index === "number" || (typeof tgt.text === "string" && tgt.text.length > 0));
     if (!retryable) return { status: "nontarget" };
     const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}, signal));
-    if (parseVisibleElements(xml) === undefined) return { status: "nontarget" };
-    const center =
-      typeof tgt.index === "number"
-        ? findNodeCenterByIndex(xml, tgt.index)
-        : findNodeCenterBySubstring(xml, tgt.text as string);
-    if (!center) return { status: "missing" };
+    const fresh = parseVisibleElements(xml);
+    if (fresh === undefined) return { status: "nontarget" };
+    const hit = resolveTarget(tgt, fresh, deviceKey);
+    if (!("center" in hit)) return { status: "missing" };
+    const center = hit.center;
     const size = await requireScreenSize(deviceKey);
     const nx = Math.max(0, Math.min(1000, Math.round((center.x / size.width) * 1000)));
     const ny = Math.max(0, Math.min(1000, Math.round((center.y / size.height) * 1000)));

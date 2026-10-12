@@ -15,6 +15,7 @@ import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js"
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction, deviceKeyOf, ActionIncidents } from "./tools/runDeviceAction.js";
+import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
 
@@ -99,6 +100,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     rosterSource: config.discoverDevices ? () => enumerateRoster() : undefined,
   });
   const incidents = new ActionIncidents();
+  // G67: which #N handles exist is per (agent, device) and per plugin instance - the
+  // list the model was last shown, nothing more.
+  const observations = new LiveObservations();
   const client = new ActionClient({
     command: config.actionServerCommand,
     env: config.actionServerEnv,
@@ -278,6 +282,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     defaultDeviceKey: config.defaultDeviceKey,
     strictness: config.strictness,
     incidents,
+    observations,
     resolveScreenSize,
     onAction: () => ledger.markActed(agentIdOfCall()),
     agentIdOfCall,

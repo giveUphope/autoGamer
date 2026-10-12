@@ -1,5 +1,7 @@
 /**
- * Element numbering and targeting (G42). The fixture mirrors the live action
+ * Element numbering and targeting (G42) plus handle resolution by identity
+ * (G67) — the handle follows the node it was shown as, never array position N.
+ * The fixture mirrors the live action
  * server payload shape measured on 2026-10-11: a JSON node list whose own
  * `index` field is a per-container ordinal (repeated values), with
  * `parsed_bounds` carrying the geometry. The old resolver scanned this for
@@ -7,10 +9,10 @@
  */
 import { describe, expect, it } from "vitest";
 import {
-  findNodeCenterByIndex,
   findNodeCenterBySubstring,
   formatVisibleElements,
   parseVisibleElements,
+  resolveHandle,
 } from "../src/hierarchy.js";
 
 function node(index: string, bounds: [number, number, number, number], extra: Record<string, unknown> = {}) {
@@ -50,20 +52,62 @@ describe("hierarchy: positional numbering (G42)", () => {
     expect(elements[4].resourceId).toBe("com.android.settings:id/dark");
   });
 
-  it("resolves a handle to its bounds center", () => {
-    expect(findNodeCenterByIndex(PAYLOAD, 2)).toEqual({ x: 120, y: 430 });
-    expect(findNodeCenterByIndex(PAYLOAD, 5)).toBeUndefined();
+  it("resolves a handle against the list the model was shown, not thin air", () => {
+    const observed = parseVisibleElements(PAYLOAD)!;
+    expect(resolveHandle(observed, observed, 2)).toEqual({
+      status: "resolved",
+      center: { x: 120, y: 430, text: "亮度" },
+    });
+    // A handle outside the live observation is a caller bug, not a transient screen.
+    expect(resolveHandle(observed, observed, 5)).toEqual({ status: "unknown", elementCount: 5 });
+    expect(resolveHandle(undefined, observed, 0)).toEqual({ status: "unobserved" });
+  });
+
+  it("follows a handle to where its identity moved, never to whatever sits at N", () => {
+    const observed = parseVisibleElements(PAYLOAD)!;
+    // Three nodes inserted before 亮度, and it drifted 5px on its own.
+    const shifted = parseVisibleElements(
+      JSON.stringify([
+        node("0", [0, 0, 40, 40], { text: "新" }),
+        node("1", [0, 40, 40, 80], { text: "更" }),
+        node("2", [0, 80, 40, 120], { text: "新" }),
+        node("0", [45, 405, 205, 465], { text: "亮度", clickable: "true" }),
+        node("1", [40, 900, 200, 960], { text: "显示", "content-desc": "显示 (Display)" }),
+      ]),
+    )!;
+    // Positional resolution would return this tree's #2 ("新" at (20,100)).
+    expect(resolveHandle(observed, shifted, 2)).toEqual({
+      status: "resolved",
+      center: { x: 125, y: 435, text: "亮度" },
+    });
+    expect(resolveHandle(observed, shifted, 4)).toEqual({
+      status: "gone",
+      label: "com.android.settings:id/dark",
+    });
+  });
+
+  it("only follows a bare class name a short way (content identifies, class does not)", () => {
+    const observed = parseVisibleElements(PAYLOAD)!;
+    // #1 was a class-labeled TextView container centered at (800,170).
+    const far = parseVisibleElements(JSON.stringify([node("0", [1200, 1400, 1360, 1460])]))!;
+    expect(resolveHandle(observed, far, 1)).toEqual({
+      status: "gone",
+      label: "android.widget.TextView",
+    });
+    const near = parseVisibleElements(JSON.stringify([node("0", [0, 120, 1600, 380])]))!;
+    expect(resolveHandle(observed, near, 1)).toMatchObject({ status: "resolved" });
   });
 
   it("matches text, content-desc and resource-id, preferring an exact label", () => {
-    expect(findNodeCenterBySubstring(PAYLOAD, "亮度")).toEqual({ x: 120, y: 430, text: "亮度" });
-    expect(findNodeCenterBySubstring(PAYLOAD, "Display")).toEqual({ x: 120, y: 630, text: "显示 (Display)" });
-    expect(findNodeCenterBySubstring(PAYLOAD, "com.android.settings:id/dark")).toEqual({
+    const elements = parseVisibleElements(PAYLOAD)!;
+    expect(findNodeCenterBySubstring(elements, "亮度")).toEqual({ x: 120, y: 430, text: "亮度" });
+    expect(findNodeCenterBySubstring(elements, "Display")).toEqual({ x: 120, y: 630, text: "显示 (Display)" });
+    expect(findNodeCenterBySubstring(elements, "com.android.settings:id/dark")).toEqual({
       x: 120,
       y: 830,
       text: "com.android.settings:id/dark",
     });
-    expect(findNodeCenterBySubstring(PAYLOAD, "no-such-label")).toBeUndefined();
+    expect(findNodeCenterBySubstring(elements, "no-such-label")).toBeUndefined();
   });
 
   it("renders the handle first so the model quotes something we can resolve", () => {
@@ -76,8 +120,10 @@ describe("hierarchy: positional numbering (G42)", () => {
 
   it("returns undefined for a payload that is not the JSON node list", () => {
     expect(parseVisibleElements("<hierarchy></hierarchy>")).toBeUndefined();
-    expect(findNodeCenterByIndex("<hierarchy></hierarchy>", 0)).toBeUndefined();
-    expect(findNodeCenterBySubstring("<hierarchy></hierarchy>", "亮度")).toBeUndefined();
+    expect(resolveHandle(parseVisibleElements("[]"), parseVisibleElements(PAYLOAD)!, 0)).toEqual({
+      status: "unknown",
+      elementCount: 0,
+    });
   });
 });
 

@@ -55,7 +55,6 @@
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、incident 关闭通知、run_outcome 轴锁、subagent 化、§2.6 记忆裁定） |
-| G67 | `{index}` 按数组位置重解（应为按节点身份）——安全不变量「stale 句柄永不可点」被代码违反 |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
@@ -124,6 +123,7 @@
 | G28 | parking 与全局并发上限的内部语义 | 按 `device_lock.py:332` 口径实现并六条锁死；详见 CHANGELOGS **#55** |
 | G64 | 设备 roster 的真来源 | py 只读 `list_devices` 工具 + 插件 `rosterSource`（`discoverDevices` 默认 false）；详见 CHANGELOGS **#56** |
 | G65 | 锁屏判定进不了插件 | `list_devices(include_lock_state)` 出三态，复用双采样确认探针；详见 CHANGELOGS **#59** |
+| G67 | `{index}` 句柄按数组位置重解（违反 stale 句柄不可点的安全不变量） | 活观察快照 + 按节点身份解析；详见 CHANGELOGS **#60** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

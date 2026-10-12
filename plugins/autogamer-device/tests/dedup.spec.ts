@@ -70,6 +70,18 @@ function taps(): { tool: string; args: Record<string, unknown> }[] {
   return harness.calls.filter((call) => call.tool === "tap");
 }
 
+/**
+ * G67: `{index}` handles only resolve against what the observing agent was
+ * shown. Looking happens before any device is leased - the gate serializes a
+ * read behind a running action, so observing mid-test would queue, not poll.
+ */
+async function observe(tool: ReturnType<typeof setup>, asAgent?: string): Promise<void> {
+  const previous = currentAgent;
+  if (asAgent) currentAgent = asAgent;
+  await tool.execute({ action: "get_ui_hierarchy", reason: "t" }, exec() as never);
+  currentAgent = previous;
+}
+
 const flush = () => new Promise((resolve) => setTimeout(resolve, 0));
 
 beforeEach(() => {
@@ -81,6 +93,7 @@ beforeEach(() => {
 describe("in-flight dedup (G13)", () => {
   it("refuses an identical call while one is still running", async () => {
     const tool = setup();
+    await observe(tool);
     const first = tool.execute(
       { action: "click", target: { index: 1 }, reason: "first" },
       exec() as never,
@@ -99,6 +112,7 @@ describe("in-flight dedup (G13)", () => {
 
   it("admits sequential repeats once the first settles", async () => {
     const tool = setup();
+    await observe(tool);
     const one = tool.execute({ action: "click", target: { index: 1 }, reason: "one" }, exec() as never);
     await flush();
     await flush();
@@ -121,6 +135,9 @@ describe("in-flight dedup (G13)", () => {
 
   it("admits the same call from another agent", async () => {
     const tool = setup();
+    await observe(tool);
+    // Each agent has to look at the screen itself (G67 scopes handles per agent).
+    await observe(tool, "agent-2");
     const first = tool.execute(
       { action: "click", target: { index: 1 }, reason: "first" },
       exec() as never,
@@ -163,6 +180,7 @@ describe("in-flight dedup (G13)", () => {
 
   it("admits a different target while one runs", async () => {
     const tool = setup();
+    await observe(tool);
     const first = tool.execute(
       { action: "click", target: { index: 1 }, reason: "first" },
       exec() as never,

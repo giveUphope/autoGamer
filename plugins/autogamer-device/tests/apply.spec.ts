@@ -392,6 +392,8 @@ describe("apply(): turn conclusion on the reported outcome (G41)", () => {
 describe("apply(): element handles reach the device (G42)", () => {
   it("resolves a #N handle to that element's pixel center", async () => {
     const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
+    // G67: a handle is only meaningful against the list the model was shown.
+    await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
     await tool.execute({ action: "click", target: { index: 1 }, reason: "tap 显示" }, exec());
     const tap = harness.calls.find((call) => call.tool === "tap");
     // #1 is the 显示 row at bounds [40,600]-[200,660] on a 1600x900 screen.
