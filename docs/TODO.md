@@ -390,6 +390,36 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### 熔断矩阵轮（2026-10-12 按 R22 三步序：查盘点 → 本方案 → 实现）
+
+**第 1 步「查」的原文与出处**：
+
+- `inventory/01-console-queue.md:70`：解除路径共 4 条——①恢复探测（5s 节流真实枚举；不确定→继续挂 fail-safe）；
+  ②同 lock_key 新提交；③`resume_queue` 手动清全部；④stop 全部。`:68`：auto 失败挂端点默认队列键（同端点 auto 全挡）；
+  `:71`：旧世单次即挂，`allowed_fails` 默认值未决（建议 1）；`:73-74` + `:238` + `:260`：不对称与矩阵为缺失/需显式决策。
+- 现状（单变量核过，非推断）：`breaker.spec.ts` 已锁 open/half-open/单探测/重挂/成功关/key 隔离五条；
+  `contracts.spec.ts:273-276` 已锁 `allowedFails=1`/`cooldownMs=30_000`/`defaultDeviceKey="default"`；
+  G33 Tier1 已锁 guard 同 key 拒/异 key 放；G38 锁 internal 不记（fail-open 检测侧）。
+- 真缺口（仅三处）：① `device_serial` 省略/空串的键推导写了两遍且语义分叉——`runDeviceAction.ts:338`
+  用 `??`（空串落空键），`index.ts:164-165` 空串回 default；② `reset()` 与 `allowedFails:2` 计数无锁；
+  ③ S4「解除 = 恢复探测/新提交/显式 resume」句是 R2' 设计稿，未按无队列世界修订。
+
+- **What**：① 导出 `deviceKeyOf(args, fallback)`（省略/非字符串/空串→fallback），两处同源 + 单测
+  （omit/empty/explicit 三断言；修掉空串分叉）。② `breaker.spec.ts` 加 `reset()` 清开闸（重启即 fresh = 旧 ④ 效果）
+  与 `allowedFails:2` 两次才开（计数语义锁，默认仍 1）。③ S4 解除句修订为矩阵定稿：
+  ①探测成功关（`recordSuccess`）②冷却到期半开（单探测）③探测环境失败重挂新窗（非永久，时间必再开）
+  ④新提交/显式 resume**不旁路**（与旧世界及 S4 原句的显式偏差：健康态非批次态；半开保证冷却后首动作即探测，
+  消息永不饿死只至多等一窗；旧 resume 为逃永挂而设，此处时间必再开故无永挂）⑤cancel 不碰健康态（旧 ④ 的
+  per-call 对应；中止无健康信息）。fail-safe（传输不确定→environment）/fail-open（internal 不记）引用既有锁，
+  marker 集与旧 18 项的差异（去 LLM 系、加 offline/not-authorized）记为设备工具域内有意差集，不改代码。
+  **范围外**：G3 auto 池/parking（P2）、 added 新面、live/VLM/设备。
+- **How**：只碰 `runDeviceAction.ts`（导出 helper，execute 改调）、`index.ts`（guard 改调）、`breaker.spec.ts`（+2）、
+  `tests/router-errors.spec.ts` 或新建小单测放 `deviceKeyOf`（就近放 router-errors？它是 router 行为文件——新建
+  `tests/deviceKey.spec.ts` 更干净，3 断言）、TODO S4 句修订。Tier1 不动（G33 已覆同/异 key）。
+- **Verify**：`build` + 全量 `vitest`；变异：helper 改回 `??` ⇒ 空串单测红；`reset` 删 ⇒ 新增红；
+  `grep -n '?? options.defaultDeviceKey' src/tools/runDeviceAction.ts` 无命中；双门禁。
+- **Done means**：[ ] 同源键 + 空串锁；[ ] reset/计数锁；[ ] S4 修订；[ ] 全绿；[ ] 矩阵关闭（prose 进 CHANGELOGS）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
