@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#29 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#30 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30 是文档层自身的漂移。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1270,6 +1270,71 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
 - `node scripts/gen-sse-events.mjs` ⇒ exit 0（`fixture matches the sources (26 server / 17 frontend names)`）；`ARTEMIS_MOCK_DRIVER=1 node scripts/spike-mcp.mjs` ⇒ exit 0；`AUTOGAMER_CONFORMANCE_PY=live npx vitest run tests/conformance` ⇒ 15 passed（真服务比对）
 - **CI 证据**：run `38167498398`（commit `5232265`）的 `DSH plugin contracts / ubuntu-latest` 与 `/ windows-latest` 均 **success**。⚠️ 该 run 是 `gh workflow run` 手动派发的——本 fork 的 `on: push` 从不触发 run（派发前历史 `total_count=0`），已按 **G54** 另立差距；同 run 里两个 `Python 3.12` job 失败于 `check_dependency_sources`（前端 lockfile 全镜像 URL），属既有状态，按 **G53** 另立，与本条无关
 - 变异校验（五条，各自确实变红）：`inject` 多写本图没有的服务 ⇒ 挂载红；摘掉 `Config` 导出 ⇒ reject 红；映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；`EMITTERS` 摘掉一个漏斗 ⇒ 覆盖守卫红；`inject` 少写 `attachments` ⇒ 消费面对账红
+
+### #30 文档漂移：入口页与索引把「编号范围」和「当前状态」各抄了一份第二权威
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（描述性复述改成引用，体量数字全表重测）
+- **优先级**: 中（不阻塞实现，但入口页会把新人直接导到已结案的差距上）
+- **分类**: 四 · DSH 插件轨道
+- **关联**: 守则 R25（一次只测一个变量、先读机制）、`TODO.md` §五「文档索引」与 `migration/README.md` §五 改文档规则
+
+#### 问题描述
+
+拉取 `61f23a1` 后通读文档层，机械对照查出**六处**描述与现实不符，全部出自同一个形状——**可推导的事实被抄成了第二份权威**：
+
+1. `TODO.md` 文档索引的 registry 行写「D1-D17 / S1-S11 / **G1-G44（含 18 条已关闭）** / **R1-R19**」。实测：registry 里最大 `G54` / 最大 `R26`，`CHANGELOGS.md` 的「已关闭差距史」表有 **33** 行。
+2. 同一张索引表的守则行写「插件契约守则 **R1-R22**」，而 `AGENTS.md` 已按 R1-R26 引用。
+3. `migration/README.md` §二「这个项目现在在做什么」第 3 句写「**当前卡在 G30**：工具注册成功但没进 agent 的工具面」。G30 早在 **#10** 结案（双根因：`effect()` 语义反转 + 裸注册未编译）。入口页把进度抄了一份，结案时没人回改。
+4. 同页 §三 文档清单 11 行的体量数字全是旧快照：`TODO.md` 写 177 行 / 34.9 KB，实测 **410 行 / 76.0 KB**；`plugin-contract-rules.md` 写 166 行，实测 248 行——且**整张表缺 `docs/CHANGELOGS.md` 这一行**（`TODO.md` 与守则都按「已关闭差距的正文去处」引用它）。
+5. `plugin-contract-rules.md` 首行「覆盖范围：**R1-R19** 已改写 TODO.md 的 …」把那一轮的回写清单写成了条款全集，R20-R26 的同批回写在结构上无处可寻。
+6. `TODO.md` 状态表「下一步（按序）」那一格内存在**两套 `2)/3)/4)`**：前一套是 G5 结案后的现行序列，后一套是结案前的旧序（还写着「G35、G32 已结」这种当时算新消息的尾巴），读者无法判断哪套作数。
+
+另查出 `inventory/03-device-media-diagnostics.md` 有 **15 处** `TODO.md:NNN` 行号引用，指向 2026-10-09 基线 `cc6b20c` 那一版；`TODO.md` 是活文档，行早已错位。
+
+**为什么两份门禁都没拦住**：`check_doc_registry.py` 只验「引用能否解析 + 本表与来源集合是否一致」，`check_doc_tables.py` 只验表格形状。两者都不读「描述文字里复述的范围」，所以范围类漂移在机制上是**无人看守**的一类。
+
+#### 整改方案与实施
+
+原则：**范围只写 `registry.md`，进度只写 `TODO.md` §零；其它地方一律改成引用，不复制值。**
+
+- `TODO.md` 文档索引两行改成「全部 D / S / G / R 编号一览」「现行范围以 registry 为准」，并把 R20-R26 的要点补进守则行的枚举里（枚举的是**稳定 id + 一句话**，不是范围数字）；§五「P0 执行状态」里那条 2026-10-10 的历史记录保留事实，只把「R1-R19」改成「那一轮成文到 R19；现行条款数看 registry」。
+- `TODO.md` 「下一步（按序）」删掉结案前遗留的第二套序号尾段，保留 1)-5) 现行序列（含 G52/G53/G54、G43、低成本债、P1、两条未闭环观察）。
+- `migration/README.md`：§二 第 3 句不再写「当前卡在 X」，改成「P0 已收官 / D9 成立」这一里程碑级事实 + 「进度与阻塞看 `TODO.md` §零」，并把这次事故本身写进 §五 新增的「编号范围与当前阻塞点各只在一处写」规则；§三 全表体量按 `wc -l -c` 重测，**补上 `docs/CHANGELOGS.md` 行**，registry / 守则两行的描述改范围无关；页首「体量数字是 `check_doc_registry.py` / 尺子实测」那句改成实际做法（`wc`），因为它虚指了脚本能力。
+- `plugin-contract-rules.md` 首行改成「R1-R19 那一轮成文时改写了 …；R20-R26 是此后陆续新增，回写位置记在各条自己的「判据」段」，并声明现行范围只看 registry。
+- `inventory/03` 顶部按既有「编号警示」的同形加一条**行号警示**，不去逐条改写那 15 个指针——逐条改写会造出第三份需要维护的映射，而盘点文档的可信度口径本就是「内容可用、引用不可照用」。
+- 顺手补上一处**门禁本身的缺口**：`scripts/check_doc_tables.py` 的 `DEFAULTS` 里没有 `docs/CHANGELOGS.md`——它是「已关闭差距史」表的所在，`check_doc_registry.py` 按它读结案编号，它的表格形状却从未被尺子量过（§五 的规则本就要求表格文档进 DEFAULTS）。加入后 `--selftest` 六条注入缺陷仍能全部报警。
+
+#### 验收标准
+
+- 复测命令（数字即事实，可直接重跑）：
+
+  ```bash
+  python - <<'PY'
+  import re
+  reg=open('docs/migration/registry.md',encoding='utf-8').read()
+  cl=open('docs/CHANGELOGS.md',encoding='utf-8').read()
+  closed=re.findall(r'^\|\s*(G\d+)\s*\|',cl.split('## 已关闭差距史')[1],re.M)
+  print('max G',max(int(x) for x in re.findall(r'G(\d+)',reg)),
+        'max R',max(int(x) for x in re.findall(r'R(\d+)',reg)),
+        'closed G',len(closed))
+  PY
+  ```
+  ⇒ `max G 54 / max R 26 / closed G 33`
+- **范围复述归零**（描述性文档不再自称条款全集）：
+  `grep -rn "R1-R[0-9]\|G1-G[0-9]" docs/TODO.md docs/migration/README.md docs/migration/plugin-contract-rules.md` ⇒ **无输出**（改前 5 处）。
+  两个刻意保留的形状要写清：**①** 指向性写法 `R2-R8` / `R6-R15`（「去做这类事前读这几条」）引用的是具体条款，不是全集，保留；**②** 守则首行改成 `R1…R19 首轮成文` 这种**点名那一轮**的省略号形态，同句已声明「不是条款全集，范围只看 registry」，故不入本判据的连字符形态。`CHANGELOGS.md`（本文件）与 `registry.md` 不在判据范围内——前者要原样引用改前文字，后者本就是权威处。
+- **`AGENTS.md` 是已知的例外，不是漏网**：它还写着「守则 R1-R26」。该行当前为真，且它把 R20-R26 的要点整段内联给 agent（作业入口要自足），所以本次不动它；**新增条款时必须同步这一行**——它是唯一被有意维护的复述处。
+- **入口页不再自称当前阻塞点**：`grep -rn "当前卡在" docs/migration/README.md` ⇒ **无输出**（事故经过只留在本条，§五 的规则行改引 `changelogs #30`）。
+- **旧计数不再出现**：`grep -rn "含 18 条已关闭" docs/ AGENTS.md | grep -v CHANGELOGS` ⇒ **无输出**。
+- `docs/migration/README.md` §三 表新增 `docs/CHANGELOGS.md` 行（行数 11 → 12），且**每一行体量数字须与实测对上**：
+  `wc -l -c docs/TODO.md docs/CHANGELOGS.md docs/migration/registry.md docs/migration/glossary.md docs/migration/plugin-contract-rules.md docs/migration/upstream-plugin-forms.md docs/migration/dsh-verification.md docs/migration/feature-inventory.md docs/migration/upstream-rethink.md plugins/autogamer-device/README.md AGENTS.md`；`inventory/01…05` 按五份求和。KB = 字节 / 1024，见同表下「体量口径」。
+- **`inventory/03` 的行号警示在场**：`grep -c "行号警示" docs/migration/inventory/03-device-media-diagnostics.md` ⇒ 1（声明那 15 处 `TODO.md:NNN` 是 2026-10-09 `cc6b20c` 版快照，按段名定位）。
+- **状态表只剩一套序号**：`grep -o "\\*\\*[0-9])\\*\\*" docs/TODO.md | sort | uniq -c` ⇒ `**1)**`…`**5)**` **各恰好一次**（改前 `**2)**` / `**3)**` / `**4)**` 各两次，两套序号在同一段里并存）。
+- 两份门禁脚本均 exit 0：`python -X utf8 scripts/check_doc_registry.py`、`python -X utf8 scripts/check_doc_tables.py`（表格行数变了，尺子必须重跑）。
+- **尺子现在也量 CHANGELOGS 自己**：`python -X utf8 scripts/check_doc_tables.py` 的输出含 `OK: …\docs\CHANGELOGS.md`（8 table block(s) checked）；`python -X utf8 scripts/check_doc_tables.py --selftest` ⇒ `SELFTEST: ruler fires on all six injected defects`（证明加文件没把报警能力加钝）。
+- `uv run ruff check scripts/check_doc_tables.py` / `uv run ruff format --check scripts/check_doc_tables.py` 通过。
+- `TODO.md` 状态表「下一步（按序）」内 `**2)**` 恰好出现一次：`grep -o "\*\*2)\*\*" docs/TODO.md | wc -l` ⇒ 该行计数为 1。
 
 ## 已关闭差距史（G*）
 

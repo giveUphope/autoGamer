@@ -25,6 +25,7 @@ ROOT = Path(__file__).resolve().parents[1]
 DEFAULTS = [
     ROOT / "AGENTS.md",
     ROOT / "docs" / "TODO.md",
+    ROOT / "docs" / "CHANGELOGS.md",
     ROOT / "docs" / "migration" / "README.md",
     ROOT / "docs" / "migration" / "registry.md",
     ROOT / "docs" / "migration" / "glossary.md",
