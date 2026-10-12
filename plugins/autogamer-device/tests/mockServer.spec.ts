@@ -60,4 +60,21 @@ describe("mock action server handshake (G56)", () => {
     const result = await mockClient().callTool("tap", { coordinates: [100, 100] });
     expect(unwrapText(result)).toBe("Success");
   });
+
+  it("forwards host cancellation into the request instead of waiting it out", async () => {
+    const client = new ActionClient({
+      command: [process.execPath, "scripts/mock-action-server.mjs"],
+      env: { MOCK_DELAY_MS: "8000" },
+      callTimeoutMs: 30_000,
+    });
+    clients.push(client);
+    const controller = new AbortController();
+    const pending = client.callTool("back", {}, controller.signal);
+    const rejected = expect(pending).rejects.toThrow();
+    controller.abort();
+    // Settles on abort, far ahead of the 5 s mock delay and the 30 s timeout
+    // (the vitest 5 s test timeout is the backstop: without forwarding this
+    // test would time out instead of failing on an assertion).
+    await rejected;
+  });
 });

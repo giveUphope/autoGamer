@@ -133,6 +133,30 @@ export function deviceKeyOf(args: Record<string, unknown>, fallback: string): st
   return typeof serial === "string" && serial.length > 0 ? serial : fallback;
 }
 
+/** Stable JSON for dedup keys: sorted object keys, reason excluded by caller. */
+function stableStringify(value: unknown): string {
+  if (Array.isArray(value)) return `[${value.map(stableStringify).join(",")}]`;
+  if (value !== null && typeof value === "object") {
+    const record = value as Record<string, unknown>;
+    const keys = Object.keys(record).sort();
+    return `{${keys.map((k) => `${JSON.stringify(k)}:${stableStringify(record[k])}`).join(",")}}`;
+  }
+  return JSON.stringify(value) ?? "null";
+}
+
+/**
+ * G13 in-flight dedup key: same agent, same device, same mutating action with
+ * the same arguments while one is still running. Read-only actions are
+ * idempotent polls and never deduped; sequential repeats are unaffected
+ * because the key clears when the first call settles.
+ */
+function inflightKey(agent: string, device: string, action: string, args: Record<string, unknown>): string {
+  const rest = { ...args };
+  delete rest.reason;
+  delete rest.device_serial;
+  return `${agent}::${device}::${action}::${stableStringify(rest)}`;
+}
+
 /**
  * G34: semantic input checks the wire schema cannot express. A present-but-
  * malformed coordinate is a caller bug — it must fail fast instead of
@@ -180,12 +204,13 @@ function assertPositiveDuration(value: unknown, field: string): void {
  * classifier cannot mistake it for a task failure or a plugin-internal defect.
  */
 async function callTransport(
-  client: { callTool(name: string, args: Record<string, unknown>): Promise<unknown> },
+  client: { callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> },
   tool: string,
   payload: Record<string, unknown>,
+  signal?: AbortSignal,
 ): Promise<unknown> {
   try {
-    return await client.callTool(tool, payload);
+    return await client.callTool(tool, payload, signal);
   } catch (error) {
     throw new Error(`environment: action transport failed: ${error instanceof Error ? error.message : String(error)}`);
   }
@@ -265,6 +290,11 @@ export interface RouterOptions {
   strictness?: ValidatorStrictness;
   /** Per-device consecutive task-failure counts; owned per plugin instance. */
   incidents?: ActionIncidents;
+  /**
+   * Calling-agent identity for the G13 in-flight dedup key. Absent in
+   * direct-drive tests, where every call shares the "anonymous" lane.
+   */
+  agentIdOfCall?(): string | undefined;
   /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
   resolveScreenSize(key: string): Promise<ScreenSize | undefined>;
   /**
@@ -302,10 +332,12 @@ interface TargetInput {
 export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInput {
   const { gate, breaker, client, logger } = options;
   const incidents = options.incidents ?? new ActionIncidents();
+  const inflight = new Set<string>();
 
   async function resolvePixelTarget(
     args: Record<string, unknown>,
     key: string,
+    signal: AbortSignal,
   ): Promise<{ x: number; y: number }> {
     const target = (args.target ?? {}) as TargetInput;
     if (target.coordinate !== undefined) assertNormalizedPair(target.coordinate, "target.coordinate");
@@ -329,7 +361,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const attempts = isLadderOn(options.strictness) ? RESOLVE_ATTEMPTS : 1;
     let lastError = "";
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}));
+      const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}, signal));
       if (parseVisibleElements(xml) === undefined) {
         throw new Error("task: hierarchy unreadable (not a node list) — re-run get_ui_hierarchy");
       }
@@ -448,6 +480,31 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
 
       // No admission check here: cooling-down refusal lives in the registry
       // guard (S4/R13/G33). The breaker below only RECORDS the outcome.
+      const throwTaskFailure = (message: string): never => {
+        breaker.recordTaskFailure(key);
+        logger.warn(`[route] refused (class=task): ${message}`);
+        if (isLadderOn(options.strictness) && !exec.signal.aborted) {
+          const failures = incidents.noteFailure(key);
+          if (failures >= INCIDENT_THRESHOLD) {
+            const milestone = strictnessOf(options) !== "final";
+            throw new Error(`task: ${message} [incident: ${incidentPrompt(failures, key, milestone)}]`);
+          }
+        }
+        throw new Error(`task: ${message}`);
+      };
+      // G13 in-flight dedup (mutating actions only): an identical call from
+      // the same agent while one is still running is a double-fire, not a
+      // retry — refuse it before queueing on the gate. Reads and sequential
+      // repeats are unaffected.
+      const dedup = EFFECT_OBSERVED_ACTIONS.has(action)
+        ? inflightKey(options.agentIdOfCall?.() ?? "anonymous", key, action, args)
+        : undefined;
+      if (dedup !== undefined && inflight.has(dedup)) {
+        throwTaskFailure(
+          `duplicate of the action already running on device ${key} — wait for its result instead of resending`,
+        );
+      }
+      if (dedup !== undefined) inflight.add(dedup);
       const handle = await gate.acquire(key, exec.signal);
       try {
         const result = await dispatch(action, args, key, exec).catch((error) => {
@@ -472,16 +529,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           if (result.failure === "environment") breaker.recordEnvironmentFailure(key);
           else breaker.recordTaskFailure(key);
           logger.warn(`[route] refused (class=${result.failure}): ${result.message}`);
-          if (result.failure === "task" && isLadderOn(options.strictness) && !exec.signal.aborted) {
-            // P1-a incident (upstream consecutive_failures): environment,
-            // internal, and user-cancelled outcomes never touch this count —
-            // it tracks TASK progress.
-            const failures = incidents.noteFailure(key);
-            if (failures >= INCIDENT_THRESHOLD) {
-              const milestone = strictnessOf(options) !== "final";
-              throw new Error(`task: ${result.message} [incident: ${incidentPrompt(failures, key, milestone)}]`);
-            }
-          }
+          if (result.failure === "task") throwTaskFailure(result.message);
           throw new Error(`${result.failure}: ${result.message}`);
         }
         breaker.recordSuccess(key);
@@ -496,6 +544,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         logger.info(`[route] ok action=${action} device=${key}`);
         return result.value;
       } finally {
+        if (dedup !== undefined) inflight.delete(dedup);
         handle.release();
       }
     },
@@ -528,7 +577,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     let payload: Record<string, unknown>;
     let value: unknown;
     try {
-      const call = await buildCall(action, args, key);
+      const call = await buildCall(action, args, key, exec.signal);
       tool = call.tool;
       payload = call.payload;
       value = call.value;
@@ -551,7 +600,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const observesEffect = EFFECT_OBSERVED_ACTIONS.has(action);
     const before = observesEffect ? await captureFrameSafe() : undefined;
     try {
-      structured = await client.callTool(tool, payload);
+      structured = await client.callTool(tool, payload, exec.signal);
     } catch (error) {
       if (exec.signal.aborted) {
         return { ok: false, failure: "task", message: "action cancelled by the user" };
@@ -636,7 +685,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     // keep falling through to the execute-level internal bucket (D2).
     let retry: { status: "found"; normalized: [number, number] } | { status: "missing" } | { status: "nontarget" };
     try {
-      retry = await reresolveAsCoordinate((args.target ?? {}) as TargetInput, key);
+      retry = await reresolveAsCoordinate((args.target ?? {}) as TargetInput, key, exec.signal);
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       if (message.startsWith("environment:")) {
@@ -670,12 +719,13 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
   async function reresolveAsCoordinate(
     tgt: TargetInput,
     deviceKey: string,
+    signal: AbortSignal,
   ): Promise<{ status: "found"; normalized: [number, number] } | { status: "missing" } | { status: "nontarget" }> {
     const retryable =
       tgt.coordinate === undefined &&
       (typeof tgt.index === "number" || (typeof tgt.text === "string" && tgt.text.length > 0));
     if (!retryable) return { status: "nontarget" };
-    const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}));
+    const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}, signal));
     if (parseVisibleElements(xml) === undefined) return { status: "nontarget" };
     const center =
       typeof tgt.index === "number"
@@ -715,15 +765,16 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     action: DeviceAction,
     args: Record<string, unknown>,
     key: string,
+    signal: AbortSignal,
   ): Promise<{ tool: string; payload: Record<string, unknown>; value?: unknown }> {
     switch (action) {
       case "click": {
-        const { x, y } = await resolvePixelTarget(args, key);
+        const { x, y } = await resolvePixelTarget(args, key, signal);
         return { tool: "tap", payload: { coordinates: [x, y], times: 1, delay_ms: 100 } };
       }
       case "long_press": {
         assertPositiveDuration(args.duration_ms, "duration_ms");
-        const { x, y } = await resolvePixelTarget(args, key);
+        const { x, y } = await resolvePixelTarget(args, key, signal);
         return { tool: "long_press_on", payload: { coordinates: [x, y], duration: Number(args.duration_ms ?? 1000) } };
       }
       case "swipe": {
@@ -746,7 +797,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       }
       case "input_text": {
         assertNonEmptyString(args.text, "text");
-        const { x, y } = await resolvePixelTarget(args, key);
+        const { x, y } = await resolvePixelTarget(args, key, signal);
         return {
           tool: "focus_and_input_text",
           payload: {
@@ -757,7 +808,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         };
       }
       case "focus_and_clear_text": {
-        const { x, y } = await resolvePixelTarget(args, key);
+        const { x, y } = await resolvePixelTarget(args, key, signal);
         return { tool: "focus_and_clear_text", payload: { coordinates: [x, y] } };
       }
       case "press_key": {
@@ -783,7 +834,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         assertNonEmptyString(args.url, "url");
         return { tool: "open_link", payload: { url: String(args.url ?? "") } };
       case "take_screenshot": {
-        const base64 = unwrapText(await callTransport(client, "take_screenshot", {}));
+        const base64 = unwrapText(await callTransport(client, "take_screenshot", {}, signal));
         if (/^errorb/i.test(base64)) {
           throw new Error(`environment: ${base64.replace(/^errorb:?s*/i, "").trim()}`);
         }

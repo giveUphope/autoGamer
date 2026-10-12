@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#43 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#44 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1756,6 +1756,39 @@ spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上
 - [x] pytest ⇒ **279 passed / 1 skipped**（上两文件集）
 - [x] 文档门禁双 exit 0
 
+### #44 细碎六项联关：G8/G11/G14/G24 验锁直关，G10 信号透传，G13 在飞去重
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（G26 PID 语义另立项；spec 提交 `36f5205` 早于实现，关账时段落已随结案删除）
+- **优先级**: 中（收尾；含一次真实现 bug 修法过程见下）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「细碎收尾轮」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+- G8/G11/G14/G24 是收缩/保留语义，实现早已存在：G8 = 汇报双轴 + `concludeTurn`（G41 锁），
+  exit-code 映射随 worker 消失（无残留）；G11 = 工具层错误分类（`classify.ts` + G38/G33/callTransport 锁）；
+  G14 = 汇报 enum + 值锁；G24 = 归一域/端侧索引（`coord`/`hierarchy` + G42 七锁 + 真机/mock 双证）。
+- G10：`exec.signal` 只事后判，取消要等应答或自超时；SDK 2.0.0 `callTool(params, options?)` 承 signal。
+- G13：同 goal 短防抖在工具内无载体；逐动作 1s 窗会误伤合法连击，故取 in-flight 去重。
+
+#### 整改方案与实施
+
+1. G10：`signal` 穿透 `dispatch → buildCall/resolvePixelTarget/callTransport → ActionClient.callTool → SDK`
+   （`index.ts` 无 exec 的探针/帧路径不动）；`mockServer` + router 两层取消锁。
+2. G13：`execute` 内 in-flight Set（变更类专属，同 agent 同签名在飞即拒，`finally` 清；只读与串行重复永不误伤；
+   `agentIdOfCall` 经 RouterOptions 进，缺省 anonymous）。`tests/dedup.spec.ts` 五锁。
+3. G8/G11/G14/G24：验锁直关，不动码。
+
+#### 验收标准
+
+- [x] `pnpm test` ⇒ **148 passed / 1 skipped**（净增 7）；`pnpm run build` 0 error
+- [x] 变异校验：信号不透传 ⇒ 取消用例 5s 红；去重摘 ⇒ 并发用例双成（超时红）
+- [x] 修法过程如实记：实现中漏写 `finally` 清理致一切重复（合法串行亦）被拒—— admit 系单测全红定位
+  （并发拒对、串行/异 agent/异 target 全错），补 `delete` 后转绿；另 admit 系两测初版误把闸门排队读成
+  拒绝，已改按“排队非拒绝”断言
+- [x] 文档门禁双 exit 0
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1800,6 +1833,12 @@ spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上
 | G55 | `check_dependency_sources.py` 不合 `ruff format` | 一条 `ruff format` 命令（`e1de835`）；仓级另 9 处既有红另立 G58 | 本文件 **#38** |
 | G43 | spike 复位与判据不可靠（`settings put` 无效） | `scripts/spike_reset.py`（UI/平台复位 + 截图判据 + dry-run 锁；live deferred） | 本文件 **#42** |
 | G58 | 仓级另 9 处格式红 | `ruff format .` 零语义；同文件 3 处 E731 顺手改 `def` | 本文件 **#43** |
+| G8 | 终态权威（收缩） | 汇报双轴 + `concludeTurn`（G41 锁）；exit-code 映射随 worker 消失 | 本文件 **#44** |
+| G10 | 动作中断语义 | `exec.signal` 穿透到 SDK 请求（闸门释放早已在 `finally`） | 本文件 **#44** |
+| G11 | 熔断判定信号 | 工具层错误分类（`classify` + G38/G33/callTransport 锁） | 本文件 **#44** |
+| G13 | 幂等/去抖 | in-flight 去重（变更类专属，只读与串行重复不误伤） | 本文件 **#44** |
+| G14 | 状态词汇 | 汇报 `completed/blocked + tests.failed`（enum + 值锁） | 本文件 **#44** |
+| G24 | 坐标契约 | 归一域/端侧索引（`coord`/`hierarchy` + G42 锁 + 双机证） | 本文件 **#44** |
 | G4 | 熔断探测体（矩阵落定） | 键同源 `deviceKeyOf`（空串分叉修掉，Tier1 调用点锁），`reset`/计数锁，S4 解除句修订（新提交不旁路等显式偏差） | 本文件 **#39** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |

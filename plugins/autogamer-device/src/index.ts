@@ -188,6 +188,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     incidents,
     resolveScreenSize,
     onAction: () => ledger.markActed(agentIdOfCall()),
+    agentIdOfCall,
     // Screenshots go to the host attachment store so the model gets a real
     // image block and the log keeps only the content-addressed reference.
     // Effect observation runs entirely in-tool: the router looks at the screen

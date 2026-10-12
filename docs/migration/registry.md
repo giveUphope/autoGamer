@@ -55,14 +55,8 @@
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
-| G8 | 终态权威（worker 退出码映射随 py worker 消失） |
-| G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
-| G11 | 熔断判定信号：工具层错误分类，不再查 DB |
-| G13 | 幂等 / 去抖：工具内同会话同 goal 短防抖 |
-| G14 | 状态词汇：汇报工具 completed / blocked + tests.failed |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
-| G24 | 坐标契约：0-1000 归一域、索引在 client 端解析、动作名归一 |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
 | G26 | PID-liveness 协议：仅用于 action server 进程管理 |
 | G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
@@ -116,6 +110,12 @@
 | G4 | 熔断探测体（矩阵落定） | 键同源、四解除、不对称引用既有锁；新提交不旁路等显式偏差见 S4；详见 CHANGELOGS **#39** |
 | G43 | spike 复位与判据不可靠（`settings put` 无效） | `scripts/spike_reset.py` 复位脚本 + dry-run 锁；live deferred，P1-live 接；详见 CHANGELOGS **#42** |
 | G58 | 仓级另 9 处格式红（G55 文件已先修） | `ruff format .` 零语义 + 同文件 3 处 E731 改 `def`；279/1 回归绿；详见 CHANGELOGS **#43** |
+| G8 | 终态权威（收缩） | 汇报双轴 + `concludeTurn`；exit-code 映射随 worker 消失；详见 CHANGELOGS **#44** |
+| G10 | 动作中断语义 | `exec.signal` 穿透到 SDK 请求；闸门释放早已在 `finally`；详见 CHANGELOGS **#44** |
+| G11 | 熔断判定信号 | 工具层错误分类；详见 CHANGELOGS **#44** |
+| G13 | 幂等 / 去抖 | in-flight 去重（变更类专属）；详见 CHANGELOGS **#44** |
+| G14 | 状态词汇 | 汇报 `completed/blocked + tests.failed`；详见 CHANGELOGS **#44** |
+| G24 | 坐标契约 | 归一域/端侧索引；详见 CHANGELOGS **#44** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

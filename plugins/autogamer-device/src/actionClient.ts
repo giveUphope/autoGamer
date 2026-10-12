@@ -22,11 +22,10 @@ export class ActionClient {
 
   constructor(private readonly options: ActionClientOptions) {}
 
-  async callTool(name: string, args: Record<string, unknown>): Promise<unknown> {
-    // This SDK's callTool takes no per-call options; a timed-out request
-    // cannot be cancelled in place, so on timeout we tear the session down
-    // and let the next call respawn it (a hung response would otherwise
-    // poison the transport — the mcp-1.29 lesson, tool side).
+  async callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> {
+    // A timed-out request cannot be cancelled in place, so on timeout we tear
+    // the session down and let the next call respawn it (a hung response would
+    // otherwise poison the transport — the mcp-1.29 lesson, tool side).
     const client = await this.ensure();
     const timeout = new Promise<never>((_, reject) => {
       const timer = setTimeout(() => {
@@ -35,10 +34,12 @@ export class ActionClient {
       }, this.options.callTimeoutMs);
       timer.unref?.();
     });
-    const result = await Promise.race([
-      client.callTool({ name, arguments: args }),
-      timeout,
-    ]);
+    // G10: forward the host cancellation into the SDK request so an abort
+    // settles promptly instead of waiting out the response or our timeout.
+    const attempt = signal
+      ? client.callTool({ name, arguments: args }, { signal })
+      : client.callTool({ name, arguments: args });
+    const result = await Promise.race([attempt, timeout]);
     return (result as { structuredContent?: unknown }).structuredContent ?? result;
   }
 

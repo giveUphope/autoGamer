@@ -148,6 +148,33 @@ describe("router input validation (G34)", () => {
     ]);
   });
 
+  it("reports host cancellation without waiting out the call", async () => {
+    const tool = defineRunDeviceAction({
+      gate: new DeviceGate(),
+      breaker: new DeviceBreaker({ allowedFails: 1, cooldownMs: 30_000 }),
+      client: {
+        callTool: (_name: string, _args: Record<string, unknown>, signal?: AbortSignal) =>
+          new Promise<unknown>((_, reject) => {
+            signal?.addEventListener("abort", () => reject(new Error("stub transport aborted")), {
+              once: true,
+            });
+          }),
+      } as never,
+      logger: { info: () => {}, warn: () => {} },
+      defaultDeviceKey: "d0",
+      resolveScreenSize: async () => ({ width: 720, height: 1600 }),
+    });
+    const controller = new AbortController();
+    const pending = tool.execute({ action: "back", reason: "t" }, {
+      signal: controller.signal,
+    } as never);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    controller.abort();
+    // Without signal forwarding this would hang until the client timeout
+    // (and trip the 5 s vitest timeout); the abort settles it at once.
+    await expect(pending).rejects.toThrow(/^task: action cancelled by the user/);
+  });
+
   it("still dispatches a fully valid call", async () => {
     const { tool } = setup();
     const value = (await tool.execute({ action: "wait", duration_ms: 1, reason: "t" }, exec() as never)) as Record<
