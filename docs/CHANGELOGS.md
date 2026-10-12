@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#52 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#54 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2145,6 +2145,77 @@ adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 acti
 - [ ] 留白（如实）：mock 帧是驱动给的占位图（75 字节合法 PNG，尺寸真、内容空），
       所以**像素级 ROI 分支**在离线路径上仍只能靠单测；真机正反例仍待设备在场时复跑
 
+### #53 更正 §零：「CI 用 `spike-mcp.mjs` 做同一比对」是一条从没成立过的陈述
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已更正（并由此立 **#54** 把它变成真的）
+- **优先级**: 中（它是插件契约唯一那份 py 工具面产物的可信度问题）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+`docs/TODO.md` §零「测试面」行写着：skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 比对，
+「**CI 用 `node scripts/spike-mcp.mjs` 做同一比对**」。核对工作流后为假：
+
+- `.github/workflows/ci.yml` 里 `spike-mcp` **命中 0 次**；
+- `plugin-contracts` job 的步骤只有 `pnpm install --frozen-lockfile` → `node scripts/gen-sse-events.mjs`
+  → `pnpm run build` → `pnpm test`，**没有任何 Python/uv 环境**，根本跑不动那条命令。
+
+⇒ `plugins/autogamer-device/tests/fixtures/py-action-tools.json`（插件路由转发的 14 个 py 工具名）
+一直是**人工带着走的产物**：它由 `spike-mcp.mjs --write` 从活服务导出，但没有任何机器在之后重新对过它。
+这条假陈述的来源与 `#45` 同族——把「应该如此」写成了「已经如此」；也与 **G60** 相互印证：门禁与比对
+不在 CI 里，人工自证就会漂。#50/#52 的行文没有引用它，故无需改写已发布条目。
+
+#### 整改方案与实施
+
+§零 该行改为如实描述（CI 不重导 py 面），并由 **#54** 把这句话变成真的。
+不在本轮悄悄改掉文字就完事：先按 registry 取号 **G63** 登记为未关差距，再在同轮结案，
+这样「何时为假、何时为真」在台账里可查。
+
+#### 验收标准
+
+- [x] `grep -n "spike-mcp" .github/workflows/ci.yml`（修 #54 **之前**）⇒ 无命中，假陈述证实
+- [x] `grep -n "CI 用 .node scripts/spike-mcp" docs/TODO.md` ⇒ 空（虚假表述已撤）
+- [x] G63 先登记后结案：`registry.md` 现行在册与已关闭表各一行、本文件已关闭差距史一行
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+
+### #54 G63 结案：py 动作面 fixture 由 CI 每次重导比对，不再是人工产物
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（CI 步骤已落 `python-quality`，本地用同一条命令验过，变异校验做过）
+- **优先级**: 高（它把 #50/#52 那类「面与实现漂移」变成机器可拦）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G63 把 py 动作面的 fixture 变成 CI 机器可验」住在 `TODO.md`（spec 提交 `06da044` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+见 **#53**：那份 fixture 从未在 CI 被重新比对。此前想接也接不了——
+`artemis mcp --type adb` 在 runner 上没有 adb 也没有设备，`tools/list` 可以、任何调用都环境级失败，
+把它接进 CI 只会得到一个天天红的步骤。**#52** 之后这条路才成立。
+
+#### 整改方案与实施
+
+- `.github/workflows/ci.yml` 的 `python-quality` job 新增两步（都**不带 `if`**）：
+  `Set up Node.js`（显式 `22.22.3`，与 `plugin-contracts` 同一版本；不依赖 runner 预装的 node），
+  以及 `Check the py action surface against the plugin fixture`：
+  `SPIKE_COMMAND="uv run artemis mcp --type mock"` + `node plugins/autogamer-device/scripts/spike-mcp.mjs`。
+  **不改 `spike-mcp.mjs`**：它的默认模式本来就是漂移检查（不匹配即 `console.error` + 非零退出，只有 `--write` 才重写）。
+- 为什么用 `--type mock`：runner 无 adb 无设备，`--type adb` 只能列面；而 `--type mock` 全部 14 个工具都跑得动，
+  且两面工具清单**逐字节相同**（同一个 `adb_mcp` 对象，#52 已实测）⇒ 校验的是 py 实现本身，不是第二个面。
+- 为什么放 `python-quality` 而不是给 `plugin-contracts` 再装一套 uv：语义上这是 py 面的事，且该 job 已有
+  `uv sync --dev --locked`，重复安装只是浪费时间。
+
+#### 验收标准
+
+- [x] YAML 可解析，两步确实落在 `python-quality` 且无 `if`：`step: Check the py action surface against the plugin fixture | if: (none) | env: {'SPIKE_COMMAND': 'uv run artemis mcp --type mock'}`
+- [x] **本地跑 CI 将要执行的同一条命令** ⇒ exit 0，`[spike] tools (14): back, compare_ui_frames, … tap`
+- [x] **变异校验**：从 fixture 删掉 `compare_ui_frames` ⇒ 同一条命令 **exit=1** 并报
+      `fixture is out of date with the live server: compare_ui_frames — re-run with --write`；还原后转绿
+- [x] 还原后 `git status` 只剩预期改动（fixture 未被这次改动写过）
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+- [ ] 留白：这一步**尚未在真 run 里执行过**（G54 使 `on: push` 不产出 run；本轮推送与否不改变这一点），
+      首次派发跑绿之前，它的效力是「本地已证 + 命令与 CI 逐字相同」，不得写成「CI 已保证」（R27 第 4 条）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2204,3 +2275,4 @@ adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 acti
 | G60 | 两枚文档门禁从未接进 CI，抄件漂移只靠人工自证 | `ci.yml` 的 `python-quality` job 新增**无 `if`** 的 `Check documentation gates` step（registry + tables + `--selftest` 三条）。前提是先按 **#45** 把体量口径做成 LF 规范化，否则接进 CI 只会天天假红。**真 run 未观测**：G54 使 `on: push` 不产出 run，本轮不推送 | 本文件 **#46** |
 | G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变，字节类判据在本机不可信 | 新增 `.gitattributes`（`* text=auto eol=lf`、`.bat`/`.cmd` 显式 `eol=crlf`、8 种在库二进制显式 `binary`）；实测 renormalize **零个文本 blob 被重写**（带 CR 的 28 个 blob 全是二进制），2 个混行尾文件按 blob 规范化后 `w/mixed` 归 0，本机 `ruff format --check` 假红转绿 | 本文件 **#47** |
 | G62 | py action 面无「无设备可跑」路径，离线契约只能吃插件的 JS 桩 | 新增 `artemis/mcp/mock_server.py`（`MockActuator` + 预置 `adb_server` 两条缓存短路绕开 adb I/O）与 CLI `--type mock` 分支，未改任何现有 py 文件行为；与 `--type adb` 工具清单逐字相同、截图为真 PNG | 本文件 **#52**（含 **#51** 的 stub 更正） |
+| G63 | py 动作面 fixture 从未在 CI 被重新比对（§零 的旧表述是假陈述，见 #53） | `python-quality` 加 `Set up Node.js` + 一步用 `--type mock` 重导比对；`spike-mcp.mjs` 未改（默认模式本就是漂移检查） | 本文件 **#54** |

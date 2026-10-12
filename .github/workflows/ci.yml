@@ -64,6 +64,22 @@ jobs:
           uv run python -X utf8 scripts/check_doc_tables.py
           uv run python -X utf8 scripts/check_doc_tables.py --selftest
 
+      # Node is needed only by the fixture generator below; the runner image is not the authority
+      # for which version it gets.
+      - name: Set up Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: "22.22.3"
+
+      # G62 (changelogs #52) made the py action surface runnable with no adb and no device, so the
+      # plugin's generated fixture can be re-derived here instead of being hand-carried -- until now
+      # no CI job ran scripts/spike-mcp.mjs at all (changelogs #53). Its default mode is the drift
+      # check: any difference between the live listing and the checked-in fixture exits non-zero.
+      - name: Check the py action surface against the plugin fixture
+        env:
+          SPIKE_COMMAND: uv run artemis mcp --type mock
+        run: node plugins/autogamer-device/scripts/spike-mcp.mjs
+
       - name: Enforce quality ratchets
         run: uv run python scripts/quality_ratchet.py
 
