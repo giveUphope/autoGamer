@@ -12,7 +12,7 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56**（`scripts/mock-action-server.mjs` 与本插件 `ActionClient` 握手超时，Tier 1 只能靠「立即退出的桩命令」标记 acted）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债：G33（策略从工具正文迁 guard/pre-execute）；G34/G38 已结案（CHANGELOGS **#33**）；**4)** CI 侧：G53（前端 lockfile 全镜像 URL 令 `check_dependency_sources` 红）、G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）、G55（`check_dependency_sources.py` 不合 `ruff format`）；**5)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）。 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债：G33（策略从工具正文迁 guard/pre-execute）；G34/G38 已结案（CHANGELOGS **#33**）；**4)** CI 侧：G53（前端 lockfile 全镜像 URL 令 `check_dependency_sources` 红）、G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）、G55（`check_dependency_sources.py` 不合 `ruff format`）；**5)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）。 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **83 passed / 1 skipped**（复测：`pnpm --config.verify-deps-before-run=false test`；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
@@ -114,7 +114,6 @@
 | G4 | 熔断探测体 | 保留：S4 已定（下一条真实消息动作 = 探测；不对称策略保留） |
 | G53 | 前端 lockfile 全镜像 URL 使 `check_dependency_sources` 门禁红 | 保留（**既有状态**，非插件轨道引入；CI 首次真跑才暴露）：把 `apps/showcase_ui_v2/package-lock.json` 的 `resolved` 重取为 `https://registry.npmjs.org/...` 再复跑门禁 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**两次 push 零 run**（`a4a0f44..5232265` 与 `5232265..1d24416` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来；Actions `enabled:true`、workflow `state:active` 都不管用——查清是 fork 开关、计费还是提交邮箱之前，任何「CI 证据」必须写明是手动派发 |
-| G56 | `scripts/mock-action-server.mjs` 与本插件 `ActionClient` 握手超时 | 新开（2026-10-12 做 G52 时实测）：mock 应答 `initialize`/`tools/list`/`tools/call` 且 stderr 打出「ready」，但客户端仍在首个请求上 `SdkError: Request timed out`，随后熔断进入冷却；Tier 1 只能改用「立即退出的桩命令」来标记 acted。**P1 要跑闸门/连发/并发判据就会撞它**（S10 ③ 与熔断矩阵都拿它当无设备后端） |
 | G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红 | 新开（2026-10-12 做 #31 时顺手实测，既有状态、与本轮改动无关）：`uv run ruff format --check scripts/` ⇒ `1 file would be reformatted`（`check_dependency_sources.py:55` 那一行过长），而 `.github/workflows` 的 `python-quality` job 跑的是 `ruff format --check .` ⇒ 该 job 必红。修法一条命令：`uv run ruff format scripts/check_dependency_sources.py`。与 **G53**（同一脚本的**运行时**门禁红）是两件事，别合并关闭 |
 | G8 | 终态权威 | 收缩：汇报工具语义（S2）；exit code 映射随 py worker 消失 |
 | G10 | 动作中断语义 | 收缩：exec.signal → 取消 MCP 请求/释放闸门；录屏后补时补 graceful stop |
@@ -392,29 +391,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - ✅ **G30 关闭（2026-10-10，两轮官方检查器分级实证 + 两处真根因）**：调研改判的「asar 锚点拒挂」假设也被官方面否证（roster/插件页/清单全绿、新会话创建成功、`autogamer-device-inner` 运行中）——正确的定性路径是**功能轮差分**：新会话里 preset 其他子行的工具全部在模型清单上（fs/pwsh/jobs/web/present…），唯独缺我们两个，而行状态「运行中」⇒ 注册后立即被注销；第二轮修掉注销后 400 前移（tools[11]/[12] schema 非法）⇒ 裸注册未编译。双根因修复见 changelogs #10（effect 语义反转 + defineTool 编译），vitest 38/38 含 2 条回归锁，live 实证模型真实调用 `run_device_action` 三次。教训入册：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛**；测试假 context 必须实现 effect 且按 cordis 语义。原 Fix A（file: URL 子行）与 Fix B（根行兜底)作废——锚点假设不成立
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
-
-### G56 修复轮（2026-10-12 按 R22 三步序：查 SDK → 本方案 → 实现）
-
-**第 1 步「查」的原文与出处**（R20：已安装 npm 产物允许查，不许猜）：
-
-- `@modelcontextprotocol/client@2.0.0/dist/src-D_zzAWoS.mjs:6655-6676`：`ReadBuffer.readMessage()` 对每行跑
-  `deserializeMessage(line)` = `JSONRPCMessageSchema.parse(JSON.parse(line))`；catch 里**只有 `SyntaxError` 才跳过**，
-  zod 校验失败直接 `throw`——挂起的 `initialize` 永不 resolve，落到 `:6149` 的 `SdkError(RequestTimeout, "Request timed out")`。
-- 同文件 `:3179`：消息 schema 含 `jsonrpc: z.literal("2.0")`。而 `scripts/mock-action-server.mjs` 手拼的三个应答
- （`initialize`/`tools/list`/`tools/call`）**都没有 `jsonrpc` 字段**——zod 必拒。py 真服务走官方 SDK 自带该字段，故只有 mock 超时。
-- 传输层发送侧（`:6677`）自带 `\n` 分帧，`notifications/initialized` 是合法通知、无需 mock 应答，`initialize` 结果三件
-  （echo 的 protocolVersion + `capabilities.tools` + `serverInfo`）已满足 `InitializeResultSchema` 形状。
-
-- **What**：mock 每个应答补 `jsonrpc: "2.0"`（唯一改动）；新增 `tests/mockServer.spec.ts` 用真 `ActionClient`
-  （真 SDK 2.0.0 client + 真 stdio transport）直连 mock：`listTools` 含 13 工具、`take_screenshot` 回 1080x2400 真 PNG 头、
-  `tap` 回 `Success`。此后 Tier 1 可把「立即退出的桩命令」换回 mock 作无设备后端（S10 ③/熔断矩阵的前置）。
-  **范围外**：改 `ActionClient`、改协议版本协商、任何 live/VLM/设备。
-- **How**：`handle()` 的四个返回分支（`initialize`/`tools/list`/`tools/call` 同步分支/`ping`）各加一字段；
-  异步 `setTimeout` 回写（`MOCK_DELAY_MS`）同字段。测试 cwd 即包目录、`process.execPath` 起 mock，
-  `callTimeoutMs: 10_000`，不断言耗时只断言形状；`apply.spec.ts` 的 `vi.mock(actionClient)` 按文件隔离，不影响本文件。
-- **Verify**：`pnpm --config.verify-deps-before-run=false run build` + `npx vitest run tests/mockServer.spec.ts`；
-  变异校验：删掉 `jsonrpc` 字段 ⇒ 新测试 `SdkError: Request timed out` 红（即 G56 原样复现）；全量 `vitest` 绿；双门禁。
-- **Done means**：[ ] mock 四分支带帧字段；[ ] 3 条回归锁（list/call/screenshot 尺寸）；[ ] 变异红已证；[ ] G56 关闭（prose 进 CHANGELOGS）。
 
 ## 六、文档索引
 

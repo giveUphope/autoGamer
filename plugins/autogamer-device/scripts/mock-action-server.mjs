@@ -36,9 +36,16 @@ function handle(message) {
   if (message === undefined || typeof message !== "object") return undefined;
   const { id, method, params } = message;
   if (id === undefined) return undefined; // notification
+  // Every response carries the JSON-RPC version marker: the MCP SDK parses
+  // each line with JSONRPCMessageSchema (jsonrpc: literal "2.0") and only
+  // skips SyntaxErrors — a valid-JSON reply without this field throws out of
+  // the reader and the pending request dies as "SdkError: Request timed out"
+  // (G56). The real py server gets the field from the official SDK.
+  const frame = { jsonrpc: "2.0" };
   switch (method) {
     case "initialize":
       return {
+        ...frame,
         id,
         result: {
           protocolVersion: params?.protocolVersion ?? "2025-06-18",
@@ -48,6 +55,7 @@ function handle(message) {
       };
     case "tools/list":
       return {
+        ...frame,
         id,
         result: {
           tools: TOOLS.map((name) => ({
@@ -62,19 +70,19 @@ function handle(message) {
       console.error(`[mock] tools/call ${name} ${JSON.stringify(params?.arguments ?? {})}`);
       const delay = Number(process.env.MOCK_DELAY_MS ?? 0);
       if (delay <= 0) {
-        return { id, result: { content: [{ type: "text", text: mockText(name) }] } };
+        return { ...frame, id, result: { content: [{ type: "text", text: mockText(name) }] } };
       }
       // Async reply after the delay: exercises gate blocking and concurrent
       // turns (S10-③) without a real device.
       setTimeout(() => {
-        write({ id, result: { content: [{ type: "text", text: mockText(name) }] } });
+        write({ ...frame, id, result: { content: [{ type: "text", text: mockText(name) }] } });
       }, delay);
       return undefined;
     }
     case "ping":
-      return { id, result: {} };
+      return { ...frame, id, result: {} };
     default:
-      return { id, error: { code: -32601, message: `method not found: ${method}` } };
+      return { ...frame, id, error: { code: -32601, message: `method not found: ${method}` } };
   }
 }
 
