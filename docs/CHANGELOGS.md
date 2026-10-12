@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#61 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README Layout 漏掉的三个模块并给它一枚双向锁。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#62 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2606,6 +2606,66 @@ text/content-desc/resource-id（无标签退到 center+class），bounds 只是 
       `lists every module under src/ and src/tools/` 红；② 插入一个不存在的 `src/wasNeverRenamed.ts` ⇒
       `names no module that has since been renamed or removed` 红。两条都改完跑、跑完还原并复验全绿
 - [x] 两枚文档门禁 + `--selftest` ⇒ exit 0（README 体量行随 `--refresh-sizes` 重生成）
+
+### #62 G66 小项两桩：incident **关闭**通知补上，`run_outcome` 双轴补齐锁
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（G66 的第③④两项；①②分类片与⑤⑥另计，G66 本身仍开放）
+- **优先级**: 中（不改判定正确性，但一条是模型收口的唯一信号，另一条是双轴的对外口径）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G66 小项两桩」住在 `TODO.md` §五（spec 提交 `8b16c22` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+**③ incident 关闭通知缺失。** py 的口径是三处一致的：字段定义
+（`artemis/graph/state.py:136-141`——`last_closed_incident`「被最近一次成功的终态动作关掉的 incident，
+渲染**一轮**，让 Operator 回到原意图收口」）、写入条件（`validator/execution_loop.py:477-488`——
+只在 `success` 且 `open_incident` 有 `kind` 时写，并补 `closed_at_step`）、渲染文案
+（`operator/prompts.py:576-592`——`--- Execution Incident (CLOSED) ---` +
+「Settle its original intent … already served, still pending, or no longer needed」，且 open 块每轮重渲、
+closed 只一轮）。本插件 `ActionIncidents.noteSuccess()` 只有一句 `counts.delete(key)` ⇒
+模型被告知「连败三次，开 incident」之后，**永远不知道那条 incident 已经因为后面的成功结束了**，
+也就没有那句收口提示。
+
+**④ `run_outcome` 双轴只算不锁。** `src/tools/reportTaskStatus.ts` 把 `completed + tests_failed>0`
+拼成 `"completed (with assertion failures on record)"`，而全仓唯一碰这支的测试
+（`tests/apply.spec.ts` 的 `projects the terminal outcome for exit audits`）是**手工构造**那条记录再喂给
+`presentationMeta`——它锁的是投影，不是拼装；execute 出来的三支字符串一条都没锁 ⇒ 改坏拼装全绿。
+
+**顺带记一处方案错判（R28）**：spec 里写的理由是「重试成功绕过 `finishSuccess`，所以在模型唯一出口附著」。
+读码后更正：重试路径外层照样会走 `finishSuccess`，真正会被漏掉的是 `wait` 这类**没有底层工具**的动作
+（`dispatch` 直接 `return { ok: true, value: { waited_ms } }`，从不经过 `finishSuccess`）。
+结论不变（附著点就该在唯一的模型出口），但理由换成了实测的那条——变异 C 正是照它红的。
+
+#### 整改方案与实施
+
+- `ActionIncidents` 由「一个计数」变成三份状态：`counts` / `announced`（越阈値宣布过的设备）/
+  `closures`（待发的关闭记录）。`noteFailure` 在越过 `INCIDENT_THRESHOLD` 时标「已宣布」；
+  `noteSuccess` **只在已宣布时**留一条 `IncidentClosure` 再清零；`takeClosure(key)` 取走即消费，
+  所以通知天然只一轮。
+- 附著点放在 `execute` 成功返回处（模型看得见的结果只在这里产生），不在 `finishSuccess` / execute 级
+  那两处清零点拼——清零有两处而出口只有一处，在清零点拼必漏 `wait`。
+- 文案 `closurePrompt()` 逐句对齐 py 的收口三选项，但**带 `consecutive_failures` 而不带 Step 号**：
+  本插件没有 step 概念（回合计数在宿主），这属 R21 要标注的载体差异，不是同一件事。
+- `presentationMeta` 不动（R16：只放小元数据，本轮没有新的审计需求）。
+- ④只加测试：三支 outcome 全锁（含 `tests_failed` 缺省与 0 的边界、blocked 不许被读成 completed）。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **188 passed / 1 skipped**
+      （基线 182，净增 6：3 条 CLOSED 锁 + 3 条 outcome 锁）；`run build` ⇒ 0 error
+- [x] 三条 CLOSED 锁的形状：宣布过 incident 后成功 ⇒ 带 `incident_closed:{consecutive_failures:3}` 且**再成功一次不带**；
+      从未越过阈值的成功 ⇒ 不带；`wait` 这种无底层工具的成功 ⇒ 也带（这条就是附著点的锁）
+- [x] **变异校验四条，各自报出断言**（逐条改、逐条跑、跑完还原并复验 188 全绿；R27 含第 6 条自证生效）：
+      A `noteSuccess` 无条件留关闭记录 ⇒ 4 条红（含「从未宣布的成功不带通知」）；
+      B `takeClosure` 取走不消费 ⇒ 「只发一轮」红；
+      C 把附著从模型出口挪回 `finishSuccess` ⇒ `wait` 那条红；
+      D 抹掉 outcome 里 `tests_failed > 0` 那支 ⇒ `expected { status: 'completed', …(2) } to deeply equal …` 红
+- [x] py 侧本片零改动 ⇒ `uv run python -X utf8 -m pytest tests/unit -q` 仍 **2604 passed / 7 skipped**
+      （第一次跑出 `1 error`：与本会话另一个后台 pytest 争用同一个 `traces/data_engine.db`；单跑该用例通过、
+      串行重跑全量 exit 0 ⇒ 判为环境产物而非回归。**并发跑两套 `tests/unit` 会得到假红**，值得记一笔）
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+- [ ] 留白（R21）：以上是单测证明。真机上模型收到 CLOSED 后是否真的去收口原意图，属 P1 live 验收
 
 ## 已关闭差距史（G*）
 

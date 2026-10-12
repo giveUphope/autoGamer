@@ -533,6 +533,39 @@ describe("apply(): checker facts persist on tool/result meta (P1-b)", () => {
   });
 });
 
+
+describe("report_task_status: the outcome carries BOTH axes (changelogs #62)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  async function report(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const t = await registeredTools(CONFIG);
+    return (await t.reportTaskStatus.execute(
+      { summary: "done", reason: "report", ...args },
+      exec(),
+    )) as Record<string, unknown>;
+  }
+
+  it("keeps assertion failures in the outcome of a completed task", async () => {
+    expect(await report({ status: "completed", tests_failed: 2 })).toEqual({
+      status: "completed",
+      tests_failed: 2,
+      outcome: "completed (with assertion failures on record)",
+    });
+  });
+
+  it("reports a clean completion without the failure suffix", async () => {
+    expect(await report({ status: "completed" })).toMatchObject({
+      tests_failed: 0,
+      outcome: "completed",
+    });
+  });
+
+  it("never lets a blocked report read as completed, failures or not", async () => {
+    expect(await report({ status: "blocked", tests_failed: 3 })).toMatchObject({ outcome: "blocked" });
+    expect(await report({ status: "blocked" })).toMatchObject({ outcome: "blocked" });
+  });
+});
+
 describe("apply(): breaker refusal lives in a registry guard (G33)", () => {
   const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
 

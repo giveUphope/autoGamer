@@ -245,18 +245,47 @@ export function strictnessOf(options: RouterOptions): ValidatorStrictness {
  * state stays in the breaker; this tracks TASK progress only: environment and
  * internal outcomes never touch it. Lifetime matches gate/breaker (fresh per
  * plugin instance, i.e. restart clears — the old stop-all equivalent).
+ *
+ * The ledger also carries the CLOSED notice (changelogs #62, upstream
+ * `last_closed_incident` in `artemis/graph/state.py:136-141`): an incident the
+ * model was told about stays open until a later success closes it, and that
+ * success hands back a one-turn notice to settle the original intent
+ * (`operator/prompts.py:576-592`). Upstream keys it off step numbers; this
+ * device has none (the host owns turn accounting), so the notice carries the
+ * consecutive-failure count instead.
  */
+export interface IncidentClosure {
+  consecutive_failures: number;
+}
+
 export class ActionIncidents {
   private readonly counts = new Map<string, number>();
+  private readonly announced = new Set<string>();
+  private readonly closures = new Map<string, IncidentClosure>();
 
   noteFailure(key: string): number {
     const next = (this.counts.get(key) ?? 0) + 1;
     this.counts.set(key, next);
+    if (next >= INCIDENT_THRESHOLD) this.announced.add(key);
     return next;
   }
 
   noteSuccess(key: string): void {
+    if (this.announced.delete(key)) {
+      this.closures.set(key, { consecutive_failures: this.counts.get(key) ?? INCIDENT_THRESHOLD });
+    }
     this.counts.delete(key);
+  }
+
+  /**
+   * Take the pending CLOSED notice for a device. Called once per model-facing
+   * result, which is what makes the notice one-turn rather than sticky.
+   */
+  takeClosure(key: string): IncidentClosure | undefined {
+    const closure = this.closures.get(key);
+    if (closure === undefined) return undefined;
+    this.closures.delete(key);
+    return closure;
   }
 
   count(key: string): number {
@@ -271,6 +300,14 @@ export function incidentPrompt(failures: number, key: string, milestone: boolean
     `${failures} consecutive task failures on device ${key} — restate the goal, ` +
     `list what was tried, then adjust the plan or report blocked via report_task_status`;
   return milestone ? `Milestone audit: ${base}` : base;
+}
+
+export function closurePrompt(closure: IncidentClosure, key: string): string {
+  return (
+    `Execution incident CLOSED on device ${key} (it had ${closure.consecutive_failures} consecutive ` +
+    `failures): the next action succeeded. Settle the original intent against the plan and the live screen — ` +
+    `already served, still pending, or no longer needed.`
+  );
 }
 
 export const SELF_CHECK_PROMPT =
@@ -484,9 +521,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         type: "object",
         additionalProperties: false,
         description:
-          "Where to act. {index} = the #N handle from the latest get_ui_hierarchy output (preferred); {coordinate:[x,y]} in 0-1000 as fallback; {text} matches text/content-desc/resource-id. Required by click/long_press/input_text/focus_and_clear_text.",
+          "Where to act. {index} = the #N handle from YOUR latest get_ui_hierarchy output on this device (preferred; " +
+          "it follows that element even if the screen moved it, and a handle you never saw is refused); " +
+          "{coordinate:[x,y]} in 0-1000 as fallback; {text} matches text/content-desc/resource-id. " +
+          "Required by click/long_press/input_text/focus_and_clear_text.",
         properties: {
-          index: { type: "number", description: "The #N handle from the latest get_ui_hierarchy output." },
+          index: { type: "number", description: "The #N handle from your latest get_ui_hierarchy output on this device." },
           coordinate: { type: "array", items: { type: "number" }, description: "[x,y] normalized to 0-1000." },
           text: { type: "string", description: "Substring to locate the element." },
         },
@@ -637,7 +677,17 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           if (effect !== "unknown" && effect !== "unchanged") incidents.noteSuccess(key);
         }
         logger.info(`[route] ok action=${action} device=${key}`);
-        return result.value;
+        // This is the ONE place a result reaches the model, so it is the one place
+        // a CLOSED notice can be attached - attached twice and the notice stops
+        // being one-turn (#62).
+        const closure = incidents.takeClosure(key);
+        if (closure === undefined) return result.value;
+        logger.info(`[route] incident closed device=${key} after ${closure.consecutive_failures} failures`);
+        return {
+          ...(result.value as Record<string, unknown>),
+          incident_closed: closure,
+          closure_request: closurePrompt(closure, key),
+        };
       } finally {
         if (dedup !== undefined) inflight.delete(dedup);
         lease.release();

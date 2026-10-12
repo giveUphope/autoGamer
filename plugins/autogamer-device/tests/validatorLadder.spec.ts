@@ -323,6 +323,65 @@ describe("validator ladder: incident ledger", () => {
   });
 });
 
+
+describe("validator ladder: incident CLOSED notice (changelogs #62)", () => {
+  // Upstream keeps an incident open until a LATER success closes it, then renders
+  // a one-turn notice to settle the original intent (`graph/state.py:136-141`,
+  // `validator/execution_loop.py:477-488`, `operator/prompts.py:576-592`).
+  async function announce(tool: ReturnType<typeof setup>): Promise<void> {
+    for (let i = 0; i < 3; i += 1) {
+      await expect(
+        tool.execute({ action: "press_key", key: "frob", reason: "t" }, exec() as never),
+      ).rejects.toThrow(/^task: unknown key/);
+    }
+  }
+
+  it("announces the closure exactly once, on the success that ends an open incident", async () => {
+    const tool = setup();
+    await announce(tool);
+    const closed = (await tool.execute(
+      { action: "wait", duration_ms: 1, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(closed.incident_closed).toEqual({ consecutive_failures: 3 });
+    expect(String(closed.closure_request)).toContain("CLOSED");
+    expect(String(closed.closure_request)).toContain("already served, still pending, or no longer needed");
+    const next = (await tool.execute(
+      { action: "wait", duration_ms: 1, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(next).not.toHaveProperty("incident_closed");
+    expect(next).not.toHaveProperty("closure_request");
+  });
+
+  it("says nothing on a success when no incident was ever announced", async () => {
+    const tool = setup();
+    await expect(
+      tool.execute({ action: "press_key", key: "frob", reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: unknown key/);
+    const value = (await tool.execute(
+      { action: "wait", duration_ms: 1, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(value).not.toHaveProperty("incident_closed");
+  });
+
+  it("closes on a ladder retry that finally moved the screen", async () => {
+    const tool = setup();
+    await observe(tool);
+    await announce(tool);
+    harness.hierarchies.push(WITH_TARGET, MOVED_TARGET);
+    harness.compares.push(false, true);
+    const value = (await tool.execute(
+      { action: "click", target: { index: 1 }, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(value.effect).toBe("changed");
+    expect(value.incident_closed).toEqual({ consecutive_failures: 3 });
+    expect(tapCalls()).toHaveLength(2);
+  });
+});
+
 describe("validator ladder: strictness prompts", () => {
   it("adds a self-check to mutating successes only under strict", async () => {
     const strict = setup("strict");
