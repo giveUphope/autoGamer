@@ -392,6 +392,35 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### G33 迁移轮（2026-10-12 按 R22 三步序：查类型 → 本方案 → 实现）
+
+**第 1 步「查」的原文与出处**（R20：扩展点选型先查一手资料）：
+
+- 守则 **R13**（`docs/cookbook/adding-a-tool.zh.md:61`、`packages/core/tools/README.zh.md:85,89,141）：「尽量不要把部署策略内建到工具中」；
+  落点已在 S4：「冷却期拒绝」= `guard()`，状态归插件。
+- `@deepseek-ai/dsh-tools@0.2.0-rc.2/lib/types/index.d.ts:522`：`ToolGuard = (execution: Readonly<ToolExecution>) => string | undefined`
+  （"monotonic…no allow result"）；`:655`：plain-context guard 全局生效；`ToolExecution` 带 `name` + `arguments: unknown`（`:223-227`）。
+- `schema.d.ts:199-203` + `index.d.ts:716-723`：`isConcurrencySafe?(args)`——"Only an exact `true` is parallel"，余者 fail-closed exclusive。
+  即 R14 要的「并行安全属性」真名，不必再 `cordis_inspect_query`（待补 4/5 关闭）。
+- 不动项的判据（R13「选工具内部必须写出为什么」）：超时留 `ActionClient` 自实现（R15 明许二选一）；
+  审批无 ask 路径可迁（D11 的 `run_adb_command` 不存在）；结果观测（breaker 记录）留工具内——分类依赖 dispatch 的 G38 三态，
+  搬出去等于在边界外复制一份 taxonomy，违背「够用即最弱」，且状态更新是同步内存写、不是部署策略。
+
+- **What**：① `apply` 内注册 `ctx.tools.guard`——只看 `run_device_action` 调用（name 判定，别家不动；
+  `report_task_status` 永不拦，终态出口），key 取 `device_serial` 或 default，`canAdmit` 假则拒（沿用现有文案）；
+  删 `execute` 内 canAdmit 拒绝分支（出口唯一化，记录保留）。② 定义加
+  `isConcurrencySafe: take_screenshot/get_ui_hierarchy → true`（S3 只读可并发；余者缺省 exclusive）。
+  ③ `DshContext.tools` 补 `guard` 镜像（`import type ToolGuard`，R21 要求公开包一律 import）；`apply.spec.ts` fakeContext 补 guard stub。
+  **范围外**：超时、审批、结果观测搬移、live/VLM/设备。
+- **How**：guard 纯同步查 breaker（`canAdmit` 本就同步）；fake stub 收 guard fn 供断言注册存在；
+  Tier1 新测 `tests/conformance/breakerGuard.spec.ts`（真 registry）：坏 `actionServerCommand` 致传输 env 失败开闸 →
+  同 key 下一次被 guard 拒（`cooling down`、无设备往返、agent-less 即可）→ 异 key 仍放行（报传输失败而非 cooling）；
+  classifier 经真 `get()` 断言（screenshot/hierarchy true，click 非 true）。
+- **Verify**：`pnpm --config.verify-deps-before-run=false run build` + 全量 `vitest`；变异：摘 guard 注册 ⇒ 拒测红；
+  分类器改全 true ⇒ 分类测红；`grep -n "cooling down" src/tools/runDeviceAction.ts` 无命中（文案只活在 guard 侧）；
+  `contracts.spec.ts` 无影响（分类器不上 wire）；双门禁。
+- **Done means**：[ ] guard 同 key 拒 / 异 key 放；[ ] classifier 三断言；[ ] execute 无拒绝分支；[ ] 全绿；[ ] G33 关闭（prose 进 CHANGELOGS）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
