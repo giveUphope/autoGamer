@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#68 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#69 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2932,6 +2932,59 @@ imported from …/plugins/autogamer-device/scripts/spike-mcp.mjs
       `python-quality` 步骤数 **13 → 15**（新增 `Set up pnpm` 与 `Build the plugin for the fixture check`）
 - [ ] **CI 复验留白**：推送后**下一个 run** 里这一步必须绿；在那之前这条只能算「本地复现 + 静态检查」，
       不许勾成 CI 已证（R27 第 4 条）
+
+### #69 修好 fixture 步之后，ratchet 第一次被执行：基线 754 已腐了六周，且它的唯一本地执行点从未安装
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（本轮的可修部分）；执行点缺失另立 **G69** 待裁定
+- **优先级**: 高（一条声称在管债务的门禁，从被写下来那天起就没跑过）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+#68 推上去之后 run `38297129950` 变绿了 fixture 那步，却红在下一步 `Enforce quality ratchets`：
+
+```
+quality regression: broad_exception_handlers increased from 754 to 763
+```
+
+本地一条命令复现同数字（`uv run python scripts/quality_ratchet.py` ⇒ exit 1）。往下追，找到**两道**执行缺口：
+
+1. **CI 侧**：`.github/workflows/ci.yml` 的 `python-quality` job 里，`Enforce quality ratchets` 排在
+   Node/pnpm/build/fixture 那组**之后**。GitHub Actions 的 step 失败会中止整个 job ⇒ 只要 fixture 步红，
+   ratchet 就永远不被执行；而 fixture 步在 #68 之前一直是红的（#67 之前根本没有 run）。
+2. **本地侧**：`.pre-commit-config.yaml` 第 16-19 行**声明了** `quality-ratchet` 这个 hook，
+   但本检出的 `.git/hooks/pre-commit` **不存在**（`ls` 无、`git config core.hooksPath` 未设）⇒
+   声明的执行点从未安装。AGENTS.md 写着「pre-commit also runs scripts/quality_ratchet.py」，
+   那句话在本机上是**不成立的**——这正是 R27 第 4 条的形状：没跑过的门禁不许当验收。
+
+**归属实测**（不是推测）：基线最后一次改动是 `67248c8`（2026-09-02）。用临时 worktree 在本会话起点
+`8eecb39` 上重跑计数 ⇒ **762**；也就是说 754→762 这 8 个**早于本会话**，本会话只加了 1 个
+（`artemis/mcp/adb_server.py` 的 `list_devices`，`except Exception as e` ⇒ `return f"Error: {e}"`，
+与该文件其余 21 处同款错误面；不是新引入的坏味道）。
+
+#### 整改方案与实施
+
+- `.github/workflows/ci.yml`：把 `Enforce quality ratchets` 与 `Type-check protected core modules`
+  **提到** Node/pnpm 那组之前（两条都是纯 python、秒级），并写明理由——排在会中止的贵步后面，
+  等于给门禁加了「看不见」的失败模式。
+- `.quality-baseline.json`：`broad_exception_handlers` 抬到**实测值 763**（不是四舍五入，不是「留点余量」），
+  并把归属写进本条；顺手把 `type_ignore_comments` 的上界从 18 **收到实测 16**——脚本把当前值低于基线
+  报成 improvement 却不自动收紧，那这 2 个的下降就得由人**明确**收紧，否则基线只是个宽松的天花板。
+- `silent_broad_exception_handlers` 保持 0（当前实测就是 0，没被抬）。
+- 执行点缺失（pre-commit 没装）**不在本轮擅自补**：`pre-commit install` 会往 `.git/hooks/` 写东西，
+  改变此后每次提交的行为，属用户决定 ⇒ 立 **G69** 记着。
+
+#### 验收标准
+
+- [x] 本地两条互为证据：改基线前 `uv run python -X utf8 scripts/quality_ratchet.py` ⇒ **exit 1**
+      并打印 `increased from 754 to 763`；改后 ⇒ **exit 0** 且回显 `763 / 0 / 16`
+- [x] `uv run python -X utf8 scripts/quality_ratchet.py --print-current` ⇒ 与写入基线的三个数**逐字相同**
+      （基线不许是人手估的）
+- [x] `yaml.safe_load` 解析 `ci.yml` 通过；`python-quality` 步骤顺序实测为
+      `… Check documentation gates → Enforce quality ratchets → Type-check protected core modules → Set up pnpm → …`
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+- [ ] **CI 复验留给下一个 run**（本轮只能证明「本地」）：两条 python job 里 ratchet 步必须绿
 
 ## 已关闭差距史（G*）
 

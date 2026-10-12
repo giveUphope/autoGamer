@@ -66,6 +66,15 @@ jobs:
           uv run python -X utf8 scripts/check_doc_tables.py
           uv run python -X utf8 scripts/check_doc_tables.py --selftest
 
+# Both of these are pure-python and cheap, so they sit BEFORE the Node/pnpm block: a step that
+# fails there aborts the job, and that is exactly how the ratchet stayed invisible for six weeks
+# (changelogs #69) - the first CI run that ever reached this job died two steps later.
+      - name: Enforce quality ratchets
+        run: uv run python scripts/quality_ratchet.py
+
+      - name: Type-check protected core modules
+        run: uv run pyright --project pyright-core.json
+
       # Node is needed only by the fixture generator below; the runner image is not the authority
       # for which version it gets. Set up pnpm first so setup-node can wire the pnpm store cache
       # (same order as the plugin-contracts job).
@@ -105,12 +114,6 @@ jobs:
         env:
           SPIKE_COMMAND: uv run artemis mcp --type mock
         run: node plugins/autogamer-device/scripts/spike-mcp.mjs
-
-      - name: Enforce quality ratchets
-        run: uv run python scripts/quality_ratchet.py
-
-      - name: Type-check protected core modules
-        run: uv run pyright --project pyright-core.json
 
       # Device, cloud, manual, and end-to-end suites require dedicated
       # infrastructure and intentionally do not run on GitHub-hosted runners.

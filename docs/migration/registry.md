@@ -53,6 +53,7 @@
 | 编号 | 一句话 |
 |---|---|
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
+| G69 | `.pre-commit-config.yaml` 声明的 quality-ratchet 钩子在本检出从未安装（`.git/hooks/pre-commit` 不存在） |
 | G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、subagent 化、§2.6 记忆裁定；incident 关闭通知与 run_outcome 轴锁已由 #62 关掉） |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |

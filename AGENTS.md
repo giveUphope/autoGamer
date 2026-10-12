@@ -101,8 +101,12 @@ so it is wrong on the next edit while still passing every gate.
   `ARTEMIS_MOCK_DRIVER=1 uv run python -m artemis ui --no-open`, then open
   `http://localhost:8000` in the **agent's in-app browser** (browser-use IAB tab) — never
   wait for or trigger the system browser, and don't pass `--open`
-- Lint: `uv run ruff check` / `uv run ruff format --check` (line length 100); pre-commit also
-  runs `scripts/quality_ratchet.py` — don't regress baselines in `.quality-baseline.json`
+- Lint: `uv run ruff check` / `uv run ruff format --check` (line length 100). `scripts/quality_ratchet.py`
+  is declared as a pre-commit hook but **the hook is not installed in this checkout** (`.git/hooks/pre-commit`
+  absent — `G69`), so run it explicitly: `uv run python scripts/quality_ratchet.py`. It is also an un-gated
+  CI step, ordered *before* the Node/plugin build so a build failure cannot mask it (changelogs **#69**).
+  Don't regress baselines in `.quality-baseline.json`; when raising one, write the measured number
+  (`--print-current`) and the attribution into `docs/CHANGELOGS.md`
 
 ## Task lifecycle & session representations (high-regression area)
 
