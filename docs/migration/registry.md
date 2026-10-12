@@ -52,7 +52,6 @@
 
 | 编号 | 一句话 |
 |---|---|
-| G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、subagent 化、§2.6 记忆裁定；incident 关闭通知与 run_outcome 轴锁已由 #62 关掉） |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
@@ -115,7 +114,8 @@
 | G13 | 幂等 / 去抖 | in-flight 去重（变更类专属）；详见 CHANGELOGS **#44** |
 | G14 | 状态词汇 | 汇报 `completed/blocked + tests.failed`；详见 CHANGELOGS **#44** |
 | G24 | 坐标契约 | 归一域/端侧索引；详见 CHANGELOGS **#44** |
-| G60 | 两枚文档门禁从未接进 CI | `ci.yml` 新增无 `if` 的 `Check documentation gates` step；真 run 未观测（G54）；详见 CHANGELOGS **#46** |
+| G60 | 两枚文档门禁从未接进 CI | `ci.yml` 新增无 `if` 的 `Check documentation gates` step；**已在真 run 里执行并通过**（run 38296414103，见 **#67**）；详见 CHANGELOGS **#46** |
+| G54 | 本 fork 的 `on: push` 从不触发 workflow run | **前提被直接观察否证**（`4201e66` 的 push 立刻产出 run 38296414103）；成因未查明；详见 CHANGELOGS **#67** |
 | G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变 | 新增 `.gitattributes` + renormalize 实测零文本 blob 改写；本机 `ruff format --check` 假红转绿；详见 CHANGELOGS **#47** |
 | G62 | py action 面无「无设备可跑」路径，离线契约只能吃插件的 JS 桩 | `artemis/mcp/mock_server.py` + CLI `--type mock`，用现成 `MockActuator` 预置两条缓存短路绕开 adb I/O；与 `--type adb` 工具清单逐字相同；详见 CHANGELOGS **#52** |
 | G63 | py 动作面 fixture 从未在 CI 被重新比对 | `python-quality` job 新增无 `if` 的一步，用 `--type mock` 每次重导并比对；本地同命令 exit 0，变异校验（fixture 删一名）exit 1；详见 CHANGELOGS **#54** |

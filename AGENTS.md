@@ -75,8 +75,9 @@ so it is wrong on the next edit while still passing every gate.
   `scripts/check_doc_tables.py` verifies `docs/migration/README.md` §三's size table and rewrites
   it with `--refresh-sizes`
 - Both gates now run in CI as an un-gated step (`Check documentation gates` in the `python-quality`
-  job, changelogs **#46**) — but `G54` means this fork's `on: push` produces no run, so today they
-  only execute on manual dispatch. Still tick them with the **re-runnable commands**, never with
+  job, changelogs **#46**), and they have actually executed on a push (run `38296414103`, changelogs
+  **#67** — which also falsified `G54`'s "this fork's `on: push` never produces a run"; the cause of
+  the earlier silent window is still unknown, so don't restate either claim). Still tick them with the **re-runnable commands**, never with
   "CI guarantees it": an attestation without a command and without the checkout environment is how
   six closed entries (#32–#44) signed off a size table that had never matched on an LF checkout
 - Why this rule exists (don't re-derive it): `docs/CHANGELOGS.md` **#30** — six drifted copies

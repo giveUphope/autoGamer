@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#66 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#68 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2843,6 +2843,96 @@ moved it**」。#63 把可达上界落实成每类标签各有界（text/desc/cl
       树内容与 #65 结案时实测的 **194 passed / 1 skipped、0 error** 是同一份（由上一条 diff 为空证明）
 - [ ] 安全网 `backup-trailer-fix` 分支仍在本地：**待用户确认后删除**（删分支属不可逆动作，不擅自动手）
 
+### #67 用户授权推送后 run 立刻产出：G54 的前提「push 从不触发」被一次直接观察推翻
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（G54 以「前提不成立」关闭，**成因未查明**且不作为结论）
+- **优先级**: 高（这条一直挡着 #46/#54 两处「CI 从未执行」的留白）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+G54 的在册表述是「本 fork 的 `on: push` **从不**触发 workflow run」。支撑它的是实测：6 次 push 全部
+收到（含 `e8c2204..4201e66` 之前那批），`gh api .../commits/<sha>/check-runs` 一律空；账号级被
+`llama-launcher` 同日 push run 否证、org 政策被同组织兄弟 fork 否证、fork 默认关闭被官方文本削弱
+（fork 关的是 `schedule:`，本仓库没有）。结论一直写死在 `TODO.md` §四、`registry.md`、`AGENTS.md`
+与 `ci.yml` 的注释里。
+
+本轮用户说「提交并推送」⇒ `git push origin main` 把 `e8c2204..4201e66`（29 条）推上去，**run 立刻出现**：
+`databaseId=38296414103`，`event=push`，`headSha=4201e66e4bdf…`，`createdAt=2026-10-12T19:15:18Z`，
+6 条 job 全部执行。⇒ **「从不」这条被一次直接观察否证**。同一次 run 还顺手关掉两处留白：
+
+- #46 写的「`Check documentation gates` 至今一次都没执行过」——两条 python job 里该 step 都不在失败清单中，
+  即**在真 run 里 exit 0**；
+- §零 第 4 条写的「修完 G53 之后没有再跑过任何 run」——现已过期。
+
+**没有**同时得到的是**成因**：这 6 次与这一次之间的差别，我没有受控证据（Actions 开关被谁动过、
+分钟数/计费窗口、还是别的），所以本条只登记「前提不成立」，不写「原来是因为 X」——写不出证据的因果
+正是 R28 要防的那类。
+
+#### 整改方案与实施
+
+只回写台账，不猜原因，也不动 `.github/workflows/ci.yml` 的触发条件（`on: push` 本来就在，也确实生效）：
+`TODO.md` §四 的 G54 行移除并结案、`registry.md` 从「现行在册」移入「已关闭」并把 G60 那行的
+「真 run 未观测（G54）」改成已观测、`AGENTS.md` 与 `ci.yml` 里那句「G54 means push produces no run」
+改成本次的实测口径。唯一红的那条 job 是另一件事，见 **#68**。
+
+#### 验收标准
+
+- [x] `gh run list --repo giveUphope/autoGamer --limit 2 --json databaseId,event,headSha,status,conclusion`
+      ⇒ 首条为 `{38296414103, push, 4201e66e…, completed, failure}`（`failure` 的原因见 #68，不是没跑）
+- [x] `gh run view 38296414103 --repo giveUphope/autoGamer --json jobs --jq '.jobs[]|[.name,.conclusion]'`
+      ⇒ `Frontend success` / `Python 3.12 ubuntu|windows = failure（步骤名只有 fixture 那一条）` /
+      `DSH plugin contracts ubuntu|windows success` / `Build and smoke-test success`
+- [x] `gh api repos/giveUphope/autoGamer/commits/4201e66/check-runs` ⇒ `total: 6`（此前每个被推的 sha 都是 0）
+- [x] 两枚文档门禁在**该 run 里**通过（不是本地自证）
+
+### #68 那次 run 唯一红的 job 是我自己加的 fixture 重导步：它吃 dist/，而 python job 从不构建插件
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（CI 侧待下一个 run 复验）
+- **优先级**: 高（一条 un-gated 的门禁步骤在 CI 里恒红，等于给仓库加了不可用的红灯）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+`gh run view … --log-failed` 两条 OS 同因：
+
+```
+Error [ERR_MODULE_NOT_FOUND]: Cannot find module '…/plugins/autogamer-device/dist/actionClient.js'
+imported from …/plugins/autogamer-device/scripts/spike-mcp.mjs
+```
+
+`spike-mcp.mjs` 要用**插件自己的** MCP stdio 客户端去连 py 动作面（这正是 #54 的用意：期望面由
+`ACTION_TO_PY_TOOL` 派生，不再手抄），而 `dist/` 是**构建产物**、被 gitignore。`python-quality` job
+装了 uv、装了 Node，却**从不构建插件**——那一步是我在 #54 加的，当时只能在本地验（本地有 dist），
+于是「本地绿」被当成「CI 有这条门禁」。#54 结案时这半句本来就被 G54 挡住无法验证，
+现在 run 能跑了，它立刻露红——正是 R27 第 4/5 条说的形状：**没跑过的门禁不许当验收**。
+
+#### 整改方案与实施
+
+`.github/workflows/ci.yml` 的 `python-quality` job：
+
+- 在 `Set up Node.js` **之前**加 `Set up pnpm`（`pnpm/action-setup@v4` version 10），并把 setup-node
+  改成带 `cache: pnpm` + `cache-dependency-path: plugins/autogamer-device/pnpm-lock.yaml`
+  ——顺序照 `plugin-contracts` job 的注释来，pnpm 先装才挂得上 store cache；
+- 新增一步 `Build the plugin for the fixture check`（`working-directory: plugins/autogamer-device`，
+  `pnpm install --frozen-lockfile` + `pnpm run build`），放在那步比对**之前**；
+- 把「怎么在本地看到 runner 看到的东西」写进步骤注释：先 `rm -rf …/dist` 再跑那条命令。
+
+#### 验收标准
+
+- [x] **互为证据的本地两条**（本轮实测）：
+      ① `rm -rf plugins/autogamer-device/dist` 后直接
+      `SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs`
+      ⇒ **exit 1**，报的就是 CI 那条 `ERR_MODULE_NOT_FOUND`（复现成立）；
+      ② 补上 `npm --prefix plugins/autogamer-device run build` ⇒ **exit 0**，末行
+      `[spike] OK — pipe, tool surface, and normalization verified`
+- [x] `python -c "import yaml; yaml.safe_load(open('.github/workflows/ci.yml'))"` ⇒ 解析通过，
+      `python-quality` 步骤数 **13 → 15**（新增 `Set up pnpm` 与 `Build the plugin for the fixture check`）
+- [ ] **CI 复验留白**：推送后**下一个 run** 里这一步必须绿；在那之前这条只能算「本地复现 + 静态检查」，
+      不许勾成 CI 已证（R27 第 4 条）
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2909,3 +2999,4 @@ moved it**」。#63 把可达上界落实成每类标签各有界（text/desc/cl
 | G64 | 设备 roster 的真来源（TS 重复枚举 vs 加只读 py 工具） | 用户选「加只读 py 工具」：`adb_server.py` 新增只读 `list_devices`（复用现成 device_pool 与 try_list_devices 的 fail-open），插件 `rosterSource` + `discoverDevices`（默认 false，保住 #55 的零变化承诺） | 本文件 **#56** |
 | G67 | `{index}` 句柄按数组位置重解（违反 `inventory/04:203` 的安全不变量） | `LiveObservations` 存模型最后一次所见的列表，`resolveHandle` 按节点身份（text/desc/resource-id，无标签退 center+class，class 名带 100px 位移上界）跟随到当前位置；从未观察/句柄不在列表 ⇒ 取数之前就拒；更正 #40 的「按位置重解」半句 | 本文件 **#60** |
 | G68 | #60/#62 复审轮的缺陷：收口文案被信封截断、快照声明只锁了一级、句柄无界远跟、不可解析自读仍放行 | 文案压进预算并加走 `render` 的长度锁；补执行后一级的快照锁；每类标签配可达上界（text 100 / resource-id 300 / class 100 / 无标签 0）并更正 #40 的远跟半句；自读不可解析改为与执行梯同口径速败 | 本文件 **#63** |
+| G54 | 本 fork 的 `on: push` 从不触发 workflow run | **前提被一次直接观察否证**：`4201e66` 的 push 立刻产出 run 38296414103（6 条 job 全跑，`Check documentation gates` 在真 run 里 exit 0）；**成因未查明**，不作为结论 | 本文件 **#67** |

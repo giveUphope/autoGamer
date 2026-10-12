@@ -57,7 +57,9 @@ jobs:
 
       # Kept un-gated on purpose: these are the mechanical keepers of the "one derived
       # fact, one authority" rule (changelogs #31, #45) and must run on every event that
-      # produces a run. G54 currently means only workflow_dispatch produces one here.
+      # produces a run. They finally did: run 38296414103 (event: push, 2026-10-12) executed
+      # this step on both OSes and it passed - which is what closed the "never observed in a
+      # run" blank left by #46 (changelogs #67).
       - name: Check documentation gates
         run: |
           uv run python -X utf8 scripts/check_doc_registry.py
@@ -65,16 +67,40 @@ jobs:
           uv run python -X utf8 scripts/check_doc_tables.py --selftest
 
       # Node is needed only by the fixture generator below; the runner image is not the authority
-      # for which version it gets.
+      # for which version it gets. Set up pnpm first so setup-node can wire the pnpm store cache
+      # (same order as the plugin-contracts job).
+      - name: Set up pnpm
+        uses: pnpm/action-setup@v4
+        with:
+          version: 10
+
       - name: Set up Node.js
         uses: actions/setup-node@v4
         with:
           node-version: "22.22.3"
+          cache: pnpm
+          cache-dependency-path: plugins/autogamer-device/pnpm-lock.yaml
+
+      # The drift check imports the plugin's OWN MCP client, and that client only exists in
+      # `dist/` - a build product, not repository content. Without these two steps the step below
+      # dies with ERR_MODULE_NOT_FOUND, which is exactly how it first failed on the runner
+      # (run 38296414103) while passing on any dev machine that happens to have a stale dist
+      # lying around (changelogs #68).
+      - name: Build the plugin for the fixture check
+        working-directory: plugins/autogamer-device
+        run: |
+          pnpm install --frozen-lockfile
+          pnpm run build
 
       # G62 (changelogs #52) made the py action surface runnable with no adb and no device, so the
       # plugin's generated fixture can be re-derived here instead of being hand-carried -- until now
       # no CI job ran scripts/spike-mcp.mjs at all (changelogs #53). Its default mode is the drift
       # check: any difference between the live listing and the checked-in fixture exits non-zero.
+      # Reproduce both halves locally before changing this step - the runner's view is the one
+      # without a build product:
+      #   rm -rf plugins/autogamer-device/dist
+      #   SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs   # exit 1, ERR_MODULE_NOT_FOUND
+      #   npm --prefix plugins/autogamer-device run build                                                     # then the same command exits 0
       - name: Check the py action surface against the plugin fixture
         env:
           SPIKE_COMMAND: uv run artemis mcp --type mock
