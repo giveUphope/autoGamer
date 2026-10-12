@@ -393,6 +393,29 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### G56 修复轮（2026-10-12 按 R22 三步序：查 SDK → 本方案 → 实现）
+
+**第 1 步「查」的原文与出处**（R20：已安装 npm 产物允许查，不许猜）：
+
+- `@modelcontextprotocol/client@2.0.0/dist/src-D_zzAWoS.mjs:6655-6676`：`ReadBuffer.readMessage()` 对每行跑
+  `deserializeMessage(line)` = `JSONRPCMessageSchema.parse(JSON.parse(line))`；catch 里**只有 `SyntaxError` 才跳过**，
+  zod 校验失败直接 `throw`——挂起的 `initialize` 永不 resolve，落到 `:6149` 的 `SdkError(RequestTimeout, "Request timed out")`。
+- 同文件 `:3179`：消息 schema 含 `jsonrpc: z.literal("2.0")`。而 `scripts/mock-action-server.mjs` 手拼的三个应答
+ （`initialize`/`tools/list`/`tools/call`）**都没有 `jsonrpc` 字段**——zod 必拒。py 真服务走官方 SDK 自带该字段，故只有 mock 超时。
+- 传输层发送侧（`:6677`）自带 `\n` 分帧，`notifications/initialized` 是合法通知、无需 mock 应答，`initialize` 结果三件
+  （echo 的 protocolVersion + `capabilities.tools` + `serverInfo`）已满足 `InitializeResultSchema` 形状。
+
+- **What**：mock 每个应答补 `jsonrpc: "2.0"`（唯一改动）；新增 `tests/mockServer.spec.ts` 用真 `ActionClient`
+  （真 SDK 2.0.0 client + 真 stdio transport）直连 mock：`listTools` 含 13 工具、`take_screenshot` 回 1080x2400 真 PNG 头、
+  `tap` 回 `Success`。此后 Tier 1 可把「立即退出的桩命令」换回 mock 作无设备后端（S10 ③/熔断矩阵的前置）。
+  **范围外**：改 `ActionClient`、改协议版本协商、任何 live/VLM/设备。
+- **How**：`handle()` 的四个返回分支（`initialize`/`tools/list`/`tools/call` 同步分支/`ping`）各加一字段；
+  异步 `setTimeout` 回写（`MOCK_DELAY_MS`）同字段。测试 cwd 即包目录、`process.execPath` 起 mock，
+  `callTimeoutMs: 10_000`，不断言耗时只断言形状；`apply.spec.ts` 的 `vi.mock(actionClient)` 按文件隔离，不影响本文件。
+- **Verify**：`pnpm --config.verify-deps-before-run=false run build` + `npx vitest run tests/mockServer.spec.ts`；
+  变异校验：删掉 `jsonrpc` 字段 ⇒ 新测试 `SdkError: Request timed out` 红（即 G56 原样复现）；全量 `vitest` 绿；双门禁。
+- **Done means**：[ ] mock 四分支带帧字段；[ ] 3 条回归锁（list/call/screenshot 尺寸）；[ ] 变异红已证；[ ] G56 关闭（prose 进 CHANGELOGS）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
