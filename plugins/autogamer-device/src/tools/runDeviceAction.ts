@@ -121,7 +121,47 @@ const KEYCODES: Record<string, string> = {
 
 type DispatchResult =
   | { ok: true; value: unknown }
-  | { ok: false; failure: "environment" | "task"; message: string };
+  | { ok: false; failure: "environment" | "task" | "internal"; message: string };
+
+/**
+ * G34: semantic input checks the wire schema cannot express. A present-but-
+ * malformed coordinate is a caller bug — it must fail fast instead of
+ * silently falling through to hierarchy search with a typo'd target.
+ */
+function isNormalizedPair(value: unknown): value is [number, number] {
+  return (
+    Array.isArray(value) &&
+    value.length === 2 &&
+    typeof value[0] === "number" &&
+    typeof value[1] === "number" &&
+    Number.isFinite(value[0]) &&
+    Number.isFinite(value[1]) &&
+    value[0] >= 0 &&
+    value[0] <= 1000 &&
+    value[1] >= 0 &&
+    value[1] <= 1000
+  );
+}
+
+function assertNormalizedPair(value: unknown, field: string): asserts value is [number, number] {
+  if (!isNormalizedPair(value)) {
+    throw new Error(`task: ${field} must be [x,y] with finite numbers in 0-1000`);
+  }
+}
+
+function assertNonEmptyString(value: unknown, field: string): void {
+  if (typeof value !== "string" || value.length === 0) {
+    throw new Error(`task: ${field} must be a non-empty string`);
+  }
+}
+
+function assertPositiveDuration(value: unknown, field: string): void {
+  if (value === undefined) return;
+  const n = typeof value === "number" ? value : Number(value);
+  if (!Number.isFinite(n) || n <= 0) {
+    throw new Error(`task: ${field} must be a positive number of milliseconds`);
+  }
+}
 
 export interface RouterOptions {
   gate: DeviceGate;
@@ -171,6 +211,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     key: string,
   ): Promise<{ x: number; y: number }> {
     const target = (args.target ?? {}) as TargetInput;
+    if (target.coordinate !== undefined) assertNormalizedPair(target.coordinate, "target.coordinate");
     if (typeof target.coordinate?.[0] === "number" && typeof target.coordinate?.[1] === "number") {
       const size = await requireScreenSize(key);
       return {
@@ -283,8 +324,25 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
 
       const handle = await gate.acquire(key, exec.signal);
       try {
-        const result = await dispatch(action, args, key, exec);
+        const result = await dispatch(action, args, key, exec).catch((error) => {
+          // Anything escaping dispatch is our own bug, not a device or task
+          // signal (G38) — except a user abort, which keeps its meaning.
+          if (exec.signal.aborted) {
+            return { ok: false, failure: "task", message: "action cancelled by the user" } as const;
+          }
+          return {
+            ok: false,
+            failure: "internal",
+            message: error instanceof Error ? error.message : String(error),
+          } as const;
+        });
         if (!result.ok) {
+          if (result.failure === "internal") {
+            logger.warn(`[route] internal (no breaker record): ${result.message}`);
+            throw new Error(
+              `internal: ${result.message} (plugin bug, not a device or task failure; do not retry the same call)`,
+            );
+          }
           if (result.failure === "environment") breaker.recordEnvironmentFailure(key);
           else breaker.recordTaskFailure(key);
           logger.warn(`[route] refused (class=${result.failure}): ${result.message}`);
@@ -307,6 +365,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
   ): Promise<DispatchResult> {
     // wait is client-side: no device round-trip, nothing to break.
     if (action === "wait") {
+      if (args.duration_ms !== undefined) {
+        const n = Number(args.duration_ms);
+        if (!Number.isFinite(n) || n < 0) {
+          return { ok: false, failure: "task", message: "duration_ms must be a finite number >= 0" };
+        }
+      }
       const ms = Math.min(60_000, Math.max(0, Number(args.duration_ms ?? 1000)));
       await new Promise((resolve) => {
         const timer = setTimeout(resolve, ms);
@@ -325,8 +389,17 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       value = call.value;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
-      const failure = message.startsWith("environment:") ? "environment" : "task";
-      return { ok: false, failure, message: message.replace(/^(environment|task):\s*/, "") };
+      // G38: only prefixed errors carry a failure class. An unprefixed throw
+      // is our own defect — it must not pollute the breaker as a task failure
+      // (the old code read everything-not-environment as task, so plugin bugs
+      // counted as task failures and the model retried them).
+      if (message.startsWith("environment:")) {
+        return { ok: false, failure: "environment", message: message.replace(/^(environment|task):\s*/, "") };
+      }
+      if (message.startsWith("task:")) {
+        return { ok: false, failure: "task", message: message.replace(/^(environment|task):\s*/, "") };
+      }
+      return { ok: false, failure: "internal", message };
     }
 
     let structured: unknown;
@@ -412,6 +485,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         return { tool: "tap", payload: { coordinates: [x, y], times: 1, delay_ms: 100 } };
       }
       case "long_press": {
+        assertPositiveDuration(args.duration_ms, "duration_ms");
         const { x, y } = await resolvePixelTarget(args, key);
         return { tool: "long_press_on", payload: { coordinates: [x, y], duration: Number(args.duration_ms ?? 1000) } };
       }
@@ -419,9 +493,9 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         const size = await requireScreenSize(key);
         const from = (args.target as TargetInput | undefined)?.coordinate;
         const to = args.end_coordinate as number[] | undefined;
-        if (!Array.isArray(from) || !Array.isArray(to)) {
-          throw new Error("task: swipe needs target.coordinate=[x,y] and end_coordinate=[x,y] (0-1000)");
-        }
+        assertNormalizedPair(from, "target.coordinate");
+        assertNormalizedPair(to, "end_coordinate");
+        assertPositiveDuration(args.duration_ms, "duration_ms");
         return {
           tool: "swipe",
           payload: {
@@ -434,6 +508,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         };
       }
       case "input_text": {
+        assertNonEmptyString(args.text, "text");
         const { x, y } = await resolvePixelTarget(args, key);
         return {
           tool: "focus_and_input_text",
@@ -449,6 +524,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         return { tool: "focus_and_clear_text", payload: { coordinates: [x, y] } };
       }
       case "press_key": {
+        assertNonEmptyString(args.key, "key");
         const keyName = String(args.key ?? "");
         const keycode = mapKeycode(keyName);
         if (keycode === undefined) {
@@ -461,10 +537,13 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       case "erase_one_char":
         return { tool: "erase_one_char", payload: {} };
       case "launch_app":
+        assertNonEmptyString(args.package, "package");
         return { tool: "launch_app", payload: { package_name: String(args.package ?? "") } };
       case "stop_app":
+        assertNonEmptyString(args.package, "package");
         return { tool: "stop_app", payload: { package_name: String(args.package ?? "") } };
       case "open_link":
+        assertNonEmptyString(args.url, "url");
         return { tool: "open_link", payload: { url: String(args.url ?? "") } };
       case "take_screenshot": {
         const base64 = unwrapText(await client.callTool("take_screenshot", {}));

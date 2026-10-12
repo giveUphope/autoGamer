@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#32 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#33 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1407,6 +1407,43 @@ G44 的兜底追问（`turn/end` → 至多一次 `followup`）此前只有一�
 - 对照断言在场：同 realm 的 plain 监听长度为 0，global 监听含 `g52-session/turn/end`
 - 门禁：`python -X utf8 scripts/check_doc_registry.py` 与 `check_doc_tables.py` exit 0；G52 在 `registry.md` 已关闭表与本文件「已关闭差距史」各一行；`spike/probe-g52*.mjs` 三个探针已删除，`git status` 无遗留
 
+### #33 G34/G38：输入语义校验补齐，内部错误不再记成任务失败
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（纯离线：无 VLM、无设备；G33 的 guard 迁移另行）
+- **优先级**: 中（校验缺口是模型误用时的体验问题；归类污染的是熔断语义正确性）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G34/G38 修复轮」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+G34：S5 的代价条款写明裸 schema 注册的工具「自己负责输入校验」，但 `buildCall` 只判了
+`target.coordinate` 元素是否为 number——`text` 未判空、`duration_ms` 未判正、`key` 未判枚举成员、
+`swipe` 起止只判数组不断言对、残缺 coordinate 会静默回退到层级搜索（调用方 typo 做出意外动作）。
+G38：`dispatch` 的 `buildCall` catch 按 `environment:` 前缀二分，无前缀一律 task——插件自身的缺陷
+（如无前缀抛错）被记成任务级失败、进熔断语义，实测模型连试三次（TODO §四 G38）。
+
+#### 整改方案与实施
+
+1. `plugins/autogamer-device/src/tools/runDeviceAction.ts`：加 `isNormalizedPair`/`assertNormalizedPair`/
+   `assertNonEmptyString`/`assertPositiveDuration`；`resolvePixelTarget` 入口对在场的 coordinate 存在即判；
+   `input_text`/`press_key`/`swipe`/`launch-stop-app`/`open_link`/`wait` 各补对应断言（失败一律 `task:`，
+   在任何设备往返之前抛出）。`DispatchResult` 加 `"internal"`：`buildCall` catch 里无前缀异常走 internal；
+   `execute` 把 `dispatch` 逃逸的意外抛出转 internal（`signal.aborted` 时仍报取消），internal 不记 breaker、
+   抛 `internal:` 并带“插件缺陷、勿原样重试”信号。传输层 catch 保持 environment（S4 fail-safe，不确定继续熔断）。
+   `classify.ts` 不动（它是设备文本分类）。
+2. `plugins/autogamer-device/tests/router-errors.spec.ts`（新建，11 条）：直调 `defineRunDeviceAction` 配真
+   `DeviceGate`/`DeviceBreaker` + 记账 stub client——不走 `apply()` 的 `defineTool` DSL（DSL 自带形状校验会抢先）。
+   G34 每条断言 `rejects /^task:/` 且零设备调用；G38 断言 `rejects /^internal:/`、文案含 do-not-retry、
+   `breaker.stateOf` 仍 closed、随后 `wait` 仍可执行。
+
+#### 验收标准
+
+- [x] `pnpm run build` 0 error；`pnpm test` ⇒ **94 passed / 1 skipped**（此前 83/1，净增 11）
+- [x] 变异校验（均已实做、验完还原）：删掉 `text` 校验 ⇒ 空 text 单测红（且暴露出无校验时会走到层级分支报另一个 task 错）；
+      把 internal 改回 task ⇒ 两条 G38 单测红
+- [x] `contracts.spec.ts` 不受影响（无 schema 改动）；文档门禁双 exit 0
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1442,6 +1479,8 @@ G44 的兜底追问（`turn/end` → 至多一次 `followup`）此前只有一�
 | G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
 | G5 | conformance 需要真实 DSH runtime（CI 起 DSH 跑契约测试） | 三层：Tier 1 在裸 cordis Context 上挂真实 DSH 服务包与本插件、契约由真 `ctx.tools.schemas()` 把关；Tier 2 三条 fixture 全改为生成物（live 抓取 / 源码抽取 / 真实安装态）；Tier 3 live 取证脚本；并新增 `ci.yml` 里此前不存在的 `plugin-contracts` job（ubuntu + windows 实测 success） | 本文件 **#29**（过程与变异校验见 #27/#28） |
 | G52 | 追问路径仍只有 fake 事件总线的证据 | 新增 Tier 1：真 `dsh-session` 提交 `turn/end`、真 `AgentRegistry.register/get` 解析句柄、真 `ToolRuntime.execute` 标记 acted，并用两个 realm 的对照监听观察到 scope 筛选本身；顺带摘掉追问消息的手镜像（补 `UserMessage.id`，`kind:'autogamer'` 改官方 merge-extensible 声明） | 本文件 **#32** |
+| G34 | 裸 schema 注册的输入自校验缺口 | 输入语义校验入工具（coordinate 存在即判、不静默回退，text 非空、duration 正数、key 可解、swipe 起止成对、package/url 非空），11 条单测锁死 | 本文件 **#33** |
+| G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe） | 本文件 **#33** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
