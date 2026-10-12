@@ -13,7 +13,7 @@ import { unwrapText } from "./mcpText.js";
 import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js";
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
-import { defineRunDeviceAction } from "./tools/runDeviceAction.js";
+import { defineRunDeviceAction, deviceKeyOf } from "./tools/runDeviceAction.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
 
@@ -161,8 +161,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // plain-context 注册即全局生效；agent-less 执行同样被拒（guardReason 先读全局层）。
   ctx.tools.guard((execution) => {
     if (execution.name !== "run_device_action") return undefined;
-    const serial = (execution.arguments as { device_serial?: unknown } | null)?.device_serial;
-    const key = typeof serial === "string" && serial.length > 0 ? serial : config.defaultDeviceKey;
+    const key = deviceKeyOf((execution.arguments as Record<string, unknown> | null) ?? {}, config.defaultDeviceKey);
     if (breaker.canAdmit(key)) return undefined;
     return `device ${key} is cooling down after environment-level failures — report progress and continue after the next message`;
   });

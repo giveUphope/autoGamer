@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#38 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#39 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1594,6 +1594,36 @@ G52 探针（已删）留下一句未判定的观察：`presetScope.ctx.plugin(.
 - [x] 如实注明：仓级 `ruff format --check .` 另有 9 处既有红（`apps/admin_console` 2 / `artemis` 3 /
       `setup.py` / `tests` 2 / `third_party` 1），已按偶发规则另立 **G58**，不在本条内
 
+### #39 G4 熔断矩阵落定：键同源、四解除、不对称引用既有锁
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（纯离线；G3 auto 池/parking 仍归 P2）
+- **优先级**: 高（P1 设备治理闭环；旧盘点 drift 风险 #7 的对应项）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「熔断矩阵轮」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`inventory/01-console-queue.md:70-74` 的旧矩阵（解除 4 路径 + fail-safe/fail-open 不对称 + auto 默认键 +
+`allowed_fails` 未决）在 R2' 后只有 S4 一句设计稿承载。单变量核实现状：核心迁移（open/half-open/单探测/
+重挂/成功关/key 隔离、默认 1/30s、guard 拒/放、internal 不记）全已有锁；真缺口仅三处——键推导两处分叉
+（空串在 execute 落空键、在 guard 回 default）、`reset()` 与 `allowedFails:2` 计数无锁、S4 解除句未修订。
+
+#### 整改方案与实施
+
+1. 导出 `deviceKeyOf(args, fallback)`（省略/非字符串/空串→fallback），`execute` 与 guard 同源；
+   `tests/deviceKey.spec.ts`（3 断言）+ Tier1 空串调用点锁（空串开闸→省略 serial 见同 hold；回退 `??` 即红，
+   签名恰为分叉复现）。
+2. `breaker.spec.ts` 加 `reset()` 清开闸（重启即 fresh = 旧 stop 效果）与 `allowedFails:2` 两次才开。
+3. S4 解除句修订：①探测成功关②冷却到期半开③探测环境失败重挂新窗④新提交/显式 resume 不旁路健康态
+   （与旧世界及 S4 原句的显式偏差，理由见 TODO）⑤cancel 不碰；marker 差集记为设备工具域内有意差集，不改代码。
+
+#### 验收标准
+
+- [x] `pnpm test` ⇒ **111 passed / 1 skipped**（净增 6）；`pnpm run build` 0 error
+- [x] 变异校验：调用点回 `??` ⇒ Tier1 空串锁红；`reset` 删 ⇒ 新增红
+- [x] 文档门禁双 exit 0
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1636,6 +1666,7 @@ G52 探针（已删）留下一句未判定的观察：`presetScope.ctx.plugin(.
 | G33 | 策略内建在工具正文里，与官方「不要内建策略」相反 | 冷却拒绝迁 `ctx.tools.guard()`（只看本工具，终态出口永不拦），只读动作声明 `isConcurrencySafe`；顺带修掉 `starting` 失败缓存与组装期传输分类两 bug | 本文件 **#36** |
 | G53 | 前端 lockfile 全镜像 URL，`check_dependency_sources` 门禁红 | 221 个 `resolved` 只换 host（版本/integrity 零漂移，解析级断言），门禁绿，前端 305 用例绿 | 本文件 **#37** |
 | G55 | `check_dependency_sources.py` 不合 `ruff format` | 一条 `ruff format` 命令（`e1de835`）；仓级另 9 处既有红另立 G58 | 本文件 **#38** |
+| G4 | 熔断探测体（矩阵落定） | 键同源 `deviceKeyOf`（空串分叉修掉，Tier1 调用点锁），`reset`/计数锁，S4 解除句修订（新提交不旁路等显式偏差） | 本文件 **#39** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |

@@ -60,4 +60,23 @@ describe("DeviceBreaker", () => {
     expect(breaker.stateOf("phone-a")).toBe("open");
     expect(breaker.stateOf("phone-b")).toBe("closed");
   });
+
+  it("counts to allowedFails before opening", () => {
+    const breaker = new DeviceBreaker({ allowedFails: 2, cooldownMs: 60_000 });
+    breaker.recordEnvironmentFailure("d");
+    expect(breaker.stateOf("d")).toBe("closed");
+    expect(breaker.canAdmit("d")).toBe(true);
+    breaker.recordEnvironmentFailure("d");
+    expect(breaker.stateOf("d")).toBe("open");
+    expect(breaker.canAdmit("d")).toBe(false);
+  });
+
+  it("reset() clears an open breaker (restart lands fresh)", () => {
+    const breaker = new DeviceBreaker({ allowedFails: 1, cooldownMs: 60_000 });
+    breaker.recordEnvironmentFailure("d");
+    expect(breaker.stateOf("d")).toBe("open");
+    breaker.reset("d");
+    expect(breaker.stateOf("d")).toBe("closed");
+    expect(breaker.canAdmit("d")).toBe(true);
+  });
 });

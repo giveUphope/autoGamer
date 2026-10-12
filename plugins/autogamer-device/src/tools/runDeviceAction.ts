@@ -124,6 +124,16 @@ type DispatchResult =
   | { ok: false; failure: "environment" | "task" | "internal"; message: string };
 
 /**
+ * Breaker/gate device key (S4 矩阵：auto 端点默认键）。省略、非字符串或空串的
+ * serial 一律落 configured default，保证 execute、guard、gate 三处同源——两处
+ * 各写一遍曾让空串在 execute 落空键、在 guard 回 default。
+ */
+export function deviceKeyOf(args: Record<string, unknown>, fallback: string): string {
+  const serial = (args as { device_serial?: unknown } | null)?.device_serial;
+  return typeof serial === "string" && serial.length > 0 ? serial : fallback;
+}
+
+/**
  * G34: semantic input checks the wire schema cannot express. A present-but-
  * malformed coordinate is a caller bug — it must fail fast instead of
  * silently falling through to hierarchy search with a typo'd target.
@@ -335,7 +345,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     },
     async execute(args, exec) {
       const action = args.action as DeviceAction;
-      const key = (args.device_serial as string | undefined) ?? options.defaultDeviceKey;
+      const key = deviceKeyOf(args, options.defaultDeviceKey);
       const risk = action === "stop_app" ? "risky" : "normal";
       logger.info(`[route] action=${action} device=${key} risk=${risk} reason=${String(args.reason)}`);
       options.onAction?.();

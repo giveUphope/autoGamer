@@ -105,6 +105,26 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
     expect(report.isError).toBe(false);
   });
 
+  it("keys an empty serial to the default (execute and guard agree)", async () => {
+    const root = await boot();
+    // Open the breaker through an explicitly empty serial…
+    const first = await call(root, "run_device_action", {
+      action: "back",
+      device_serial: "",
+      reason: "open via empty serial",
+    });
+    expect(first.isError).toBe(true);
+    expect(JSON.stringify(first)).toContain("transport failed");
+    // …then the omitted-serial (default-key) call must see the same hold.
+    // Before deviceKeyOf, execute keyed "" while the guard keyed "default".
+    const second = await call(root, "run_device_action", {
+      action: "take_screenshot",
+      reason: "default key sees the hold",
+    });
+    expect(second.isError).toBe(true);
+    expect(JSON.stringify(second)).toContain("cooling down");
+  });
+
   it("marks only read-only actions concurrency-safe", async () => {
     const root = await boot();
     const runDeviceAction = (root.tools as {

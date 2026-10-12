@@ -12,7 +12,7 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧：G53/G55 已结案（CHANGELOGS **#37/#38**；仓级格式另有 9 处既有红，见 **G58**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 开工：pro subagent（checker/validator 保真）+ skills 严格度梯级 + 熔断矩阵，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）。 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧：G53/G55 已结案（CHANGELOGS **#37/#38**；仓级格式另有 9 处既有红，见 **G58**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 开工：熔断矩阵已结案（CHANGELOGS **#39**，G4 关闭）；剩下 pro subagent（checker/validator 保真）+ skills 严格度梯级，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）。 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **83 passed / 1 skipped**（复测：`pnpm --config.verify-deps-before-run=false test`；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
@@ -69,7 +69,12 @@
 - closed →open（连续环境级失败 ≥ allowed_fails，工程默认 1）→ half-open（下一条真实消息动作即探测）→ 成功 closed
 - 环境级判定（R2' 改写）：**工具层错误分类**——action server 连接失败/adb 不可达/设备离线/锁屏 = 环境级；模型语义失败 = 任务级；枚举不确定→继续熔断（fail-safe）、探测失败→不挂（fail-open）不对称保留
 - **冷却期的拒绝走 `ctx.tools.guard()`**（守则 R13：它是加在 `tools/pre-execute` waterfall 之后的单调同步守卫，后续监听器无法把拒绝翻回允许，且不受注册顺序影响）；只有需要 await 的决策才在 `tools/pre-execute` 返回 `ask`。官方原文「尽量不要把部署策略内建到工具中」，所以熔断**状态**归插件、**拒绝出口**归 guard
-- 挂起期间新消息保留在 Inbox（QueueDock 可见）；解除 = 设备恢复探测 / 新提交 / 显式 resume（唤醒语义按 R17 区分 `followup` 与 `inject`）
+- 挂起期间新消息保留在 Inbox（QueueDock 可见）；解除矩阵（旧 inventory/01 四路径的无队列映射，矩阵轮定稿）：
+  ①探测成功关（`recordSuccess`）②冷却到期半开（单探测，`probeInFlight`）③探测环境失败重挂新窗（非永久，时间必再开；
+  此处的 fail-open 指**判定失败**——internal/unknown 不记（G38）——而非探测失败）④新提交/显式 resume**不旁路**健康态
+  （与旧世界及本条旧句的显式偏差：健康态非批次态；半开保证冷却后首动作即探测，消息永不饿死；旧 resume 为逃永挂而设，
+  此处无永挂故不需要）；cancel 不碰健康态（中止无健康信息；重启即 fresh breaker = 旧 stop 效果）。
+  省略/空 serial 一律落 `defaultDeviceKey`（`deviceKeyOf` 三处同源）；`allowed_fails` 默认 1（contracts 锁死）。
 
 **S5 执行层契约（py action server，原样复用）**
 - 载体：`artemis mcp --server adb` 动作面（13 工具：tap/long_press/swipe/back/launch_app/stop_app/open_link/focus_and_input_text/focus_and_clear_text/erase_one_char/press_key/take_screenshot/get_ui_hierarchy）
@@ -111,7 +116,6 @@
 | # | 差距 | 状态/调整 |
 |---|---|---|
 | G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
-| G4 | 熔断探测体 | 保留：S4 已定（下一条真实消息动作 = 探测；不对称策略保留） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**三次 push 零 run**（`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来。fork 级开关已排除（2026-10-12 只读核对）：repo `fork:true` 但 `disabled:false`、Actions `enabled:true` + `allowed:all`、CI workflow `state:active`——三个全绿。剩下候选收窄到 API 看不见的账号级（用量/标记）与提交身份；下次推送即第四数据点。在此之前任何「CI 证据」必须写明是手动派发 |
 | G58 | 仓级 `ruff format --check .` 另有 9 处红 | 新开（2026-10-12 关 G55 时实测，既有状态）：`apps/admin_console`（2）/`artemis`（3）/`setup.py`/`tests`（2）/`third_party`（1）共 9 文件在锁内 ruff 下报 would-be-reformatted，`scripts/` 全绿。成因未定（锁内版本 vs 落盘格式），未动（纯格式 churn，另行处理） |
 | G8 | 终态权威 | 收缩：汇报工具语义（S2）；exit code 映射随 py worker 消失 |
@@ -389,36 +393,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - ✅ **G30 关闭（2026-10-10，两轮官方检查器分级实证 + 两处真根因）**：调研改判的「asar 锚点拒挂」假设也被官方面否证（roster/插件页/清单全绿、新会话创建成功、`autogamer-device-inner` 运行中）——正确的定性路径是**功能轮差分**：新会话里 preset 其他子行的工具全部在模型清单上（fs/pwsh/jobs/web/present…），唯独缺我们两个，而行状态「运行中」⇒ 注册后立即被注销；第二轮修掉注销后 400 前移（tools[11]/[12] schema 非法）⇒ 裸注册未编译。双根因修复见 changelogs #10（effect 语义反转 + defineTool 编译），vitest 38/38 含 2 条回归锁，live 实证模型真实调用 `run_device_action` 三次。教训入册：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛**；测试假 context 必须实现 effect 且按 cordis 语义。原 Fix A（file: URL 子行）与 Fix B（根行兜底)作废——锚点假设不成立
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
-
-### 熔断矩阵轮（2026-10-12 按 R22 三步序：查盘点 → 本方案 → 实现）
-
-**第 1 步「查」的原文与出处**：
-
-- `inventory/01-console-queue.md:70`：解除路径共 4 条——①恢复探测（5s 节流真实枚举；不确定→继续挂 fail-safe）；
-  ②同 lock_key 新提交；③`resume_queue` 手动清全部；④stop 全部。`:68`：auto 失败挂端点默认队列键（同端点 auto 全挡）；
-  `:71`：旧世单次即挂，`allowed_fails` 默认值未决（建议 1）；`:73-74` + `:238` + `:260`：不对称与矩阵为缺失/需显式决策。
-- 现状（单变量核过，非推断）：`breaker.spec.ts` 已锁 open/half-open/单探测/重挂/成功关/key 隔离五条；
-  `contracts.spec.ts:273-276` 已锁 `allowedFails=1`/`cooldownMs=30_000`/`defaultDeviceKey="default"`；
-  G33 Tier1 已锁 guard 同 key 拒/异 key 放；G38 锁 internal 不记（fail-open 检测侧）。
-- 真缺口（仅三处）：① `device_serial` 省略/空串的键推导写了两遍且语义分叉——`runDeviceAction.ts:338`
-  用 `??`（空串落空键），`index.ts:164-165` 空串回 default；② `reset()` 与 `allowedFails:2` 计数无锁；
-  ③ S4「解除 = 恢复探测/新提交/显式 resume」句是 R2' 设计稿，未按无队列世界修订。
-
-- **What**：① 导出 `deviceKeyOf(args, fallback)`（省略/非字符串/空串→fallback），两处同源 + 单测
-  （omit/empty/explicit 三断言；修掉空串分叉）。② `breaker.spec.ts` 加 `reset()` 清开闸（重启即 fresh = 旧 ④ 效果）
-  与 `allowedFails:2` 两次才开（计数语义锁，默认仍 1）。③ S4 解除句修订为矩阵定稿：
-  ①探测成功关（`recordSuccess`）②冷却到期半开（单探测）③探测环境失败重挂新窗（非永久，时间必再开）
-  ④新提交/显式 resume**不旁路**（与旧世界及 S4 原句的显式偏差：健康态非批次态；半开保证冷却后首动作即探测，
-  消息永不饿死只至多等一窗；旧 resume 为逃永挂而设，此处时间必再开故无永挂）⑤cancel 不碰健康态（旧 ④ 的
-  per-call 对应；中止无健康信息）。fail-safe（传输不确定→environment）/fail-open（internal 不记）引用既有锁，
-  marker 集与旧 18 项的差异（去 LLM 系、加 offline/not-authorized）记为设备工具域内有意差集，不改代码。
-  **范围外**：G3 auto 池/parking（P2）、 added 新面、live/VLM/设备。
-- **How**：只碰 `runDeviceAction.ts`（导出 helper，execute 改调）、`index.ts`（guard 改调）、`breaker.spec.ts`（+2）、
-  `tests/router-errors.spec.ts` 或新建小单测放 `deviceKeyOf`（就近放 router-errors？它是 router 行为文件——新建
-  `tests/deviceKey.spec.ts` 更干净，3 断言）、TODO S4 句修订。Tier1 不动（G33 已覆同/异 key）。
-- **Verify**：`build` + 全量 `vitest`；变异：helper 改回 `??` ⇒ 空串单测红；`reset` 删 ⇒ 新增红；
-  `grep -n '?? options.defaultDeviceKey' src/tools/runDeviceAction.ts` 无命中；双门禁。
-- **Done means**：[ ] 同源键 + 空串锁；[ ] reset/计数锁；[ ] S4 修订；[ ] 全绿；[ ] 矩阵关闭（prose 进 CHANGELOGS）。
 
 ## 六、文档索引
 
