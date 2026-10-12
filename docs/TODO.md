@@ -395,6 +395,28 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### G43 固化轮（2026-10-12 按 R22 三步序：查本轮记录 → 本方案 → 脚本）
+
+**第 1 步「查」的原文与出处**（R20：本条是自家 spike 程序，无 DSH 行为问题；依据全在 TODO 已有记录）：
+
+- G43 行：`settings put secure ui_night_mode` 不生效，达成只认截图，`settings get` 只作旁证。
+- 真机 spike 重跑节：初态 `am start … category.HOME` + `mCurrentFocus=LawnchairLauncher` 核实；
+  T1/T2 目标文本逐字相同、每任务一新会话（R7）。
+- G42 修复轮：`cmd uimode night no` 复位浅色（截图核实）；T2 达成后 `settings get` 仍读 2（该 ROM 非真相源）。
+- 本机现状：无 adb、无模拟器——脚本写完只能 dry-run，live deferred（如实记，不假装验过）。
+
+- **What**：`scripts/spike_reset.py`（stdlib only，同 `check_dependency_sources.py` 口径）：
+  `reset-home`（am start HOME + mCurrentFocus 断言）、`reset-light`（`cmd uimode night no`）、
+  `shot <out.png>`（`exec-out screencap`）、`oracle <name>`（只打印 settings 旁证 + 截图核对清单，
+  不判像素——stdlib 无 cv2，判据永远是人/模型看图）；`--serial`（默认 env `ADB_DEVICE_SERIAL`）、
+  `--dry-run`（只打印命令，CI/无设备可跑）。T1/T2 目标文本逐字进 `--help` 说明。
+  **范围外**：像素判定、live 跑通（无设备）、改判据语义。
+- **How**：`subprocess.run(["adb", ...])` 直调，失败抛错带 stderr；`main()` 返回码：0 全成、2 有步骤失败；
+  文件同步进 `scripts/` 门禁（`ruff check` + `format --check`）。
+- **Verify**：`python scripts/spike_reset.py --help` exit 0；`--dry-run` 全流程 exit 0 且输出含全部 adb 命令；
+  `uv run ruff check scripts/spike_reset.py` + `format --check` 绿；双门禁。
+- **Done means**：[ ] 脚本落 `scripts/`；[ ] dry-run 绿；[ ] ruff 双绿；[ ] G43 关闭（live deferred 注明，P1-live 接）。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
