@@ -57,7 +57,6 @@
 | G53 | 前端 `package-lock.json` 的 `resolved` 全是镜像 URL，`check_dependency_sources` 门禁在 CI 与本地都红（既有状态，非插件轨道引入） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（两次 push 后 `total_count` 仍只有那次 `workflow_dispatch`） |
 | G56 | `scripts/mock-action-server.mjs` 与本插件 `ActionClient` 握手超时，无设备后端在测试台里不可用 |
-| G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见（root 挂载正常），属测试台装配问题 |
 | G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红（既有状态，与 G53 的运行时红是两件事） |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
@@ -112,6 +111,7 @@
 | G31 | 引入流仍靠手工：交付形态要迁 install_bundle | 一次性空 bundle 端到端验通 install_bundle（applied/注册/撤除干净）；随包 skill 路径改官方 !!js 解析；详见 CHANGELOGS **#18** |
 | G5 | conformance 需要真实 DSH runtime（CI 起 DSH 跑契约测试） | 三层落地：真实 DSH 服务包 in-process 挂载读 `ctx.tools.schemas()`、三条 fixture 改生成物、live 取证脚本，并新增 CI `plugin-contracts` job（双 OS 实测 success）；详见 CHANGELOGS **#29**（过程 #27/#28） |
 | G52 | 追问路径仍只有 fake 事件总线证据 | 新增 Tier 1 `tests/conformance/followup.spec.ts`：真 `dsh-session` 提交 `turn/end`、真 `AgentRegistry` 解析句柄、真 `ToolRuntime.execute` 标记 acted，并在两个 realm 之间观察到 scope 筛选确实排除非 global 监听；顺带摘掉追问消息的手镜像（缺 `UserMessage.id`）；详见 CHANGELOGS **#32** |
+| G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见 | 裸 scope 注册本就生效（`register()` 打 scope 标签，读须传 scope；旧「双空」是误读）；详见 CHANGELOGS **#34** |
 | G34 | 裸 schema 注册的输入自校验缺口 | 输入语义校验入工具（coordinate 存在即判、不静默回退，text 非空、duration 正数、key 可解、swipe 起止成对、package/url 非空），11 条单测锁死；详见 CHANGELOGS **#33** |
 | G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe）；详见 CHANGELOGS **#33** |
 

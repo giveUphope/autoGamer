@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#33 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#34 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1444,6 +1444,39 @@ G38：`dispatch` 的 `buildCall` catch 按 `environment:` 前缀二分，无前�
       把 internal 改回 task ⇒ 两条 G38 单测红
 - [x] `contracts.spec.ts` 不受影响（无 schema 改动）；文档门禁双 exit 0
 
+### #34 G57：裸 scope 注册本就生效，“双空”是无 scope 读法
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（测试台问题，零产品代码改动；纯离线）
+- **优先级**: 低（Tier 1 现有 root 装配本就保真；结论是 D16 realm 与 P3 的前置知识）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G57 判别轮」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+G52 探针（已删）留下一句未判定的观察：`presetScope.ctx.plugin(...)` 挂载不报错，但 scope 与 root 的
+`schemas()` 双空，而裸 `new Context()` 挂载双工具齐在。按字面会导向「`createScope` 的 realm 里注册不落」
+这个机制结论——但探针的读法从未经审查：`scope.ctx.tools` 直接 GET 会抛
+`cannot get property "tools" without inject`（读法无效），经 `inject` 读仍无参（见下）。
+
+#### 整改方案与实施
+
+1. 单变量判别探针六步（`spike/probe-g57*.mjs`，gitignored 现场，用完即删）：
+   复现双空（有效读法下）→ counter 插件 apply 跑 1 次（`plugin()` 机能好）→ ours apply 跑 1 次
+   （激活执行了）→ 同 scope trivial 注册亦双空（非 ours 特有）→ 圈内传 `scopeOf(ctx)` 即见双工具。
+2. 机制点名（已安装产物，R1 允许）：`dsh-tools/lib/index.js:2886` 的 `register()` 经
+   `layers.effect(this.ctx, …)` 把条目打上调用方 scope 标签；而 `schemas(scope)`/`get(name, scope)`
+   无参即全局视图（`:3023-3025`、`:2995-2997`）。`dsh-scope/README.zh.md` §父链：注册视图沿链向下继承。
+   ⇒ 注册一直生效；root 空是 D16 隔离语义（正确）；旧 scope 空是读法——无参调用读的是全局视图。
+3. 测试台定论：Tier 1 的 root 挂载仍是全局工具面的保真装配，无需 realm 挂载；realm 挂载须 scope-keyed 读。
+   新增 `tests/conformance/scopeVisibility.spec.ts` 锁死：scope-keyed 见双工具、全局视图为空。
+
+#### 验收标准
+
+- [x] `pnpm test` ⇒ **95 passed / 1 skipped**（净增 1）；`pnpm run build` 0 error
+- [x] 变异校验：读法去 `key` 即红——恰好复刻旧探针的误读（已还原）
+- [x] 探针六个文件已删，`git status` 无遗留；文档门禁双 exit 0
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1481,6 +1514,7 @@ G38：`dispatch` 的 `buildCall` catch 按 `environment:` 前缀二分，无前�
 | G52 | 追问路径仍只有 fake 事件总线的证据 | 新增 Tier 1：真 `dsh-session` 提交 `turn/end`、真 `AgentRegistry.register/get` 解析句柄、真 `ToolRuntime.execute` 标记 acted，并用两个 realm 的对照监听观察到 scope 筛选本身；顺带摘掉追问消息的手镜像（补 `UserMessage.id`，`kind:'autogamer'` 改官方 merge-extensible 声明） | 本文件 **#32** |
 | G34 | 裸 schema 注册的输入自校验缺口 | 输入语义校验入工具（coordinate 存在即判、不静默回退，text 非空、duration 正数、key 可解、swipe 起止成对、package/url 非空），11 条单测锁死 | 本文件 **#33** |
 | G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe） | 本文件 **#33** |
+| G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见 | 裸 scope 注册本就生效：`register()` 经 `layers.effect` 打 scope 标签，`schemas()/get()` 须传 scope 读；旧「双空」是无参全局视图误读，root 空是 D16 隔离语义 | 本文件 **#34** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
