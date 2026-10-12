@@ -138,6 +138,52 @@
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节
 
+### G60 + G61 实施轮（2026-10-12 用户已决：G60 加 step 沿用 dispatch；G61 仓库级 `.gitattributes` + renormalize）
+
+- **What**：关掉 #45 开出的两条**判据层**差距，交付三件——
+  ① `.github/workflows/ci.yml` 的 `Python 3.12` job 里新增一步「文档门禁」，依次跑
+     `check_doc_registry.py`、`check_doc_tables.py`、`check_doc_tables.py --selftest`；
+     **不动**现有「deterministic tests」那条的 `if: github.event_name == 'workflow_dispatch'`。
+  ② 仓库根新增 `.gitattributes`，把工作树换行符从「由机器上的 `core.autocrlf` 决定」变成仓库事实。
+  ③ 把 ①②结案成文：CHANGELOGS **#46 / #47** 三段 + `registry.md` 已关闭行 + §四 移除两行 + §零 更新。
+  **范围外**：不碰 G54（fork 的 `on: push` 不出 run，那条查的是账号级/提交身份，与本轮无关）、
+  不改任何插件或 py 产品代码、不改测试期望值、不推远端（推送须用户明示）。
+- **已量证的波及面**（写方案前先测，别按「renormalize 会炸全仓」的想象决策）：
+  `git ls-files --eol` 得 **757 个 `i/lf w/crlf`、147 个 `w/lf`、2 个 `w/mixed`、28 个 `-text`**；
+  逐 blob 查 CR 得**带 CR 的 blob 恰为那 28 个，且全是二进制**（png/ico/gif/jpg）
+  ⇒ **文本 blob 已经是纯 LF，renormalize 重写 0 个 blob**，仓库侧无历史 diff；
+  混行尾只在 2 个工作树文件里（`docs/migration/README.md`、`tests/unit/test_config_package.py`），
+  后者就是本机 `ruff format --check` 假红的那一个。仓库里有 `start.bat` 与
+  `plugins/autogamer-device/spike/run-headless.cmd` ⇒ **必须给 `.bat`/`.cmd` 显式 `eol=crlf`**，
+  否则 cmd.exe 对 LF 批处理的 `goto`/标签有已知故障面。
+- **How**：
+  1. `.gitattributes` 三段式：`* text=auto eol=lf`；`*.bat`/`*.cmd` `text eol=crlf`；
+     图片/压缩/模型类显式 `binary`（防 `text=auto` 之外的任何再处理）。
+  2. `git add --renormalize .` 后**先看 `git diff --cached --stat` 再提交**——预期只有 `.gitattributes`
+     一个新增文件；若冒出文本 diff，说明我的 blob 扫描口径错了，停下重估而不是硬提。
+  3. 用 `git restore -- <2 个 mixed 文件>` 把混行尾的工作树副本重新物化成 LF（两文件均无未提交改动，安全），
+     目标是本机 `uv run ruff format --check` 由红转绿——这是 G61 的**唯一本地可见收益**，必须实测到。
+  4. CI 那一步放在 Lint 之后、质量棘轮之前，失败信息才有定位价值；三条命令都带 `-X utf8`（与 AGENTS.md 口径一致），
+     且**不加 `if`**：job 本身每次事件都跑，门禁跟着跑；G54 未解时它只在 dispatch 下被执行，
+     这条限制要在验收里如实写明（**按 R27 第 4 条，不许写成「由 CI 保证」**）。
+  5. 门禁进 CI 的前提是它在 LF 检出下也绿——#45 已把体量改成 LF 规范化测量，这正是本轮能做 G60 的理由，
+     顺序不可颠倒。
+- **Verify**：
+  - `uv run python -c "import yaml,io;yaml.safe_load(io.open('.github/workflows/ci.yml',encoding='utf-8'))"` ⇒ 无异常；
+  - `uv run python -X utf8 scripts/check_doc_registry.py` / `.../check_doc_tables.py` / `... --selftest` ⇒ 三条各自 exit 0；
+  - `git ls-files --eol` ⇒ 28 个仍为 `-text`，`.bat`/`.cmd` 显示 `w/crlf`，被 restore 的两文件不再 `w/mixed`；
+  - `uv run ruff format --check` ⇒ **本机转绿**（原先唯一红的是 mixed 那个文件）；`uv run ruff check` ⇒ 干净；
+  - `uv run python -X utf8 -m pytest tests/unit/scripts tests/unit/mcp -q` ⇒ 绿；
+  - `git diff --cached --stat`（提交前）⇒ 除 `.gitattributes` 外无文本 blob 变化；
+  - 文档门禁两枚 + 体量重生成照旧（改了 §零/§四/registry 就要 `--refresh-sizes`）。
+- **Done means**：
+  - [ ] `.gitattributes` 落地且 renormalize 对文本 blob 零改动（实测记录进 #47）
+  - [ ] 本机 `ruff format --check` 由假红转绿，且原因（混行尾）与修法写清
+  - [ ] CI 新增 step 的三条命令均可本地复跑、YAML 可解析；**未验证到真 run** 这一点写明（受 G54 限制）
+  - [ ] G60/G61 从 §四 移除、registry 已关闭表各加一行（含关闭方式与出处编号）
+  - [ ] CHANGELOGS **#46**（G60）与 **#47**（G61）三段齐、索引范围更新，两枚门禁重跑
+  - [ ] 本条结案即删（活文档规则），演进依据留 git
+
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
 - **What**：把「动作后屏幕是否变化」的判定移到 py 动作面，复用仓库里已有的 `artemis/utils/image_diff.py::check_ui_change`，
