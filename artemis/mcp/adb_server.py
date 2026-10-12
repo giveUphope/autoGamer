@@ -500,6 +500,34 @@ async def compare_ui_frames(
 
 
 @_tool()
+async def list_devices() -> str:
+    """Lists attached Android devices and their readiness, touching none of them.
+
+    Read-only discovery for callers that schedule work across machines (the plugin's device pool,
+    G3/G28/G64). Enumeration is the runtime pool's own, so snapshot caching and timeout behaviour
+    stay in one place.
+
+    The result keeps **"could not ask adb"** distinct from **"adb answered: no devices"**:
+    `enumerated` is false only when the question itself failed. Collapsing those two would turn a
+    transient adb blip into an empty fleet, which is why `try_list_devices_async` exists upstream.
+
+    Returns a JSON string such as '{"enumerated": true, "devices": [{"serial": "emulator-5554",
+    "state": "device", "is_busy": false, ...}]}'.
+    """
+    from artemis.runtime.device_pool import device_pool
+
+    try:
+        statuses = await device_pool.try_list_devices_async()
+    except Exception as e:
+        logger.warning(f"Device enumeration failed: {e}")
+        return json.dumps({"enumerated": False, "devices": []})
+
+    if statuses is None:
+        return json.dumps({"enumerated": False, "devices": []})
+    return json.dumps({"enumerated": True, "devices": [status.to_dict() for status in statuses]})
+
+
+@_tool()
 async def get_ui_hierarchy(ctx: Context) -> str:
     """Retrieves the current UI elements hierarchy from the device."""
     try:

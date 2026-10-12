@@ -25,7 +25,16 @@ export interface PoolOptions {
   maxConcurrentDevices?: number;
   /** Devices refused by the breaker (S4 cooldown) are not eligible for auto assignment. */
   isCoolingDown?: (key: string) => boolean;
+  /**
+   * G64: asks the action surface which devices exist. `undefined` means "could not ask" and must
+   * never be read as "no devices". Only consulted when `devices` is empty.
+   */
+  rosterSource?: () => Promise<string[] | undefined>;
+  /** Throttle for `rosterSource`; the py pool caches its own snapshot underneath. */
+  rosterTtlMs?: number;
   logger?: { info: (message: string) => void; warn: (message: string) => void };
+  /** Injectable clock so the throttle is testable without sleeping. */
+  now?: () => number;
 }
 
 export interface PoolLease extends GateHandle {
@@ -50,6 +59,13 @@ export class DevicePool {
   private readonly queue: Ticket[] = [];
   private readonly assigned = new Set<string>();
   private admitted = 0;
+  private discovered: string[] = [];
+  private nextRefreshAt = 0;
+  private refreshing?: Promise<void>;
+  private readonly rosterSource?: () => Promise<string[] | undefined>;
+  private readonly rosterTtlMs: number;
+  private readonly logger: { info: (message: string) => void; warn: (message: string) => void };
+  private readonly clock: () => number;
 
   constructor(options: PoolOptions) {
     this.gate = options.gate;
@@ -58,16 +74,55 @@ export class DevicePool {
     this.devices = [...new Set(options.devices ?? [])];
     this.maxConcurrent = options.maxConcurrentDevices ?? 0;
     this.isCoolingDown = options.isCoolingDown ?? (() => false);
-  }
-
-  /** True when the auto pool has a roster; without one, auto keeps the historical single key. */
-  get hasPool(): boolean {
-    return this.devices.length > 0;
+    this.rosterSource = options.rosterSource;
+    this.rosterTtlMs = options.rosterTtlMs ?? 5_000;
+    this.logger = options.logger ?? { info: () => {}, warn: () => {} };
+    this.clock = options.now ?? Date.now;
   }
 
   /** Devices admitted right now (explicit and auto alike), for diagnostics and cap tests. */
   get busyDevices(): number {
     return this.admitted;
+  }
+
+  /**
+   * True when the auto pool has a roster; without one, auto keeps the historical single key.
+   * A configured roster wins over the discovered one.
+   */
+  get hasPool(): boolean {
+    return this.poolDevices.length > 0;
+  }
+
+  /** The roster the pool actually schedules against (G3/G64). */
+  get poolDevices(): string[] {
+    return this.devices.length > 0 ? this.devices : this.discovered;
+  }
+
+  /**
+   * Refresh the discovered roster, throttled to one call per `rosterTtlMs`.
+   * Resolving to `undefined` means "could not ask" and keeps the previous roster: collapsing that
+   * into an empty list would make a transient adb blip look like an empty fleet -- the distinction
+   * `try_list_devices_async` exists to make upstream.
+   */
+  async refreshRoster(): Promise<void> {
+    if (!this.rosterSource) return;
+    // An operator-pinned roster makes discovery pointless: skip the RPC entirely.
+    if (this.devices.length > 0) return;
+    const now = this.clock();
+    if (now < this.nextRefreshAt) return;
+    this.nextRefreshAt = now + this.rosterTtlMs;
+    if (this.refreshing) return this.refreshing;
+    this.refreshing = (async () => {
+      try {
+        const roster = await this.rosterSource?.();
+        if (roster !== undefined) this.discovered = [...new Set(roster)];
+      } catch (error) {
+        this.logger.warn(`[pool] roster enumeration failed, keeping ${this.poolDevices.length} device(s): ${String(error)}`);
+      } finally {
+        this.refreshing = undefined;
+      }
+    })();
+    return this.refreshing;
   }
 
   /**
@@ -79,14 +134,14 @@ export class DevicePool {
   resolveKey(args: Record<string, unknown>): string {
     const serial = this.explicitSerial(args);
     if (serial !== undefined) return serial;
-    if (this.hasPool) return this.devices[0] ?? this.defaultDeviceKey;
+    if (this.hasPool) return this.poolDevices[0] ?? this.defaultDeviceKey;
     return this.defaultDeviceKey;
   }
 
   /** Every pool device is in cooldown, so an auto call cannot be admitted anywhere. */
   refusesAuto(): boolean {
     if (!this.hasPool) return this.isCoolingDown(this.defaultDeviceKey);
-    return this.devices.every((device) => this.isCoolingDown(device));
+    return this.poolDevices.every((device) => this.isCoolingDown(device));
   }
 
   /** Queue for the device an auto call would be parked on, or undefined when the pool decides. */
@@ -95,6 +150,7 @@ export class DevicePool {
   }
 
   async acquire(args: Record<string, unknown>, signal?: AbortSignal): Promise<PoolLease> {
+    await this.refreshRoster();
     const ticket: Ticket = {
       want: this.explicitSerial(args),
       signal,
@@ -170,7 +226,7 @@ export class DevicePool {
     }
     // Cooldown-skipping is the pool's own job for auto: the guard refuses a *known* cooling device,
     // but an auto request has no device until this line picks one (S4/G33).
-    return this.devices.find(
+    return this.poolDevices.find(
       (device) => !this.assigned.has(device) && this.gate.busyCount(device) === 0 && !this.isCoolingDown(device),
     );
   }

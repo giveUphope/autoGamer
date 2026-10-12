@@ -128,6 +128,14 @@
       "type": "object"
     }
   },
+  "list_devices": {
+    "description": "Lists attached Android devices and their readiness, touching none of them.\n\nRead-only discovery for callers that schedule work across machines (the plugin's device pool,\nG3/G28/G64). Enumeration is the runtime pool's own, so snapshot caching and timeout behaviour\nstay in one place.\n\nThe result keeps **\"could not ask adb\"** distinct from **\"adb answered: no devices\"**:\n`enumerated` is false only when the question itself failed. Collapsing those two would turn a\ntransient adb blip into an empty fleet, which is why `try_list_devices_async` exists upstream.\n\nReturns a JSON string such as '{\"enumerated\": true, \"devices\": [{\"serial\": \"emulator-5554\",\n\"state\": \"device\", \"is_busy\": false, ...}]}'.\n",
+    "inputSchema": {
+      "properties": {},
+      "title": "list_devicesArguments",
+      "type": "object"
+    }
+  },
   "long_press_on": {
     "description": "Long presses on the screen at coordinates.\n\n'coordinates' is a list [x, y].\n'duration' is in milliseconds (default 1000).\n",
     "inputSchema": {

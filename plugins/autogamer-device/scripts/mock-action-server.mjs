@@ -9,8 +9,44 @@ const TOOLS = [
   "tap", "long_press_on", "swipe", "back", "launch_app", "stop_app",
   "open_link", "focus_and_input_text", "focus_and_clear_text",
   "erase_one_char", "press_key", "take_screenshot", "get_ui_hierarchy",
-  "compare_ui_frames",
+  "compare_ui_frames", "list_devices",
 ];
+
+/**
+ * list_devices mirrors artemis/runtime/device_pool.DeviceStatus.to_dict() key for key (G64),
+ * because the pool reads those fields to decide eligibility. Emitting anything else here would be
+ * inventing contract -- the mistake changelogs #51 records for `ratio`.
+ * MOCK_ENUM=failed models "could not ask adb", which must stay distinct from an empty fleet.
+ */
+const ROSTER = ["mock-device"];
+const DEVICE_STATUS_KEYS = [
+  "serial", "state", "model", "product", "is_emulator", "is_busy",
+  "active_pid", "active_task_desc", "active_session_id", "acquired_at",
+];
+
+function listDevicesPayload() {
+  const enumerated = process.env.MOCK_ENUM !== "failed";
+  const devices = enumerated
+    ? ROSTER.map((serial) => ({
+        serial,
+        state: "device",
+        model: null,
+        product: null,
+        is_emulator: true,
+        is_busy: false,
+        active_pid: null,
+        active_task_desc: null,
+        active_session_id: null,
+        acquired_at: null,
+      }))
+    : [];
+  for (const device of devices) {
+    if (Object.keys(device).length !== DEVICE_STATUS_KEYS.length) {
+      throw new Error("mock list_devices payload drifted from DeviceStatus.to_dict()");
+    }
+  }
+  return JSON.stringify({ enumerated, devices });
+}
 
 /**
  * take_screenshot answers a real PNG header (1080x2400 IHDR) so the plugin's
@@ -45,6 +81,7 @@ const effectVerdict = () => {
 function mockText(toolName) {
   if (toolName === "take_screenshot") return SCREENSHOT_PNG;
   if (toolName === "compare_ui_frames") return effectVerdict();
+  if (toolName === "list_devices") return listDevicesPayload();
   return "Success";
 }
 

@@ -69,6 +69,8 @@ describe("conformance: py action server surface", () => {
     // transport calls go through the `callTransport` wrapper (G33: a dead
     // server must classify environment, never task/internal), which the
     // extractor reads with the same spelling.
+    // `list_devices` (G64) joins for the same reason: the pool asks the server who is attached,
+    // and that call is not a device action, so no action mapping would ever cover it.
     const direct = new Set<string>();
     for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
       const text = readFileSync(file, "utf8");
@@ -78,6 +80,7 @@ describe("conformance: py action server surface", () => {
     expect([...direct].sort(), "src should still contain direct call sites").toEqual([
       "compare_ui_frames",
       "get_ui_hierarchy",
+      "list_devices",
       "take_screenshot",
     ]);
     const unreachable = [...direct].filter((tool) => !realTools.includes(tool));
@@ -249,6 +252,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
         "breakerCooldownMs",
         "defaultDeviceKey",
         "devices",
+        "discoverDevices",
         "maxConcurrentDevices",
         "screenSize",
         "strictness",
@@ -263,6 +267,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     // G3/G28: the roster is an array of serials and the ceiling a plain number.
     expect(fields.devices.type).toBe("array");
     expect(fields.maxConcurrentDevices.type).toBe("number");
+    expect(fields.discoverDevices.type).toBe("boolean");
   });
 
   it("applies declared defaults and leaves the un-defaulted tuple null-filled", () => {
@@ -284,6 +289,9 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     // G3/G28 defaults must equal the historical behaviour: no roster, no ceiling.
     expect(resolved.devices).toEqual([]);
     expect(resolved.maxConcurrentDevices).toBe(0);
+    // G64 discovery stays off by default: turning it on spreads auto calls across machines,
+    // which is a scheduling-semantics change and therefore an explicit operator decision.
+    expect(resolved.discoverDevices).toBe(false);
     // The trap `configuredScreenSize()` exists to survive: an unset optional
     // tuple comes back as a truthy `[undefined, undefined]` array, never
     // undefined, so `if (config.screenSize)` always looks "configured".

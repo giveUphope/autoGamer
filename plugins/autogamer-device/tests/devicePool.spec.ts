@@ -94,6 +94,69 @@ describe("DevicePool (G3/G28)", () => {
     lease.release();
   });
 
+  it("schedules auto work on a discovered roster (G64)", async () => {
+    let calls = 0;
+    const gate = new DeviceGate();
+    const pool = new DevicePool({
+      gate,
+      defaultDeviceKey: "default",
+      rosterSource: async () => {
+        calls += 1;
+        return ["emulator-5554", "emulator-5556"];
+      },
+    });
+    const first = await pool.acquire({ action: "tap" });
+    const second = await pool.acquire({ action: "tap" });
+    expect([first.key, second.key].sort()).toEqual(["emulator-5554", "emulator-5556"]);
+    expect(calls).toBe(1); // throttled: one enumeration for the burst, not one per call
+    first.release();
+    second.release();
+  });
+
+  it("keeps the last good roster when enumeration cannot be answered (fail-open)", async () => {
+    // device_pool.py:354-356 -- "could not ask adb" must stay distinct from "no devices attached".
+    let answer: string[] | undefined = ["A"];
+    let clock = 0;
+    const gate = new DeviceGate();
+    const pool = new DevicePool({
+      gate,
+      defaultDeviceKey: "default",
+      rosterSource: async () => answer,
+      rosterTtlMs: 1_000,
+      now: () => clock,
+    });
+    const first = await pool.acquire({ action: "tap" });
+    expect(first.key).toBe("A");
+    first.release();
+
+    answer = undefined; // the question failed this time
+    clock += 2_000; // past the throttle window, so it really asks again
+    const second = await pool.acquire({ action: "tap" });
+    expect(second.key).toBe("A"); // not "default": the fleet did not vanish
+    second.release();
+    expect(pool.poolDevices).toEqual(["A"]);
+  });
+
+  it("prefers a configured roster over the discovered one", async () => {
+    const gate = new DeviceGate();
+    let asked = 0;
+    const pool = new DevicePool({
+      gate,
+      defaultDeviceKey: "default",
+      devices: ["pinned-1"],
+      rosterSource: async () => {
+        asked += 1;
+        return ["discovered-1", "discovered-2"];
+      },
+      now: () => 0,
+      rosterTtlMs: 0,
+    });
+    const lease = await pool.acquire({ action: "tap" });
+    expect(lease.key).toBe("pinned-1");
+    lease.release();
+    expect(asked).toBe(0); // no RPC at all when the operator pinned a roster
+  });
+
   it("gives a freed device to the earliest queued auto ticket, not to whoever scans first", async () => {
     // The claimed-only half of inventory/02:236: after a device frees, the ticket that asked first
     // keeps its place. Written because the first version of this lock could not tell a reversed

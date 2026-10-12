@@ -47,6 +47,12 @@ export const Config: object = z.object({
   devices: z.array(z.string()).default([]),
   /** G28 ceiling on devices admitted at once, across explicit and auto calls; 0 (default) = unlimited. */
   maxConcurrentDevices: z.number().default(0),
+  /**
+   * G64: ask the action surface (`list_devices`) who is attached instead of relying on `devices`.
+   * Default **false** on purpose -- turning discovery on changes scheduling semantics (auto spreads
+   * across machines instead of sharing one key), so it stays an explicit operator decision (#55).
+   */
+  discoverDevices: z.boolean().default(false),
   /** P1-a validator strictness (S11 step 5); default "final" like upstream. */
   strictness: z.union(["off", "final", "checkpoints", "strict"]).default("final"),
 });
@@ -75,6 +81,7 @@ export type PluginConfig = {
   strictness?: "off" | "final" | "checkpoints" | "strict";
   devices?: string[];
   maxConcurrentDevices?: number;
+  discoverDevices?: boolean;
 };
 
 export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
@@ -89,6 +96,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     devices: config.devices ?? [],
     maxConcurrentDevices: config.maxConcurrentDevices ?? 0,
     isCoolingDown: (key) => !breaker.canAdmit(key),
+    rosterSource: config.discoverDevices ? () => enumerateRoster() : undefined,
   });
   const incidents = new ActionIncidents();
   const client = new ActionClient({
@@ -98,6 +106,37 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   });
 
   const screenSizeCache = new Map<string, ScreenSize>();
+  /**
+   * G64 roster source: ask the action surface which devices exist (read-only `list_devices`).
+   * Returns `undefined` when the question itself could not be answered -- the py server keeps
+   * "could not ask adb" separate from "adb answered: no devices" exactly so a transient blip does
+   * not look like an empty fleet, and this side must honour that by reporting "don't know".
+   */
+  async function enumerateRoster(): Promise<string[] | undefined> {
+    let answer: string;
+    try {
+      answer = unwrapText(await client.callTool("list_devices", {}));
+    } catch (error) {
+      logger.warn(`[pool] list_devices transport failed: ${(error as Error)?.message ?? error}`);
+      return undefined;
+    }
+    if (answer.startsWith("Error:")) {
+      logger.warn(`[pool] list_devices refused: ${answer.slice(0, 120)}`);
+      return undefined;
+    }
+    let parsed: { enumerated?: unknown; devices?: unknown };
+    try {
+      parsed = JSON.parse(answer) as typeof parsed;
+    } catch (error) {
+      logger.warn(`[pool] list_devices returned non-JSON: ${String(error)}`);
+      return undefined;
+    }
+    if (parsed.enumerated !== true || !Array.isArray(parsed.devices)) return undefined;
+    return parsed.devices
+      .map((device) => (device as { serial?: unknown }).serial)
+      .filter((serial): serial is string => typeof serial === "string" && serial.length > 0);
+  }
+
   async function resolveScreenSize(key: string): Promise<ScreenSize | undefined> {
     const configured = configuredScreenSize(config.screenSize);
     if (configured) return configured;

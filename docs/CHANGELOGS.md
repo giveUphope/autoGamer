@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#55 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#56 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2276,6 +2276,73 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
       fail-open；重复实现＝多一份抄件，加只读 py 工具＝D8 须登记的 py 改动，等用户点头）；
       多设备 live 未验（本机无设备无宿主），A 片的正确性目前只由单测与内存设备支撑
 
+### #56 G64 结案：py 只读 `list_devices` 工具，插件的 roster 有了真来源
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（py 面 14→15 工具，四处契约同步完，三条变异校验全红）
+- **优先级**: 高（#55 的池闸门此前只能吃人手写的 roster；P2 的诊断 admission 也要同一份设备状态）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G64 结案轮」住在 `TODO.md`（spec 提交 `50f26b5` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+设备枚举**在 py 里早就有实现，但没有任何 MCP 工具面出口**——本轮 grep：`artemis/mcp/action_server.py`
+与 `action_manifest.py` 里 `list_devices` **0 命中**，而能力在 `artemis/runtime/device_pool.py`
+（`list_devices_async` / `try_list_devices_async`，自带快照缓存；文件底部有模块级单例 `device_pool`）。
+后果是 **#55** 的池闸门只能用人手配置的 roster：设备上下线要改配置，且看不见
+`offline`/`unauthorized`/`is_busy` 这些状态。另一条路（TS 自己 `adb devices`）就是本仓库禁止的
+第二份抄件，`inventory/02:236` 点名的 fail-open 语义还会在复制时丢掉。
+
+#### 整改方案与实施
+
+- **py**（`artemis/mcp/adb_server.py`，D8 一期改造登记**第 3 项**）：只读工具 `list_devices`，
+  复用现成单例的 `try_list_devices_async()`，返回 `json.dumps({"enumerated": bool, "devices": [...]})`。
+  `DeviceStatus` 十个字段原样透传（`device_pool.py:36-47`）。**核心是那条可辨性**：
+  `try_list_devices_async` 的原文（`device_pool.py:354-356`）是「returns None when enumeration failed
+  and no usable snapshot exists, so callers can distinguish *could not ask adb* from
+  *adb answered: no devices attached*」⇒ 枚举不成写 `enumerated:false`，真没插设备写
+  `enumerated:true, devices:[]`，两者**永不塌成一个**；枚举抛异常也收敛成 `enumerated:false`
+  而不是把回合炸掉（工具面失败要结构化，S6 附带口径）。
+- **插件**：`src/devicePool.ts` 加 `rosterSource` / `rosterTtlMs` / 可注入 `now`，
+  `poolDevices` = 「人手 `devices` 优先，否则用发现的」；`refreshRoster()` 带节流，
+  **拿到 `undefined` 时保留上一份好 roster**（fail-open 的调用方半边），且**配置了 roster 就完全不发 RPC**。
+  `src/index.ts` 的 `enumerateRoster()` 解析 py 的返回，任何不确定的形状（非 JSON、`Error:`、传输异常）
+  一律回 `undefined`＝「不知道」，而不是猜一个空池。
+- **默认零行为变化**：新配置 `discoverDevices` 默认 **`false`**。列举一开就把 auto 从共享键散到多台，
+  属调度语义变化，必须是显式配置——这条锁在 `contracts.spec.ts` 的默认值断言里。
+- **契约同步四处**：py pin fixture（`tests/fixtures/action_surfaces/adb_server_manifest.json` 重生成，
+  14→15，按 LF 写回以免整文件假 diff）、插件 fixture（`--write` 走 `--type mock`）、
+  插件「映射之外的直接调用」清单（加 `list_devices`）、文档。
+- **两条既有锁当场咬住新漂移**（值得记，这是它们的存在理由）：
+  ① `mockServer.spec.ts` 的「与真 py 面同一清单」立刻红——JS stub 又少了一个工具（**一天内第二例同类漂移**）；
+  ② `contracts.spec.ts` 的「插件调用的每个 py 工具都要登记」立刻红——新调用点不进清单就过不去。
+- **两处自我纠正（本轮写文档时）**：给 CHANGELOGS 索引行与 §零 计数打的两处 `str.replace(...)`
+  **没有校验是否命中**，于是静默空转——索引区间已推进到 `#9–#55`，描述文字却还停在 `#52`；
+  是核对 `repr(行尾)` 时才抓到的。与 **#49**（管道吞掉退出码）、**#51**（勾了没跑过的判据）同一族：
+  **不校验命中的替换等于没有替换**。本轮之后的文档改写一律「先断言 anchor 唯一存在，再替换」。
+- **偏差如实记**：方案第②条写「在 `action_manifest.py` 把该工具登记进与 `take_screenshot` 同一档能力门」，
+  实做时查明 **adb 面根本没有能力门**（该 server 的工具恒全暴露，`test_adb_server_contract.py` 的投影检查
+  也印证 `compare_ui_frames` 当初就不在 manifest 里——#12 的偏差段已记过一次）。
+  ⇒ 这一项**不是遗漏，是不存在**，方案文字按实际作废。
+
+#### 验收标准
+
+- [x] `uv run python -X utf8 -m pytest tests/unit/mcp -q` ⇒ **233 passed + 1 skipped**（基线 228+1，新增 `tests/unit/mcp/test_device_listing.py` 5 条）
+- [x] `uv run python -X utf8 -m pytest tests/unit -q` ⇒ **2602 passed / 7 skipped**（基线 2597/7，**零回归**）
+- [x] 插件 `pnpm test` ⇒ **159 passed / 1 skipped**（#55 后基线 156/1，净增 3 条 roster 锁）；`run build` 0 error
+- [x] `uv run ruff check` 全过；`uv run ruff format --check` ⇒ 669 files 全净
+- [x] **变异校验三条全红**（脚本 `finally` 还原，还原后 py mcp 与 spike 均 exit 0）：
+      ① 把「没问成 adb」塌成空设备 ⇒ `test_enumerated_false_is_not_an_empty_fleet` 红；
+      ② 把 `discoverDevices` 默认改 `true` ⇒ `applies declared defaults…` 红
+      （`expected true to be false`，第一次只拿到 exit=1，单独复跑取到测试名才勾）；
+      ③ 从插件 fixture 删 `list_devices` ⇒ **#54** 那条 CI 命令红并报
+      `fixture is out of date with the live server: list_devices`（顺带证明那步真有牙）
+- [x] 等价性仍成立：`--type adb` 与 `--type mock` 两面清单一致（都由同一个 `adb_mcp` 对象导出）
+- [ ] 留白（按 R21 区分证据层级）：本机无设备，`enumerated:true` 的**真实枚举**只有 monkeypatch 级证据；
+      多设备 live 调度与 `is_busy`/锁屏状态的实际取值都要等设备在场
+
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0；`uv run ruff check` / `format --check` ⇒ 669 files 全净
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2338,3 +2405,4 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
 | G3 | auto-serial 闸门缺口（显式 serial 队列 + auto 空闲池） | A 片落地：`src/devicePool.ts` 包一层现有 `DeviceGate`，auto 从 roster 挑第一台「未冷却 + 未占用 + gate 空闲」的设备且只占一台；显式 serial 仍走该设备链；roster 由 config 注入（默认空＝现状不变）。真枚举来源另立 **G64** 未决 | 本文件 **#55** |
 | G28 | parking + 全局并发上限的内部语义 | parking 按 `device_lock.py:332` 的口径实现（未认领票据不占全局槽、不 idle 掉别的设备），全局上限按已 admit 设备数计；六条语义锁 + 三条变异校验（其中一条第一版是虚锁，已如实记） | 本文件 **#55** |
 | G63 | py 动作面 fixture 从未在 CI 被重新比对（§零 的旧表述是假陈述，见 #53） | `python-quality` 加 `Set up Node.js` + 一步用 `--type mock` 重导比对；`spike-mcp.mjs` 未改（默认模式本就是漂移检查） | 本文件 **#54** |
+| G64 | 设备 roster 的真来源（TS 重复枚举 vs 加只读 py 工具） | 用户选「加只读 py 工具」：`adb_server.py` 新增只读 `list_devices`（复用现成 device_pool 与 try_list_devices 的 fail-open），插件 `rosterSource` + `discoverDevices`（默认 false，保住 #55 的零变化承诺） | 本文件 **#56** |
