@@ -118,6 +118,7 @@
 | G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留，**已排查到两个候选都被削掉，剩「仓库特定的 push 抑制」**（2026-10-12 全部只读核对）。**现象**：仓库至今只有 1 次 run（`38167498398`，`workflow_dispatch`，`run_number: 1`），**六个 push 数据点零 run**——`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54`（事件流 `2026-10-12T06:38:30Z`）、`4b29e54..419b9df`（`pushed_at 09:40:02Z`）、**第六点 `419b9df..e8c2204` 是本轮用户授权后实推的**：`git push origin main` exit 0、`refs/heads/main` 确认等于 `e8c2204`、`pushed_at 2026-10-12T12:40:04Z`，**80 秒后 `runs?event=push` 仍为 0**，新 tip 的 `check-suites` 依旧只有第三方 App `trae-ai-cn`。其中三次发生在派发成功**之后**，排除「先后顺序」解释。**已排除**：① git 层——`/events` 里 **13 条 PushEvent**，`payload.ref` 全是 `refs/heads/main`，GitHub 收到了；② 触发器写法——`on:` 是裸 `push:`（无 branches/paths 过滤）；③ repo 级开关——`disabled:false`、`actions/permissions` = `enabled:true` + `allowed_actions:all`、workflow `state:active`；④ **账号级**——彻底排除：同账号**非 fork** 的 `giveUphope/llama-launcher` 有 168 次 run 含 `event:push`，且其**最近一次 push run 是 `2026-10-11T16:39:58Z`**，比我们成功派发那次（`19:19:04Z`）只早两小时，与我们六次零 run 的 push 完全同时段 ⇒ 账号在那一刻是能触发 push 的；⑤ 上游侧——`google/artemis` 公开正常、**661 次 run**；⑥ **Actions 根本没评估过这些 push**：tip commit 的 `check-suites` 只有一条属第三方 App `trae-ai-cn`（`workflow_id:null`），`check-runs` 为空。**两个候选都被削掉了，现在剩「仓库特定的 push 抑制」**。(a) fork 未 opt-in：被官方文本削弱—— [禁用和启用工作流](https://docs.github.com/zh/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows) 原文是 「**在复刻公共仓库时，默认情况下将禁用计划的工作流程**」，禁的是 **scheduled**，而本 `ci.yml` 根本没有 `schedule:` 触发器， 这条默认规则解释不了 push 零 run；且本仓库 `/actions/permissions` 载荷与同账号**能触发 push** 的 `llama-launcher` **逐字相同** （`enabled:true` + `allowed_actions:all` + `sha_pinning_required:false`），API 侧无任何字段可判 (a)。 (b) `google` org 禁止 fork 自动跑：**已由实测否证**——同一上游的他人 fork `the-long-ride/artemis-build` 有 `runs=7` 且 `events` 含 **`push` 与 `pull_request`**（其 `/actions/permissions` 因非协作者返回 403，不影响这条结论）。 **本轮试过两条取证路，都被否证**：① **匿名页面没有否证力**（R24 的同族：判「看不到」之前，先证明取证渠道有资格看到）——应用内浏览器打开 `/actions` 只见「1 workflow run」且看不到横幅，但该会话**未登录**（`/settings/profile` 跳登录页、`/settings/actions` 404），而横幅只对**有写权限的登录态**渲染，所以「看不到」既不能立 (a) 也不能撤 (a)，**不得据此判「已允许」**；② 反向证据只到「不是整体关停」：派发那次**确实建了 run 且 6 条 job 全部执行完**，说明仓库级 Actions 可用；若 (a) 成立，它就必须是「只掐自动事件、放行 dispatch」——这属**未证的 GitHub 行为**，不许当结论。**下一步只剩两个（① 已做完）**：~~授权一次 push 作第六数据点~~ ⇒ **2026-10-12 已执行**（用户授权，`419b9df..e8c2204`，结果仍零 run，见上），判别用尽；① 剩 **用户登录态的 UI 回报**（(b) 否证、(a) 被官方文本削弱之后，它只在「UI 是否真有一条异常提示」这一层有信息量：看到 enable-workflows 类横幅 → 说明 fork opt-in 确实掐 push，与官方文本不符，须连同本行证据一起报 Support 才服人；看到 org/策略提示 → 与 `artemis-build` 的实测冲突，先回头怀疑对照口径；什么都没有 → 与现状一致）；② **带证据包报障 GitHub Support**，本行已备齐六项（六次 push 全落 `refs/heads/main` 且 ref/`pushed_at` 与本地一致、tip 的 check-suite 只属第三方 App `trae-ai-cn`、`check-runs` 空、`actions/permissions` 与能触发 push 的同账号仓库逐字相同、同上游他人 fork 有 `push` run、同账号非 fork 仓库同时段有 `push` run）。**另注：`#46` 新加的 `Check documentation gates` step 至今一次都没执行过**（唯一那次 run 是 G53 未修时派发的），要确立「CI 现状」需一次新的 `workflow_dispatch`——属仓库可见动作，未授权，等用户点头。**在此之前，任何「CI 证据」必须写明是手动派发** |
 | G59 | 本机 `--dump-config-schema` 常驻失败，live 前需重装 bundle | 新开（2026-10-12 补 R6 时实测，既有状态）：`dsh` 在 PATH（`~/AppData/Local/Programs/DeepSeek Harness/.../bin/dsh.cmd`，0.2.0-rc.2），R6 双 patch 均 exit 0/0 unmatched 且审计节进树；但 `--dump-config-schema` 裸跑同败（`Cannot find package 'autogamer-device'`），profile `dependencies` 为空、两处 patch 模板皆空——残留引用在宿主合成侧，与本轮 YAML 无关。live 复验前需重装 bundle（动用户 profile，用户决策）；`--dump-config` 不受影响 |
+| G63 | py 动作面 fixture 从未在 CI 被重新比对 | 新开（2026-10-13 grep 实测）：§零 曾写「CI 用 `node scripts/spike-mcp.mjs` 做同一比对」，而 `.github/workflows/ci.yml` 里 `spike-mcp` **命中 0 次**，`plugin-contracts` job 也没有任何 Python 环境（步骤只有 gen-sse-events / build / test）⇒ `tests/fixtures/py-action-tools.json` 一直是人工带着的产物。G62 之后 `--type mock` 让这一步在无设备上也可跑，方案见 §五「G63」条目（用户已确认） |
 | G17 | 共存鉴权 | 收缩：旧控制台只读（SameOrigin 原样即可）；DSH 认证（一次性 token→签名 cookie）为插件轨道 |
 | G23 | 录像产物契约 | 保留（录屏接回时的验收规格：manifest v2/命名/首帧锚定/`image://{sha256}`/安全模型=根约束+白名单） |
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
@@ -135,6 +136,36 @@
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
+
+### G63 把 py 动作面的 fixture 变成 CI 机器可验（2026-10-13 用户已确认按此推进）
+
+- **What**：让 `plugins/autogamer-device/tests/fixtures/py-action-tools.json` 不再是「人工带着走」的产物，
+  而是**每次 CI 都从 py 实现重新导出一份并比对**。交付两件——
+  ① `.github/workflows/ci.yml` 的 `python-quality` job 新增一步
+     `SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs`
+     （该脚本**默认模式本来就是漂移检查**：不匹配即 `console.error` + 非零退出，`--write` 才重写）；
+     该 job 已有 `uv sync --dev --locked`，只缺一个显式 `setup-node`（不依赖 runner 预装的 node）。
+  ② 更正 §零 的一条**假陈述**并立 **G63** 后结案：现文写「CI 用 `node scripts/spike-mcp.mjs` 做同一比对」——
+     实际 grep `.github/workflows/ci.yml` 里 `spike-mcp` **命中 0 次**，且 `plugin-contracts` job **完全没有 Python 环境**
+     （步骤只有 gen-sse-events / build / test）⇒ 那份 fixture 从未在 CI 被重新对过。
+  **范围外**：不改 `spike-mcp.mjs` 的判定逻辑（它已经是对的）、不改 fixture 内容、
+  不给 `plugin-contracts` 再装一套 uv（重复安装且语义上这是 py 面的事，归 `python-quality`）。
+- **How**：为什么用 `--type mock` 而不是 `--type adb`——CI runner 上没有 adb 也没有设备，`--type adb` 只能
+  `tools/list`、任何调用都会环境级失败；而 G62 之后 `--type mock` **跑得动全部 14 个工具**，
+  且本轮实测两面工具清单**逐字节相同**（同一个 `adb_mcp` 对象）。fixture 的 `source` 字段要同时写清
+  「canonical 面是 `--type adb`，CI 用 `--type mock` 复核，二者工具清单实测相同」，否则又是一个会腐烂的口径。
+- **Verify**
+  - 本地先跑同一命令：`SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs` ⇒ exit 0
+    （本轮已在 `9022ab1` 上跑过，输出 `[spike] tools (14)` 两面相同）
+  - **变异校验**：临时从 fixture 里删一个工具名 ⇒ 同一条命令必须非零退出并报 `fixture is out of date`；恢复后转绿
+  - YAML 可解析且新步骤在 `python-quality`：`uv run python -c "import yaml,io; ..."` 打印步骤名与 `if`
+  - 两枚文档门禁 + `--selftest` ⇒ exit 0
+- **Done means**
+  - [ ] CI 里确有这一步，且本地用同一条命令证明它会在漂移时变红
+  - [ ] §零 那句假陈述已更正（不是「CI 做同一比对」），并记 CHANGELOGS **#53**
+  - [ ] G63 取号登记后结案：§四 移除、registry 已关闭表 + CHANGELOGS 已关闭差距史各一行
+  - [ ] fixture 的 `source`/`notes` 与真实导出口径一致
+  - [ ] 本条结案即删（活文档规则）
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
