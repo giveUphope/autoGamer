@@ -24,6 +24,7 @@ src/coord.ts                      0-1000 归一坐标换算 + 截图取尺寸（
 src/actionClient.ts               py action server 的 MCP stdio 客户端包装
 src/mcpText.ts / src/hierarchy.ts 文本解包 / 层级解析：`#N` 按**节点身份**跟随到当前位置（G67）
 src/observations.ts               活观察快照：每个 (agent, device) 只存模型最后一次所见的那份列表
+src/dsh-types.ts                  宿主契约的本地结构别名（详见下方「契约要点」，升级 DSH 必复核）
 skills/autogamer-flash/           flash 执行策略 skill
 scripts/mock-action-server.mjs    离线 mock action server（take_screenshot 回真 PNG 头）
 scripts/spike-mcp.mjs             真 py 动作面取证 + fixture 生成（--write）

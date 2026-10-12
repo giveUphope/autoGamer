@@ -346,8 +346,11 @@ export interface RouterOptions {
    */
   observations?: LiveObservations;
   /**
-   * Calling-agent identity for the G13 in-flight dedup key. Absent in
-   * direct-drive tests, where every call shares the "anonymous" lane.
+   * Calling-agent identity for the G13 in-flight dedup key and the G67 handle
+   * scope. Direct-drive tests leave it unset, and a host whose initiator lookup
+   * throws lands here too - so "anonymous" is a real shared lane, not only a
+   * test artefact (worst case those callers share one observation and one dedup
+   * key, never a silent positional tap).
    */
   agentIdOfCall?(): string | undefined;
   /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
