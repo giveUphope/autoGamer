@@ -134,6 +134,56 @@
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
+**已登记 3 项**：**G64 py 只读 `list_devices` 工具**（2026-10-13 用户已决「加只读 py 工具」）——复用 `runtime/device_pool.py` 现成的枚举与 `try_list_devices` 的 fail-open，不新增第二份实现；豁免理由：设备列举此前没有任何 MCP 工具面出口，插件要么重复实现（多一份抄件）要么看不见设备状态；工具面 14→15 的契约同步见 §五「G64 结案轮」
+
+### G64 结案轮：py 侧只读 `list_devices` 工具 + 插件的 roster 真来源（2026-10-13 用户已决「加只读 py 工具」）
+
+- **What**：设备枚举能力在 py 里早就存在但**没有暴露在任何 MCP 工具面上**（本轮 grep：
+  `artemis/mcp/action_server.py` / `action_manifest.py` 里 `list_devices` 0 命中；能力在
+  `artemis/runtime/device_pool.py` 的 `list_devices_async` / `try_list_devices_async`）。交付三件——
+  ① **py**：`artemis/mcp/adb_server.py` 新增**只读**工具 `list_devices`，复用现成 `DevicePool`
+     （它自带快照缓存，`inventory/02:236` 点名的 fail-open 语义也在那儿），工具面 **14 → 15**；
+  ② **契约同步**（一次改动四处权威，顺序不能乱）：py 侧 schema pin fixture 重生成、
+     插件侧 `tests/fixtures/py-action-tools.json` 用 `spike-mcp.mjs --write` 从 `--type mock` 重导
+     （**#54** 刚把这件事变成 CI 机器可验）、`action_manifest.py` 把该工具登记进与 `take_screenshot`
+     同一档能力门、以及 `#52` 的 mock 面自动跟着（同一个 `adb_mcp` 对象，无需另改）；
+  ③ **插件**：`DevicePool` 加一个可选 `rosterSource`，`discoverDevices: true` 且 `devices` 为空时
+     向 py 要 roster；**`devices` 非空＝人手覆盖，不发 RPC**。
+  **范围外**：`list_devices` **不**做成模型可见的工具（模型仍只见 `run_device_action` +
+  `report_task_status`）；`ACTION_TO_PY_TOOL`（动作→py 工具映射）**不变**，因为列举不是一个设备动作；
+  P2 的诊断 admission（锁屏 fail-closed/多设备切换）只是有了数据来源，本片**不实现判定**。
+- **How**（每条都有原文，不自发明语义）：
+  - **返回形状**：`json.dumps({"enumerated": bool, "devices": [DeviceStatus.to_dict(), ...]})`。
+    `DeviceStatus` 字段照 `device_pool.py:36-47` 原样（`serial/state/model/product/is_emulator/
+    is_busy/active_pid/active_task_desc/active_session_id/acquired_at`）。
+  - **fail-open 必须可辨**：`device_pool.py:354-356` 原文——「returns None when enumeration failed
+    and no usable snapshot exists, so callers can distinguish *could not ask adb* from
+    *adb answered: no devices attached*」。⇒ `enumerated:false` 就是「没问成」，**绝不能塌成空列表**；
+    插件收到 `enumerated:false` 一律退回 `defaultDeviceKey`（与现状一致），而不是当成「没有设备」。
+  - **默认零行为变化**：`discoverDevices` 默认 **`false`**。这保住 **#55** 承诺的「不配 roster 时
+    行为逐字不变」——列举一开就改变调度语义（auto 会从共享键散到多台），所以它必须是显式配置，
+    不能顺手变成默认。`contracts.spec.ts` 里加一条默认值断言锁住它。
+  - 不新增第二份枚举实现（TS 自己 `adb devices` 就是这仓库禁止的抄件），也不把 roster 写死进 preset。
+- **Verify**
+  - `uv run artemis mcp --type mock` + `SPIKE_COMMAND=... node plugins/autogamer-device/scripts/spike-mcp.mjs --write`
+    ⇒ fixture 变为 **15** 项且含 `list_devices`；再跑一次默认模式 ⇒ exit 0（无漂移）
+  - py：`uv run python -X utf8 -m pytest tests/unit/mcp -q`（基线 **228 passed + 1 skipped** 之上只增）；
+    新用例覆盖三条：只读且无枚举时不 raise、`enumerated:false` 与 `[]` 可区分、schema 进 pin fixture
+  - 插件：`pnpm test`（基线 **156 passed / 1 skipped**）+ `run build` 0 error；
+    `list_devices` 的 15 面与 `ACTION_TO_PY_TOOL` 的映射校验仍绿（映射不含它是**有意**的，由 spike 的
+    `missing` 检查方向保证：映射里的名字必须存在于面上，反之不要求）
+  - **变异校验**（R27 第 1 条）：① 把 `enumerated:false` 塌成空列表 ⇒ 「问不成 adb」那条 py 测试必须红；
+    ② 把 `discoverDevices` 默认改 `true` ⇒ 默认值锁必须红；③ 从 fixture 里删 `list_devices`
+    ⇒ **#54** 那条 CI 命令必须红（顺手证明那条步骤真有牙）
+  - 全量回归：`uv run pytest tests/unit -q` 基线 **2597 passed / 7 skipped** 只增不减；
+    两枚文档门禁 + `--selftest` + `ruff check` / `format --check` ⇒ exit 0
+- **Done means**
+  - [ ] py 面 `list_devices` 落地、只读、fail-open 语义可辨，且 §五「一期改造登记」加第 3 项
+  - [ ] 四处契约权威同步完（py schema pin / 插件 fixture / 能力门 / 文档），fixture 15 项两面一致
+  - [ ] 插件 `rosterSource` + `discoverDevices` 默认 false，两条默认值锁在
+  - [ ] 三条变异校验都做出红，含「#54 的 CI 步骤真会拦 fixture 漂移」这一次实测
+  - [ ] G64 从 §四 移除、registry 与 CHANGELOGS 已关闭表各一行、CHANGELOGS **#56** 三段齐
+  - [ ] 本条结案即删；live 侧留白如实写（本机无设备，`enumerated:false` 分支是真路径而非假设）
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
