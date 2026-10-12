@@ -141,6 +141,47 @@
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
 **已登记 3 项**：**G64 py 只读 `list_devices` 工具**（2026-10-13 用户已决「加只读 py 工具」）——复用 `runtime/device_pool.py` 现成的枚举与 `try_list_devices` 的 fail-open，不新增第二份实现；豁免理由：设备列举此前没有任何 MCP 工具面出口，插件要么重复实现（多一份抄件）要么看不见设备状态；**已落地，CHANGELOGS #56**（工具面 14→15，四处契约同步；方案里「写进 action_manifest 能力门」一项经核实**不存在**——adb 面无能力门，作废而非遗漏）
 
+### G66 小项两桩：incident **关闭**通知 + `run_outcome` 双轴字符串锁（2026-10-13）
+
+- **What**：关掉 G66 里两条**不需要新机制、也不需要裁定**的保真差——
+  ① **incident 关闭通知**：py 的口径是「一次成功的终态动作关掉开着的 incident，并渲染**一轮** CLOSED 通知，
+  让 Operator 回到最初意图收口」（`artemis/graph/state.py:136-141` 字段定义 +
+  `artemis/agents/validator/execution_loop.py:477-488` 只在 `success 且 open_incident 有 kind` 时写
+  `last_closed_incident`，并补 `closed_at_step`；渲染处 `operator/prompts.py:595-615` 明确
+  「open 块每轮重渲、closed 通知只一轮」）。本插件 `ActionIncidents.noteSuccess()` 只是**静默删计数** ⇒
+  模型只知道「连败三次了」，永远不知道「那条 incident 已经被后续成功关掉」，也就收不到「回去把原意图收口」这句。
+  ② **`run_outcome` 双轴只算不锁**：`reportTaskStatus.ts:63-68` 把 `completed + tests_failed>0` 拼成
+  `"completed (with assertion failures on record)"`，而 `tests/apply.spec.ts:529` 只锁了 `blocked` 那一支
+  ⇒ 这条双轴字符串可以被人改成任何值而全绿。
+  **范围外**：`parsed_bounds` + `shifted`/`occupied`、`XML_BYPASSED`（这两条要动梯子且要先定「分类进哪个出口」，
+  另立条目）；checker/validator subagent 化与 §2.6 记忆裁定（需用户决定载体与范围）。
+- **How**：
+  1. `ActionIncidents` 改成**状态式**而不是返回值式：`noteFailure` 在越过阈值时把该 key 标成「已宣布」；
+     `noteSuccess` 只在「已宣布」时留下一条待发的关闭记录；新增 `takeClosure(key)` 由**唯一的模型出口**
+     （`execute` 成功分支 `return result.value` 之前）取走并附上。
+     为什么这样切：清零发生在两处（`finishSuccess` 与非重试的 execute 级），重试成功还绕过 `finishSuccess`——
+     若在清零处直接拼文案就会漏掉重试那条路，而模型出口只有一处，通知天然「只发一轮」。
+  2. 附上的形状沿用现有约定（失败侧是 `incident` + `audit_request`，strict 成功侧是 `self_check`）：
+     `incident_closed: { consecutive_failures }` + `closure_request` 一句话文案，指向「原意图已恢复，请收口或继续」。
+     `presentationMeta` **不动**（R16 只放小元数据，且本轮没有审计需求）。
+  3. ②只加测试不改码：把三支 outcome（`completed` / `completed (with assertion failures on record)` / `blocked`）
+     全锁住，含 `tests_failed` 缺省与 0 的边界。
+- **Verify**
+  - `pnpm --config.verify-deps-before-run=false test` ⇒ 基线 **182 passed / 1 skipped** 之上只增，新增锁：
+    ① 宣布过 incident 后成功一次 ⇒ 结果带 `incident_closed` 且**只此一次**（再成功一次不带）；
+    ② 从未越过阈值的成功 ⇒ **不带** `incident_closed`（不是每次成功都发闭合物）；
+    ③ 重取后成功的重试路径 ⇒ 仍带（这条防止「只在 finishSuccess 拼」的偷懒实现）；
+    ④ outcome 三支各一条字符串等值锁
+  - **变异校验（先自证变异生效，R27 第 6 条）**：把 `takeClosure` 改成每次成功都返回记录 ⇒ ② 必须红；
+    把通知只拼在 `finishSuccess` ⇒ ③ 必须红；把 outcome 拼接里 `tests_failed > 0` 分支删掉 ⇒ ④ 必须红
+  - `pnpm --config.verify-deps-before-run=false run build` ⇒ 0 error
+  - py 侧本片零改动 ⇒ `uv run python -X utf8 -m pytest tests/unit -q` 仍 **2604 passed / 7 skipped**
+  - 两枚文档门禁 + `--selftest` ⇒ exit 0
+- **Done means**
+  - [ ] 三条 incident 锁 + 四条 outcome 锁落地，变异校验做红记进 CHANGELOGS **#62**
+  - [ ] G66 行回写：③④ 两项已关，余 ①②（分类片）与 ⑤⑥（需裁定/live）
+  - [ ] 本条结案即删
+
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
 - **What**：把「动作后屏幕是否变化」的判定移到 py 动作面，复用仓库里已有的 `artemis/utils/image_diff.py::check_ui_change`，
