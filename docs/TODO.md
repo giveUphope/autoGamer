@@ -118,6 +118,7 @@
 | G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**三次 push 零 run**（`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来。fork 级开关已排除（2026-10-12 只读核对）：repo `fork:true` 但 `disabled:false`、Actions `enabled:true` + `allowed:all`、CI workflow `state:active`——三个全绿。剩下候选收窄到 API 看不见的账号级（用量/标记）与提交身份；下次推送即第四数据点。在此之前任何「CI 证据」必须写明是手动派发 |
 | G59 | 本机 `--dump-config-schema` 常驻失败，live 前需重装 bundle | 新开（2026-10-12 补 R6 时实测，既有状态）：`dsh` 在 PATH（`~/AppData/Local/Programs/DeepSeek Harness/.../bin/dsh.cmd`，0.2.0-rc.2），R6 双 patch 均 exit 0/0 unmatched 且审计节进树；但 `--dump-config-schema` 裸跑同败（`Cannot find package 'autogamer-device'`），profile `dependencies` 为空、两处 patch 模板皆空——残留引用在宿主合成侧，与本轮 YAML 无关。live 复验前需重装 bundle（动用户 profile，用户决策）；`--dump-config` 不受影响 |
+| G60 | 两枚文档门禁从未接进 CI | 新开（2026-10-12，偏差关账轮实测）：`check_doc_registry.py` 与 `check_doc_tables.py` 在两处被引用为「门禁」，但 `.github/workflows/*` 里没有任何 step 跑它们——体量表在 HEAD `419b9df` 已红两日，靠 `#44` 验收框自证「双 exit 0」而无人复核，正是这样漂过的。方向：把两枚脚本并入 CI 的 deterministic Python job，但那条 step 现挂 `if: github.event_name == 'workflow_dispatch'`（因 **G54** `on: push` 从不出 run），改它要先定「文档门禁是否值得为它单独开一个可被 push 触发的 job」，且属共享基建改动，**须用户点头**。本轮只做的：把体量口径变成 EOL 无关，并在 `tests/unit/scripts/` 放一条 pytest，让 CI 已有的 `uv run pytest tests/unit` 至少能收到这个口径 |
 | G17 | 共存鉴权 | 收缩：旧控制台只读（SameOrigin 原样即可）；DSH 认证（一次性 token→签名 cookie）为插件轨道 |
 | G23 | 录像产物契约 | 保留（录屏接回时的验收规格：manifest v2/命名/首帧锚定/`image://{sha256}`/安全模型=根约束+白名单） |
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
@@ -135,6 +136,41 @@
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节
+
+### 偏差关账轮（2026-10-12 拉取后核对：三处被实测证伪的抄件 + 它们的共同根因）
+
+- **What**：只修**已量证不符**的派生事实，不碰任何产品代码。三处——
+  ① `docs/TODO.md` §零「测试面」行写插件 vitest `83 passed / 1 skipped`，本轮复跑实为
+     **148 passed / 1 skipped（18 个 test file）**；py 侧 `tests/unit/mcp` 实为 **224 passed + 1 skipped**（原行只报 passed）。
+  ② `docs/migration/README.md` §三 体量表 **4 行**与实测不符（`upstream-plugin-forms.md` 11.8→11.7、
+     `dsh-verification.md` 37.2→37.0、`feature-inventory.md` 13.9→13.8、`inventory/01…05` 216.9→215.9），
+     即 `scripts/check_doc_tables.py` 在 HEAD `419b9df` **就是红的**——而 CHANGELOGS **#44** 的验收框写着「文档门禁双 exit 0」，
+     那条框在它自己的提交上即假。**#44 正文不得改写**（编号永久），错由本轮新条目如实记。
+  ③ 根因（②为什么刷一次还会漂）：`measured()` 数的是**工作树字节**，而工作树换行符取决于最后写它的进程——
+     本机 `core.autocrlf=true`、无 `.gitattributes`，`docs/migration/inventory/03-*.md` 工作树比 blob 多 310 字节 CR，
+     其余文件则全是 LF。`2ab17cb` 那次 `--refresh-sizes` 量的是 CRLF 工作树，文件后来被 LF 重写，1406 行 ≈ 1.4 KB 就这么差出来了。
+     ⇒ 同一条 commit 在两台机器量出两个数，**光刷新只把漂移推到下一台机器上**。
+  **范围外**：不改插件/py 代码；不改 `#44` 正文；**不把两枚文档门禁接进 CI**——那是本轮新立的 **G60**
+  （改 `.github/workflows/*` 属共享基建，且 `if: github.event_name == 'workflow_dispatch'` 的现有形状要先重定，须用户点头）。
+- **How**：① `measured()` 改成**先剥 CR 再计数**（`raw.replace(b"\r\n", b"\n")`），把派生量与 checkout EOL 解耦，
+     这是唯一让「刷新后的数在两个 OS 都成立」的修法；② README §三 表下「体量口径」那句随之改写——原文「按文件**真实**字节数」
+     正是它把自己绑到工作树的；③ 4 行一律 `--refresh-sizes` 生成，不手打（手打过一次：`e7f3589` 只改了 `TODO.md` 那一格）；
+     ④ §零 测试面行按实测重写并保留复测命令；⑤ EOL 不变性给**两处可执行判据**：
+     `--selftest` 增一例（同一内容写成 CRLF 与 LF 两份临时文件，行数与 KB 必须相同）＋
+     `tests/unit/scripts/test_doc_table_sizes.py`（CI 的 `uv run pytest tests/unit` 会收到它——这也是本口径唯一进得了 CI 的路径）。
+- **Verify**：`uv run python -X utf8 scripts/check_doc_tables.py` ⇒ 全 OK；
+  `uv run python -X utf8 scripts/check_doc_tables.py --selftest` ⇒ 比原先多一例且全过；
+  **变异校验**：把 `measured()` 改回 `len(raw)` ⇒ 新 selftest 例与那条 pytest 双双变红；
+  `uv run python -X utf8 scripts/check_doc_registry.py` ⇒ OK；`uv run pytest tests/unit/scripts -q` ⇒ 绿；
+  `git grep -n "83 passed"` ⇒ 空。
+- **Done means**：
+  - [ ] §零 测试面数＝实测（148/1、18 files；py 224 passed + 1 skipped），复测命令仍可直接跑
+  - [ ] 体量表 4 行由脚本生成，`check_doc_tables.py` 转绿
+  - [ ] `measured()` 与 EOL 无关，且被 selftest 例 + pytest 两处锁住
+  - [ ] 「体量口径」那句与实现一致（不再写「真实字节数」）
+  - [ ] **G60** 按 registry 取号登记：`docs/TODO.md` §四 一行 + `registry.md` 现行在册一行，§零「下一步」留一行指针
+  - [ ] CHANGELOGS **#45** 三段齐（问题含实测数字与出处、修法、可复跑验收），并如实记下 `#44` 那条假验收；两门禁重跑
+  - [ ] 本条结案即删（活文档规则），演进依据留 git
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
