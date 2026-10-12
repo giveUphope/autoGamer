@@ -368,6 +368,31 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [x] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑（#17/#18/#26 + registry 已关闭行）
 
+### G52 修复轮：追问路径补进真实 runtime（2026-10-12，按 R22 三步序：查官方声明面 → 本方案 → 实现）
+
+**第 1 步「查」的原文与出处**（全部取自已安装的 rc.2 包**声明面**，未碰 asar；R15/D15 口径）
+
+- `@deepseek-ai/dsh-session@0.2.0-rc.2`（上游 `packages/core/session`）`lib/types/index.d.ts`：`Session.append<T>(type, data)` 原文「Once the event enters the log, the append is committed: observer failures are logged and contained」；`session/event` 是 post-commit 派发且「Scope-filtered dispatch … agent-scoped listeners receive only events from sessions entered through that agent's context」。`lib/types/types.d.ts:273` 定载 `'turn/end': { turn: number; reason: TurnEndReason }`，`TurnEndReasonMap:165-209` 里 `completed` 的载荷是 `{ kind: 'completed' }`。`create(id?, options?)`（`:370`）「returns the live session, already entered and announced」，省略 id 时 store 自铸 `session-<n>`。
+- `@deepseek-ai/dsh-agent@0.2.0-rc.2` `lib/types/index.d.ts`：`AgentRegistry.register(agent)`「Register a live agent with source `startup`. Rejects if the id is already registered … Await the registration before using the agent」；`get(id)`、`withInitiator(agent, op)`、`currentInitiator()`、`setFactory(factory)` 并列在案。**⇒ G52 原句「agent handle 需 `ctx.agents.setFactory`」是错的**：`setFactory` 只服务 `create/resume`，注释写明 factory 由 `dsh-agent-loop` 提供；测试自带句柄走 `register` 就够。
+- `Agent` 的真实形状在 `dsh-agent/lib/types/runtime-types.d.ts:139-212` 的模块扩展里：`followup(message: UserMessage): void`、`steer`、`inject`、`send(message, target, wakeup)`、`cancel`、`whenIdle`、`runMaintenance` 与 `options/session/inbox/status/ctx` 属性。**首轮 `grep -r` 误报「声明面没有 followup」**——真因是 pnpm 的 `node_modules` 全是指向 `.pnpm/` 的符号链接而 `grep -r` 默认不跟随；取证方法要记住这条。
+- `@deepseek-ai/dsh-llm@0.2.0-rc.2` `lib/types/message.d.ts`：`MessageBase` 要求 `id: MessageId`（`brand.d.ts:14` 是 branded 类型）与 `source: MessageSource`；`MessageSourceMap:101-106` 只列 `user/model/tool/system-prompt`，官方原文「Merge-extensible sum type — **each producer declares its own `kind` in its own module**; there is no shared catch-all `plugin` kind」；`createUserMessage(input)`（`:213`）是铸 `id`/`role` 的官方工厂。
+  **⇒ 我们 `src/dsh-types.ts` 的手写 `DshUserMessage` 缺 `id`，且从未按官方形态在 `MessageSourceMap` 上声明 `kind:'autogamer'`**——与 #27 照出的附件镜像同类，只是这次在追问消息上。
+- `@deepseek-ai/dsh-scope@0.2.0-rc.2`：`createScope(ctx, key, { parent })` 铸一个「inherits the minting plugin's dependency API and owns every registration made through it」的子上下文；`scopeTarget` 注释给出方向「a listener owned by an enclosing scope receives every descendant scope's events … A tag BELOW the dispatch key stays excluded — events flow up the chain, never down」。
+- `ToolRuntime.execute(exec: ToolExecutionInput)`（`dsh-tools/lib/types/index.d.ts:765`）是**公开的**策略管线入口；`ToolExecutionInput:216-242` 必填 `callId/name/arguments/signal`，`agent?` 注明「set by the agent loop」。
+
+**一次性探针实测**（`spike/probe-g52*.mjs`，实现完删除）
+
+1. 六个服务按 invariants → system-prompt → tools → agent → attachment → **session** 顺序可挂上裸 `Context`，本插件在带 session 的图上挂载成功。
+2. `ctx.sessions.create()` → `session-1`；`append('turn/end', { turn: 1, reason: { kind: 'completed' } })` 确实 post-commit 派发。
+3. **父作用域进入的会话发 `turn/end` 时：子作用域的非 global 监听收到 0 次、`{ global: true }` 监听收到 1 次；而子作用域自己进入的会话两者都收到。** ⇒ G44 v1 的失败形态在裸 runtime 上就能复现，`{global:true}` 从「锁注册选项」升级成「真实 scope 筛选的承重证据」。
+4. `ctx.agents.register(agent)` 在无 loop 的裸 Context 可用；`get(session.id)` 命中；`withInitiator` 后 `currentInitiator()` 返回同一句柄。
+5. 在 scoped ctx 上直接读 `sessions` 抛 `cannot get property "sessions" without inject`（S5 那条闸门在测试侧同样成立），须走 `ctx.inject(['sessions'], cb)`。
+
+- **What**：交付三件——① 新增 Tier 1 `tests/conformance/followup.spec.ts`：在真实服务图（含 `dsh-session`）上把插件挂进**子作用域**，用真 `ctx.agents.register` 提供句柄、真 `ctx.tools.execute` 走策略管线标记 acted、真**父作用域**会话 `append('turn/end')` 驱动，断言「追问至多一次 + 追问消息满足真 `UserMessage` 形状 + 同作用域非 global 监听收不到该事件」（后者作对照，证 `{global:true}` 承重）；② 摘手镜像：`DshUserMessage` 换成 `import type` 的真 `UserMessage`，`kind:'autogamer'` 按官方 merge-extensible 形态在本模块扩展 `MessageSourceMap`，追问消息补 `id`；③ `apply.spec.ts` 的事件总线判据**只留纯逻辑**（acted 未 reported 才追问 / 只追问一次 / 已汇报不追问），事件投递与 global 承重移交 Tier 1。**范围外**：不动 py 动作面；不引入 `dsh-agent-loop`（inbox/唤醒语义归 loop，本轮只证真 `Agent` 契约被满足）；不改 R23 的延迟边界；不给运行时新增 `@deepseek-ai/*` 依赖。
+- **How**（决策与理由）：(a) 挂载顺序按探针 1 固化为常量；(b) acted 经**真管线** `ctx.tools.execute({ callId, name: 'run_device_action', arguments: { action: 'back', … }, signal, agent })`，`actionServerCommand` 指向**已有的 `scripts/mock-action-server.mjs`**（无设备无网络）——于是「真注册表接受了我们的定义」与「`currentInitiator()` 给出 agent」同时拿到证据；(c) 会话必须由**父作用域**进入、监听在子作用域，方向反了不产生筛选（探针 3），测试里两条都跑形成对照；(d) **不用 `createUserMessage`**：那是运行时导入，会给包新增一个宿主依赖（`dsh-llm` 现在只是 devDep），而追问消息只需满足 branded-string 的 `id`——故用 `import type` 取契约 + 本地铸 `id`，并按 R21 在注释里标出处与「单测证明 / live 证明」分级；(e) #15 的 live 证据（`source.reason:"unreported-turn"`）不动，本条只补 Tier 1 那一层。
+- **Verify**：`pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`（本机 pnpm 11 的两条必需旗标；CI 用 pnpm 10，须把这条记进 `AGENTS.md` 插件侧命令）→ `pnpm run build` → `pnpm test` 全绿且新 Tier 1 计入。**变异校验**：把监听注册改回不带 `{ global: true }` ⇒ 新 spec 红；删掉追问消息的 `id` ⇒ `tsc` 红；`inject` 少写一个服务 ⇒ 挂载红。本轮不改 patch，R6 自检不适用。
+- **Done means**：[ ] 新 Tier 1 spec 在场且全绿；[ ] `{global:true}` 由真实 scope 筛选证得（不再只锁注册选项）；[ ] 追问消息满足真 `UserMessage` 且 `kind:'autogamer'` 有官方扩展形态；[ ] `apply.spec.ts` 的事件投递重复判据撤除、纯逻辑三门保留；[ ] 探针脚本删除；[ ] 本机 pnpm 旗标写进 `AGENTS.md`；[ ] G52 结案正文进 `CHANGELOGS.md **#32**`、`registry.md` 已关闭行同步、两份门禁重跑。
+
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 
 - ✅ **骨架**：run_device_action 路由工具（闸门→MCP 转发→效果分类→路由日志）+ 闸门/熔断 + report_task_status + autogamer preset + flash skill；当时 19 个 vitest 用例全绿（含 conformance 契约 6 项），现 38/38 见状态表
