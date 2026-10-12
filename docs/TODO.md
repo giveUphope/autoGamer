@@ -122,7 +122,7 @@
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
-| G65 | 锁屏判定进不了插件（admission 的 fail-closed 半边） | 新开（2026-10-13 读码）：py 提交门禁的锁屏半边要 `dumpsys window policy` ⊕ `dumpsys trust` + 1s 上界 + 双采样（`core/diagnostics/probes/adb_probe.py:136-253,420-424`），且 **`Lock State Unknown` 也 fail-closed**（`adb_probe.py:452` → `apps/admin_console/routers/tasks.py:174` 409）。`DeviceStatus` 没有 `is_locked`（键集合被 `tests/unit/mcp/test_device_listing.py:63-73` 钉住），⇒ 插件既拿不到也不该重抄。形状二选一待定：给 `list_devices` 的条目加 `is_locked`（一次 RPC 拿全，但要扩 DeviceStatus）vs 独立只读 `get_device_lock_state(serial)`（tri-state，改动更小，多一次往返）。属 py 改动，按 D8 须用户确认 |
+| G65 | 锁屏判定进不了插件（admission 的 fail-closed 半边） | 新开（2026-10-13 读码）：py 提交门禁的锁屏半边要 `dumpsys window policy` ⊕ `dumpsys trust` + 1s 上界 + 双采样（`core/diagnostics/probes/adb_probe.py:136-253,420-424`），且 **`Lock State Unknown` 也 fail-closed**（`adb_probe.py:452` → `apps/admin_console/routers/tasks.py:174` 409）。`DeviceStatus` 没有 `is_locked`（键集合被 `tests/unit/mcp/test_device_listing.py:63-73` 钉住），⇒ 插件既拿不到也不该重抄。**形状已定并开工（B 片，见 §五「G65 B 片」）**：`list_devices` 加默认关的 `include_lock_state` 参数 + `AdbDeviceProbe.device_lock_state` 公开薄方法；独立探针方案被否，因为 guard 同步 ⇒ 只能读快照 ⇒ 每设备一次往返会逼插件自建第二层节流。属 py 改动，用户 2026-10-13 已确认 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
@@ -135,6 +135,49 @@
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
 **已登记 3 项**：**G64 py 只读 `list_devices` 工具**（2026-10-13 用户已决「加只读 py 工具」）——复用 `runtime/device_pool.py` 现成的枚举与 `try_list_devices` 的 fail-open，不新增第二份实现；豁免理由：设备列举此前没有任何 MCP 工具面出口，插件要么重复实现（多一份抄件）要么看不见设备状态；**已落地，CHANGELOGS #56**（工具面 14→15，四处契约同步；方案里「写进 action_manifest 能力门」一项经核实**不存在**——adb 面无能力门，作废而非遗漏）
+
+### G65 B 片：锁屏三态进 `list_devices`（admission 的 fail-closed 半边）（2026-10-13 用户已决「接着做 B 片」）
+
+- **What**：让插件的准入拿到 py 那套锁屏判定的**三态结论**，补上 #57 留下的半边。交付三件——
+  ① **py** `AdbDeviceProbe` 加薄的公开方法 `device_lock_state(serial) -> bool | None`，
+     委托现成的 `_get_confirmed_device_lock_state`（`adb_probe.py:235-253`，双采样防抖）用提交路径同一档
+     **1s 上界**（`:420-424`）；不新写任何 dumpsys 解析。
+  ② **py** `list_devices` 加参数 **`include_lock_state: bool = false`**，为真时每台设备并行 gather 锁态，
+     条目多一个 `is_locked`：`true` 锁着 / `false` 已解 / **`null`＝不可判**。默认关＝便宜面不变。
+  ③ **插件** `PoolDevice` 带 `isLocked`（`true|false|undefined`）+「这次有没有索取过锁态」的标志，
+     准入规则按 py 的三档来：显式 serial 锁着 → 拒；**索取过但不可判 → 也拒**
+     （py 对 `"Lock State Unknown"` 同样 fail-closed，`adb_probe.py:452` → `tasks.py:174`）；
+     **没索取过（人手 roster / 默认关）→ 不据此拒绝**；auto 选设备时跳过锁着与不可判的。
+  **范围外**：不在 TS 里跑 `dumpsys window policy`/`dumpsys trust`（`inventory/02:236` 点名最易被 clean 掉的抄件）；
+  不做 `emulator_manager` 对接；不改 `probe_submission_readiness` 本身（它服务旧控制台路径）。
+- **How**（为什么是这个形状，两条约束）：
+  - guard 必须同步（R13）⇒ 锁态只能来自**已缓存的快照** ⇒ 必须能一次拿全车队，
+    独立 `get_device_lock_state(serial)` 会变成每设备一次往返 + 插件自建节流层（＝第二份缓存逻辑），故否。
+  - 但默认给 `list_devices` 加锁态＝给每次快照都乘上 N×(1~2 次 dumpsys)，
+    而 roster 快照是每次 acquire 都可能刷的 ⇒ **参数默认关**，由需要准入的调用方显式索取。
+  - 「不可判」与「没问」必须可区分：前者拒绝（fail-closed 是 py 的现状语义），
+    后者不拒（`_explicit_serial_error:370-373` 的故意 fail-open）。这条区分是本次最容易写错的地方，单独上锁。
+- **Verify**
+  - py：`uv run python -X utf8 -m pytest tests/unit/mcp tests/unit/core/test_diagnostics.py -q`
+    （基线 `tests/unit/mcp` **233 passed + 1 skipped**；诊断侧现有锁
+    `test_diagnostics.py:138,143,153,165,262,285,309,332` 不许红）；
+    新用例覆盖：默认参数不发锁态查询、`include_lock_state=true` 出三态、解析器三态不被 TS 复制。
+  - py pin fixture 重生成（`list_devices` 的 schema 多一个入参），插件面工具**名字数不变**（仍 15）
+    ⇒ `SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs` 仍 exit 0。
+  - 插件：`pnpm test`（基线 **165 passed / 1 skipped**）+ `run build` 0 error；
+    JS stub 与 py 同形（`is_locked` 三态，问与不问可区分）——这条锁在 `mockServer.spec.ts`。
+  - **变异校验**：① 把「不可判」当成「没问」放行 ⇒ fail-closed 那条锁必须红；
+    ② 把 `include_lock_state` 默认改 `true` ⇒ 「默认便宜面不变」那条 py 锁必须红；
+    ③ 让插件 auto 不再跳过锁着的设备 ⇒ auto 跳过锁必须红。三条都做出红才勾。
+  - 全量 `uv run python -X utf8 -m pytest tests/unit -q` 基线 **2602 passed / 7 skipped** 只增不减；
+    两枚文档门禁 + `--selftest` exit 0。
+- **Done means**
+  - [ ] py：`device_lock_state` 公开方法 + `list_devices(include_lock_state=…)` 三态，1s 上界复用
+  - [ ] 插件：`isLocked` 进 `PoolDevice`，显式拒/不可判拒/未索取不拒/auto 跳过 四条各有锁
+  - [ ] 契约四处同步（py pin fixture、JS stub、`test_device_listing.py` 的键集合钉、文档）
+  - [ ] 三条变异校验做出红，写进 CHANGELOGS **#59**
+  - [ ] G65 从 §四 移除、registry 与 CHANGELOGS 已关闭表各一行；P2 checklist 的 admission 项改写为完整结案
+  - [ ] 本条结案即删；live 侧留白如实写（本机无设备，锁态只能靠 monkeypatch 证）
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
