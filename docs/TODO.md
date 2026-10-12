@@ -396,6 +396,20 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
+### G34/G38 修复轮（2026-10-12 按 R22 三步序：查守则 → 本方案 → 实现）
+
+**第 1 步「查」的原文与出处**（R20/R22 要求写明查了哪份、原文怎么说）：
+
+- `docs/TODO.md` §三 **S5**：「裸 schema 注册是合法形态，但前提是给的东西已经是完整 JSON Schema」+「代价照旧成立：**工具自己负责输入校验**，非空字符串、正数、跨字段也要自查」。
+- `docs/migration/plugin-contract-rules.md` **R12**（`references/host-plugin.md:59-64`）：插件导出二选一，`Config` 校验行配置；**R13**（`docs/cookbook/adding-a-tool.zh.md:61`、`packages/core/tools/README.zh.md:85,89,141`）：「**尽量不要把部署策略内建到工具中**」——熔断冷却拒绝归 `guard()`，本轮不动，只做校验与归类（判据：选工具内部必须写出为什么前两者不够用——输入语义校验与错误分流本就是工具内职责，无更弱扩展点）。
+- `docs/TODO.md` §三 **S4**：熔断只计环境级失败；「枚举不确定→继续熔断（fail-safe）」——传输层 catch 保持 environment 不变。
+- `docs/TODO.md` §四 **G38** 实测：`dispatch` 按 `environment:` 前缀二分，无前缀一律 task，插件自身缺陷污染熔断语义、模型连试三次。
+
+- **What**：G34 给 `buildCall` 补语义校验（`target.coordinate` 必须为 0-1000 内有限二元组且存在即判、不静默回退层级；`input_text` 的 `text` 非空；`duration_ms` 在场必须有限且 `long_press`/`swipe` 为正、`wait` 非负；`press_key` 的 `key` 非空且 `mapKeycode` 可解；`swipe` 起止均为合法二元组；`launch/stop_app` 的 `package`、`open_link` 的 `url` 非空）。校验失败一律 `task:` 前缀、在任何设备往返（取值帧/动作）之前抛出。G38 加第三类 `internal`：`buildCall` catch 里无前缀异常 + `dispatch` 逃逸的意外抛出走 internal——不记 `breaker`（既不 `recordEnvironmentFailure` 也不 `recordTaskFailure`），抛 `internal:` 并带“插件缺陷、勿原样重试”信号。传输层 catch 保持 environment（S4 fail-safe）。**范围外**：G33 的 guard 迁移、任何 schema 形状改动、live/VLM/真机验证。
+- **How**：只改 `src/tools/runDeviceAction.ts`（加 `failure: "internal"` 分支 + 校验 helper），`classify.ts` 不动（它是设备文本分类）。`execute` 里 `dispatch` 调用包一层意外抛出转 internal（`signal.aborted` 时仍报取消）。测试不走 `apply()` 的 `defineTool` DSL（DSL 自带形状校验会抢先），新建 `tests/router-errors.spec.ts` 直调 `defineRunDeviceAction` 配真 `DeviceGate`/`DeviceBreaker` + 记账 stub client：G34 每条断言 `rejects /^task:/` 且零设备调用；G38 断言 `rejects /^internal:/`、文案含 do-not-retry、`breaker.stateOf` 仍 closed、随后 `wait` 仍可执行。
+- **Verify**：`pnpm --config.verify-deps-before-run=false run build` + `npx vitest run tests/router-errors.spec.ts tests/apply.spec.ts tests/classify.spec.ts`；变异校验：把任一校验删掉对应单测变红、把 internal 改回 task 对应单测变红；`contracts.spec.ts` 不受影响（无 schema 改动）。
+- **Done means**：[ ] 8 条 G34 锁（空 text、未知 key、越界/非有限坐标、缺 swipe 终点、非正 duration、空 package、残缺 coordinate 不回退）；[ ] 3 条 G38 锁（无前缀 resolver 抛错→internal、breaker 不开、后续动作不受冷）；[ ] 全量 `vitest` 绿；[ ] G34/G38 并入已关闭行。
+
 ## 六、文档索引
 
 | 文档 | 内容 |
