@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#69 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#70 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2985,6 +2985,46 @@ quality regression: broad_exception_handlers increased from 754 to 763
       `… Check documentation gates → Enforce quality ratchets → Type-check protected core modules → Set up pnpm → …`
 - [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
 - [ ] **CI 复验留给下一个 run**（本轮只能证明「本地」）：两条 python job 里 ratchet 步必须绿
+
+### #70 本 fork 第一次整体绿 CI：run 38297953839（push，6/6 job），三处「CI 从未执行」的留白同时闭合
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（push 面）；`workflow_dispatch` 那条测试步另计，见本页末与 **G70**
+- **优先级**: 高（此前所有「门禁已接进 CI」的说法都缺一手证据）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+#46 接进文档门禁时留了一句白：「未验证到真 run」；#54 接进 fixture 比对时同样只能本地自证；
+#68/#69 修的那两步也必须由 run 复验。仓库里有过的唯一一次 run 是 `38167498398`
+（`workflow_dispatch`，2026-10-11），整体 `conclusion=failure`。
+
+#### 整改方案与实施
+
+无需新代码——把前面几轮的修法推上去拿证据：
+
+- `git push origin main`（`bbf6f1b..9c9c968`）⇒ run **`38297953839`**，`event=push`，
+  `conclusion=success`，6 条 job 全绿：`Python 3.12 / ubuntu-latest`、`Python 3.12 / windows-latest`、
+  `DSH plugin contracts / ubuntu|windows`、`Frontend tests and production build`、
+  `Build and smoke-test Python packages`。
+- 逐步取证（`gh run view … --json jobs`）：两条 python job 里
+  `Check documentation gates`、`Enforce quality ratchets`、`Check the py action surface against the plugin fixture`
+  **全部 success** ⇒ #46 / #54 / #68 / #69 各自那条「等真 run 复验」的白，至此有了一手证据。
+  已发布的条目正文不改写（编号发布后不得改写），闭合事实记在本条。
+
+#### 验收标准
+
+- [x] `gh run view 38297953839 --repo giveUphope/autoGamer --json conclusion,jobs`
+      ⇒ `success` + 6 条 job 全 `success`
+- [x] `gh run view 38297953839 --json jobs --jq '…steps…|test("documentation gates|quality ratchets|py action surface")'`
+      ⇒ 两台 OS 各 3 行 `-> success`
+- [x] `gh api repos/giveUphope/autoGamer/commits/9c9c968/check-runs` ⇒ 该 sha 的 check suite 存在（对照 #67：
+      此前每个被推的 sha 都是 0）
+- [ ] **反面证据同页留着**：同 sha 的一次 `workflow_dispatch`（run `38298278053`）**failure**，
+      红在唯一一条 dispatch-only 步骤 `Run deterministic Python tests`（两台 OS 同因，
+      失败清单含 `tests/unit/test_cli.py` 的一组 help 断言与 `tests/unit/sdk/test_agent_config_builder_tuning.py` 9 条）。
+      这条不是本轮改坏的：它从未在 CI 跑过。本地复现（同命令同 cov 旗标）起了但被用户叫停
+      （「先强推不考虑 ci」），所以**成因未定**，现象与取证缺口登记在 **G70**，不在本条下结论
 
 ## 已关闭差距史（G*）
 
