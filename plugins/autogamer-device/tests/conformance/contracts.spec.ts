@@ -248,6 +248,8 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
         "allowedFails",
         "breakerCooldownMs",
         "defaultDeviceKey",
+        "devices",
+        "maxConcurrentDevices",
         "screenSize",
         "strictness",
       ].sort(),
@@ -258,6 +260,9 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     expect(fields.actionServerCommand.type).toBe("array");
     expect(fields.actionServerEnv.type).toBe("dict");
     expect(fields.screenSize.type).toBe("tuple");
+    // G3/G28: the roster is an array of serials and the ceiling a plain number.
+    expect(fields.devices.type).toBe("array");
+    expect(fields.maxConcurrentDevices.type).toBe("number");
   });
 
   it("applies declared defaults and leaves the un-defaulted tuple null-filled", () => {
@@ -276,6 +281,9 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     expect(resolved.breakerCooldownMs).toBe(30_000);
     expect(resolved.strictness).toBe("final");
     expect(resolved.actionCallTimeoutMs).toBe(30_000);
+    // G3/G28 defaults must equal the historical behaviour: no roster, no ceiling.
+    expect(resolved.devices).toEqual([]);
+    expect(resolved.maxConcurrentDevices).toBe(0);
     // The trap `configuredScreenSize()` exists to survive: an unset optional
     // tuple comes back as a truthy `[undefined, undefined]` array, never
     // undefined, so `if (config.screenSize)` always looks "configured".

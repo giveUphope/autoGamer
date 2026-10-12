@@ -1,0 +1,188 @@
+/**
+ * Device scheduling (S3/G3/G28) on top of the per-device FIFO gate.
+ *
+ * Two addressing modes, per the glossary: an explicit `device_serial` queues on that device's
+ * chain, while an `auto` request is served from the free pool and *parked on at most one device*
+ * (G28). The parking rule is the upstream lesson quoted in `runtime/device_lock.py:332` -- an
+ * unclaimed ticket used to be counted into every device's queue, so one waiting message blocked
+ * machines that were sitting idle. `inventory/02:236` lists exactly this as something a TS rewrite
+ * tends to "clean up" and must not.
+ *
+ * So a waiting ticket never holds a global slot and never blocks another device: `pump()` walks
+ * the arrival queue and admits every ticket whose own conditions are met right now, rather than
+ * stopping at the first unsatisfiable head.
+ */
+import type { GateHandle } from "./gate.js";
+import { DeviceGate, GateAbortedError } from "./gate.js";
+import { deviceKeyOf } from "./tools/runDeviceAction.js";
+
+export interface PoolOptions {
+  gate: DeviceGate;
+  defaultDeviceKey: string;
+  /** Roster for the auto pool. Empty (the default) means: behave exactly like the old single key. */
+  devices?: string[];
+  /** Concurrent device ceiling across the whole plugin; 0 (default) means unlimited. */
+  maxConcurrentDevices?: number;
+  /** Devices refused by the breaker (S4 cooldown) are not eligible for auto assignment. */
+  isCoolingDown?: (key: string) => boolean;
+  logger?: { info: (message: string) => void; warn: (message: string) => void };
+}
+
+export interface PoolLease extends GateHandle {
+  /** The device this call actually ran on -- explicit serial, or the auto assignment. */
+  readonly key: string;
+}
+
+interface Ticket {
+  readonly want: string | undefined;
+  readonly signal?: AbortSignal;
+  settle: (lease: PoolLease) => void;
+  fail: (error: unknown) => void;
+  queued: boolean;
+}
+
+export class DevicePool {
+  private readonly gate: DeviceGate;
+  private readonly defaultDeviceKey: string;
+  private readonly devices: string[];
+  private readonly maxConcurrent: number;
+  private readonly isCoolingDown: (key: string) => boolean;
+  private readonly queue: Ticket[] = [];
+  private readonly assigned = new Set<string>();
+  private admitted = 0;
+
+  constructor(options: PoolOptions) {
+    this.gate = options.gate;
+    this.defaultDeviceKey = options.defaultDeviceKey;
+    // A serial listed twice would be two pool entries for one device.
+    this.devices = [...new Set(options.devices ?? [])];
+    this.maxConcurrent = options.maxConcurrentDevices ?? 0;
+    this.isCoolingDown = options.isCoolingDown ?? (() => false);
+  }
+
+  /** True when the auto pool has a roster; without one, auto keeps the historical single key. */
+  get hasPool(): boolean {
+    return this.devices.length > 0;
+  }
+
+  /** Devices admitted right now (explicit and auto alike), for diagnostics and cap tests. */
+  get busyDevices(): number {
+    return this.admitted;
+  }
+
+  /**
+   * The lock key used *before* acquiring, for breaker/guard decisions. An explicit serial is
+   * known immediately; an auto request without a roster still resolves to the default key, and an
+   * auto request with a roster resolves to the default key only as a fallback -- the guard must
+   * treat that as "any device" (see `refusesAuto`).
+   */
+  resolveKey(args: Record<string, unknown>): string {
+    const serial = this.explicitSerial(args);
+    if (serial !== undefined) return serial;
+    if (this.hasPool) return this.devices[0] ?? this.defaultDeviceKey;
+    return this.defaultDeviceKey;
+  }
+
+  /** Every pool device is in cooldown, so an auto call cannot be admitted anywhere. */
+  refusesAuto(): boolean {
+    if (!this.hasPool) return this.isCoolingDown(this.defaultDeviceKey);
+    return this.devices.every((device) => this.isCoolingDown(device));
+  }
+
+  /** Queue for the device an auto call would be parked on, or undefined when the pool decides. */
+  pendingCount(key: string): number {
+    return this.queue.filter((ticket) => ticket.want === key).length;
+  }
+
+  async acquire(args: Record<string, unknown>, signal?: AbortSignal): Promise<PoolLease> {
+    const ticket: Ticket = {
+      want: this.explicitSerial(args),
+      signal,
+      settle: () => {},
+      fail: () => {},
+      queued: true,
+    };
+    const granted = new Promise<PoolLease>((resolve, reject) => {
+      ticket.settle = resolve;
+      ticket.fail = reject;
+    });
+    this.queue.push(ticket);
+    this.pump();
+
+    if (signal?.aborted) {
+      this.drop(ticket);
+      throw new GateAbortedError(ticket.want ?? this.defaultDeviceKey);
+    }
+    return await granted;
+  }
+
+  /**
+   * Admit whatever can be admitted right now, in arrival order. Scanning past a ticket whose
+   * device is busy (instead of stopping at the head) is what keeps one unclaimed message from
+   * idling out the rest of the fleet.
+   */
+  private pump(): void {
+    for (const ticket of [...this.queue]) {
+      if (!ticket.queued) continue;
+      const device = this.eligibleDevice(ticket.want);
+      if (device === undefined) continue;
+      ticket.queued = false;
+      this.admitted += 1;
+      this.assigned.add(device);
+      void this.gate
+        .acquire(device, ticket.signal)
+        .then((handle) => {
+          ticket.settle({
+            key: device,
+            release: () => {
+              if (handle === undefined) return;
+              handle.release();
+              this.admitted -= 1;
+              this.assigned.delete(device);
+              this.pump();
+            },
+          });
+        })
+        .catch((error) => {
+          // The waiter bailed (abort) or the chain rejected: give the slot back and let the
+          // next queued ticket take this device.
+          this.admitted -= 1;
+          this.assigned.delete(device);
+          this.pump();
+          if (!(error instanceof GateAbortedError)) throw error;
+        });
+    }
+  }
+
+  /** The device this ticket may take now, or undefined when it must keep waiting. */
+  private eligibleDevice(want: string | undefined): string | undefined {
+    if (this.maxConcurrent > 0 && this.admitted >= this.maxConcurrent) return undefined;
+    if (want !== undefined) {
+      if (this.assigned.has(want)) return undefined;
+      if (this.gate.busyCount(want) > 0) return undefined;
+      return want;
+    }
+    if (!this.hasPool) {
+      // No roster: auto keeps the historical shared key, so behaviour is byte-for-byte the old one.
+      return this.assigned.has(this.defaultDeviceKey) || this.gate.busyCount(this.defaultDeviceKey) > 0
+        ? undefined
+        : this.defaultDeviceKey;
+    }
+    // Cooldown-skipping is the pool's own job for auto: the guard refuses a *known* cooling device,
+    // but an auto request has no device until this line picks one (S4/G33).
+    return this.devices.find(
+      (device) => !this.assigned.has(device) && this.gate.busyCount(device) === 0 && !this.isCoolingDown(device),
+    );
+  }
+
+  private explicitSerial(args: Record<string, unknown>): string | undefined {
+    const serial = (args as { device_serial?: unknown } | null)?.device_serial;
+    if (typeof serial !== "string" || serial.length === 0) return undefined;
+    return deviceKeyOf(args, this.defaultDeviceKey);
+  }
+
+  private drop(ticket: Ticket): void {
+    const at = this.queue.indexOf(ticket);
+    if (at >= 0) this.queue.splice(at, 1);
+  }
+}

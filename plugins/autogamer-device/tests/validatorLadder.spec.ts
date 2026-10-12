@@ -8,7 +8,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { DeviceBreaker } from "../src/breaker.js";
-import { DeviceGate } from "../src/gate.js";
+import { defaultPool } from "./support/pool.js";
 import {
   ActionIncidents,
   defineRunDeviceAction,
@@ -51,7 +51,7 @@ function setup(strictness?: ValidatorStrictness) {
   harness.taps.length = 0;
   harness.compares.length = 0;
   const tool = defineRunDeviceAction({
-    gate: new DeviceGate(),
+    pool: defaultPool(),
     breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
     client: {
       callTool: async (name: string, args: Record<string, unknown>) => {
@@ -341,7 +341,7 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
   it("classifies a transport death mid-ladder as environment", async () => {
     let hierarchies = 0;
     const failing = defineRunDeviceAction({
-      gate: new DeviceGate(),
+      pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
       client: {
         callTool: async (name: string) => {
@@ -367,7 +367,7 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
 
   it("classifies a screenshot-branch transport death as environment", async () => {
     const failing = defineRunDeviceAction({
-      gate: new DeviceGate(),
+      pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
       client: {
         callTool: async () => {

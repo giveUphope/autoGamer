@@ -7,7 +7,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { DeviceBreaker } from "../src/breaker.js";
-import { DeviceGate } from "../src/gate.js";
+import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
 
 function hierarchyWith(target: boolean): string {
@@ -34,7 +34,7 @@ function setup() {
   harness.calls.length = 0;
   harness.tapResolvers.length = 0;
   const tool = defineRunDeviceAction({
-    gate: new DeviceGate(),
+    pool: defaultPool(),
     breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
     client: {
       callTool: async (name: string, args: Record<string, unknown>) => {

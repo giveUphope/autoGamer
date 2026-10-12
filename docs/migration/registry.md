@@ -52,7 +52,6 @@
 
 | 编号 | 一句话 |
 |---|---|
-| G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G64 | 设备 roster 的真来源：TS 重复枚举 vs 给 py 面加只读 `list_devices`（py 改动须登记 + 用户确认） |
@@ -61,7 +60,6 @@
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
 | G26 | PID-liveness 协议：仅用于 action server 进程管理 |
 | G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
-| G28 | parking 与全局并发上限的内部语义 |
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
@@ -121,6 +119,8 @@
 | G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变 | 新增 `.gitattributes` + renormalize 实测零文本 blob 改写；本机 `ruff format --check` 假红转绿；详见 CHANGELOGS **#47** |
 | G62 | py action 面无「无设备可跑」路径，离线契约只能吃插件的 JS 桩 | `artemis/mcp/mock_server.py` + CLI `--type mock`，用现成 `MockActuator` 预置两条缓存短路绕开 adb I/O；与 `--type adb` 工具清单逐字相同；详见 CHANGELOGS **#52** |
 | G63 | py 动作面 fixture 从未在 CI 被重新比对 | `python-quality` job 新增无 `if` 的一步，用 `--type mock` 每次重导并比对；本地同命令 exit 0，变异校验（fixture 删一名）exit 1；详见 CHANGELOGS **#54** |
+| G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 | A 片 `src/devicePool.ts`（roster 由 config 注入，默认空＝现状不变）；真枚举另立 G64；详见 CHANGELOGS **#55** |
+| G28 | parking 与全局并发上限的内部语义 | 按 `device_lock.py:332` 口径实现并六条锁死；详见 CHANGELOGS **#55** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

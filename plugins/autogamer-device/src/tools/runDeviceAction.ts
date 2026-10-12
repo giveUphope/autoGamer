@@ -13,7 +13,7 @@
  */
 import type { ActionClient } from "../actionClient.js";
 import type { DeviceBreaker } from "../breaker.js";
-import type { DeviceGate } from "../gate.js";
+import type { DevicePool, PoolLease } from "../devicePool.js";
 import { classifyMessage } from "../classify.js";
 import {
   decodeImageBase64,
@@ -274,7 +274,8 @@ export const PIXEL_GUIDANCE =
   "{coordinate:[x,y]} from pixels or a fresh {index} from a new get_ui_hierarchy.";
 
 export interface RouterOptions {
-  gate: DeviceGate;
+  /** S3/G3 scheduling: per-device chains plus the auto pool and the global ceiling. */
+  pool: DevicePool;
   breaker: DeviceBreaker;
   client: ActionClient;
   logger: RouterLogger;
@@ -330,7 +331,7 @@ interface TargetInput {
 }
 
 export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInput {
-  const { gate, breaker, client, logger } = options;
+  const { pool, breaker, client, logger } = options;
   const incidents = options.incidents ?? new ActionIncidents();
   const inflight = new Set<string>();
 
@@ -473,7 +474,11 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     },
     async execute(args, exec) {
       const action = args.action as DeviceAction;
-      const key = deviceKeyOf(args, options.defaultDeviceKey);
+      // Before admission the pool has not chosen a device for an auto call, so the log line and
+      // the G13 dedup key use the anticipated device; breaker bookkeeping below is re-anchored to
+      // the device the pool actually assigned.
+      const anticipatedKey = pool.resolveKey(args);
+      let key = anticipatedKey;
       const risk = action === "stop_app" ? "risky" : "normal";
       logger.info(`[route] action=${action} device=${key} risk=${risk} reason=${String(args.reason)}`);
       options.onAction?.();
@@ -505,7 +510,16 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         );
       }
       if (dedup !== undefined) inflight.add(dedup);
-      const handle = await gate.acquire(key, exec.signal);
+      let lease: PoolLease;
+      try {
+        lease = await pool.acquire(args, exec.signal);
+      } catch (error) {
+        // An abort while queued never reached the device, so the in-flight mark has to go back:
+        // leaving it would refuse every later identical action as a "duplicate" forever.
+        if (dedup !== undefined) inflight.delete(dedup);
+        throw error;
+      }
+      key = lease.key;
       try {
         const result = await dispatch(action, args, key, exec).catch((error) => {
           // Anything escaping dispatch is our own bug, not a device or task
@@ -545,7 +559,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         return result.value;
       } finally {
         if (dedup !== undefined) inflight.delete(dedup);
-        handle.release();
+        lease.release();
       }
     },
   };

@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#54 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#55 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2216,6 +2216,66 @@ adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 acti
 - [ ] 留白：这一步**尚未在真 run 里执行过**（G54 使 `on: push` 不产出 run；本轮推送与否不改变这一点），
       首次派发跑绿之前，它的效力是「本地已证 + 命令与 CI 逐字相同」，不得写成「CI 已保证」（R27 第 4 条）
 
+### #55 G3 + G28 A 片：设备池闸门（parking / claimed-only / 全局并发 N）
+
+- **日期**: 2026-10-13
+- **状态**: ✅ A 片已关闭（机制在 TS、roster 由 config 注入）；**G64（roster 真来源）留在 §四**
+- **优先级**: 高（D3「共享真机 + 完整闸门」的设备治理主体；P1 live 之前的最后一块离线大头）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G3 + G28 设备调度 A 片」住在 `TODO.md`（spec 提交 `93cc463` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`run_device_action` 只有一把 per-key FIFO 闸门，而键是 `deviceKeyOf(args, defaultDeviceKey)`
+（`src/tools/runDeviceAction.ts:131`）：**没有 `device_serial` 的调用全部落到同一个 `default` 键上串行**。
+G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在。三条权威口径都点名这件事不能被简化掉：
+
+- `glossary.md:65` **parking** =「没有指定设备时，让一条消息先占住一台空闲设备」（G28）；
+- `glossary.md:66` **auto 走空闲池，显式走 serial 队列**（G3）；
+- py `artemis/runtime/device_lock.py:332` 原文「unclaimed `pending`/`any` ticket is *parked* on at most
+  one device … **was counted into every device's queue**, so a single unclaimed [ticket blocked them all]」，
+  `inventory/02-runtime-persistence.md:265` 要求这条**必须有回归测试**，
+  `inventory/02:236` 又把「auto-serial fail-open 与 claimed-only」列为 TS 重写最容易被顺手 clean 掉的防事故语义。
+
+#### 整改方案与实施
+
+- **新增 `src/devicePool.ts`**（包一层 `DeviceGate`，不替换它）：显式 serial 走该设备链；auto 从 roster 里
+  挑**第一台未冷却、未被占用、gate 空闲**的设备并只占这一台；`pump()` 按到达序扫描但**跳过当下不可满足的
+  票据继续发牌**——这正是 `device_lock.py:332` 那条反面教训的直接对应（一个未认领票据不占全局槽、
+  也不 idle 掉别的设备）。全局上限 `maxConcurrentDevices` 计的是**已 admit 的设备数**（显式与 auto 同计），
+  达上限时新票据留在队列里、不预占槽。
+- **配置面两个新键**（`src/index.ts`）：`devices`（默认 `[]`）与 `maxConcurrentDevices`（默认 `0`）——
+  **两个默认值都等于现状**，不配 roster 的部署行为逐字不变，由 `contracts.spec.ts` 的默认值断言与
+  池测试第一条锁住。
+- **S4 拒绝出口跟着改**（`ctx.tools.guard`）：显式 serial 仍按该设备冷却拒绝；auto 在**所有** roster 设备
+  都冷却时才拒绝（措辞也不同），因为 auto 在入队前根本没有设备——原来拿 `deviceKeyOf` 的预设键当设备判定，
+  配了池之后会误拒。
+- **路由器的 `key` 改为「实际分配到的设备」**：日志与 G13 dedup 用预设键（发牌前尚无设备），
+  熔断记账用真设备——比原先记预设键更准（失败的是那台机器，不是配置里的第一个名字）。
+- **顺手修掉一处 G13 真泄漏**（实现时才发现，不是重构）：`inflight.add(dedup)` 之后 `gate.acquire` 若在
+  排队中被 abort，原代码的 `finally` 还没进入，**dedup 标记永久滞留**，此后同 agent 的同一动作都被当成
+  「duplicate」永远拒绝。改为 acquire 包 try/catch，异常路径同样 `inflight.delete`。
+- **测试装配收敛**：5 处手写的 `gate: new DeviceGate()` 装配换成 `tests/support/pool.ts` 的 helper，
+  顺手还掉 §零 记着的一条测试债。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **156 passed / 1 skipped**（19 文件；基线 150/1，净增 6 条池锁）
+- [x] `pnpm run build` ⇒ 0 error；`uv run ruff format --check` ⇒ 668 files 全净（纯 TS 改动，py 面未动）
+- [x] 六条语义锁：空 roster 退回 default 键（现状不变）/ auto 至多占一台 / **未认领不 idle 掉车队**
+      （含 `pool.busyDevices === 2` 证明它没预占槽）/ 全局上限 / 跳过冷却设备 / 释放后归最早排队者
+- [x] **变异校验三条都做出红**（脚本跑完即还原，还原后 exit 0）：
+      ① auto 改回一律占 default ⇒ 3 条池测试超时红；② 摘掉全局上限计数 ⇒
+      `honours the global concurrency ceiling` 红（`expected true to be false`）；
+      ③ 把到达序扫描改成反序 ⇒ 排队序那条锁红
+- [x] **如实记：第三条变异第一次是绿的**——我先写的 claimed-only 锁在反序下发不了言（只有一个排队票据），
+      是虚锁。补写成「两台占满 + 两个 auto 排队 + 只释放一台」才咬得住。
+      与 **#49**（样本太小跨不过口径步长）、**#45**（判据绑机器）同一类，本条是第三次撞到同一堵墙
+- [x] 既有闸门锁与 S10 ③ 的跨会话串行结论未被削弱（`tests/gate.spec.ts` 全绿）
+- [ ] 明确未做：**G64** roster 真来源（py 已有 `device_pool.py` 的 `list_devices_async` + 缓存 + 超时 +
+      fail-open；重复实现＝多一份抄件，加只读 py 工具＝D8 须登记的 py 改动，等用户点头）；
+      多设备 live 未验（本机无设备无宿主），A 片的正确性目前只由单测与内存设备支撑
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2275,4 +2335,6 @@ adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 acti
 | G60 | 两枚文档门禁从未接进 CI，抄件漂移只靠人工自证 | `ci.yml` 的 `python-quality` job 新增**无 `if`** 的 `Check documentation gates` step（registry + tables + `--selftest` 三条）。前提是先按 **#45** 把体量口径做成 LF 规范化，否则接进 CI 只会天天假红。**真 run 未观测**：G54 使 `on: push` 不产出 run，本轮不推送 | 本文件 **#46** |
 | G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变，字节类判据在本机不可信 | 新增 `.gitattributes`（`* text=auto eol=lf`、`.bat`/`.cmd` 显式 `eol=crlf`、8 种在库二进制显式 `binary`）；实测 renormalize **零个文本 blob 被重写**（带 CR 的 28 个 blob 全是二进制），2 个混行尾文件按 blob 规范化后 `w/mixed` 归 0，本机 `ruff format --check` 假红转绿 | 本文件 **#47** |
 | G62 | py action 面无「无设备可跑」路径，离线契约只能吃插件的 JS 桩 | 新增 `artemis/mcp/mock_server.py`（`MockActuator` + 预置 `adb_server` 两条缓存短路绕开 adb I/O）与 CLI `--type mock` 分支，未改任何现有 py 文件行为；与 `--type adb` 工具清单逐字相同、截图为真 PNG | 本文件 **#52**（含 **#51** 的 stub 更正） |
+| G3 | auto-serial 闸门缺口（显式 serial 队列 + auto 空闲池） | A 片落地：`src/devicePool.ts` 包一层现有 `DeviceGate`，auto 从 roster 挑第一台「未冷却 + 未占用 + gate 空闲」的设备且只占一台；显式 serial 仍走该设备链；roster 由 config 注入（默认空＝现状不变）。真枚举来源另立 **G64** 未决 | 本文件 **#55** |
+| G28 | parking + 全局并发上限的内部语义 | parking 按 `device_lock.py:332` 的口径实现（未认领票据不占全局槽、不 idle 掉别的设备），全局上限按已 admit 设备数计；六条语义锁 + 三条变异校验（其中一条第一版是虚锁，已如实记） | 本文件 **#55** |
 | G63 | py 动作面 fixture 从未在 CI 被重新比对（§零 的旧表述是假陈述，见 #53） | `python-quality` 加 `Set up Node.js` + 一步用 `--type mock` 重导比对；`spike-mcp.mjs` 未改（默认模式本就是漂移检查） | 本文件 **#54** |

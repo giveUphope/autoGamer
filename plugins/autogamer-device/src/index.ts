@@ -8,6 +8,7 @@
 import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
+import { DevicePool } from "./devicePool.js";
 import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
 import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js";
@@ -38,6 +39,14 @@ export const Config: object = z.object({
   breakerCooldownMs: z.number().default(30_000),
   actionCallTimeoutMs: z.number().default(30_000),
   screenSize: z.tuple([z.number(), z.number()]),
+  /**
+   * G3/G28 auto pool roster. Empty (the default) keeps the historical behaviour: every
+   * device-less call shares `defaultDeviceKey`. Filling it makes auto calls park on one free
+   * device each (G28) instead of queueing the whole fleet on one key.
+   */
+  devices: z.array(z.string()).default([]),
+  /** G28 ceiling on devices admitted at once, across explicit and auto calls; 0 (default) = unlimited. */
+  maxConcurrentDevices: z.number().default(0),
   /** P1-a validator strictness (S11 step 5); default "final" like upstream. */
   strictness: z.union(["off", "final", "checkpoints", "strict"]).default("final"),
 });
@@ -64,6 +73,8 @@ export type PluginConfig = {
   actionCallTimeoutMs: number;
   screenSize?: readonly unknown[];
   strictness?: "off" | "final" | "checkpoints" | "strict";
+  devices?: string[];
+  maxConcurrentDevices?: number;
 };
 
 export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
@@ -71,6 +82,13 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   const breaker = new DeviceBreaker({
     allowedFails: config.allowedFails,
     cooldownMs: config.breakerCooldownMs,
+  });
+  const pool = new DevicePool({
+    gate,
+    defaultDeviceKey: config.defaultDeviceKey,
+    devices: config.devices ?? [],
+    maxConcurrentDevices: config.maxConcurrentDevices ?? 0,
+    isCoolingDown: (key) => !breaker.canAdmit(key),
   });
   const incidents = new ActionIncidents();
   const client = new ActionClient({
@@ -173,13 +191,20 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // plain-context 注册即全局生效；agent-less 执行同样被拒（guardReason 先读全局层）。
   ctx.tools.guard((execution) => {
     if (execution.name !== "run_device_action") return undefined;
-    const key = deviceKeyOf((execution.arguments as Record<string, unknown> | null) ?? {}, config.defaultDeviceKey);
-    if (breaker.canAdmit(key)) return undefined;
-    return `device ${key} is cooling down after environment-level failures — report progress and continue after the next message`;
+    const args = (execution.arguments as Record<string, unknown> | null) ?? {};
+    const serial = args.device_serial;
+    if (typeof serial === "string" && serial.length > 0) {
+      if (breaker.canAdmit(serial)) return undefined;
+      return `device ${serial} is cooling down after environment-level failures — report progress and continue after the next message`;
+    }
+    // Auto has no device until the pool assigns one, so the only honest refusal here is "nowhere
+    // to go": any roster device being free of cooldown admits the call and the router re-checks.
+    if (!pool.refusesAuto()) return undefined;
+    return `every configured device is cooling down after environment-level failures — report progress and continue after the next message`;
   });
 
   ctx.tools.register(defineTool<any, any>(defineRunDeviceAction({
-    gate,
+    pool,
     breaker,
     client,
     logger,

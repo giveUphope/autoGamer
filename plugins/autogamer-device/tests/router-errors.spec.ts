@@ -7,7 +7,7 @@
  */
 import { beforeEach, describe, expect, it } from "vitest";
 import { DeviceBreaker } from "../src/breaker.js";
-import { DeviceGate } from "../src/gate.js";
+import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
 
 const calls: { tool: string; args: Record<string, unknown> }[] = [];
@@ -16,7 +16,7 @@ function setup(resolveScreenSize?: () => Promise<{ width: number; height: number
   calls.length = 0;
   const breaker = new DeviceBreaker({ allowedFails: 1, cooldownMs: 30_000 });
   const tool = defineRunDeviceAction({
-    gate: new DeviceGate(),
+    pool: defaultPool(),
     breaker,
     client: {
       callTool: async (name: string, args: Record<string, unknown>) => {
@@ -150,7 +150,7 @@ describe("router input validation (G34)", () => {
 
   it("reports host cancellation without waiting out the call", async () => {
     const tool = defineRunDeviceAction({
-      gate: new DeviceGate(),
+      pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 1, cooldownMs: 30_000 }),
       client: {
         callTool: (_name: string, _args: Record<string, unknown>, signal?: AbortSignal) =>
