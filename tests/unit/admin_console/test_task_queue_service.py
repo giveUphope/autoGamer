@@ -1243,18 +1243,12 @@ async def test_enqueue_tasks_debounces_rapid_identical_submissions():
 @pytest.fixture
 def device_probe_ok(monkeypatch):
     """Fake device probes so enqueue accepts the fake serial outright."""
-    monkeypatch.setattr(
-        device_pool, "validate_explicit_serial_async", AsyncMock(return_value=None)
-    )
-    monkeypatch.setattr(
-        device_pool, "select_device_async", AsyncMock(return_value="EMULATOR1")
-    )
+    monkeypatch.setattr(device_pool, "validate_explicit_serial_async", AsyncMock(return_value=None))
+    monkeypatch.setattr(device_pool, "select_device_async", AsyncMock(return_value="EMULATOR1"))
 
 
 @pytest.mark.asyncio
-async def test_worker_death_before_session_row_persists_failed_round(
-    monkeypatch, device_probe_ok
-):
+async def test_worker_death_before_session_row_persists_failed_round(monkeypatch, device_probe_ok):
     """零步骤失败且 worker 从未落库（start_session 前就崩溃）：队列服务补写
     failed 行。没有它，该轮在时间线上消失、队列消息与轮次顺序无法对应，
     报错也只能落在队列状态区而非消息区。"""
@@ -1346,15 +1340,18 @@ def test_create_failed_session_inserts_minimal_row(tmp_path):
 
     repo = SessionRepository(db_path=tmp_path / "test.db")
     now = time.time()
-    assert repo.create_failed_session(
-        session_id="sid-fail",
-        initial_goal="失败轮",
-        start_time=now,
-        end_time=now + 1,
-        conversation_id="conv-1",
-        submitted_at=now,
-        error_message="DeviceNotFoundError: No device found. Exiting.",
-    ) is True
+    assert (
+        repo.create_failed_session(
+            session_id="sid-fail",
+            initial_goal="失败轮",
+            start_time=now,
+            end_time=now + 1,
+            conversation_id="conv-1",
+            submitted_at=now,
+            error_message="DeviceNotFoundError: No device found. Exiting.",
+        )
+        is True
+    )
 
     row = repo.get_session_by_id("sid-fail")
     assert row["status"] == "failed"
@@ -1364,9 +1361,12 @@ def test_create_failed_session_inserts_minimal_row(tmp_path):
     assert "No device found" in row["error_message"]
 
     # 幂等：同一会话不覆盖
-    assert repo.create_failed_session(
-        session_id="sid-fail", initial_goal="other", start_time=now, end_time=now + 2
-    ) is False
+    assert (
+        repo.create_failed_session(
+            session_id="sid-fail", initial_goal="other", start_time=now, end_time=now + 2
+        )
+        is False
+    )
     assert repo.get_session_by_id("sid-fail")["initial_goal"] == "失败轮"
 
 
@@ -1378,7 +1378,7 @@ def test_worker_error_tail_reads_last_stdout_line(tmp_path, monkeypatch):
     trace_dir.mkdir()
     (trace_dir / "stdout.log").write_text(
         "Traceback (most recent call last):\n"
-        "  File \"x.py\", line 1, in <module>\n"
+        '  File "x.py", line 1, in <module>\n'
         "third_party.mobile_use.sdk.types.exceptions.DeviceNotFoundError: "
         "No device found. Exiting.\n",
         encoding="utf-8",
@@ -1406,9 +1406,7 @@ def test_worker_error_tail_reads_last_stdout_line(tmp_path, monkeypatch):
         "get_trace_stdout_log_path",
         lambda trace_id: str(trace_dir / "stdout.log"),
     )
-    (trace_dir / "stdout.log").write_text(
-        "Task execution failed: timeout\n", encoding="utf-8"
-    )
+    (trace_dir / "stdout.log").write_text("Task execution failed: timeout\n", encoding="utf-8")
     assert TaskQueueService._worker_error_tail("trace-sid") == "Task execution failed: timeout"
 
 
@@ -1429,7 +1427,10 @@ async def test_zero_step_failure_holds_device_queue_and_retains_messages(
     )
 
     events = []
-    capture = lambda event_type, data: events.append((event_type, data))
+
+    def capture(event_type, data):
+        events.append((event_type, data))
+
     state.ipc_subscribers.append(capture)
     try:
         failed_item = state.queue_items[0]
@@ -1501,9 +1502,7 @@ async def test_step_probe_failure_keeps_queue_dispatching(monkeypatch, device_pr
 
 
 @pytest.mark.asyncio
-async def test_held_queue_auto_resumes_when_device_comes_back(
-    monkeypatch, device_probe_ok
-):
+async def test_held_queue_auto_resumes_when_device_comes_back(monkeypatch, device_probe_ok):
     from artemis.runtime.device_pool import DeviceStatus
 
     await enqueue_two_tasks()
@@ -1515,7 +1514,10 @@ async def test_held_queue_auto_resumes_when_device_comes_back(
         return [DeviceStatus(serial=s, state="device") for s in serials]
 
     resumed_events = []
-    capture = lambda et, d: resumed_events.append((et, d))
+
+    def capture(et, d):
+        resumed_events.append((et, d))
+
     state.ipc_subscribers.append(capture)
     try:
         # 设备重新出现在真实枚举里：熔断解除，队列可继续派发
@@ -1539,9 +1541,7 @@ async def test_held_queue_auto_resumes_when_device_comes_back(
     assert target.lock_key in state.held_queues
 
     # 枚举不确定（adb 本身不可达返回 None）：保持熔断，不误续跑
-    monkeypatch.setattr(
-        device_pool, "try_list_devices_async", AsyncMock(return_value=None)
-    )
+    monkeypatch.setattr(device_pool, "try_list_devices_async", AsyncMock(return_value=None))
     state.held_queues[target.lock_key]["last_probe"] = 0.0
     await TaskQueueService._probe_held_queues()
     assert target.lock_key in state.held_queues
@@ -1592,9 +1592,7 @@ async def test_stop_all_clears_device_queue_holds(monkeypatch, device_probe_ok):
 
 
 @pytest.mark.asyncio
-async def test_hold_is_per_device_other_device_keeps_dispatching(
-    monkeypatch, device_probe_ok
-):
+async def test_hold_is_per_device_other_device_keeps_dispatching(monkeypatch, device_probe_ok):
     with patch.object(TaskQueueService, "ensure_worker_running"):
         await task_queue_service.enqueue_tasks(["设备A任务"], device_serial="EMULATOR1")
         await task_queue_service.enqueue_tasks(["设备B任务"], device_serial="EMULATOR2")
@@ -1626,7 +1624,9 @@ def test_failure_classification_separates_environment_from_task():
     assert classify(False, "Task failed: verification mismatch") == "environment"
     # 有步骤 + 环境特征：执行途中遭遇环境故障（不可接受）
     assert classify(True, "LLM Error: 503 UNAVAILABLE. High demand.") == "environment"
-    assert classify(True, "Device EMULATOR1 is not available (adb does not list it).") == "environment"
+    assert (
+        classify(True, "Device EMULATOR1 is not available (adb does not list it).") == "environment"
+    )
     assert classify(True, "Connection to model provider timed out") == "environment"
     # 有步骤 + 无环境特征：任务级失败（可接受，队列继续）
     assert classify(True, None) == "task"
@@ -1709,13 +1709,9 @@ async def test_auto_device_failure_holds_default_queue(monkeypatch, device_probe
 async def enqueue_two_tasks():
     with (
         patch.object(TaskQueueService, "ensure_worker_running"),
-        patch(
-            "apps.admin_console.services.task_queue_service.session_repo"
-        ),
+        patch("apps.admin_console.services.task_queue_service.session_repo"),
     ):
-        await task_queue_service.enqueue_tasks(
-            ["第一", "第二"], device_serial="EMULATOR1"
-        )
+        await task_queue_service.enqueue_tasks(["第一", "第二"], device_serial="EMULATOR1")
 
 
 def seed_hold(lock_key: str, item: dict):
@@ -1728,9 +1724,7 @@ def seed_hold(lock_key: str, item: dict):
 
 
 @pytest.mark.asyncio
-async def test_manual_pause_gates_dispatch_and_resume_clears_holds(
-    monkeypatch, device_probe_ok
-):
+async def test_manual_pause_gates_dispatch_and_resume_clears_holds(monkeypatch, device_probe_ok):
     await enqueue_two_tasks()
 
     # 手动暂停：pending 全部保留不派发
@@ -1749,7 +1743,10 @@ async def test_manual_pause_gates_dispatch_and_resume_clears_holds(
         "last_probe": 0.0,
     }
     events = []
-    capture = lambda et, d: events.append((et, d))
+
+    def capture(et, d):
+        events.append((et, d))
+
     state.ipc_subscribers.append(capture)
     try:
         with patch.object(TaskQueueService, "ensure_worker_running"):

@@ -463,8 +463,9 @@ async def take_screenshot(ctx: Context) -> str:
 
 
 @_tool()
-async def compare_ui_frames(before_b64: str, after_b64: str, action: str = "tap",
-                            coordinates: list[int] | None = None) -> str:
+async def compare_ui_frames(
+    before_b64: str, after_b64: str, action: str = "tap", coordinates: list[int] | None = None
+) -> str:
     """Reports whether the screen visibly changed between two captured frames.
 
     Pure computation on base64 frames the caller already holds -- nothing is

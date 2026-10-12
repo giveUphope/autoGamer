@@ -333,8 +333,7 @@ async def get_status():
                 "acquired_at": owner.acquired_at,
                 "conversation_id": (owner_item or {}).get("conversation_id")
                 or owner_meta.get("conversation_id"),
-                "created_at": (owner_item or {}).get("created_at")
-                or owner_meta.get("created_at"),
+                "created_at": (owner_item or {}).get("created_at") or owner_meta.get("created_at"),
             }
         )
 
@@ -408,8 +407,7 @@ async def get_status():
             g_meta = state.submission_for(g_item.get("session_id"))
             g_item = {
                 **g_item,
-                "conversation_id": g_item.get("conversation_id")
-                or g_meta.get("conversation_id"),
+                "conversation_id": g_item.get("conversation_id") or g_meta.get("conversation_id"),
                 "created_at": g_meta.get("created_at") or g_item.get("created_at"),
                 "goal": g_meta.get("goal") or g_item.get("goal"),
             }

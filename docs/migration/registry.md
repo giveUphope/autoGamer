@@ -53,10 +53,7 @@
 | 编号 | 一句话 |
 |---|---|
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
-| G53 | 前端 `package-lock.json` 的 `resolved` 全是镜像 URL，`check_dependency_sources` 门禁在 CI 与本地都红（既有状态，非插件轨道引入） |
-| G54 | 本 fork 的 `on: push` 从不触发 workflow run（两次 push 后 `total_count` 仍只有那次 `workflow_dispatch`） |
-| G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红（既有状态，与 G53 的运行时红是两件事） |
-| G58 | 仓级 `ruff format --check .` 除 G55 文件外另有 9 处红（既有状态，成因待查） |
+| G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
@@ -71,7 +68,6 @@
 | G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
 | G28 | parking 与全局并发上限的内部语义 |
 | G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
-| G43 | spike 的复位与判据不可靠：`settings put ui_night_mode` 不生效，达成与否必须以截图为准 |
 
 **已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
 
@@ -118,6 +114,8 @@
 | G34 | 裸 schema 注册的输入自校验缺口 | 输入语义校验入工具（coordinate 存在即判、不静默回退，text 非空、duration 正数、key 可解、swipe 起止成对、package/url 非空），11 条单测锁死；详见 CHANGELOGS **#33** |
 | G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe）；详见 CHANGELOGS **#33** |
 | G4 | 熔断探测体（矩阵落定） | 键同源、四解除、不对称引用既有锁；新提交不旁路等显式偏差见 S4；详见 CHANGELOGS **#39** |
+| G43 | spike 复位与判据不可靠（`settings put` 无效） | `scripts/spike_reset.py` 复位脚本 + dry-run 锁；live deferred，P1-live 接；详见 CHANGELOGS **#42** |
+| G58 | 仓级另 9 处格式红（G55 文件已先修） | `ruff format .` 零语义 + 同文件 3 处 E731 改 `def`；279/1 回归绿；详见 CHANGELOGS **#43** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

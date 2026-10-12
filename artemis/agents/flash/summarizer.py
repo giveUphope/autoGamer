@@ -170,9 +170,7 @@ class VisualStepSummarizer(StepMemoryService):
         self._model_name = target_model
         try:
             if model_name:
-                self._llm = get_default_deployment_llm(
-                    model_name=target_model, temperature=0.0
-                )
+                self._llm = get_default_deployment_llm(model_name=target_model, temperature=0.0)
             else:
                 self._llm = get_llm(ctx, name="summarizer")
         except Exception:

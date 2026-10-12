@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#41 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#43 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1703,6 +1703,59 @@ checker 审计无纪律文本、无可回放事实；skill 无梯级与脚手架
       超时-dispose-respawn 锁—— Consolidation 计划见 review 会话记录，TODO 测试债行已覆盖方向，不另开工；
       `classify.spec.ts` 成功断言 vacuous 状况保留（改函数超出本轮）
 
+### #42 G43：spike 复位与判据固化成脚本（live deferred）
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 脚本交付并锁定；live 跑通 deferred（本机无 adb/模拟器，P1-live 接）
+- **优先级**: 高（判据错会颠倒黑白；P1 多任务验收的前置）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G43 固化轮」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上根本不生效；
+`settings get` 读 2 而屏已深——判据错把成功记成失败。且复位/判据散在对话与 TODO 里，无可复跑载体。
+
+#### 整改方案与实施
+
+1. `scripts/spike_reset.py`（stdlib only）：`reset-home`（am start HOME + `LawnchairLauncher`
+   断言）、`reset-light`（`cmd uimode night no`，`settings put` 刻意缺席）、`shot`（`exec-out screencap`）、
+   `oracle`（只打 `settings get` 旁证 + 截图核对清单，不判像素）；`--serial`（默认 `$ADB_DEVICE_SERIAL`）、
+   `--dry-run`（CI/无设备可跑）；T1/T2 目标文本逐字进 `--help`。
+2. `tests/unit/scripts/test_spike_reset.py`（3 条）：dry-run 全命令在场、`settings put` 永不出现、
+   缺 serial 非 dry-run 报 2。
+
+#### 验收标准
+
+- [x] `--help`/`--dry-run` exit 0；`ruff check` + `format --check` 绿；pytest 3 passed
+- [x] live 未跑（如实记）：本机无 adb；P1-live 用此脚本复位
+- [x] 文档门禁双 exit 0
+
+### #43 G58：9 文件纯格式 churn 关账
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（另 3 处 E731 同轮顺手修，见下）
+- **优先级**: 低（CI 门禁）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 无独立 spec（机械改写，查现状即方案：221 域现状见 #37 轮；本轮 `format --check` 点名 9 文件）
+
+#### 问题描述
+
+锁内 ruff 下 9 文件报 would-be-reformatted（`apps/admin_console` 2 / `artemis` 3 / `setup.py` /
+`tests` 2 / `third_party` 1），CI `python-quality` 的仓级格式检查必红。另 `ruff check .` 在
+`test_task_queue_service.py` 报 3 处 E731（HEAD 版字节级核对，`capture = lambda` 既有）。
+
+#### 整改方案与实施
+
+1. `uv run ruff format .`（9 文件，零语义）；3 处 lambda 改 `def`（同文件已动，零语义；否则 lint job 仍红）。
+2. 受影响 py 面回归：`tests/unit/admin_console/test_task_queue_service.py` + `tests/unit/mcp`。
+
+#### 验收标准
+
+- [x] `ruff format --check .` 663 绿；`ruff check .` 全绿
+- [x] pytest ⇒ **279 passed / 1 skipped**（上两文件集）
+- [x] 文档门禁双 exit 0
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1745,6 +1798,8 @@ checker 审计无纪律文本、无可回放事实；skill 无梯级与脚手架
 | G33 | 策略内建在工具正文里，与官方「不要内建策略」相反 | 冷却拒绝迁 `ctx.tools.guard()`（只看本工具，终态出口永不拦），只读动作声明 `isConcurrencySafe`；顺带修掉 `starting` 失败缓存与组装期传输分类两 bug | 本文件 **#36** |
 | G53 | 前端 lockfile 全镜像 URL，`check_dependency_sources` 门禁红 | 221 个 `resolved` 只换 host（版本/integrity 零漂移，解析级断言），门禁绿，前端 305 用例绿 | 本文件 **#37** |
 | G55 | `check_dependency_sources.py` 不合 `ruff format` | 一条 `ruff format` 命令（`e1de835`）；仓级另 9 处既有红另立 G58 | 本文件 **#38** |
+| G43 | spike 复位与判据不可靠（`settings put` 无效） | `scripts/spike_reset.py`（UI/平台复位 + 截图判据 + dry-run 锁；live deferred） | 本文件 **#42** |
+| G58 | 仓级另 9 处格式红 | `ruff format .` 零语义；同文件 3 处 E731 顺手改 `def` | 本文件 **#43** |
 | G4 | 熔断探测体（矩阵落定） | 键同源 `deviceKeyOf`（空串分叉修掉，Tier1 调用点锁），`reset`/计数锁，S4 解除句修订（新提交不旁路等显式偏差） | 本文件 **#39** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |

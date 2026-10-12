@@ -75,9 +75,9 @@ class TaskQueueService:
     #: 环境级失败的错误特征（小写子串匹配）：设备层 / LLM 提供方 / 网络。
     #: 命中即视为不可接受失败（熔断队列），与具体任务无关。
     ENVIRONMENT_ERROR_MARKERS = (
-        "device",          # Device ... is not available / offline / no devices
+        "device",  # Device ... is not available / offline / no devices
         "adb",
-        "helper",          # accessibility helper 安装/连接失败
+        "helper",  # accessibility helper 安装/连接失败
         "llm error",
         "llm request",
         "model",

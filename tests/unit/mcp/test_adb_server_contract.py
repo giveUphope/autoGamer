@@ -230,7 +230,6 @@ async def test_press_key_vocabulary_divergence_is_documented():
 from artemis.mcp import adb_server  # noqa: E402  (the manifest tests import it lazily)
 
 
-
 def _png_b64(array) -> str:
     import base64
 
@@ -258,7 +257,9 @@ async def test_compare_ui_frames_reports_a_navigation_as_changed():
     after_img = np.full((400, 800), 40, dtype=np.uint8)
     after_img[:, 400:] = 240
     result = json.loads(
-        await adb_server.compare_ui_frames(_png_b64(np.full((400, 800), 40)), _png_b64(after_img), "back")
+        await adb_server.compare_ui_frames(
+            _png_b64(np.full((400, 800), 40)), _png_b64(after_img), "back"
+        )
     )
     assert result == {"changed": True}
 

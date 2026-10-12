@@ -86,9 +86,7 @@ class sdist(_sdist):
         # Old egg-info manifests may include Python packages from node_modules.
         frontend_prefixes = ("apps/showcase_ui/", "apps/showcase_ui_v2/")
         filtered_files = [
-            path
-            for path in files
-            if not Path(path).as_posix().startswith(frontend_prefixes)
+            path for path in files if not Path(path).as_posix().startswith(frontend_prefixes)
         ]
         super().make_release_tree(base_dir, filtered_files)
         # Protect local rebuilds from stale egg-info/SOURCES.txt manifests

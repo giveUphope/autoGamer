@@ -891,9 +891,7 @@ class AgentBase:
             elif task.status == "cancelled":
                 session_status = "cancelled"
             task_error = task.result.error if task.result else None
-            context.data_engine.end_session(
-                status=session_status, error_message=task_error
-            )
+            context.data_engine.end_session(status=session_status, error_message=task_error)
 
         exec_setup_ctx = context.execution_setup
         if not exec_setup_ctx:

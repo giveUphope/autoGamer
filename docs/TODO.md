@@ -12,7 +12,7 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧：G53/G55 已结案（CHANGELOGS **#37/#38**；仓级格式另有 9 处既有红，见 **G58**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 智能层离线片已结案（CHANGELOGS **#40**：validator 梯 + prompt 级 checker + skills；熔断矩阵见 #39）；R6 已补跑（双 patch exit 0/0 unmatched，审计节进树）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机，且先重装 bundle，见 **G59**）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）。 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43** 已结案（CHANGELOGS **#42**：`scripts/spike_reset.py`，UI/平台命令复位 + 截图判据，dry-run 可跑；live deferred）；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧全绿（G53/G55/G58 已结案，见 CHANGELOGS **#37/#38/#43**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 智能层离线片已结案（CHANGELOGS **#40**：validator 梯 + prompt 级 checker + skills；熔断矩阵见 #39）；R6 已补跑（双 patch exit 0/0 unmatched，审计节进树）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机，且先重装 bundle，见 **G59**）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）、G43（#42）、G58（#43）。 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **83 passed / 1 skipped**（复测：`pnpm --config.verify-deps-before-run=false test`；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
@@ -117,7 +117,6 @@
 |---|---|---|
 | G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**三次 push 零 run**（`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来。fork 级开关已排除（2026-10-12 只读核对）：repo `fork:true` 但 `disabled:false`、Actions `enabled:true` + `allowed:all`、CI workflow `state:active`——三个全绿。剩下候选收窄到 API 看不见的账号级（用量/标记）与提交身份；下次推送即第四数据点。在此之前任何「CI 证据」必须写明是手动派发 |
-| G58 | 仓级 `ruff format --check .` 另有 9 处红 | 新开（2026-10-12 关 G55 时实测，既有状态）：`apps/admin_console`（2）/`artemis`（3）/`setup.py`/`tests`（2）/`third_party`（1）共 9 文件在锁内 ruff 下报 would-be-reformatted，`scripts/` 全绿。成因未定（锁内版本 vs 落盘格式），未动（纯格式 churn，另行处理） |
 | G59 | 本机 `--dump-config-schema` 常驻失败，live 前需重装 bundle | 新开（2026-10-12 补 R6 时实测，既有状态）：`dsh` 在 PATH（`~/AppData/Local/Programs/DeepSeek Harness/.../bin/dsh.cmd`，0.2.0-rc.2），R6 双 patch 均 exit 0/0 unmatched 且审计节进树；但 `--dump-config-schema` 裸跑同败（`Cannot find package 'autogamer-device'`），profile `dependencies` 为空、两处 patch 模板皆空——残留引用在宿主合成侧，与本轮 YAML 无关。live 复验前需重装 bundle（动用户 profile，用户决策）；`--dump-config` 不受影响 |
 | G8 | 终态权威 | 收缩：汇报工具语义（S2）；exit code 映射随 py worker 消失 |
 | G10 | 动作中断语义 | 收缩：exec.signal → 取消 MCP 请求/释放闸门；录屏后补时补 graceful stop |
@@ -132,7 +131,6 @@
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
 | G28 | parking + 全局并发 N | 保留：闸门工具内部语义 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
-| G43 | spike 复现脚本的复位与判据不可靠（`settings put ui_night_mode`） | 新开（2026-10-11）：用 `adb shell settings put secure ui_night_mode 1` 复位深色主题**并不生效**——写完后屏幕仍是深色，于是同一轮里 `settings get` 读到 1 被当成「任务未达成」，而模型看图说的「开关已开」其实是对的。**判据错会把成功记成失败、把失败记成成功**。修法：spike 的初态复位一律走 UI（真的点开关），达成判定以截图为准，`settings get` 只作旁证 |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
 ## 五、Checklist（R2' 里程碑）
@@ -394,28 +392,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - ✅ **G30 关闭（2026-10-10，两轮官方检查器分级实证 + 两处真根因）**：调研改判的「asar 锚点拒挂」假设也被官方面否证（roster/插件页/清单全绿、新会话创建成功、`autogamer-device-inner` 运行中）——正确的定性路径是**功能轮差分**：新会话里 preset 其他子行的工具全部在模型清单上（fs/pwsh/jobs/web/present…），唯独缺我们两个，而行状态「运行中」⇒ 注册后立即被注销；第二轮修掉注销后 400 前移（tools[11]/[12] schema 非法）⇒ 裸注册未编译。双根因修复见 changelogs #10（effect 语义反转 + defineTool 编译），vitest 38/38 含 2 条回归锁，live 实证模型真实调用 `run_device_action` 三次。教训入册：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛**；测试假 context 必须实现 effect 且按 cordis 语义。原 Fix A（file: URL 子行）与 Fix B（根行兜底)作废——锚点假设不成立
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
-
-### G43 固化轮（2026-10-12 按 R22 三步序：查本轮记录 → 本方案 → 脚本）
-
-**第 1 步「查」的原文与出处**（R20：本条是自家 spike 程序，无 DSH 行为问题；依据全在 TODO 已有记录）：
-
-- G43 行：`settings put secure ui_night_mode` 不生效，达成只认截图，`settings get` 只作旁证。
-- 真机 spike 重跑节：初态 `am start … category.HOME` + `mCurrentFocus=LawnchairLauncher` 核实；
-  T1/T2 目标文本逐字相同、每任务一新会话（R7）。
-- G42 修复轮：`cmd uimode night no` 复位浅色（截图核实）；T2 达成后 `settings get` 仍读 2（该 ROM 非真相源）。
-- 本机现状：无 adb、无模拟器——脚本写完只能 dry-run，live deferred（如实记，不假装验过）。
-
-- **What**：`scripts/spike_reset.py`（stdlib only，同 `check_dependency_sources.py` 口径）：
-  `reset-home`（am start HOME + mCurrentFocus 断言）、`reset-light`（`cmd uimode night no`）、
-  `shot <out.png>`（`exec-out screencap`）、`oracle <name>`（只打印 settings 旁证 + 截图核对清单，
-  不判像素——stdlib 无 cv2，判据永远是人/模型看图）；`--serial`（默认 env `ADB_DEVICE_SERIAL`）、
-  `--dry-run`（只打印命令，CI/无设备可跑）。T1/T2 目标文本逐字进 `--help` 说明。
-  **范围外**：像素判定、live 跑通（无设备）、改判据语义。
-- **How**：`subprocess.run(["adb", ...])` 直调，失败抛错带 stderr；`main()` 返回码：0 全成、2 有步骤失败；
-  文件同步进 `scripts/` 门禁（`ruff check` + `format --check`）。
-- **Verify**：`python scripts/spike_reset.py --help` exit 0；`--dry-run` 全流程 exit 0 且输出含全部 adb 命令；
-  `uv run ruff check scripts/spike_reset.py` + `format --check` 绿；双门禁。
-- **Done means**：[ ] 脚本落 `scripts/`；[ ] dry-run 绿；[ ] ruff 双绿；[ ] G43 关闭（live deferred 注明，P1-live 接）。
 
 ## 六、文档索引
 

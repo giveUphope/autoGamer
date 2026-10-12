@@ -149,9 +149,7 @@ class State(BaseModel):
     ] = None
 
     @classmethod
-    def initial(
-        cls, goal: str, prior_conversation_context: str | None = None
-    ) -> "State":
+    def initial(cls, goal: str, prior_conversation_context: str | None = None) -> "State":
         """Single source for the graph's initial state.
 
         Every entrypoint (SDK, engine runners, tests) must construct the
