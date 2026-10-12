@@ -55,6 +55,7 @@
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、incident 关闭通知、run_outcome 轴锁、subagent 化、§2.6 记忆裁定） |
+| G67 | `{index}` 按数组位置重解（应为按节点身份）——安全不变量「stale 句柄永不可点」被代码违反 |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |

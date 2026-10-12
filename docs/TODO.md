@@ -12,7 +12,7 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43** 已结案（CHANGELOGS **#42**：`scripts/spike_reset.py`，UI/平台命令复位 + 截图判据，dry-run 可跑；live deferred）；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** G53/G55/G58 已结案（见 CHANGELOGS **#37/#38/#43**），但**「CI 侧全绿」这句话当时就没有 run 支撑**（2026-10-12 复核后撤回该表述）：仓库至今唯一那次 run `38167498398` 整体 `conclusion=failure`——两个 `Python 3.12` job 红在 `Check public dependency sources before installation`，日志原文 `package-lock.json: node_modules/assertion-error: expected an HTTPS URL on registry.npmjs.org`，正是当时**还没关**的 G53；`#29` 那句「双 OS success」只覆盖了 `DSH plugin contracts` 两条 job，本身没写错。**修完 G53 之后没有再跑过任何 run**（G54），所以 #46 新加的 `Check documentation gates` step **至今一次都没执行过**；G54 已排查到只剩两个候选，见该行；**5)** P1 智能层**离线片 A** 已结（CHANGELOGS **#40**：validator 梯 + **prompt 级** checker + skills；熔断矩阵 #39）；**离线片 B（checker/validator subagent 化、plan 写守卫、`XML_BYPASSED`、`shifted`/`occupied`、incident 关闭通知、`run_outcome` 轴锁）未结 = G66**；G66 已定顺序 ①`hierarchy.ts` 保留 `parsed_bounds` → ②validator 梯改按节点身份重解（**推翻 #40 一处已结语义，须单独方案条目**）→ ③才谈陈旧 `{index}` 守卫。原「先做陈旧句柄安全项」（G27-a）**实现前发现与 #40 正面冲突，已停手、零代码提交**；R6 已补跑（双 patch exit 0/0 unmatched，审计节进树）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机，且先重装 bundle，见 **G59**）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）、G43（#42）、G58（#43）、G8/G10/G11/G13/G14/G24（#44）。**7)** 偏差关账轮已结（CHANGELOGS **#45**，2026-10-12 拉取后核对）：§零 的测试面数与 `docs/migration/README.md` 体量表 **9 行**都是陈旧抄件，已按实测更正；根因是 `measured()` 数工作树字节、随 checkout 换行符漂，现改成 LF 规范化并按新口径重生成 12 行。两处锁（`--selftest` 的 (i) 例 + `tests/unit/scripts/test_doc_table_sizes.py`）经**变异校验**做实时才咬得住——第一版两处都是虚锁（4 行样本跨不过 0.1 KB 口径步长；(i) 排在读真实文档的检查之后会被提前退出跳过），教训已成文 **R27**。**失效范围比初见更大**：按 blob 内容复测，体量表自它被脚本生成的那次提交 `2ab17cb` 起就从未在任何 LF 检出上匹配过，`#32`–`#44` 里 6 条「文档门禁双 exit 0」于 LF 下皆为假（编号不可改写，事实记在 G60 行）。**8)** G60 与 G61 已结案（CHANGELOGS **#46/#47**，2026-10-12 用户已决）：`ci.yml` 的 `python-quality` job 多了**一条无 `if`** 的 `Check documentation gates`（registry + tables + `--selftest`），仓库多了 `.gitattributes`（`* text=auto eol=lf`，`.bat`/`.cmd` 显式 `eol=crlf`，在库二进制显式 `binary`）——renormalize 实测**零个文本 blob 被重写**（带 CR 的 28 个 blob 全是二进制），本机 `ruff format --check` 由 1 个假红转绿。两处如实留白：**#46 未验证到真 run**（不推送 + G54 使 `on: push` 不产出 run，下次 `gh workflow run` 才是一手证据，届时记 run id）；G61 只归一了 2 个混行尾文件，其余 757 个 `w/crlf` 本机副本等新检出。9) **G3 + G28 A 片已结（CHANGELOGS #55）**：设备池闸门（parking / claimed-only / 全局并发 N）落 `src/devicePool.ts`，roster 由 config 注入、默认值等于现状；顺手修掉一处 G13 in-flight 标记在abort 时永久滞留的真泄漏；**G64 已结案（CHANGELOGS #56）**：py 面加只读 `list_devices`（工具面 14→15），插件 `rosterSource` + `discoverDevices` 默认 false 保住 #55 的零变化承诺；两条既有锁当场咬住新漂移（JS stub 少一个工具、新调用点未登记），正是它们存在的理由。10) **P2 admission A 片已结（CHANGELOGS #57）**：插件有了提交前准入的第一道门（就绪性 + 多设备次序），py 侧本片零改动；**G65 已结案（#59）**：`list_devices(include_lock_state)` 出三态（复用双采样确认探针，1s 上界），插件按「没问 ≠ 不可判」区分放行与拒绝，auto 跳过锁着与不可判。11) 之后仍按原序：P1 live 验收（前置 **G59** 重装 bundle + 本机 `dsh` 不在 PATH）。10) **G62 已结案（CHANGELOGS #52，2026-10-13）**：`artemis mcp --type mock` 让 py 实现本身在无 adb/无设备下跑通 14 工具面（截图是真 PNG、层级是真 JSON、动作进 `action_history`），两面工具清单逐字相同；配套把插件 JS stub 发明的 `ratio` 键更正掉（**#51**，那条假契约曾被测试锁住）。⇒ 下一步能接的离线主干：把插件 conformance/端到端演练的靶子从 JS 桩换成 `--type mock`（真 py 实现），以及 P2 余下项与 P4 退役清单 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43** 已结案（CHANGELOGS **#42**：`scripts/spike_reset.py`，UI/平台命令复位 + 截图判据，dry-run 可跑；live deferred）；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** G53/G55/G58 已结案（见 CHANGELOGS **#37/#38/#43**），但**「CI 侧全绿」这句话当时就没有 run 支撑**（2026-10-12 复核后撤回该表述）：仓库至今唯一那次 run `38167498398` 整体 `conclusion=failure`——两个 `Python 3.12` job 红在 `Check public dependency sources before installation`，日志原文 `package-lock.json: node_modules/assertion-error: expected an HTTPS URL on registry.npmjs.org`，正是当时**还没关**的 G53；`#29` 那句「双 OS success」只覆盖了 `DSH plugin contracts` 两条 job，本身没写错。**修完 G53 之后没有再跑过任何 run**（G54），所以 #46 新加的 `Check documentation gates` step **至今一次都没执行过**；G54 已排查到只剩两个候选，见该行；**5)** P1 智能层**离线片 A** 已结（CHANGELOGS **#40**：validator 梯 + **prompt 级** checker + skills；熔断矩阵 #39）；**离线片 B（checker/validator subagent 化、plan 写守卫、`XML_BYPASSED`、`shifted`/`occupied`、incident 关闭通知、`run_outcome` 轴锁）未结 = G66**；身份重解与陈旧句柄守卫已单独立 **G67**（前身 G27-a，实现前发现「按位置重解」与 `inventory/04:203` 的安全不变量正面冲突，故停手改设计；G27-a 零代码提交），方案条目已提交待实施。**G66 那条「bounds 是身份重解前置」的排序是错的，已回写**：身份用 text/desc/resource-id（无标签退 center+class），`parsed_bounds` 只服务 `shifted`/`occupied` 的包含判定，两条链独立；R6 已补跑（双 patch exit 0/0 unmatched，审计节进树）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机，且先重装 bundle，见 **G59**）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）、G43（#42）、G58（#43）、G8/G10/G11/G13/G14/G24（#44）。**7)** 偏差关账轮已结（CHANGELOGS **#45**，2026-10-12 拉取后核对）：§零 的测试面数与 `docs/migration/README.md` 体量表 **9 行**都是陈旧抄件，已按实测更正；根因是 `measured()` 数工作树字节、随 checkout 换行符漂，现改成 LF 规范化并按新口径重生成 12 行。两处锁（`--selftest` 的 (i) 例 + `tests/unit/scripts/test_doc_table_sizes.py`）经**变异校验**做实时才咬得住——第一版两处都是虚锁（4 行样本跨不过 0.1 KB 口径步长；(i) 排在读真实文档的检查之后会被提前退出跳过），教训已成文 **R27**。**失效范围比初见更大**：按 blob 内容复测，体量表自它被脚本生成的那次提交 `2ab17cb` 起就从未在任何 LF 检出上匹配过，`#32`–`#44` 里 6 条「文档门禁双 exit 0」于 LF 下皆为假（编号不可改写，事实记在 G60 行）。**8)** G60 与 G61 已结案（CHANGELOGS **#46/#47**，2026-10-12 用户已决）：`ci.yml` 的 `python-quality` job 多了**一条无 `if`** 的 `Check documentation gates`（registry + tables + `--selftest`），仓库多了 `.gitattributes`（`* text=auto eol=lf`，`.bat`/`.cmd` 显式 `eol=crlf`，在库二进制显式 `binary`）——renormalize 实测**零个文本 blob 被重写**（带 CR 的 28 个 blob 全是二进制），本机 `ruff format --check` 由 1 个假红转绿。两处如实留白：**#46 未验证到真 run**（不推送 + G54 使 `on: push` 不产出 run，下次 `gh workflow run` 才是一手证据，届时记 run id）；G61 只归一了 2 个混行尾文件，其余 757 个 `w/crlf` 本机副本等新检出。9) **G3 + G28 A 片已结（CHANGELOGS #55）**：设备池闸门（parking / claimed-only / 全局并发 N）落 `src/devicePool.ts`，roster 由 config 注入、默认值等于现状；顺手修掉一处 G13 in-flight 标记在abort 时永久滞留的真泄漏；**G64 已结案（CHANGELOGS #56）**：py 面加只读 `list_devices`（工具面 14→15），插件 `rosterSource` + `discoverDevices` 默认 false 保住 #55 的零变化承诺；两条既有锁当场咬住新漂移（JS stub 少一个工具、新调用点未登记），正是它们存在的理由。10) **P2 admission A 片已结（CHANGELOGS #57）**：插件有了提交前准入的第一道门（就绪性 + 多设备次序），py 侧本片零改动；**G65 已结案（#59）**：`list_devices(include_lock_state)` 出三态（复用双采样确认探针，1s 上界），插件按「没问 ≠ 不可判」区分放行与拒绝，auto 跳过锁着与不可判。11) 之后仍按原序：P1 live 验收（前置 **G59** 重装 bundle + 本机 `dsh` 不在 PATH）。10) **G62 已结案（CHANGELOGS #52，2026-10-13）**：`artemis mcp --type mock` 让 py 实现本身在无 adb/无设备下跑通 14 工具面（截图是真 PNG、层级是真 JSON、动作进 `action_history`），两面工具清单逐字相同；配套把插件 JS stub 发明的 `ratio` 键更正掉（**#51**，那条假契约曾被测试锁住）。⇒ 下一步能接的离线主干：把插件 conformance/端到端演练的靶子从 JS 桩换成 `--type mock`（真 py 实现），以及 P2 余下项与 P4 退役清单 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **169 passed / 1 skipped**（19 个 test file：#55 +6 池锁、#56 +3 roster 锁、#57 +6 准入锁、#59 +4 锁屏三态锁）（复测：`pnpm --config.verify-deps-before-run=false test`，本轮在工作树 `8eecb39`+未提交改动上实跑核准；上一版的 148 是在 `419b9df` 上量的，更早的 83 是 `#40`/`#44` 两轮净增 21+7 之后没回抄的陈旧抄件，见 CHANGELOGS **#45**；本轮 +2 来自 CHANGELOGS **#50**（mock action 面补 `compare_ui_frames` + 漂移锁改吃生成的 fixture）；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对；py 动作面 fixture 自 **#54** 起由 CI 的 `python-quality` job 用 `SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs` 每次重导比对（此前 §零 写着「CI 用 spike-mcp 做同一比对」是**从未成立**的假陈述，见 **#53**）；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，**仅指 `DSH plugin contracts` 两条 job**——同那次 run 的两个 `Python 3.12` job 是红的，红因即当时未关的 G53，见「下一步」第 4 条与 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **235 passed + 1 skipped**（动作面 15 工具；净增 4 来自 **#52** 的离线面、5 来自 **#56** 的只读列举；全量 `tests/unit` **2604 passed / 7 skipped** 零回归，基线 2593/7 同轮量得）+ `tests/unit/scripts` **6 条**（#45/#46 的门禁锁，随 CI 既有的 `uv run pytest tests/unit` 执行）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`——自 **#46** 起已接进 CI 的 `python-quality` job（一条无 `if` 的 step），但 G54 未解前只有派发会跑到同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
@@ -122,7 +122,8 @@
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
-| G66 | G27 保真差集的余下项（离线可关 + 必须 live 两类） | 新开（2026-10-13 子代理差集 + 我逐条复核）：①`shifted`/`occupied` 分类未实现——`hierarchy.ts:118-131` 把解析出的 bounds 丢了，分类需要它（py 侧口径 `mobile_use/validator/categories.py:27-31`）；②`XML_BYPASSED`（层级匹配不到就该转 pixel，不烧重试次数）全仓 0 命中；③incident **关闭**通知缺失（py `state.py:130-141` 要求成功时发一次，本插件 `noteSuccess` 静默清零）；④`run_outcome` 双轴的 `completed + tests_failed>0` 字符串没有任何测试锁（`reportTaskStatus.ts:59-69` 只算不锁）；⑤checker/validator **subagent** 化（src 里 0 命中，现为文案）与 §2.5 的 plan 写人机规则 1-6、convergence_gate、`extra="forbid"` 可见性权限模型——这些的前置是「有没有 plan/note 写入通道」，需先定 DSH 侧载体（host planner prompt vs 新工具）；⑥§2.6.1/2.6.3-2.6.6 的 transcript/scrub 深度/压力梯级/dHash —— 文档自己标【缺失】且`TODO.md` §一 已把会话记忆判给宿主 ⇒ **需要先裁定它们是否还在 D14 保真范围内**（G27 现把 §2.4-2.6 整段当验收清单）。其中 ①②③④ 可离线关闭；⑤⑥ 需决定或 live。**顺序已修正（原写「先做陈旧句柄那条安全项」是错的）**：`inventory/04:203` 要求 stale `[n]` 永不成为可点目标，而 #40 的 validator 梯有一条「用新层级按位置重解旧 index」（`runDeviceAction.ts:364-371`，`validatorLadder.spec.ts:100,149`）——**两者正面冲突**。故顺序必须是 ①`hierarchy.ts:118-131` 保留 `parsed_bounds` → ②梯子改按节点身份(text/bounds)重解（**这会推翻 #40 一处已结语义，要单独方案条目，不许夹带**）→ ③才谈 `{index}` 陈旧守卫。G27-a 因这条冲突停手，未写代码。 |
+| G66 | G27 保真差集的余下项（离线可关 + 必须 live 两类） | 新开（2026-10-13 子代理差集 + 我逐条复核）：①`shifted`/`occupied` 分类未实现——`hierarchy.ts:118-131` 把解析出的 bounds 丢了，分类需要它（py 侧口径 `mobile_use/validator/categories.py:27-31`）；②`XML_BYPASSED`（层级匹配不到就该转 pixel，不烧重试次数）全仓 0 命中；③incident **关闭**通知缺失（py `state.py:130-141` 要求成功时发一次，本插件 `noteSuccess` 静默清零）；④`run_outcome` 双轴的 `completed + tests_failed>0` 字符串没有任何测试锁（`reportTaskStatus.ts:59-69` 只算不锁）；⑤checker/validator **subagent** 化（src 里 0 命中，现为文案）与 §2.5 的 plan 写人机规则 1-6、convergence_gate、`extra="forbid"` 可见性权限模型——这些的前置是「有没有 plan/note 写入通道」，需先定 DSH 侧载体（host planner prompt vs 新工具）；⑥§2.6.1/2.6.3-2.6.6 的 transcript/scrub 深度/压力梯级/dHash —— 文档自己标【缺失】且`TODO.md` §一 已把会话记忆判给宿主 ⇒ **需要先裁定它们是否还在 D14 保真范围内**（G27 现把 §2.4-2.6 整段当验收清单）。其中 ①②③④ 可离线关闭；⑤⑥ 需决定或 live。**与 #40 的冲突已单独立 G67**（前身 G27-a）：`inventory/04:203` 要求 stale `[n]` 永不成为可点目标，而 #40 的 validator 梯有一条「用新层级按位置重解旧 index」（`runDeviceAction.ts:364-371`，`validatorLadder.spec.ts:100,149`）——**两者正面冲突**，故 G67 把重解改成按节点身份，并显式更正 #40 该半句。**再更正一次本行早先的说法**：`parsed_bounds` 并**不是**身份重解的先决条件（身份用 text/desc/resource-id，无标签退 center+class），它只是本行第①项 `shifted`/`occupied` 包含判定的消费者——两条链彼此独立，别再排成先后。 |
+| G67 | `{index}` 句柄按数组位置解析 | 新开（2026-10-13，前身 G27-a）：`inventory/04:203` 的安全不变量「只有活观察带索引元素列表，stale `[n]` 永不成为可点目标」被代码违反——`runDeviceAction.ts:364-371` 用**新鲜**层级按位置重解旧 `index`，屏幕一变就静默点到「现在坐在位置 N 的那个别的元素」。修法＝活观察快照 + 按节点身份重解 + 四类拒绝出口，方案见 §五 G67 条目（记 CHANGELOGS **#60**，并显式更正 #40 的「按位置重解」半句）。**注意**：本条与 `parsed_bounds`/`shifted`/`occupied`（G66 第①项）**无先后依赖**，身份签名用 text/desc/resource-id，无标签退 center+class |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
@@ -141,30 +142,55 @@
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
 **已登记 3 项**：**G64 py 只读 `list_devices` 工具**（2026-10-13 用户已决「加只读 py 工具」）——复用 `runtime/device_pool.py` 现成的枚举与 `try_list_devices` 的 fail-open，不新增第二份实现；豁免理由：设备列举此前没有任何 MCP 工具面出口，插件要么重复实现（多一份抄件）要么看不见设备状态；**已落地，CHANGELOGS #56**（工具面 14→15，四处契约同步；方案里「写进 action_manifest 能力门」一项经核实**不存在**——adb 面无能力门，作废而非遗漏）
 
-### G27-a 陈旧 `{index}` 永不可点：**已停手并改方向**（2026-10-13，实现前发现与 #40 冲突）
+### G67 `{index}` 按节点身份解析（活观察快照）（2026-10-13 立项，前身 G27-a）
 
-- **What**：本条原本要落地「`stale [n] 索引永不成为可点目标`」（`inventory/04:203`，文档标为**安全理由**）。
-  **实现前的核查推翻了自己的设计**，因此本条**不写代码**，改为把两条发现钉进台账，工作并入 **G66**：
-  ① **守卫与已结案行为正面冲突**：#40 的 validator 梯有一条「`effect=unchanged` ⇒ 用**新**层级把模型给的
-  `index` **按位置重解一次**」（`runDeviceAction.ts:364-371`，测试 `validatorLadder.spec.ts:100,149`，
-  其中「晚出现的目标在 3 次重取内命中」全靠这条）。而按位置重解正是文档要防的 hazard。
-  ⇒ 加严格指纹守卫会**否掉 #40 的一部分已结功能**；不加则文档的安全不变量继续被代码违反。
-  两者不能同时"已结"，必须选一个方向：**重解改按节点身份（text/bounds），不是按位置**。
-  ② 身份重解的先决条件恰好是 G66 第①条——`hierarchy.ts:118-131` 现在把 `parsed_bounds` 丢了，
-  没有 bounds 就无法判断"新树里这个位置是不是同一个节点"，也无法做 `shifted`/`occupied` 分类。
-  ⇒ 正确顺序是 **G66① → 本条**，不是本条单独硬上。
-- **How**（为什么不在本轮硬上严格规则）：硬上要么静默改掉 #40 的语义（那是无登记的倒退，违反 D8/R22），
-  要么把 `validatorLadder`/`dedup`/`apply` 里 **28 处** `{index}` 用例改成"先观察再点"，
-  同时还得把梯子的重解语义换掉——那是一次独立的行为变更，该有自己的方案条目与验收，
-  不该塞进一个"顺手加个守卫"的提交里。
-- **Verify**（本条的验收就是"没留下互相打脸的声称"）
-  - [x] `grep -n "parsed_bounds" plugins/autogamer-device/src/hierarchy.ts` 有命中 ⇒ 证明解析器**手里就有** bounds
-        却被丢弃（`118-131`），①的前置是几行而非重构
-  - [x] 本条不产生代码提交；`git log` 上 `G27-a` 只以文档形式存在
-  - [x] §零 下一步第 5 条与 §五 P1 框都已按实测改写（不声称 subagent 已存在，`grep -rn subagent src` ⇒ 0 命中）
-- **Done means** → 工作转移进 **G66**，本条随本次提交删除；G66 的顺序改为
-  「①`parsed_bounds` 保留 → 梯子改身份重解 → 才谈 `{index}` 陈旧守卫」，并显式标注它**推翻 #40 一处已结语义**，
-  需要单独方案条目，不许夹带。
+- **What**：把「模型看到的 `#N`」与「执行时命中的节点」之间的绑定从**数组位置**改成**节点身份**。
+  交付四件——
+  ① 新增 `src/observations.ts` 的 `LiveObservations`：按 `(agentId, deviceKey)` 只存**最新一次模型可见的**
+     层级元素列表。刻意浅（`inventory/04-agent-stack-config.md:203` 原文口径）：一次新观察即替换旧的，
+     不累积、不设 TTL——安全性来自执行时的身份复核，不来自过期时间；
+  ② 写入点**只有** `get_ui_hierarchy` 的工具结果出口（`runDeviceAction.ts:631-643`，即真正交给模型渲染那份）。
+     validator 梯内部的重取（`:365`、`:742`）**不写**：那不是模型的新观察，写了等于执行自己给自己的句柄续期；
+  ③ `{index}` 解析改道：在快照里查 `#N` 得到身份（text / content-desc / resource-id，命中优先级同
+     `findNodeCenterBySubstring`；三者皆空退到 `center+class` 签名）→ 拿身份到**新鲜**层级里找 → 点它**现在**的中心。
+     四类出口全可观测：从未观察该设备 ⇒ 拒；`#N` 不在快照 ⇒ 拒；身份在新树里找不到 ⇒ 拒；
+     找到 ⇒ 点新位置（这一条保证 #40 已结的两个行为原样成立）；
+  ④ 拒绝文案只指向「重新 `get_ui_hierarchy` 再看编号」或「改用 `{coordinate}` 并说明依据」，
+     **不许静默退回按位置解析**——像素兜底正是文档要防的事，persona 第 4 条也禁止原样重试。
+  **范围外（仍留 G66，逐条已有行号）**：保留 `parsed_bounds` 与 `shifted`/`occupied` 分类（它的消费者是
+  包含判定，不是身份）、`XML_BYPASSED`、incident 关闭通知、`run_outcome` 轴锁、subagent 化、§2.6 裁定。
+- **How（为什么这是更正 #40，不是偷偷改掉它）**：#40 结案的行为是「晚出现的目标在 3 次重取内命中」
+  （`validatorLadder.spec.ts:100`）与「目标移动后按新位置重试」（`:149` 的 `MOVED_TARGET`）——
+  身份解析下两条**逐条仍成立**（前者的目标从缺位到出现、后者是同名节点 bounds 变了，答案相同）。
+  被推翻的只有半句：「按数组**位置**把旧 `index` 重解一次」，而 `inventory/04:203` 把这条列的是**安全**问题
+  （位置重解会点到"现在坐在位置 N 的别的元素"）。故记 CHANGELOGS **#60**，并在 G66 行显式标注
+  #40 该半句已被 #60 更正——**不改写 #40 正文**（编号发布后不得改写）。
+  无标签节点的退化签名用 `center+class`：它一旦移动就**认不出**，按 py 自己的保守取向
+  （`artemis/agents/validator/precondition_xml.py:392-395`「宁可误判为 disappeared」）落回拒绝。
+  ⇒ **顺带更正本轮先前写进 G66 行的判断**：「`parsed_bounds` 是身份重解的先决条件」**不成立**，
+  两条链彼此独立；bounds 要等它真正的消费者（`shifted`/`occupied`）那轮再加，本轮不留无人读的字段。
+- **Verify**
+  - `pnpm --config.verify-deps-before-run=false test` ⇒ 基线 **169 passed / 1 skipped** 之上只增。
+    新增锁（`tests/liveObservation.spec.ts`）7 条：① 从未观察 ⇒ `{index}` 被拒且**零次** `tap` 落到 py；
+    ② 观察后树未变 ⇒ 点位与现状一致；③ 观察后目标**之前插入了节点** ⇒ 仍点到同一 text 的节点
+    （位置解析会点到插进来的那个——这条是本片的主锁）；④ 目标始终不在新树 ⇒ 拒且零次 tap；
+    ⑤ 梯子内部重取**不**刷新快照（先观察 T1，中间执行走 T2，下一次仍按 T1 的身份解析）；
+    ⑥ 快照按 `(agent, device)` 隔离：A 设备的观察不服务 B 设备；⑦ 无标签节点 center+class 命中、
+    移动过的无标签节点被拒
+  - 既有 28 处 `{index}` 用例改为「先观察再点」：新增 helper `observe(tool)` 走**真工具路径**观察，
+    观察后清空调用计数，使 `hierarchyCalls()` 断言仍只数执行期重取。这是行为收紧，不是测试脆弱，
+    不许放宽成「允许未观察」
+  - **变异校验（做出红才勾，R27）**：身份解析改回按位置 ⇒ ③ 红；删掉「从未观察 ⇒ 拒」 ⇒ ① 红；
+    让梯子内部重取写快照 ⇒ ⑤ 红；拒绝文案改成静默回退坐标 ⇒ ①④ 的「零次 tap」红
+  - `pnpm --config.verify-deps-before-run=false run build` ⇒ 0 error；`npm run test` 与 build 都要看到退出码本身
+  - 声明面本片不动（无新配置、无新工具）⇒ 无 R6 义务；本机 `dsh` 不在 PATH（**G59**），所以「跑 `--dump-config`」在这台机器上是**不可满足**的判据，不写进验收，装好宿主后随 P1 live 一起补
+  - py 侧本片零改动 ⇒ `uv run python -X utf8 -m pytest tests/unit -q` 必须仍是 **2604 passed / 7 skipped**
+  - 两枚文档门禁 + `--selftest` ⇒ exit 0
+- **Done means**
+  - [ ] `LiveObservations` + 身份解析 + 四类出口落地，7 条新锁 + 4 条变异校验做红记进 CHANGELOGS **#60**
+  - [ ] 28 处既有 `{index}` 用例改完且未放宽
+  - [ ] G66 行标注「#40 的按位置重解半句已被 #60 更正」，且「bounds 是身份前置」那条错话已回写
+  - [ ] 本条结案即删
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
