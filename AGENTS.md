@@ -28,7 +28,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 | 文档 | 什么时候读 |
 |---|---|
 | `docs/TODO.md` | 任何 DSH 侧改动之前。方案本体：决策表 `D*`、对接语义 `S*`、差距清单 `G*`、P0-P4 checklist 与「P0 执行状态」 |
-| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则逐条带出处口径与可执行判据（**现行条款与范围只看 `docs/migration/registry.md`**）；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）**、**R23 不得在 session/event 的 emit 里 append（注入类调用先推出发布边界）**、**R24 判「某事没发生」只认会话日志（wire 看不到终结回合的最后一次工具调用，插件 logger 不进 stdout）**、**R25 定根因先读机制文档、一次只测一个变量（推荐方案前先核它是否已是现状）**、**R26 gh 的写操作必须显式 --repo（默认解析可能打到上游别人的仓库）** |
+| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则逐条带出处口径与可执行判据（**现行条款与范围只看 `docs/migration/registry.md`**）；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）**、**R23 不得在 session/event 的 emit 里 append（注入类调用先推出发布边界）**、**R24 判「某事没发生」只认会话日志（wire 看不到终结回合的最后一次工具调用，插件 logger 不进 stdout）**、**R25 定根因先读机制文档、一次只测一个变量（推荐方案前先核它是否已是现状）**、**R26 gh 的写操作必须显式 --repo（默认解析可能打到上游别人的仓库）**、**R27 判据必须经变异校验证明它会红（样本量与执行位置都能让锁变虚），字节类口径写明量 blob 还是工作树，未进 CI 的门禁不许当验收** |
 | `docs/CHANGELOGS.md` | **只记已发生并结案的变更**（`### #N` 三段：问题 / 修法 / 验收），按分类组织、顶部有索引；**已关闭差距 `G*` 的正文在这里**（「已关闭差距史」节）。编号 `#N` 发布后不得改写——守则与 TODO 都按 `changelogs #N` 引用 |
 | `docs/migration/registry.md` | **要引用或新增任何编号（D/S/G/R）之前**。编号唯一权威，含 `inventory/*` 与 `TODO.md` 的 G 编号撞车冲突表；`scripts/check_doc_registry.py` 机械守着 |
 | `docs/migration/glossary.md` | 读方案时卡住词了：`realm`、`parking`、`PTC`、`roster`，尤其是 **`inject` 有两个意思**（服务依赖 vs 不唤醒的上下文追加） |
@@ -67,13 +67,20 @@ else is a *pointer*, never a copy. A copy has no mechanism to change when its so
 so it is wrong on the next edit while still passing every gate.
 
 - id ranges/counts → `docs/migration/registry.md`; status & blockers → `docs/TODO.md` §零;
-  closed-change prose → `docs/CHANGELOGS.md`; doc sizes → generated, never hand-typed
+  closed-change prose → `docs/CHANGELOGS.md`; doc sizes → generated, never hand-typed, and measured
+  on **LF-normalized bytes** (blob-equivalent) — never raw worktree bytes, which depend on the
+  checkout (`core.autocrlf`), not on the repository
 - Gates enforce it mechanically: `scripts/check_doc_registry.py` fails on a "from id #1 to the
   current max" total-range claim outside the authority (pointing ranges like `R2-R8` are fine);
   `scripts/check_doc_tables.py` verifies `docs/migration/README.md` §三's size table and rewrites
   it with `--refresh-sizes`
+- **Neither gate runs in CI** (`G60`) — "门禁" here means *you* run it before committing. Saying
+  "gates exit 0" in an acceptance box without the re-run command and the checkout environment is
+  how six closed entries attested a table that had never matched on an LF checkout
 - Why this rule exists (don't re-derive it): `docs/CHANGELOGS.md` **#30** — six drifted copies
-  were found at once, and #31 made them un-duplicable
+  were found at once, and #31 made them un-duplicable; **#45** is the third drift, caused by the
+  measurement itself rather than by a hand copy. See rule **R27**: a check must be proven able to
+  fail (mutation-check it) before it may be ticked
 
 ## Commands
 
