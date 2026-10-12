@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#31 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#32 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1374,6 +1374,39 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
   **但 `uv run ruff format --check scripts/` 整体仍有 1 处红**——那是既有债（`scripts/check_dependency_sources.py:55` 过长，非本轮引入，本轮未顺手改以免混进无关提交），已按 **G55** 登记
 - **偏差如实记**：① 体量数字第一次跑就纠正了我自己在 #30 手抄的值，KB 口径由「整数与一位小数混用」统一为一位小数（`inventory` 行 217 → 216.9 KB）；② #30 关于「`AGENTS.md` 是有意例外」的判断已由本条撤回，#30 原文加了一行取代标注；③ 未新增守则条款——文档卫生的作用域是全仓库而非插件契约，按 `registry.md` 的规则不占 `R*` 号
 
+### #32 G52 结案：追问路径改吃真实 `turn/end`，并摘掉追问消息的手镜像
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（新 Tier 1 五条全绿，插件测试面 78 → 83）
+- **优先级**: 高（P1 的终态与熔断判据都建立在这条路径真的能被宿主触发上）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G52 修复轮：追问路径补进真实 runtime」住在 `TODO.md` §五（spec 提交 `63bd39c` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+G44 的兜底追问（`turn/end` → 至多一次 `followup`）此前只有一种证据：`apply.spec.ts` 自己造的假 ctx，`emit("turn/end")` 由测试亲手调用，`ctx.agents.get` 是返回固定对象的假函数。宿主里真正决定成败的三件事一件没被证过：① `dsh-session` 提交的 `turn/end` 会不会派发到插件监听；② `session/event` 的 scope 筛选会不会把它挡掉（G44 v1 正是死在这儿）；③ `ctx.agents.get(session.id)` 那句「agent id 就是 session id」的键值假设。
+
+查声明面（R20：先官方一手资料；全部为已安装的 rc.2 包）时另出三条：
+
+- `Agent.followup` **确实在声明面**——`@deepseek-ai/dsh-agent/lib/types/runtime-types.d.ts:139-212` 的模块扩展里（`followup/steer/inject/send/cancel/whenIdle/runMaintenance`）。首轮 grep 报「声明面没有 followup」是**取证方法错**：pnpm 的 `node_modules` 全是指向 `.pnpm/` 的符号链接而 `grep -r` 默认不跟随。
+- G52 原句「agent handle 需 `ctx.agents.setFactory`」**是错的**：`setFactory` 只服务 `create/resume`（注释写明 factory 由 `dsh-agent-loop` 提供），自带句柄走 `AgentRegistry.register(agent)` 即可，且「Await the registration before using the agent」。
+- 真 `UserMessage` 的 `MessageBase` 要求 `id: MessageId`（branded）与 `source: MessageSource`；`MessageSourceMap` 官方原文「Merge-extensible sum type — **each producer declares its own `kind` in its own module**; there is no shared catch-all `plugin` kind」。我们的 `DshUserMessage` 手写镜像**没有 `id`**，`kind:'autogamer'` 也从没按官方形态声明——live 里宿主容忍了它（#15 的追问确实落进日志），但「碰巧能用」不是契约。
+
+#### 整改方案与实施
+
+- **新增 `tests/conformance/followup.spec.ts`（5 条）**：真实服务图（六个 `@deepseek-ai/*` 包，含 `dsh-session`）→ **两个 realm**（agent realm 进入会话、preset realm 挂对照监听）→ 真 `ToolRuntime.execute` 套在 `ctx.agents.withInitiator(...)` 里标记 acted → 真 `session.append("turn/end", { turn: 1, reason: { kind: "completed" } })`。断言四件：追问恰一次；**同步阶段绝不追问**（R23 第一次在真 emit 路径上被证）；消息满足真 `UserMessage`（含 `id`）；同 realm 的非 global 对照监听收不到而 global 收到——`{global:true}` 从此是「观察到的机制」而不是「被锁的选项」。
+- **`src/dsh-types.ts` 去镜像**：`DshAgent = Pick<Agent, "id" | "followup">`、`DshUserMessage = UserMessage`、`DshSessionRef.id: SessionId`；`kind:'autogamer'` 用 `declare module "@deepseek-ai/dsh-llm"` 扩展 `MessageSourceMap`。全部 `import type`，**运行时零新增依赖**：官方 `createUserMessage` / `MessageId()` 是运行时导入，会把 devDep 变成宿主依赖，所以本地铸 id 后按 R21 在注释里标「单测证明 / live 证明」分级。
+- **`src/index.ts`**：追问消息补 `id: autogamer-nudge-<session>-<seq>`（进程内单调，跨 agent 唯一）。
+- **`AGENTS.md`**：记本机 pnpm 11 的两条必需旗标。本轮撞到过一次代价：不带 `--config.verify-deps-before-run=false` 时每次 `pnpm run` 前会隐式 install 并**重写 `pnpm-lock.yaml`**（实测 +507 行、`autoInstallPeers` 由 false 翻成 true），已回滚、未提交。
+- **偏差与连带新差距（如实记）**：方案原设想「把插件挂进 preset realm」以直接证 `{global:true}`，实测该形态下 `ctx.tools.schemas()` 在 realm 与 root **都返回空**（挂载不报错但注册不落）⇒ 开 **G57**（测试台装配问题，不影响已 live 验证的 bundle 挂载形态），`{global:true}` 的注册选项锁因此仍留在 `apply.spec.ts`。另开 **G56**：`scripts/mock-action-server.mjs` 与 `ActionClient` 握手超时（mock 自己打出 `ready`，客户端首个请求却 `SdkError: Request timed out`，随后熔断进冷却）⇒  acted 的标记改用「立即退出的桩命令」；探针同时证了 `markActed` 发生在 `execute` 入口、与设备结果无关。
+
+#### 验收标准
+
+- `cd plugins/autogamer-device && npx tsc --noEmit -p tsconfig.json` ⇒ 0；`npx vitest run` ⇒ **83 passed / 1 skipped**（G52 净增 5）
+- 三条变异校验各自会红（均已实做、验完还原）：`setTimeout(…, 0)` 改同步 ⇒ 新 spec 的「同步阶段绝不追问」红；删 `id:` ⇒ `nudge carries no message id` 红；摘 `{ global: true }` ⇒ `apply.spec.ts` 选项锁红
+- 对照断言在场：同 realm 的 plain 监听长度为 0，global 监听含 `g52-session/turn/end`
+- 门禁：`python -X utf8 scripts/check_doc_registry.py` 与 `check_doc_tables.py` exit 0；G52 在 `registry.md` 已关闭表与本文件「已关闭差距史」各一行；`spike/probe-g52*.mjs` 三个探针已删除，`git status` 无遗留
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1408,6 +1441,7 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/en.json + locale/zh.json 的 meta.title/description、原创 icon.svg（684 B）、exports 与 files 登记；面板 live 已渲染中文标题与图标 | 本文件 **#17** |
 | G31 | 引入流仍靠手工（要迁 install_bundle） | 用一次性空 bundle 端到端验通 `install_bundle`（`application:"applied"`、dump-config 里注册、remove_bundle 干净撤除）；随包 skill 根路径改官方 `!!js` + `createRequire(baseUrl)` 解析 | 本文件 **#18** |
 | G5 | conformance 需要真实 DSH runtime（CI 起 DSH 跑契约测试） | 三层：Tier 1 在裸 cordis Context 上挂真实 DSH 服务包与本插件、契约由真 `ctx.tools.schemas()` 把关；Tier 2 三条 fixture 全改为生成物（live 抓取 / 源码抽取 / 真实安装态）；Tier 3 live 取证脚本；并新增 `ci.yml` 里此前不存在的 `plugin-contracts` job（ubuntu + windows 实测 success） | 本文件 **#29**（过程与变异校验见 #27/#28） |
+| G52 | 追问路径仍只有 fake 事件总线的证据 | 新增 Tier 1：真 `dsh-session` 提交 `turn/end`、真 `AgentRegistry.register/get` 解析句柄、真 `ToolRuntime.execute` 标记 acted，并用两个 realm 的对照监听观察到 scope 筛选本身；顺带摘掉追问消息的手镜像（补 `UserMessage.id`，`kind:'autogamer'` 改官方 merge-extensible 声明） | 本文件 **#32** |
 | G47 | `install_bundle` 两项未验（失败回滚 / packed file list） | 三轮一次性包实测：`not-bundle` 与不存在的 GitHub 仓库两例 profile 两文件 SHA256 前后相同；tarball 安装落地树恰等于 `files` 白名单。另记「失败与 remove_bundle 都会留下 node_modules 符号链接」 | 本文件 **#19** |
 | G48 | 成功的 git 安装无证据；`files` 与 `path:` 子目录在 git 形态下是否生效未测 | 用 `git+file://` 本地仓库摘掉「需要 push」前提：根目录与 `#HEAD&path:/packages/inner` 两形态都 `application:"applied"`，落地树恰等于 `files` 白名单；对 GitHub 走网络另开 G49 | 本文件 **#20** |
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |

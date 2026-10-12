@@ -10,7 +10,7 @@ import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
 import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
-import type { DshContext, DshUserMessage } from "./dsh-types.js";
+import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js";
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction } from "./tools/runDeviceAction.js";
@@ -49,6 +49,9 @@ export const Config: object = z.object({
  * aspiration.
  */
 export const inject = ["tools", "attachments", "agents"];
+
+/** Makes each nudge's message id unique within this process, across agents. */
+let nudgeSequence = 0;
 
 export type PluginConfig = {
   actionServerCommand: string[];
@@ -126,10 +129,12 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       }
       logger.warn(`[turn] ${session.id} acted without reporting; nudging once`);
       const message: DshUserMessage = {
+        id: messageId(`autogamer-nudge-${session.id}-${++nudgeSequence}`),
         role: "user",
         content: [{ type: "text", text: REPORT_NUDGE }],
         // A self-declared kind: the retired {kind:'plugin', plugin} wrapper is
-        // rejected by session format V4 (rule R17).
+        // rejected by session format V4 (rule R17), and dsh-llm declares
+        // MessageSourceMap merge-extensible for exactly this case.
         source: { kind: "autogamer", reason: "unreported-turn" },
       };
       // Deferred out of the emit on purpose: Session.append rejects anything

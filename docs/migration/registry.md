@@ -56,7 +56,8 @@
 | G4 | 熔断探测体：下一条真实消息动作即探测 |
 | G53 | 前端 `package-lock.json` 的 `resolved` 全是镜像 URL，`check_dependency_sources` 门禁在 CI 与本地都红（既有状态，非插件轨道引入） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（两次 push 后 `total_count` 仍只有那次 `workflow_dispatch`） |
-| G52 | 追问路径仍只有 fake 事件总线证据：真实 `ctx.sessions` 驱动的 `turn/end` → `followup` 未进 Tier 1 |
+| G56 | `scripts/mock-action-server.mjs` 与本插件 `ActionClient` 握手超时，无设备后端在测试台里不可用 |
+| G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见（root 挂载正常），属测试台装配问题 |
 | G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红（既有状态，与 G53 的运行时红是两件事） |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
@@ -112,6 +113,7 @@
 | G32 | bundle 展示元信息缺失（locale meta 与 icon） | 补 locale/{en,zh}.json 的 meta.title/description + 原创 icon.svg + exports/files；详见 CHANGELOGS **#17** |
 | G31 | 引入流仍靠手工：交付形态要迁 install_bundle | 一次性空 bundle 端到端验通 install_bundle（applied/注册/撤除干净）；随包 skill 路径改官方 !!js 解析；详见 CHANGELOGS **#18** |
 | G5 | conformance 需要真实 DSH runtime（CI 起 DSH 跑契约测试） | 三层落地：真实 DSH 服务包 in-process 挂载读 `ctx.tools.schemas()`、三条 fixture 改生成物、live 取证脚本，并新增 CI `plugin-contracts` job（双 OS 实测 success）；详见 CHANGELOGS **#29**（过程 #27/#28） |
+| G52 | 追问路径仍只有 fake 事件总线证据 | 新增 Tier 1 `tests/conformance/followup.spec.ts`：真 `dsh-session` 提交 `turn/end`、真 `AgentRegistry` 解析句柄、真 `ToolRuntime.execute` 标记 acted，并在两个 realm 之间观察到 scope 筛选确实排除非 global 监听；顺带摘掉追问消息的手镜像（缺 `UserMessage.id`）；详见 CHANGELOGS **#32** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

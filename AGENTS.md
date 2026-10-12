@@ -49,6 +49,10 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 **插件侧命令**（在 `plugins/autogamer-device/` 内）
 
 - `npm run build`（tsc，插件走 `dist/`，**改 TS 后必须重新 build 再冷重启 dsh**）/ `npm run test`（vitest）
+- **本机装依赖与跑脚本要带旗标**（CI 用 pnpm 10 不受影响）：
+  `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`，
+  `pnpm --config.verify-deps-before-run=false run build|test`。不带前者时 pnpm 11 会在每次 `run` 前隐式
+  install 并**重写 `pnpm-lock.yaml`**（`autoInstallPeers` 翻转，实测 +507 行）——那是环境产物，别提交
 - 声明面自检：`"D:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd" --profile web
   --patch <abs path> --dump-config`，退出码必须为 0 且输出 grep 不到 `unmatched`（R6）；
   schema 侧用 `--dump-config-schema`

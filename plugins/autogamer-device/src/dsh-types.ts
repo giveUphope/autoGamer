@@ -10,6 +10,25 @@
  *    verified against, so one DSH upgrade re-checks them all in this file.
  */
 import type { ImageAttachmentRef, SaveImageAttachment } from "@deepseek-ai/dsh-attachment";
+import type { Agent } from "@deepseek-ai/dsh-agent";
+import type { SessionId } from "@deepseek-ai/dsh-session";
+import type { MessageId, MessageSourceMap, UserMessage } from "@deepseek-ai/dsh-llm";
+
+/**
+ * Our message source, declared the way the host says to declare one:
+ * "`MessageSourceMap` … Merge-extensible sum type — each producer declares its
+ * own `kind` in its own module; there is no shared catch-all `plugin` kind"
+ * (`@deepseek-ai/dsh-llm` lib/types/message.d.ts:101-106). The retired
+ * `{kind:'plugin', plugin:<name>}` wrapper is rejected by session format V4 (R17).
+ */
+declare module "@deepseek-ai/dsh-llm" {
+  interface MessageSourceMap {
+    autogamer: {
+      readonly kind: "autogamer";
+      readonly reason: string;
+    };
+  }
+}
 
 export interface DshLogger {
   info(message: string): void;
@@ -33,17 +52,15 @@ export interface DshAttachments {
 }
 
 /**
- * Agent/session surface for the G44 turn-end enforcement. `agent.id` is the
- * session id. Listener options mirror cordis 4.0.4 `EventOptions`
- * (lib/types/events.d.ts:98-105) - `global` is what bypasses scope filtering.
+ * Agent/session surface for the G44 turn-end enforcement, narrowed to the two
+ * members this plugin calls. `id` is the session-backed agent identity
+ * (`@deepseek-ai/dsh-agent` lib/types/types.d.ts:11-13), which is why the ledger
+ * and the `turn/end` listener key on the same value.
  */
-export interface DshAgent {
-  id: string;
-  followup(message: DshUserMessage): void;
-}
+export type DshAgent = Pick<Agent, "id" | "followup">;
 
 export interface DshAgentsService {
-  get(id: string): DshAgent | undefined;
+  get(id: SessionId): DshAgent | undefined;
   /**
    * Declared at docs/subsystems/core.zh.md:612; live-verified to return the
    * session id during a model-driven tool call (CHANGELOGS #15), so the ledger
@@ -53,18 +70,26 @@ export interface DshAgentsService {
 }
 
 export interface DshSessionRef {
-  id: string;
+  id: SessionId;
 }
 
 export interface DshSessionEvent {
   type: string;
 }
 
-export interface DshUserMessage {
-  role: "user";
-  content: { type: "text"; text: string }[];
-  source: Record<string, unknown>;
-}
+/**
+ * A real `UserMessage`. It requires a branded `id` ("Stable identity preserved
+ * across every representation boundary", dsh-llm message.d.ts:110-120); the
+ * official mint is `createUserMessage`, but that is a RUNTIME import and
+ * `@deepseek-ai/dsh-llm` is only a devDependency here, so the id is branded
+ * locally with the exported `MessageId` cast instead — same identity, no new
+ * packaged dependency at load time (unit-proven; the live nudge landing in the
+ * session log is CHANGELOGS #15).
+ */
+export type DshUserMessage = UserMessage;
+
+/** Brand a message id without importing the host package at runtime. */
+export const messageId = (id: string): MessageId => id as MessageId;
 
 export interface DshEventOptions {
   global?: boolean;
