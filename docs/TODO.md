@@ -122,6 +122,7 @@
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
+| G68 | #60/#62 复审轮余下缺陷 | 新开（2026-10-13 两个只读复审子代理 + 逐条复验）：①`closure_request` 216/227 字符被 `RENDER_TEXT_BUDGET=200` 截断，且全仓无一条测试穿过 `output.render` 验模型可见文案；②#60 的「梯子内部重取不写快照」只锁了预执行一级——把 `observations.record` 插进 `reresolveAsCoordinate` 后 188 条全绿，执行后一级无锁；③锚定标签无位移上界 ⇒ 观察到的节点消失后同名孪生被静默命中，而注释把 py 的 100px 界说成共同规则；④无标签 `@x,y` 退化签名零覆盖（测试构造器都带 class）；⑤模型自读的层级不可解析时原样放行且**旧快照仍活**（执行梯对同一载荷却速败）⇒ 口径不一致且松动的是安全侧。修法与锁见 §五 G68 条目（记 CHANGELOGS **#63**） |
 | G66 | G27 保真差集的余下项（离线可关 + 必须 live 两类） | 新开（2026-10-13 子代理差集 + 我逐条复核）：①`shifted`/`occupied` 分类未实现——`hierarchy.ts:118-131` 把解析出的 bounds 丢了，分类需要它（py 侧口径 `mobile_use/validator/categories.py:27-31`）；②`XML_BYPASSED`（层级匹配不到就该转 pixel，不烧重试次数）全仓 0 命中；~~③incident 关闭通知~~ **已结（CHANGELOGS #62）**：`ActionIncidents` 记「已宣布」，成功时留一条只发一轮的 `incident_closed` + `closure_request`，附著点在唯一的模型出口（不是两处清零点）；~~④`run_outcome` 双轴~~ **已结（#62）**：三支 outcome 全锁。⑤checker/validator **subagent** 化（src 里 0 命中，现为文案）与 §2.5 的 plan 写人机规则 1-6、convergence_gate、`extra="forbid"` 可见性权限模型——这些的前置是「有没有 plan/note 写入通道」，需先定 DSH 侧载体（host planner prompt vs 新工具）；⑥§2.6.1/2.6.3-2.6.6 的 transcript/scrub 深度/压力梯级/dHash —— 文档自己标【缺失】且`TODO.md` §一 已把会话记忆判给宿主 ⇒ **需要先裁定它们是否还在 D14 保真范围内**（G27 现把 §2.4-2.6 整段当验收清单）。①② 可离线关闭（①②是同一片：分类）；⑤⑥ 需决定或 live。③④ 已由 **#62** 关掉。**与 #40 的冲突已结案（G67，CHANGELOGS #60）**：`inventory/04:203` 要求 stale `[n]` 永不成为可点目标，而 #40 的 validator 梯有一条「用新层级按位置重解旧 index」（`runDeviceAction.ts:364-371`，`validatorLadder.spec.ts:100,149`）——**两者正面冲突**，#60 把重解改成按节点身份（活观察 + 身份跟随）并显式更正 #40 该半句；本行余下项与此无关。**再更正一次本行早先的说法**：`parsed_bounds` 并**不是**身份重解的先决条件（身份用 text/desc/resource-id，无标签退 center+class），它只是本行第①项 `shifted`/`occupied` 包含判定的消费者——两条链彼此独立，别再排成先后。 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
@@ -140,6 +141,62 @@
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
 **已登记 3 项**：**G64 py 只读 `list_devices` 工具**（2026-10-13 用户已决「加只读 py 工具」）——复用 `runtime/device_pool.py` 现成的枚举与 `try_list_devices` 的 fail-open，不新增第二份实现；豁免理由：设备列举此前没有任何 MCP 工具面出口，插件要么重复实现（多一份抄件）要么看不见设备状态；**已落地，CHANGELOGS #56**（工具面 14→15，四处契约同步；方案里「写进 action_manifest 能力门」一项经核实**不存在**——adb 面无能力门，作废而非遗漏）
+
+### G68 复审轮：#60/#62 留下的四处缺陷（2026-10-13，两个只读复审子代理 + 我逐条复验）
+
+- **What**：本轮派了 test-sync 复审（AGENTS.md 的习惯），子代理报了 11 条，我逐条复验后**确认 4 条是代码缺陷**、
+  另 4 条是台账/装配卫生（拆到下面的「范围外」）。四条缺陷＝
+  ① **收口提示被信封截断**（BUG）：`closurePrompt` 实测 `d0` 设备 216 字符、`emulator-5554` 227 字符，
+  而 `runDeviceAction.ts:105` 的 `RENDER_TEXT_BUDGET = 200` 把除 `hierarchy` 之外的**每个字符串字段**都砍到 200
+  （`:587-588`）⇒ 模型实际读到 `…already served, still pending, or n…`，#62 的交付物被自己的渲染层吃掉。
+  根因不止这条：**全仓没有任何一条测试穿过 `output.render` 验模型可见文案**（`apply.spec.ts:473` 锁的是反面），
+  `pixel_guidance` 实测 159、`audit_request` 最长 171（里程碑措辞 + 长 serial），只是侥幸没超。
+  ② **#60 的「梯子内部重取不写快照」只锁了一半**（GAP）：我按复审给的坐标把
+  `observations.record(agentOfCall(), deviceKey, fresh)` 插进 `reresolveAsCoordinate`（执行后那一级）再跑全量
+  ⇒ **188 条全绿**，证据确凿：预执行那一级有锁（`liveObservation.spec.ts:150-163`），执行后这一级没有。
+  #60 正文不得改写，故在 **#63** 如实标注该句只被半证，并补上缺的那条锁。
+  ③ **同名孪生会误命中**（GAP）：锚定标签（text/desc/resource-id）**没有位移上界**，
+  观察到的节点若消失、而新树里另一个节点标签相同，就会被静默当成同一个点下去；
+  而 `hierarchy.ts:100-104` 的注释把 py 的 100px 界说成共同规则（`precondition_xml.py:396-408` 对**每次** shift 都有界），
+  `validatorLadder.spec.ts:184` 更把这条 411px 的无界跟随钉成了期望行为。
+  ④ **无标签分支零覆盖**（GAP）：`identityOf` 的 `@x,y` 退化签名（`hierarchy.ts:96-97`）从未被执行过——
+  所有测试构造器都带 `class`，所以 #60 声称的「无标签退 center+class」没有锁。
+  ⑤ **模型自己读到的层级不可解析时仍按成功放行**（安全项，复审报成 NIT，我提级）：
+  `get_ui_hierarchy` 走的是 `elements` 为 undefined 就**落到 `finishSuccess(observed)` 原样回给模型**（`:762-775`），
+  于是**旧快照还活着**——一个上一屏的 `#N` 可以继续对着「我们没能读到的这一屏」去点，
+  而同样这份载荷在执行梯里是速败的（`:430` 的 `hierarchy unreadable`）。两处口径不一致，且不一致的那一侧是安全侧松动。
+- **How**：
+  1. ①＝文案缩短到预算内，**并**加一条「所有模型可见文案过 `render` 不被截断」的锁（形状：把每条 prompt 常量
+     塞进值里跑 `output.render`，断言回显等于原文）。预算数字本身留在 `runDeviceAction.ts`，不进文档抄件。
+  2. ②＝补锁：先观察 T1，触发一次**执行后**重解到 T2，再拿只在 T1 里存在的句柄动作 ⇒ 仍按 T1 的身份解析
+     （若那一级写了快照，这条必红）。
+  3. ③＝**唯一候选才允许远跟**：新树里同标签只有一个 ⇒ 跟着走（这是滚动/重排的正常情形，保住 #40 的 `MOVED_TARGET`）；
+     同标签多于一个 ⇒ 取最近的，且必须 ≤ `MAX_HANDLE_SHIFT`，否则 `gone`；class 名一律 ≤100px 不变。
+     注释改成如实的出处口径：py 的界管的是它的**分类**，我们的界管的是**歧义**。
+  4. ④＝造一个不带任何标签的节点（只有 bounds）锁两件事：位置未变 ⇒ 命中；位置变了 ⇒ 拒。
+  5. ⑤＝模型可见的 `get_ui_hierarchy` 结果不可解析时**速败**（`task: hierarchy unreadable …`，与执行梯同一条口径），
+     并把该设备的活观察**作废**（读不到屏＝不能继续拿旧句柄点），锁住这两半。
+  **范围外（台账/装配卫生，另记 #64）**：`readmeLayout.spec.ts` 自己数目录而没复用
+  `tests/support/srcFiles.ts`（`src/` 子目录里的文件对它不可见）、且用全文 `includes` 而非只看 Layout 块；
+  `TODO.md` G66 行里的 `hierarchy.ts:118-131` / `runDeviceAction.ts:364-371` / `validatorLadder.spec.ts:100,149`
+  三处行号已漂（内容仍成立，指针不成立 ⇒ 改成符号名）；§零 记的「四份重复注册装配」实际已是 5 份 `CONFIG` + 2 份 `reportWith`；
+  `agentIdOfCall` 抛错时也落进 `"anonymous"` 车道，而注释说那条车道只是直测专用。
+- **Verify**
+  - `pnpm --config.verify-deps-before-run=false test` ⇒ 基线 **188 passed / 1 skipped** 之上只增（预计 +6 左右）；
+    `pnpm --config.verify-deps-before-run=false run build` ⇒ 0 error
+  - 逐条变异（R27 含第 6 条「先自证变异生效」，跑完还原并复验全绿）：
+    把 `observations.record` 插回 `reresolveAsCoordinate` ⇒ ② 的新锁必须红；
+    把 ③ 的「多候选要 ≤100px」摘掉 ⇒ 同名孪生锁必须红；
+    把 ⑤ 改成放行原样文本 ⇒ 「不可解析 ⇒ 旧句柄被拒」必须红；
+    把 `closure_request` 改回长文案 ⇒ 渲染预算锁必须红
+  - py 侧本片零改动 ⇒ `uv run python -X utf8 -m pytest tests/unit -q` 仍 **2604 passed / 7 skipped**
+    （**别并发跑两套 `tests/unit`**：#62 那轮实测到两条 pytest 抢同一个 `traces/data_engine.db` 会出假红）
+  - 两枚文档门禁 + `--selftest` ⇒ exit 0
+- **Done means**
+  - [ ] ①②③④⑤ 五处代码/锁落地，四条变异做红记进 CHANGELOGS **#63**
+  - [ ] #60 那句「梯子内部重取不写」在 **#63** 里标注为「只锁了预执行一级，执行后一级由 #63 补齐」
+  - [ ] 范围外四项记进 **#64**（本轮不夹带）
+  - [ ] 本条结案即删
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 

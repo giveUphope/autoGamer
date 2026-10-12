@@ -54,7 +54,8 @@
 |---|---|
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
-| G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、incident 关闭通知、run_outcome 轴锁、subagent 化、§2.6 记忆裁定） |
+| G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、subagent 化、§2.6 记忆裁定；incident 关闭通知与 run_outcome 轴锁已由 #62 关掉） |
+| G68 | #60/#62 复审轮的余下缺陷（收口文案被截断、快照声明只锁了一级、同名孪生误命中、不可解析层级仍放行旧快照） |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
