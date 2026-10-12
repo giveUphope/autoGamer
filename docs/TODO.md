@@ -115,7 +115,8 @@
 
 | # | 差距 | 状态/调整 |
 |---|---|---|
-| G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28） |
+| G3 | auto-serial 闸门缺口 | 保留：工具内调度——显式 serial 队列 + auto 空闲池（含 parking 语义 G28）。**A 片进行中**（机制在 TS、roster 由 config 注入，见 §五「G3 + G28 设备调度 A 片」）；真枚举来源单独立为 **G64** |
+| G64 | 设备 roster 的真来源 | 新开（2026-10-13）：G3 的 A 片把调度机制做在 TS 里、roster 由 config 注入，但**枚举设备**这件事 py 已有实现（`artemis/runtime/device_pool.py` 的 `list_devices_async` + 缓存 + 超时 + **fail-open**，`inventory/02:236` 明令重写时不得丢）。两条路：插件自己重复实现一遍（多一份会腐烂的抄件，违背「同一事实只在一处」），或给 py 面加一个**只读** `list_devices` 工具（属 py 侧改动，按 D8 须登记并经用户确认）。A 片不依赖这个决定，先把机制做完 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留，**已排查到两个候选都被削掉，剩「仓库特定的 push 抑制」**（2026-10-12 全部只读核对）。**现象**：仓库至今只有 1 次 run（`38167498398`，`workflow_dispatch`，`run_number: 1`），**六个 push 数据点零 run**——`a4a0f44..5232265`、`5232265..1d24416`、`61f23a1..4b29e54`（事件流 `2026-10-12T06:38:30Z`）、`4b29e54..419b9df`（`pushed_at 09:40:02Z`）、**第六点 `419b9df..e8c2204` 是本轮用户授权后实推的**：`git push origin main` exit 0、`refs/heads/main` 确认等于 `e8c2204`、`pushed_at 2026-10-12T12:40:04Z`，**80 秒后 `runs?event=push` 仍为 0**，新 tip 的 `check-suites` 依旧只有第三方 App `trae-ai-cn`。其中三次发生在派发成功**之后**，排除「先后顺序」解释。**已排除**：① git 层——`/events` 里 **13 条 PushEvent**，`payload.ref` 全是 `refs/heads/main`，GitHub 收到了；② 触发器写法——`on:` 是裸 `push:`（无 branches/paths 过滤）；③ repo 级开关——`disabled:false`、`actions/permissions` = `enabled:true` + `allowed_actions:all`、workflow `state:active`；④ **账号级**——彻底排除：同账号**非 fork** 的 `giveUphope/llama-launcher` 有 168 次 run 含 `event:push`，且其**最近一次 push run 是 `2026-10-11T16:39:58Z`**，比我们成功派发那次（`19:19:04Z`）只早两小时，与我们六次零 run 的 push 完全同时段 ⇒ 账号在那一刻是能触发 push 的；⑤ 上游侧——`google/artemis` 公开正常、**661 次 run**；⑥ **Actions 根本没评估过这些 push**：tip commit 的 `check-suites` 只有一条属第三方 App `trae-ai-cn`（`workflow_id:null`），`check-runs` 为空。**两个候选都被削掉了，现在剩「仓库特定的 push 抑制」**。(a) fork 未 opt-in：被官方文本削弱—— [禁用和启用工作流](https://docs.github.com/zh/actions/how-tos/manage-workflow-runs/disable-and-enable-workflows) 原文是 「**在复刻公共仓库时，默认情况下将禁用计划的工作流程**」，禁的是 **scheduled**，而本 `ci.yml` 根本没有 `schedule:` 触发器， 这条默认规则解释不了 push 零 run；且本仓库 `/actions/permissions` 载荷与同账号**能触发 push** 的 `llama-launcher` **逐字相同** （`enabled:true` + `allowed_actions:all` + `sha_pinning_required:false`），API 侧无任何字段可判 (a)。 (b) `google` org 禁止 fork 自动跑：**已由实测否证**——同一上游的他人 fork `the-long-ride/artemis-build` 有 `runs=7` 且 `events` 含 **`push` 与 `pull_request`**（其 `/actions/permissions` 因非协作者返回 403，不影响这条结论）。 **本轮试过两条取证路，都被否证**：① **匿名页面没有否证力**（R24 的同族：判「看不到」之前，先证明取证渠道有资格看到）——应用内浏览器打开 `/actions` 只见「1 workflow run」且看不到横幅，但该会话**未登录**（`/settings/profile` 跳登录页、`/settings/actions` 404），而横幅只对**有写权限的登录态**渲染，所以「看不到」既不能立 (a) 也不能撤 (a)，**不得据此判「已允许」**；② 反向证据只到「不是整体关停」：派发那次**确实建了 run 且 6 条 job 全部执行完**，说明仓库级 Actions 可用；若 (a) 成立，它就必须是「只掐自动事件、放行 dispatch」——这属**未证的 GitHub 行为**，不许当结论。**下一步只剩两个（① 已做完）**：~~授权一次 push 作第六数据点~~ ⇒ **2026-10-12 已执行**（用户授权，`419b9df..e8c2204`，结果仍零 run，见上），判别用尽；① 剩 **用户登录态的 UI 回报**（(b) 否证、(a) 被官方文本削弱之后，它只在「UI 是否真有一条异常提示」这一层有信息量：看到 enable-workflows 类横幅 → 说明 fork opt-in 确实掐 push，与官方文本不符，须连同本行证据一起报 Support 才服人；看到 org/策略提示 → 与 `artemis-build` 的实测冲突，先回头怀疑对照口径；什么都没有 → 与现状一致）；② **带证据包报障 GitHub Support**，本行已备齐六项（六次 push 全落 `refs/heads/main` 且 ref/`pushed_at` 与本地一致、tip 的 check-suite 只属第三方 App `trae-ai-cn`、`check-runs` 空、`actions/permissions` 与能触发 push 的同账号仓库逐字相同、同上游他人 fork 有 `push` run、同账号非 fork 仓库同时段有 `push` run）。**另注：`#46` 新加的 `Check documentation gates` step 至今一次都没执行过**（唯一那次 run 是 G53 未修时派发的），要确立「CI 现状」需一次新的 `workflow_dispatch`——属仓库可见动作，未授权，等用户点头。**在此之前，任何「CI 证据」必须写明是手动派发** |
 | G59 | 本机 `--dump-config-schema` 常驻失败，live 前需重装 bundle | 新开（2026-10-12 补 R6 时实测，既有状态）：`dsh` 在 PATH（`~/AppData/Local/Programs/DeepSeek Harness/.../bin/dsh.cmd`，0.2.0-rc.2），R6 双 patch 均 exit 0/0 unmatched 且审计节进树；但 `--dump-config-schema` 裸跑同败（`Cannot find package 'autogamer-device'`），profile `dependencies` 为空、两处 patch 模板皆空——残留引用在宿主合成侧，与本轮 YAML 无关。live 复验前需重装 bundle（动用户 profile，用户决策）；`--dump-config` 不受影响 |
 | G17 | 共存鉴权 | 收缩：旧控制台只读（SameOrigin 原样即可）；DSH 认证（一次性 token→签名 cookie）为插件轨道 |
@@ -135,6 +136,51 @@
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
+
+### G3 + G28 设备调度 A 片：池闸门（parking / claimed-only / 全局并发 N）（2026-10-13 用户确认按此推进）
+
+- **What**：把「auto 就全挤在一个 `default` 键上串行」换成**有 roster 的空闲池调度**，并锁死上游那几条
+  「看似可简化实则防事故」的语义。交付三件——
+  ① 新增 `plugins/autogamer-device/src/devicePool.ts`：包一层现有 `DeviceGate`；
+     显式 `device_serial` 走该 serial 的队列（现状不变），auto 走池。
+  ② 配置面两个新键：`devices: string[]`（roster，默认 `[]` = **完全退回现状，零行为变化**）与
+     `maxConcurrentDevices: number`（默认 `0` = 不限）。
+  ③ 单测锁死四组行为：显式 serial 独占队列 / auto 至多占一台 / **未认领不阻塞其它空闲设备** / 全局上限 N，
+     外加「空 roster 退回 default 键」这条零变化锁。
+  **范围外（重要）**：**roster 的真来源不在本片**——枚举设备 py 已有实现（`artemis/runtime/device_pool.py`
+  的 `list_devices_async` + 缓存 + 超时 + fail-open），要么重复实现（多一份会腐烂的抄件），要么给 py 面加
+  一个只读 `list_devices` 工具（属 py 侧改动，按 D8 须登记 + 用户点头）⇒ 已单独立为 **G64**。
+  本片只做机制，B 片接上真枚举时**不改调用方**。
+- **权威口径**（不自发明语义，逐条出处）：
+  - **parking** = 「没有指定设备时，让一条消息先占住一台空闲设备」（`glossary.md:65`，G28）；
+  - **auto 端点 / 显式 serial** = 「auto 走空闲池，显式走 serial 队列」（`glossary.md:66`，G3）；
+  - **一个未认领 ticket 不得阻塞多设备**：py `runtime/device_lock.py:332` 原文
+    「unclaimed `pending`/`any` ticket is *parked* on at most one device … was counted into every
+    device's queue, so a single unclaimed [ticket blocked them all]」，且
+    `inventory/02-runtime-persistence.md:265` 点名这条**必须补回归测试**；
+  - `inventory/02:236` 把「auto-serial fail-open 与 claimed-only」列为**TS 重写最易被顺手 clean up** 的项；
+  - S3 已定「闸门 = 工具内部逻辑、per-key promise 链」，D3 已定「共享真机 + 完整闸门」。
+- **How**：机制与来源分开，才能在本机（无设备、无宿主）把调度逻辑证完。池算法就一条 FIFO + 「至多占一台」：
+  auto ticket 按到达序排队；队首认领**当前第一台空闲设备**并对该 key `gate.acquire`；后续 auto ticket 只等
+  自己该等的那台，**不被前序未认领状态挡住**（这正是 `device_lock.py:332` 的反面教训）；
+  `maxConcurrentDevices` 是跨 key 的 admitted 计数上限，达上限时新的认领停在池队列里等设备释放。
+  认领后保持原时间序由 FIFO 数组天然保证，但仍单独加一条锁——inventory 要的是「锁住行为」而不是「实现看着对」。
+  两个新默认值都**等于现状**，所以不配 roster 的用户行为零变化，这也让「空 roster 退回 default 键」成为可测分支。
+- **Verify**
+  - `pnpm --config.verify-deps-before-run=false test` ⇒ 基线 **150 passed / 1 skipped** 之上只增不减
+  - `pnpm --config.verify-deps-before-run=false run build` ⇒ 0 error
+  - **变异校验**（R27 第 1 条，每条做出一次红才勾）：① 把 parking 改回「auto 一律占 default 键」
+    ⇒ 「未认领不阻塞其它空闲设备」那条锁变红；② 摘掉全局上限计数 ⇒ 上限那条锁变红；
+    ③ 把 claimed-only 的时间序改成「谁先抢到谁上」⇒ 该锁变红
+  - 既有闸门锁与 S10 ③ 的跨会话串行结论**不得被削弱**（那两条是现行为基线）
+  - 文档门禁两枚 + `--selftest` ⇒ exit 0；`--refresh-sizes`；`uv run ruff check` / `format --check` 不受影响（纯 TS 改动）
+- **Done means**
+  - [ ] `devicePool.ts` 落地，`index.ts` 的调用点从 `deviceKeyOf` + `gate.acquire` 换成池 acquire，
+        **不配 roster 时行为逐字不变**（由一条锁证明）
+  - [ ] 四条语义各自有锁 + 空 roster 零变化锁
+  - [ ] 三条变异校验都做出过红，过程如实写进 CHANGELOGS **#55**
+  - [ ] G3/G28 从 §四 移除、registry 现行在册删除并各加一行已关闭（含出处编号）；**G64 留在 §四**
+  - [ ] 本条结案即删（活文档规则），演进依据留 git
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
