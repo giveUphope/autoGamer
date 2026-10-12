@@ -55,6 +55,7 @@
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
+| G62 | py action 面无「无设备可跑」路径：`_get_controller` 无条件连 adb，离线契约只能吃插件的 JS 桩 |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |

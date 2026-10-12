@@ -124,6 +124,7 @@
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
 | G28 | parking + 全局并发 N | 保留：闸门工具内部语义 |
+| G62 | py action 面无「无设备可跑」路径，离线路径只能吃 JS 桩 | 新开（2026-10-13 实跑证得）：`artemis mcp --type adb` 在 `_get_controller`（`adb_server.py:155-159`）无条件 `AdbClient(...).device_list()` 并在无设备时 raise，本机 `ARTEMIS_MOCK_DRIVER=1` 也救不了（实测仍报 `connect to adb server failed [WinError 10061]`；该 env 在旧 py 栈的 `drivers/factory.py:52` 生效，但 adb 面根本不走那条）。⇒ 效果验证与 14 工具契约此前只能在插件自带的 JS mock 上验，**py 实现本身离线跑不起来**。方案见 §五「G62 离线 action 面」；用户已确认（2026-10-13） |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
@@ -134,7 +135,58 @@
 - [ ] **P2 设备层补全**：helper TS 复刻（D13/G25）+ 录屏接回（D12/G23 契约 + graceful stop）+ mock driver + 诊断 admission（锁屏 fail-closed/多设备切换/emulator_manager 对接）+ 模拟器专属演进评估
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
-- [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节
+- [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**——新增 `artemis/mcp/mock_server.py` + CLI 一个 `--type mock` 分支，**不改任何现有 py 文件**（探针实测证明可用预置控制器绕开 adb I/O），豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时完全跑不起来（见下方方案条目，2026-10-13 用户已确认）
+
+### G62 离线 action 面（2026-10-13 按 R22 三步序：查机制 → 本方案 → 才动码）
+
+- **What**：给 py action 面加一条**不需要设备、不需要 adb server** 的启动路径，让插件的契约测试与端到端演练能吃 **py 实现本身**，而不是插件自带的 JS 桩。交付三件——
+  ① 新增 `artemis/mcp/mock_server.py`：用仓库里现成的 `MockActuator`（`artemis/mcp/actuators/mock.py:32`，
+     它就是「`AdbActuator` 绑 `MockDeviceDriver`，走同一段生产坐标换算与 controller 分发」）构造 controller，
+     **预置进 `adb_server` 的控制器缓存**，再跑 `adb_server.mcp` 的 stdio 循环；
+  ② `artemis/interfaces/cli/commands/mcp.py` 加一个 `--type mock` 分支（照现有 `elif st == "adb":` 的形状）；
+  ③ **顺手更正 CHANGELOGS #50 的一处过度陈述**：真 py 面 `compare_ui_frames` 的返回只有
+     `json.dumps({"changed": changed})`（`adb_server.py` 内 `return json.dumps({"changed": changed})`，
+     失败分支是 `Error: frame decode failed: …`），**没有 `ratio` 键**；而我在 #50 给 JS mock 加了
+     `ratio` 并写了一条 `typeof parsed.ratio === "number"` 的断言——那是**把 py 没有的形状锁成契约**，
+     与 `#28`「fixture 锁住假事实」同类。JS mock 改为与 py 逐字同形，断言改判形状集合。
+  **范围外**：不改 `_get_controller`（下面 How 说明为何不必）、不改任何现有工具的行为或返回契约、
+  不动 `ARTEMIS_MOCK_DRIVER` 在旧 py 栈里的语义、不做录屏（D12/G23 另议）。
+- **How（关键事实来自本轮两次实跑探针，不是推断）**
+  1. **阻塞点**：`adb_server._get_controller` 在 `155-159` 无条件 `AdbClient(host, port)` +
+     `device_list()`，无设备即 `raise`。
+  2. **但绕开它不需要改码**：函数开头 `if not target_serial and _GLOBAL_CONTROLLER is not None: return …`
+     以及 `if target_serial and target_serial in _CONTROLLERS: return …` 两条短路都在 adb I/O **之前**。
+  3. **一个必须处理的坑**（探针第一版就栽在这）：只预置 `_GLOBAL_CONTROLLER` **不生效**——
+     应用自己会加载 `.env`（本机 `ADB_DEVICE_SERIAL=127.0.0.1:16384`），于是 `target_serial` 恒有值、
+     走的是 `_CONTROLLERS[serial]` 那条。⇒ mock_server 必须**按 `ARTEMIS_DEVICE_ID`/`ADB_DEVICE_SERIAL`
+     把同一个 controller 也塞进 `_CONTROLLERS`**，两条短路都堵上。
+  4. 探针实测（`MockActuator` + 双预置，`exit=0`）：`take_screenshot → OK iVBORw0KGgo…`（真 base64 PNG）、
+     `get_ui_hierarchy → [{"text": "Settings", "bounds": [0,0,1080,100]}]`、`tap → Success`、`back → Success`、
+     `compare_ui_frames` 同帧 `{"changed": false}` / 异帧 `{"changed": true}`、
+     `action_history` 记到 `{'action':'tap','x':500,'y':500,…}` ⇒ **14 工具面在纯内存设备上真的通**。
+  5. `configure_stdio_mode`（`adb_server.py:50-85`）只做 logging handler 改写与 `ARTEMIS_IPC_PORT=""`，
+     **不探设备**，可原样复用。
+- **Verify**
+  - `uv run artemis mcp --type mock` 起来后：`SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs`
+    ⇒ `[spike] tools (14)` 且 `take_screenshot → OK`，exit 0；**且与生成的 fixture 完全一致**
+    （`spike-mcp.mjs --write` 重抓后 `git diff --quiet tests/fixtures/py-action-tools.json` ⇒ 无变化，
+    证明 mock 面与真 adb 面**同一份工具清单**，不是我另起一个面）
+  - 新增 py 测试（`tests/unit/mcp/`）：mock 面在**没有 adb、没有设备**的环境下可跑通
+    list + 一次截图 + 一次 tap + 一次 compare；`compare_ui_frames` 的返回形状锁成
+    `{"changed": bool}` 精确键集合（键集合相等，而不是"包含 ratio 也行"）
+  - 变异校验：把 mock_server 的 `_CONTROLLERS` 预置摘掉 ⇒ 该测试必须变红（回到 adb 拒连），
+    证明这条短路是真的在承重，不是恰好通过
+  - 回归基线（本轮已量）：`tests/unit/mcp` **224 passed + 1 skipped**；`tests/unit` 全量
+    **2593 passed, 7 skipped**；改后两者只许增加不许减少
+  - 插件侧：`pnpm --config.verify-deps-before-run=false test`（基线 **150 passed / 1 skipped**）、`run build` 0 error
+  - 文档门禁两枚 + `--selftest`（按 #49 的形状跑，不拿管道退出码当判据）
+- **Done means**
+  - [ ] `--type mock` 能起，插件 spike 打它得到 14 工具且截图为真 base64
+  - [ ] mock 面工具清单与 fixture **零 diff**（同一权威，不是第四份抄件）
+  - [ ] #50 的 `ratio` 过度陈述已更正：JS mock 与 py 同形，断言改锁精确键集合，并记 CHANGELOGS **#51**
+  - [ ] G62 从 §四 移除、registry 已关闭表加一行；§五 登记第 2 项落地
+  - [ ] py 两个基线数不减、插件 150/1 不减、build 0 error、两门禁 exit 0
+  - [ ] 本条结案即删（活文档规则），演进依据留 git
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
