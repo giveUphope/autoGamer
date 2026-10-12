@@ -55,8 +55,6 @@
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
-| G60 | 两枚文档门禁（`check_doc_registry.py` / `check_doc_tables.py`）从未接进 CI，抄件漂移只靠本地人工自证 |
-| G61 | 仓库无 `.gitattributes`：工作树换行符由 checkout 决定，字节口径在本机不可信（体量表与 `ruff format --check` 都栽过） |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
@@ -118,6 +116,8 @@
 | G13 | 幂等 / 去抖 | in-flight 去重（变更类专属）；详见 CHANGELOGS **#44** |
 | G14 | 状态词汇 | 汇报 `completed/blocked + tests.failed`；详见 CHANGELOGS **#44** |
 | G24 | 坐标契约 | 归一域/端侧索引；详见 CHANGELOGS **#44** |
+| G60 | 两枚文档门禁从未接进 CI | `ci.yml` 新增无 `if` 的 `Check documentation gates` step；真 run 未观测（G54）；详见 CHANGELOGS **#46** |
+| G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变 | 新增 `.gitattributes` + renormalize 实测零文本 blob 改写；本机 `ruff format --check` 假红转绿；详见 CHANGELOGS **#47** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

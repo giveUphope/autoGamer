@@ -74,9 +74,11 @@ so it is wrong on the next edit while still passing every gate.
   current max" total-range claim outside the authority (pointing ranges like `R2-R8` are fine);
   `scripts/check_doc_tables.py` verifies `docs/migration/README.md` §三's size table and rewrites
   it with `--refresh-sizes`
-- **Neither gate runs in CI** (`G60`) — "门禁" here means *you* run it before committing. Saying
-  "gates exit 0" in an acceptance box without the re-run command and the checkout environment is
-  how six closed entries attested a table that had never matched on an LF checkout
+- Both gates now run in CI as an un-gated step (`Check documentation gates` in the `python-quality`
+  job, changelogs **#46**) — but `G54` means this fork's `on: push` produces no run, so today they
+  only execute on manual dispatch. Still tick them with the **re-runnable commands**, never with
+  "CI guarantees it": an attestation without a command and without the checkout environment is how
+  six closed entries (#32–#44) signed off a size table that had never matched on an LF checkout
 - Why this rule exists (don't re-derive it): `docs/CHANGELOGS.md` **#30** — six drifted copies
   were found at once, and #31 made them un-duplicable; **#45** is the third drift, caused by the
   measurement itself rather than by a hand copy. See rule **R27**: a check must be proven able to

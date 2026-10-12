@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#45 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#47 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1856,6 +1856,86 @@ spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上
 - [ ] **G60 未办**：两枚门禁接进 CI 需改 `.github/workflows/*`，且要先定「deterministic Python tests」那条
       `if: github.event_name == 'workflow_dispatch'` 的门槛（受 **G54** 牵制）——**待用户决策**
 
+### #46 G60：两枚文档门禁接进 CI（此前它们只存在于人工自证里）
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（step 已落 `python-quality` job，无 `if`；真 run 尚未观测到，受 G54 限制，如实写明）
+- **优先级**: 中（不改产品行为，但它决定 `#31`/`#45` 那两条规则是否真的有人守）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G60 + G61 实施轮」住在 `TODO.md`（spec 提交 `9479b38` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`#45` 量出：`scripts/check_doc_registry.py` 与 `scripts/check_doc_tables.py` 在 `AGENTS.md` 与两份迁移文档里
+被称做「门禁」，但 `.github/workflows/ci.yml` 里**没有任何 step 跑它们**（搜索命中 0）。后果不是理论上的：
+体量表按 blob 内容（与 checkout 换行符无关）复测，自它**被脚本生成的那次提交** `2ab17cb` 起就从未在任何 LF 检出上匹配过
+（`inventory/01…05` 写 216.9 KB 而内容 215.6 KB，`upstream-plugin-forms.md` 写 11.8 而内容 11.7），
+而 `#32`–`#44` 里 6 条验收勾着「文档门禁双 exit 0」——**没有机器执行、又没有复跑命令的自证，可以连续假两日**。
+
+#### 整改方案与实施
+
+- `.github/workflows/ci.yml`：在 `python-quality` job 的 `Lint Python` 之后、`Enforce quality ratchets` 之前
+  新增一步 `Check documentation gates`，依次跑
+  `check_doc_registry.py` / `check_doc_tables.py` / `check_doc_tables.py --selftest`（三条都带 `-X utf8`，与 `AGENTS.md` 口径一致）。
+- **不加 `if`**（用户已决「沿用 dispatch」= 不动现有那条 `if: github.event_name == 'workflow_dispatch'`）：
+  门禁本身对所有能产出 run 的事件都执行；**G54 未解时该 fork 只有手动派发会产出 run**，
+  所以本轮的真实收益是「派发时有机器复核 + 验收可引用 run id」，不是 push 拦截——这句必须写在这里，
+  否则就是把 `#45` 批评过的「写成由 CI 保证」重犯一遍（**R27 第 4 条**）。
+- 顺序不可颠倒：门禁进 CI 的前提是它在 LF 检出下也绿，而这是 `#45` 把体量改成 LF 规范化测量才成立的
+  （改之前它是绿的 Windows、红的 Linux——把它接进 CI 只会天天假红）。
+
+#### 验收标准
+
+- [x] YAML 可解析，且新 step 确实落在 `python-quality`、`if` 为空：
+      `uv run python -c "import yaml,io; ..."` ⇒ `job: python-quality | step: Check documentation gates | if: (none)`
+- [x] 三条命令本地各自 exit 0（`check_doc_registry.py` 现行 116 号、`check_doc_tables.py` 12 行体量、`--selftest` 8 例全触发）
+- [x] **R27 变异校验**：把任一文档改一个字节而不 `--refresh-sizes` ⇒ `check_doc_tables.py` 变红
+      （此路由 `--selftest` 的 (g) 例常驻守着，且新增的 `tests/unit/scripts/test_doc_table_sizes.py` 会随
+      CI 既有的 `uv run pytest tests/unit` 一起执行）
+- [ ] **未验证到真 run**：本轮不推送（推送须用户明示），且 G54 使 `on: push` 不产出 run；
+      下一次 `gh workflow run` 派发才是这条 step 的第一手证据，届时须把 run id 记进台账
+
+### #47 G61：`.gitattributes` 让行尾成为仓库事实（本机 `ruff format --check` 的假红到此为止）
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（`.gitattributes` 落地；实测 renormalize 对文本 blob **零改动**）
+- **优先级**: 中（与 #46 同轮；它是 #45 那个「同一条 commit 两台机器两个数」的根因）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 与 **#46** 共用 `TODO.md` 那条「G60 + G61 实施轮」（spec 提交 `9479b38`），结案即删
+
+#### 问题描述
+
+`#45` 的根因是量法把工作树字节当事实，而**工作树换行符由机器决定**：本机 `core.autocrlf=true`、
+仓库没有 `.gitattributes`。动手前先量了波及面（不按「renormalize 会炸全仓」的想象决策）：
+
+- `git ls-files --eol`：**757 个 `i/lf w/crlf`、147 个 `w/lf`、2 个 `w/mixed`、28 个 `-text`**；
+- 逐 blob 查 CR：**带 CR 的 blob 恰为那 28 个，且全是二进制**（png/jpg/ico/gif/mp4/mp3/apk/keystore）
+  ⇒ 文本 blob 本来就是纯 LF；
+- 混行尾只存在于 2 个本机文件：`docs/migration/README.md`（48 个 CR）与
+  `tests/unit/test_config_package.py`（849 个 CR 与 57 行 LF 混在同一文件），
+  后者就是 `uv run ruff format --check` 唯一报红的那一个——**CI 上是纯 LF 检出，从来不红**。
+
+#### 整改方案与实施
+
+- 新增 `.gitattributes`：`* text=auto eol=lf`；`*.bat`/`*.cmd` 显式 `eol=crlf`
+  （仓库里有 `start.bat` 与 `plugins/autogamer-device/spike/run-headless.cmd`，cmd.exe 对 LF 批处理的标签/`goto` 有已知故障面）；
+  8 种实际存在的二进制扩展显式 `binary`。
+- `git add --renormalize .` 后**先看暂存区再提交**：`git diff --cached --stat HEAD` 只有 `.gitattributes` 一个新增文件
+  ⇒ **实测零个文本 blob 被重写**，历史与既有分支不受影响（这条是本项改动安全性的关键证据）。
+- 那 2 个混行尾的工作树副本按 blob 规范化（剥 CR），`git diff` 显示**内容无变化**（blob 本就是 LF），
+  `git ls-files --eol` 的 `w/mixed` 计数 2 ⇒ 0。
+
+#### 验收标准
+
+- [x] `git ls-files --eol | grep -c "w/mixed"` ⇒ **0**（原先 2）
+- [x] `uv run ruff format --check` ⇒ **本机转绿**：`666 files already formatted`（原为 1 个假红文件）
+- [x] `git diff --cached --stat HEAD` ⇒ 仅 `.gitattributes`（+18 行），**无文本 blob 变化**
+- [x] 两枚文档门禁 + `--selftest` 仍绿；`uv run python -X utf8 -m pytest tests/unit/scripts tests/unit/mcp -q` ⇒ **230 passed, 1 skipped**
+- [x] `git ls-files --eol` 里 28 个仍为 `-text`，`*.bat`/`*.cmd` 为 `w/crlf`
+- [ ] 遗留（不在本轮范围）：757 个 `w/crlf` 的本机副本要等**重新检出**才变 LF，
+      本轮不强推（`git restore`/`checkout-index -f` 对"内容已等同 blob"的文件是 no-op）；
+      新克隆与 CI 从此固定为 LF
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -1912,3 +1992,5 @@ spike 复位用 `adb shell settings put secure ui_night_mode`，在 MuMu ROM 上
 | G49 | GitHub 安装失败于 `ERR_PNPM_EPERM`，根因未定 | 单变量跑完：停服务报错不变（否证占用假说）；清掉同名 junction 后 `added 17` exit 0（成立）。机制=importPackage 顺着旧 link 走进开发工作区重建符号链接被 Windows 拒。真实用户干净机器本就可用（CHANGELOGS **#22**）| 本文件 **#22** |
 | G50 | git 形态装出来的 bundle 缺 `dist/`（构建产物不在提交里） | tarball 路线端到端验通：`npm pack` 清单含 dist 与 skills、安装 exit 0、服务加载后 7 工具 + persona + 追问链路完整；对外形状定为 GitHub Release 资产 tarball 的 URL | 本文件 **#23** |
 | G51 | 本机 Node TLS 信任被本地中间代理接管，走 https 的依赖安装要 `--use-system-ca` | 机制有源码出处（`scrubbedParentEnv` 保留 `NODE_OPTIONS`）；不带 flag 时 DSH 自己的 install_bundle 报 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`，带 flag 后该错误消失；前置已写进 README，并禁止用 `NODE_TLS_REJECT_UNAUTHORIZED=0` | 本文件 **#25** |
+| G60 | 两枚文档门禁从未接进 CI，抄件漂移只靠人工自证 | `ci.yml` 的 `python-quality` job 新增**无 `if`** 的 `Check documentation gates` step（registry + tables + `--selftest` 三条）。前提是先按 **#45** 把体量口径做成 LF 规范化，否则接进 CI 只会天天假红。**真 run 未观测**：G54 使 `on: push` 不产出 run，本轮不推送 | 本文件 **#46** |
+| G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变，字节类判据在本机不可信 | 新增 `.gitattributes`（`* text=auto eol=lf`、`.bat`/`.cmd` 显式 `eol=crlf`、8 种在库二进制显式 `binary`）；实测 renormalize **零个文本 blob 被重写**（带 CR 的 28 个 blob 全是二进制），2 个混行尾文件按 blob 规范化后 `w/mixed` 归 0，本机 `ruff format --check` 假红转绿 | 本文件 **#47** |

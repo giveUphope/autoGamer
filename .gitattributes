@@ -1,0 +1,18 @@
+# Line endings are a repository fact, not a per-machine default. Without this file the
+# working tree depends on each clone's core.autocrlf, so byte-based checks disagree
+# across machines (changelogs #45 measured it, #47 closes it).
+* text=auto eol=lf
+
+# cmd.exe has a known failure surface with LF batch files (labels / goto).
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# No EOL conversion, no diff.
+*.png binary
+*.jpg binary
+*.ico binary
+*.gif binary
+*.mp4 binary
+*.mp3 binary
+*.apk binary
+*.keystore binary
