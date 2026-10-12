@@ -8,7 +8,7 @@
 import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
-import { DevicePool } from "./devicePool.js";
+import { DevicePool, type PoolDevice } from "./devicePool.js";
 import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
 import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js";
@@ -112,7 +112,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
    * "could not ask adb" separate from "adb answered: no devices" exactly so a transient blip does
    * not look like an empty fleet, and this side must honour that by reporting "don't know".
    */
-  async function enumerateRoster(): Promise<string[] | undefined> {
+  async function enumerateRoster(): Promise<PoolDevice[] | undefined> {
     let answer: string;
     try {
       answer = unwrapText(await client.callTool("list_devices", {}));
@@ -132,9 +132,17 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       return undefined;
     }
     if (parsed.enumerated !== true || !Array.isArray(parsed.devices)) return undefined;
-    return parsed.devices
-      .map((device) => (device as { serial?: unknown }).serial)
-      .filter((serial): serial is string => typeof serial === "string" && serial.length > 0);
+    return parsed.devices.flatMap((device) => {
+      const entry = device as { serial?: unknown; state?: unknown; is_busy?: unknown };
+      if (typeof entry.serial !== "string" || entry.serial.length === 0) return [];
+      return [
+        {
+          serial: entry.serial,
+          state: typeof entry.state === "string" ? entry.state : undefined,
+          isBusy: entry.is_busy === true,
+        } satisfies PoolDevice,
+      ];
+    });
   }
 
   async function resolveScreenSize(key: string): Promise<ScreenSize | undefined> {
@@ -233,6 +241,11 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     const args = (execution.arguments as Record<string, unknown> | null) ?? {};
     const serial = args.device_serial;
     if (typeof serial === "string" && serial.length > 0) {
+      // Two independent py submission gates, in py's order (tasks.py:140 then :160): readiness
+      // first, then cooldown. Neither reads a device here -- the guard is synchronous (R13), so it
+      // consumes the roster snapshot `refreshRoster` last refreshed.
+      const notReady = pool.admissibleExplicit(serial);
+      if (notReady !== undefined) return `${notReady} — pick another device or report blocked`;
       if (breaker.canAdmit(serial)) return undefined;
       return `device ${serial} is cooling down after environment-level failures — report progress and continue after the next message`;
     }

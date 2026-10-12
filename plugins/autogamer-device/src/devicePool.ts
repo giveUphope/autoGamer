@@ -29,7 +29,7 @@ export interface PoolOptions {
    * G64: asks the action surface which devices exist. `undefined` means "could not ask" and must
    * never be read as "no devices". Only consulted when `devices` is empty.
    */
-  rosterSource?: () => Promise<string[] | undefined>;
+  rosterSource?: () => Promise<PoolDevice[] | undefined>;
   /** Throttle for `rosterSource`; the py pool caches its own snapshot underneath. */
   rosterTtlMs?: number;
   logger?: { info: (message: string) => void; warn: (message: string) => void };
@@ -40,6 +40,18 @@ export interface PoolOptions {
 export interface PoolLease extends GateHandle {
   /** The device this call actually ran on -- explicit serial, or the auto assignment. */
   readonly key: string;
+}
+
+/**
+ * One roster entry. `state` is adb's own device state ("device" / "offline" / "unauthorized",
+ * `device_pool.py:38`); it is `undefined` when the operator pinned the roster in config, because
+ * a name on its own carries no state. Unknown state must never read as "not ready" -- that is the
+ * fail-open half of `_explicit_serial_error` (`device_pool.py:370-373`).
+ */
+export interface PoolDevice {
+  readonly serial: string;
+  readonly state?: string;
+  readonly isBusy?: boolean;
 }
 
 interface Ticket {
@@ -59,10 +71,11 @@ export class DevicePool {
   private readonly queue: Ticket[] = [];
   private readonly assigned = new Set<string>();
   private admitted = 0;
-  private discovered: string[] = [];
+  private discovered: PoolDevice[] = [];
+  private enumerated = false;
   private nextRefreshAt = 0;
   private refreshing?: Promise<void>;
-  private readonly rosterSource?: () => Promise<string[] | undefined>;
+  private readonly rosterSource?: () => Promise<PoolDevice[] | undefined>;
   private readonly rosterTtlMs: number;
   private readonly logger: { info: (message: string) => void; warn: (message: string) => void };
   private readonly clock: () => number;
@@ -93,9 +106,40 @@ export class DevicePool {
     return this.poolDevices.length > 0;
   }
 
-  /** The roster the pool actually schedules against (G3/G64). */
+  /** The roster the pool actually schedules against (G3/G64), as serials. */
   get poolDevices(): string[] {
-    return this.devices.length > 0 ? this.devices : this.discovered;
+    return this.entries().map((device) => device.serial);
+  }
+
+  /**
+   * Entries with state when we have it: a pinned config roster carries names only, and the
+   * readiness probe's answer (with state) wins when discovery is on.
+   */
+  private entries(): PoolDevice[] {
+    if (this.devices.length > 0) {
+      return this.devices.map((serial) => ({ serial }));
+    }
+    return this.discovered;
+  }
+
+  /**
+   * The explicit-serial half of the py submission gate, ported line for line from
+   * `_explicit_serial_error` (runtime/device_pool.py:366-385): reject *only* when enumeration was
+   * actually answered and the roster is non-empty. An unanswered question or an empty roster means
+   * "don't know", and knowing-not is fail-open there by design -- a transient adb blip must not
+   * become a hard reject. Returns the refusal reason, or undefined when admissible.
+   * Lock-screen verdicts are deliberately absent: adb state cannot carry them (G65).
+   */
+  admissibleExplicit(serial: string): string | undefined {
+    if (!this.enumerated) return undefined;
+    const roster = this.entries();
+    if (roster.length === 0) return undefined;
+    const found = roster.find((device) => device.serial === serial);
+    if (found === undefined) return `device ${serial} is not connected`;
+    if (found.state !== undefined && found.state !== "device") {
+      return `device ${serial} is attached but not ready (state: ${found.state})`;
+    }
+    return undefined;
   }
 
   /**
@@ -115,7 +159,16 @@ export class DevicePool {
     this.refreshing = (async () => {
       try {
         const roster = await this.rosterSource?.();
-        if (roster !== undefined) this.discovered = [...new Set(roster)];
+        if (roster !== undefined) {
+          const seen = new Map<string, PoolDevice>();
+          for (const device of roster) {
+            if (device.serial.length > 0) seen.set(device.serial, device);
+          }
+          this.discovered = [...seen.values()];
+          this.enumerated = true;
+        } else {
+          this.enumerated = false;
+        }
       } catch (error) {
         this.logger.warn(`[pool] roster enumeration failed, keeping ${this.poolDevices.length} device(s): ${String(error)}`);
       } finally {
@@ -226,8 +279,18 @@ export class DevicePool {
     }
     // Cooldown-skipping is the pool's own job for auto: the guard refuses a *known* cooling device,
     // but an auto request has no device until this line picks one (S4/G33).
-    return this.poolDevices.find(
-      (device) => !this.assigned.has(device) && this.gate.busyCount(device) === 0 && !this.isCoolingDown(device),
+    // The ladder mirrors device_pool.py:461-472 -- ready and idle first, then ready, then any
+    // attached device; the last rung is what keeps a single-device fleet working when adb reports
+    // it busy (py's own "fallback to any attached device").
+    const free = this.entries().filter(
+      (device) => !this.assigned.has(device.serial) && !this.isCoolingDown(device.serial),
+    );
+    const ready = free.filter((device) => device.state === undefined || device.state === "device");
+    return (
+      ready.find((device) => !device.isBusy && this.gate.busyCount(device.serial) === 0)?.serial ??
+      ready.find((device) => this.gate.busyCount(device.serial) === 0)?.serial ??
+      ready[0]?.serial ??
+      free.find((device) => this.gate.busyCount(device.serial) === 0)?.serial
     );
   }
 

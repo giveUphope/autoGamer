@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#56 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#57 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件（锁屏半边留 G65）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2342,6 +2342,69 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
       多设备 live 调度与 `is_busy`/锁屏状态的实际取值都要等设备在场
 
 - [x] 两枚文档门禁 + `--selftest` ⇒ exit 0；`uv run ruff check` / `format --check` ⇒ 669 files 全净
+
+### #57 P2 诊断 admission A 片：把 py 提交门禁的第一道门移植进插件
+
+- **日期**: 2026-10-13
+- **状态**: ✅ A 片已关闭；**锁屏半边留在 G65**（需要一次只读 py 探针，形状待定）
+- **优先级**: 高（D3「共享真机 + 完整闸门」的准入半边）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「P2 诊断 admission A 片」住在 `TODO.md`（spec 提交 `0540523` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+插件此前**没有任何提交前准入**：`run_device_action` 只有一个熔断冷却的 guard。
+读码（本轮子代理）确认 py 的提交门禁是**两道独立的门**，顺序固定：
+
+1. 严格 serial 绑定 —— `apps/admin_console/routers/tasks.py:140`
+   → `DevicePool.validate_explicit_serial_async` → `_explicit_serial_error`（`runtime/device_pool.py:366-385`）；
+2. 有界就绪探测 —— `tasks.py:160` → `ReadinessEngine.run_device_submission_probe`
+   → `core/diagnostics/probes/adb_probe.py:354`，summary 命中 `{"Device Locked","Lock State Unknown"}`
+   即 409（`tasks.py:174`）。
+
+`inventory/03 §1.7` 与 `:294` 点名的正是这条：admission 若只查 `adb devices` 不查 Keyguard，
+就会向锁屏设备派任务（现状视为不可提交）。而 **`DeviceStatus` 里没有 `is_locked`**
+（键集合被 `tests/unit/mcp/test_device_listing.py:63-73` 钉住），锁屏判定来自
+`dumpsys window policy` ⊕ `dumpsys trust` + 1s 上界 + 双采样（`adb_probe.py:136-253,420-424`），
+且「状态不可判」也 **fail-closed**（`adb_probe.py:452`）。⇒ 在 TS 重写这段就是
+`inventory/02:236` 点名最易被顺手 clean 掉的抄件，本片**不做**，立为 **G65**。
+
+#### 整改方案与实施
+
+- **roster 条目升级**：`enumerateRoster` 之前在解析 `DeviceStatus` 时把 `state`/`is_busy` 丢了，
+  只剩 serial。改为带回 `{serial, state, isBusy}`（`PoolDevice`）；
+  人手 `devices` 配置只有名字 ⇒ `state === undefined`，按「不知道」处理，绝不等于「未就绪」。
+- **移植第一道门**：`DevicePool.admissibleExplicit(serial)` 逐条照 `_explicit_serial_error`——
+  只在**枚举真答上了**（`enumerated === true`）且 roster 非空时才判；「不在 roster」＝未连接、
+  「在但 `state !== "device"`」＝已连但未就绪（拒绝理由带上 state 原文）；
+  **其余一律放行**，包括 `enumerated:false` 与空 roster——`:370-373` 的 docstring 明说这是故意的
+  fail-open（「枚举不确定/为空时提交继续，之后以下游清晰的无设备错误失败，而不是假的硬拒」）。
+- **auto 选取次序照 `device_pool.py:461-472` 的梯子**：ready 且 idle → ready → 第一台 ready →
+  任意未冷却设备（最后一级是 py 自己「none ready 时退回 any attached」的对应），
+  取代 #55 里只看 `busyCount === 0` 的简化版。
+- **guard 仍是唯一出口**（R13）：同步、**不发 RPC**，读 `refreshRoster()` 缓存的最近一份快照
+  （TTL 节流，同 py `device_pool.py:71` 的 `CACHE_TTL = 1.0` 意图）；顺序与 py 一致——先就绪后冷却。
+  准入拒绝**不记熔断**（设备没坏，是没连/没就绪），文案要求模型换设备或报 blocked。
+- 三条变异校验先于结案（见下），并按 **#56** 立的规矩：文档改写一律先断言 anchor 唯一存在。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **165 passed / 1 skipped**（基线 159/1，净增 6 条准入锁）；
+      `run build` ⇒ 0 error。py 侧本片零改动：`tests/unit` 仍 **2602 passed / 7 skipped**
+- [x] 六条语义：未连接被拒 / 已连未就绪被拒且理由含 state / 枚举问不成→放行 /
+      空 roster→放行（不拒任何 serial）/ 人手 roster（无 state）→不拒 / ready+idle 优先于 ready+busy
+- [x] **变异校验三条全红**（脚本 `finally` 还原，还原后全量 exit 0，各条报出具体断言）：
+      ① 把「问不成」当拒绝 ⇒ `expected 'device enumeration is unavailable' to be undefined`；
+      ② 撤掉 idle 优先那一级 ⇒ `expected 'busy-one' to be 'idle-one'`；
+      ③ 空 roster 改成拒绝 ⇒ `expected 'no devices are attached' to be undefined`
+- [x] 镜像的是 py 的场景而非实现：`tests/unit/runtime/test_device_pool.py:134,150,176,248,259,269,287`、
+      `tests/unit/admin_console/test_task_device_readiness.py:31,55,77,108`
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+- [ ] **G65 未做**（明确留白）：锁屏与「状态不可判」的 fail-closed 半边进不来，
+      需一次只读 py 探针；形状二选一待定——给 `list_devices` 条目加 `is_locked`（一次 RPC 拿全，
+      但要扩 `DeviceStatus` 键集合，连带 `test_device_listing.py` 的钉）
+      vs 独立 `get_device_lock_state(serial)` 三态（改动小，多一次往返，且 guard 同步 ⇒ 必须走快照缓存）。
+      属 py 改动，按 D8 须用户确认
 
 ## 已关闭差距史（G*）
 

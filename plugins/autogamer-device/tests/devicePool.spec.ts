@@ -6,7 +6,7 @@
  */
 import { describe, expect, it } from "vitest";
 import { DeviceGate } from "../src/gate.js";
-import { DevicePool } from "../src/devicePool.js";
+import { DevicePool, type PoolDevice } from "../src/devicePool.js";
 
 const hold = (ms: number) => new Promise((resolve) => setTimeout(resolve, ms));
 
@@ -102,7 +102,7 @@ describe("DevicePool (G3/G28)", () => {
       defaultDeviceKey: "default",
       rosterSource: async () => {
         calls += 1;
-        return ["emulator-5554", "emulator-5556"];
+        return [{ serial: "emulator-5554", state: "device" }, { serial: "emulator-5556", state: "device" }];
       },
     });
     const first = await pool.acquire({ action: "tap" });
@@ -115,7 +115,7 @@ describe("DevicePool (G3/G28)", () => {
 
   it("keeps the last good roster when enumeration cannot be answered (fail-open)", async () => {
     // device_pool.py:354-356 -- "could not ask adb" must stay distinct from "no devices attached".
-    let answer: string[] | undefined = ["A"];
+    let answer: PoolDevice[] | undefined = [{ serial: "A", state: "device" }];
     let clock = 0;
     const gate = new DeviceGate();
     const pool = new DevicePool({
@@ -146,7 +146,7 @@ describe("DevicePool (G3/G28)", () => {
       devices: ["pinned-1"],
       rosterSource: async () => {
         asked += 1;
-        return ["discovered-1", "discovered-2"];
+        return [{ serial: "discovered-1", state: "device" }];
       },
       now: () => 0,
       rosterTtlMs: 0,
@@ -186,5 +186,80 @@ describe("DevicePool (G3/G28)", () => {
     expect(settled[1]).toBe(`late:${second.key}`);
     winner.release();
     loser.release();
+  });
+
+  describe("submission admission (P2 A 片)", () => {
+    // Ported from runtime/device_pool.py:366-385 (_explicit_serial_error), which is the first of
+    // py's two submission gates (apps/admin_console/routers/tasks.py:140 runs it before the
+    // readiness probe at :160). Lock-screen verdicts are G65 and deliberately absent here.
+    async function discovered(...devices: PoolDevice[]) {
+      const gate = new DeviceGate();
+      const pool = new DevicePool({
+        gate,
+        defaultDeviceKey: "default",
+        rosterSource: async () => devices,
+      });
+      const lease = await pool.acquire({ action: "tap" }); // forces one enumeration
+      lease.release();
+      return pool;
+    }
+
+    it("rejects an explicit serial that is not attached, only when enumeration answered", async () => {
+      const pool = await discovered({ serial: "A", state: "device" });
+      expect(pool.admissibleExplicit("B")).toBe("device B is not connected");
+      expect(pool.admissibleExplicit("A")).toBeUndefined();
+    });
+
+    it("rejects an attached-but-not-ready serial and names the state", async () => {
+      const pool = await discovered({ serial: "A", state: "unauthorized" });
+      expect(pool.admissibleExplicit("A")).toBe("device A is attached but not ready (state: unauthorized)");
+    });
+
+    it("fails open when the question could not be answered", async () => {
+      // device_pool.py:370-373 -- an indeterminate or empty enumeration must not hard-reject.
+      const gate = new DeviceGate();
+      let answer: PoolDevice[] | undefined = [{ serial: "A", state: "offline" }];
+      const pool = new DevicePool({
+        gate,
+        defaultDeviceKey: "default",
+        rosterSource: async () => answer,
+        rosterTtlMs: 0,
+      });
+      const lease = await pool.acquire({ action: "tap" });
+      lease.release();
+      expect(pool.admissibleExplicit("A")).toContain("not ready");
+
+      answer = undefined; // next refresh cannot answer
+      const again = await pool.acquire({ action: "tap" });
+      again.release();
+      expect(pool.admissibleExplicit("A")).toBeUndefined();
+    });
+
+    it("fails open on an empty enumeration instead of rejecting every serial", async () => {
+      const pool = await discovered(); // enumerated=true, roster=[]
+      expect(pool.admissibleExplicit("anything")).toBeUndefined();
+    });
+
+    it("never rejects on a pinned config roster, which carries no state", async () => {
+      const gate = new DeviceGate();
+      const pool = new DevicePool({ gate, defaultDeviceKey: "default", devices: ["pinned-1"] });
+      expect(pool.admissibleExplicit("pinned-1")).toBeUndefined();
+      expect(pool.admissibleExplicit("other")).toBeUndefined();
+    });
+
+    it("prefers a ready and idle device over a ready but busy one (device_pool.py:461-472)", async () => {
+      const gate = new DeviceGate();
+      const pool = new DevicePool({
+        gate,
+        defaultDeviceKey: "default",
+        rosterSource: async () => [
+          { serial: "busy-one", state: "device", isBusy: true },
+          { serial: "idle-one", state: "device", isBusy: false },
+        ],
+      });
+      const lease = await pool.acquire({ action: "tap" });
+      expect(lease.key).toBe("idle-one");
+      lease.release();
+    });
   });
 });
