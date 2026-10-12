@@ -122,6 +122,7 @@
 | G25 | 层级后端互斥 | 保留：helper 复刻基线（D13）——u2 UiAutomation 单例互斥/30s 降级窗/用后 stop_server/离线快判 |
 | G26 | PID-liveness 协议 | 收缩：仅 action server 进程管理用（(pid, created_at)±1s、不确定=存活） |
 | G27 | 智能栈暗规则 | 保留：pro 保真清单 = 盘点 04 §2.4-2.6（plan 写入规则/checker 不变量/run_outcome/记忆预算） |
+| G65 | 锁屏判定进不了插件（admission 的 fail-closed 半边） | 新开（2026-10-13 读码）：py 提交门禁的锁屏半边要 `dumpsys window policy` ⊕ `dumpsys trust` + 1s 上界 + 双采样（`core/diagnostics/probes/adb_probe.py:136-253,420-424`），且 **`Lock State Unknown` 也 fail-closed**（`adb_probe.py:452` → `apps/admin_console/routers/tasks.py:174` 409）。`DeviceStatus` 没有 `is_locked`（键集合被 `tests/unit/mcp/test_device_listing.py:63-73` 钉住），⇒ 插件既拿不到也不该重抄。形状二选一待定：给 `list_devices` 的条目加 `is_locked`（一次 RPC 拿全，但要扩 DeviceStatus）vs 独立只读 `get_device_lock_state(serial)`（tri-state，改动更小，多一次往返）。属 py 改动，按 D8 须用户确认 |
 | G36 | 截图媒体展示缺口 | **模型侧已关闭（2026-10-11，changelogs #11）**：`take_screenshot` 现在把字节交给 `ctx.attachments.saveImages`，结果 render 成 `[text, image]`，宿主把它提升成带 base64 的后续 user 消息，模型答出了只有像素里才有的信息（壁纸主题 + 本轮真实时刻 17:06）。**剩 UI 卡片侧**：官方形态要求工具注册**按 key 的 client toolview** 并声明 `tool.call.images` 子槽，而宿主 `presentCall`/`presentResult` 永不进客户端（R18），generic 兜底只有压平文本 → 归 **P3** 与 toolview 一起做。另记：`presentationMeta` 官方只持久化 `{path}` 一类小元数据，引用本身在 content 里，不重复存（R16） |
 | 已关闭 | **全部结案条目的正文与关闭方式已移至 [`CHANGELOGS.md`](CHANGELOGS.md) 的「已关闭差距史」**（编号权威仍是 [registry](migration/registry.md)）。本表只列未关闭差距 | 结案即从本表移除，不留正文 |
 
@@ -134,6 +135,54 @@
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
 - [ ] **一期改造登记**（对既有模块的任何修改先登记）：① py 侧零改动为默认（mcp_server/驱动原样）；② 如需触碰（如录屏工具），逐项登记并说明豁免理由。**已登记 1 项**：`compare_ui_frames` 只读工具（G39 路线 A，2026-10-11 确认），见上一节。**已登记 2 项**：**G62 离线 action 面**（已落地，CHANGELOGS **#52**）——新增 `artemis/mcp/mock_server.py` 与 CLI 的 `--type mock` 分支，**未改任何现有 py 文件的行为**；豁免理由：离线路径此前只能吃插件自带的 JS 桩，py 实现本身在无设备/无 adb 时跑不起来（用户 2026-10-13 确认）
 **已登记 3 项**：**G64 py 只读 `list_devices` 工具**（2026-10-13 用户已决「加只读 py 工具」）——复用 `runtime/device_pool.py` 现成的枚举与 `try_list_devices` 的 fail-open，不新增第二份实现；豁免理由：设备列举此前没有任何 MCP 工具面出口，插件要么重复实现（多一份抄件）要么看不见设备状态；**已落地，CHANGELOGS #56**（工具面 14→15，四处契约同步；方案里「写进 action_manifest 能力门」一项经核实**不存在**——adb 面无能力门，作废而非遗漏）
+
+### P2 诊断 admission A 片：可辨性 + 多设备自动切换（纯插件，2026-10-13 用户已决「按 3→2→1 顺序做」）
+
+- **What**：把 py 提交门禁里**不依赖锁屏**的那半边搬到插件的准入路径上，并显式留下锁屏半边给 **G65**。交付三件——
+  ① roster 条目从 `string` 升级成 `{serial, state, is_busy}`（`enumerateRoster` 已经在解析 `DeviceStatus`，
+     只是把字段丢了）；
+  ② `DevicePool.admissibleExplicit(serial)`：**逐条移植** `runtime/device_pool.py:366-385` 的
+     `_explicit_serial_error` 语义——只在 `enumerated === true` 且 roster 非空时才判，
+     「serial 不在 roster」＝未连接、「在但 `state !== "device"`」＝已连但未就绪，**其余一律放行**
+     （枚举问不成 = 不知道 = fail-open，那是 `:370-373` 原文写明的故意行为）；
+  ③ auto 选取次序照 `device_pool.py:461-472` 的梯子来：**ready 且 idle → ready → 第一台**，
+     而不是现在这个只看 `busyCount === 0` 的简化版。
+  **范围外（明确）**：锁屏判定**不在本片**——`DeviceStatus` 没有 `is_locked`（键集合被
+  `tests/unit/mcp/test_device_listing.py:63-73` 钉住），py 用的是 `dumpsys window policy` ⊕ `dumpsys trust`
+  + 1s 上界 + 双采样（`core/diagnostics/probes/adb_probe.py:136-253,420-424`），
+  且对 `"Lock State Unknown"` 也 **fail-closed**（`adb_probe.py:452`、`apps/admin_console/routers/tasks.py:174`）。
+  在 TS 里重写这段就是 `inventory/02:236` 点名「TS 重写最容易顺手 clean 掉」的那类抄件
+  ⇒ 已立 **G65**（只读 py 锁屏探针，工具面第 16 个），等用户点头再做。
+  也不动 `probe_submission_readiness` 的「偏好 serial → 自动切到别的 ready 设备」里属于
+  `ReadinessEngine` 的那半（插件看不见它，`adb_probe.py:411-417`）。
+- **How**（口径全部来自本轮子代理读码，不是推测）：
+  - py 是**两道独立门**：先严格 serial 绑定（`tasks.py:140` → `validate_explicit_serial_async`），
+    再有界就绪探测（`tasks.py:160` → `run_device_submission_probe`），后者 summary 命中
+    `{"Device Locked","Lock State Unknown"}` 就 409。**A 片只做第一道。**
+  - 拒绝出口仍走 `ctx.tools.guard()`（R13：单调同步守卫）——所以 guard **不发 RPC**，
+    读的是 `refreshRoster()` 缓存的最近一份快照；TTL 沿用现有 `rosterTtlMs`，
+    与 py 侧 `device_pool.py:71` 的 `CACHE_TTL = 1.0` 同一意图（把突发枚举收成一次）。
+  - `enumerated !== true` 时**既不能拒绝也不能改序**：保留上一份 roster（`#56` 已锁），
+    这是「transient blip 不等于空车队」的另一半。
+  - 显式 serial 被拒时**不记熔断**（设备没坏，是没连/没就绪），走 G38 已定的 internal/environment/task
+    之外的第四类：准入拒绝，结果文本要能让模型换设备重试（G33 的 guard 只负责拦，不负责教学）。
+- **Verify**
+  - `pnpm --config.verify-deps-before-run=false test` ⇒ 基线 **159 passed / 1 skipped** 之上只增
+  - `pnpm run build` ⇒ 0 error
+  - py 侧不变（本片零 py 改动）：`uv run python -X utf8 -m pytest tests/unit -q` ⇒ 仍 **2602 passed / 7 skipped**
+  - **变异校验**（R27 第 1 条，做出红才勾）：① 把「枚举问不成 → 放行」改成「→ 拒绝」
+    ⇒ fail-open 那条锁必须红；② 把 auto 次序退回「只看 busyCount」⇒ ready+idle 优先那条锁必须红；
+    ③ 把 roster 判空条件去掉 ⇒ 「roster 空时不得拒绝」那条锁必须红
+  - 镜像 py 测试用例（不是照抄实现）：`tests/unit/runtime/test_device_pool.py:134,150,176,248,259,269,287`
+    与 `tests/unit/admin_console/test_task_device_readiness.py:31,55,77,108` 的场景
+  - 文档门禁两枚 + `--selftest` ⇒ exit 0
+- **Done means**
+  - [ ] roster 带 state/is_busy，`contracts.spec.ts` 的直接调用清单不变（仍 `list_devices`，不新增调用）
+  - [ ] `admissibleExplicit` 移植完，四条拒绝理由文案可区分（未连接 / 未就绪 / 熔断冷却 / 全部锁住待 G65）
+  - [ ] auto 次序三级梯子 + 锁
+  - [ ] 三条变异校验做出红，写进 CHANGELOGS **#57**
+  - [ ] **G65 留在 §四**（只读 py 锁屏探针：`is_locked` 进 DeviceStatus vs 独立 `get_device_lock_state` 两种形状待定）
+  - [ ] 本条结案即删
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
