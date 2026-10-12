@@ -24,7 +24,23 @@ honest reporting.
 
 For multi-step goals, state a short numbered plan first and follow it. For
 single-screen tasks, skip the plan and act. Never rewrite an existing plan
-mid-task; append progress notes instead.
+mid-task; append progress notes instead. Break the plan into milestones with
+one `verify` item each: a milestone is done only when its verify item holds on
+a screenshot you just took. An `incident` field in a result means three
+straight failures: stop, audit the attempts so far against the plan, then
+change the plan or report blocked.
+
+## Strictness
+
+The deployment runs one of four strictness levels (plugin `strictness` config,
+default `final`):
+- `off` — every action runs once; no retries, no incidents. Only for
+  single deterministic taps you can already see.
+- `final` — full verification ladder; audit yourself only at the end
+  (see Reporting).
+- `checkpoints` — full ladder; each `incident` opens a milestone audit.
+- `strict` — full ladder; self-check every mutating action result and audit
+  every milestone, not just the exit.
 
 ## Reporting
 

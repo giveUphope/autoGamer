@@ -249,6 +249,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
         "breakerCooldownMs",
         "defaultDeviceKey",
         "screenSize",
+        "strictness",
       ].sort(),
     );
     for (const [name, sub] of Object.entries(fields)) {
@@ -273,6 +274,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     expect(resolved.defaultDeviceKey).toBe("default");
     expect(resolved.allowedFails).toBe(1);
     expect(resolved.breakerCooldownMs).toBe(30_000);
+    expect(resolved.strictness).toBe("final");
     expect(resolved.actionCallTimeoutMs).toBe(30_000);
     // The trap `configuredScreenSize()` exists to survive: an unset optional
     // tuple comes back as a truthy `[undefined, undefined]` array, never

@@ -22,7 +22,7 @@ import {
   toPixels,
   type ScreenSize,
 } from "../coord.js";
-import type { DshImageAttachment, ToolDefinitionInput } from "../dsh-types.js";
+import type { DshImageAttachment, JsonValue, ToolDefinitionInput } from "../dsh-types.js";
 import { findNodeCenterByIndex, findNodeCenterBySubstring, formatVisibleElements, parseVisibleElements } from "../hierarchy.js";
 import { unwrapText } from "../mcpText.js";
 
@@ -191,12 +191,80 @@ async function callTransport(
   }
 }
 
+export type ValidatorStrictness = "off" | "final" | "checkpoints" | "strict";
+
+/** Upstream pre-execution retry budget (max_pre_attempts = 3, total attempts). */
+const RESOLVE_ATTEMPTS = 3;
+
+/** Upstream incident threshold: consecutive failures that open an incident. */
+const INCIDENT_THRESHOLD = 3;
+
+export function isLadderOn(strictness: ValidatorStrictness | undefined): boolean {
+  return (strictness ?? "final") !== "off";
+}
+
+export function strictnessOf(options: RouterOptions): ValidatorStrictness {
+  return options.strictness ?? "final";
+}
+
+/**
+ * Consecutive task-failure counts per device (P1-a incident ledger). Health
+ * state stays in the breaker; this tracks TASK progress only: environment and
+ * internal outcomes never touch it. Lifetime matches gate/breaker (fresh per
+ * plugin instance, i.e. restart clears — the old stop-all equivalent).
+ */
+export class ActionIncidents {
+  private readonly counts = new Map<string, number>();
+
+  noteFailure(key: string): number {
+    const next = (this.counts.get(key) ?? 0) + 1;
+    this.counts.set(key, next);
+    return next;
+  }
+
+  noteSuccess(key: string): void {
+    this.counts.delete(key);
+  }
+
+  count(key: string): number {
+    return this.counts.get(key) ?? 0;
+  }
+}
+
+export type VerdictCategory = "disappeared" | "general";
+
+export function incidentPrompt(failures: number, key: string, milestone: boolean): string {
+  const base =
+    `${failures} consecutive task failures on device ${key} — restate the goal, ` +
+    `list what was tried, then adjust the plan or report blocked via report_task_status`;
+  return milestone ? `Milestone audit: ${base}` : base;
+}
+
+export const SELF_CHECK_PROMPT =
+  "Self-check: confirm the intended visible change happened; if not, adjust and continue, " +
+  "or report blocked via report_task_status.";
+
+export const PIXEL_GUIDANCE =
+  "No visible change. Take a screenshot, locate the target visually, and retry with " +
+  "{coordinate:[x,y]} from pixels or a fresh {index} from a new get_ui_hierarchy.";
+
 export interface RouterOptions {
   gate: DeviceGate;
   breaker: DeviceBreaker;
   client: ActionClient;
   logger: RouterLogger;
   defaultDeviceKey: string;
+  /**
+   * P1-a validator strictness (S11 step 5, plugin Config, default "final" like
+   * upstream `--verification-level`): "off" runs every action once with no
+   * ladder and no incident tracking; the other levels run the full ladder and
+   * differ only in audit prompting (final: exit path only, via persona;
+   * checkpoints: incident opens carry a milestone prompt; strict: every
+   * mutating action also carries a self-check prompt).
+   */
+  strictness?: ValidatorStrictness;
+  /** Per-device consecutive task-failure counts; owned per plugin instance. */
+  incidents?: ActionIncidents;
   /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
   resolveScreenSize(key: string): Promise<ScreenSize | undefined>;
   /**
@@ -233,6 +301,7 @@ interface TargetInput {
 
 export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInput {
   const { gate, breaker, client, logger } = options;
+  const incidents = options.incidents ?? new ActionIncidents();
 
   async function resolvePixelTarget(
     args: Record<string, unknown>,
@@ -247,20 +316,34 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         y: toPixels(target.coordinate[1], size.height),
       };
     }
-    const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}));
-    if (typeof target.index === "number") {
-      const center = findNodeCenterByIndex(xml, target.index);
-      if (center) return center;
-      throw new Error(`task: no element #${target.index} in the current hierarchy (re-run get_ui_hierarchy and use a #N handle)`);
+    // P1-a pre-execution ladder (upstream max_pre_attempts = 3): a missing
+    // target may be a transient screen, so re-fetch the hierarchy and retry.
+    // An UNREADABLE hierarchy is the bypass case — fail immediately instead of
+    // retrying a broken observation; a missing target spec is a caller bug and
+    // fails before any fetch.
+    const seeksHierarchy =
+      typeof target.index === "number" || (typeof target.text === "string" && target.text.length > 0);
+    if (!seeksHierarchy) {
+      throw new Error("task: this action needs a target — {coordinate:[x,y]} (0-1000), {index}, or {text}");
     }
-    if (typeof target.text === "string" && target.text.length > 0) {
-      const center = findNodeCenterBySubstring(xml, target.text);
+    const attempts = isLadderOn(options.strictness) ? RESOLVE_ATTEMPTS : 1;
+    let lastError = "";
+    for (let attempt = 1; attempt <= attempts; attempt += 1) {
+      const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}));
+      if (parseVisibleElements(xml) === undefined) {
+        throw new Error("task: hierarchy unreadable (not a node list) — re-run get_ui_hierarchy");
+      }
+      if (typeof target.index === "number") {
+        const center = findNodeCenterByIndex(xml, target.index);
+        if (center) return center;
+        lastError = `task: no element #${target.index} in the current hierarchy (re-run get_ui_hierarchy and use a #N handle)`;
+        continue;
+      }
+      const center = findNodeCenterBySubstring(xml, target.text as string);
       if (center) return center;
-      throw new Error(`task: no element matching text "${target.text}" in the current hierarchy`);
+      lastError = `task: no element matching text "${target.text}" in the current hierarchy`;
     }
-    throw new Error(
-      "task: this action needs a target — {coordinate:[x,y]} (0-1000), {index}, or {text}",
-    );
+    throw new Error(lastError);
   }
 
   async function requireScreenSize(key: string): Promise<ScreenSize> {
@@ -321,6 +404,19 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         type: "object",
         additionalProperties: true,
       },
+      // P1-b checker facts (R16): the validator verdict rides on tool/result
+      // meta so milestone/exit audits replay it instead of trusting memory.
+      // Soft by design — unknown shapes project to {} rather than throwing.
+      presentationMeta: (_args, value) => {
+        const record = (value ?? {}) as { effect?: unknown; category?: unknown; incident?: unknown };
+        const meta: { [key: string]: JsonValue } = {};
+        if (typeof record.effect === "string") meta.effect = record.effect;
+        if (typeof record.category === "string") meta.category = record.category;
+        if (typeof record.incident === "object" && record.incident !== null) {
+          meta.incident = record.incident as JsonValue;
+        }
+        return meta;
+      },
       render: (_args, value) => {
         const record = { ...(value ?? {}) } as Record<string, unknown>;
         // The attachment reference renders as an image block; it must not also
@@ -376,9 +472,24 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           if (result.failure === "environment") breaker.recordEnvironmentFailure(key);
           else breaker.recordTaskFailure(key);
           logger.warn(`[route] refused (class=${result.failure}): ${result.message}`);
+          if (result.failure === "task" && isLadderOn(options.strictness) && !exec.signal.aborted) {
+            // P1-a incident (upstream consecutive_failures): environment,
+            // internal, and user-cancelled outcomes never touch this count —
+            // it tracks TASK progress.
+            const failures = incidents.noteFailure(key);
+            if (failures >= INCIDENT_THRESHOLD) {
+              const milestone = strictnessOf(options) !== "final";
+              throw new Error(`task: ${result.message} [incident: ${incidentPrompt(failures, key, milestone)}]`);
+            }
+          }
           throw new Error(`${result.failure}: ${result.message}`);
         }
         breaker.recordSuccess(key);
+        // An unknown verdict is a detection failure (fail-open): it neither
+        // counts nor resets the incident ledger — only a decided outcome moves it.
+        if (isLadderOn(options.strictness) && (result.value as { effect?: unknown } | null)?.effect !== "unknown") {
+          incidents.noteSuccess(key);
+        }
         logger.info(`[route] ok action=${action} device=${key}`);
         return result.value;
       } finally {
@@ -392,6 +503,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     args: Record<string, unknown>,
     key: string,
     exec: { signal: AbortSignal },
+    isRetry = false,
   ): Promise<DispatchResult> {
     // wait is client-side: no device round-trip, nothing to break.
     if (action === "wait") {
@@ -464,21 +576,100 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       }
     }
     const observed = (value ?? outcome.value) as Record<string, unknown>;
+    const strictness = strictnessOf(options);
+    const ladderOn = isLadderOn(options.strictness);
+    const finishSuccess = (val: Record<string, unknown>): DispatchResult => {
+      if (isRetry) return { ok: true, value: val };
+      if (ladderOn) incidents.noteSuccess(key);
+      if (strictness === "strict" && EFFECT_OBSERVED_ACTIONS.has(action)) {
+        return { ok: true, value: { ...val, self_check: SELF_CHECK_PROMPT } };
+      }
+      return { ok: true, value: val };
+    };
+    // P1-a unchanged verdict (outer call only): pixel guidance, category, and
+    // a single incident count for the whole model call, however many device
+    // attempts the ladder ran.
+    const unchangedVerdict = (category: VerdictCategory): DispatchResult => {
+      const val: Record<string, unknown> = {
+        ...observed,
+        effect: "unchanged",
+        category,
+        pixel_guidance: PIXEL_GUIDANCE,
+      };
+      const failures = incidents.noteFailure(key);
+      if (failures >= INCIDENT_THRESHOLD) {
+        val.incident = { consecutive_failures: failures };
+        val.audit_request = incidentPrompt(failures, key, strictness !== "final");
+      }
+      return { ok: true, value: val };
+    };
     if (!observesEffect) {
-      return { ok: true, value: observed };
+      return finishSuccess(observed);
     }
 
     // S11 step 3: the router observes the screen itself instead of trusting the
-    // model's reading of it. `unchanged` after a mutating action is the signal
-    // the P1 validator ladder escalates on; for now it is reported verbatim.
+    // model's reading of it.
     await settle(EFFECT_SETTLE_MS);
     const after = await captureFrameSafe();
     const coordinates = Array.isArray(payload.coordinates) ? payload.coordinates : undefined;
     const changed =
       before && after ? await compareFramesSafe(before, after, tool, coordinates) : undefined;
-    const effect = changed === undefined ? "unknown" : changed ? "changed" : "unchanged";
-    logger.info(`[route] effect=${effect} action=${action} device=${key}`);
-    return { ok: true, value: { ...observed, effect } };
+    if (changed !== false) {
+      // Changed, or unknown (no verdict: fail-open — no ladder, no incident).
+      logger.info(`[route] effect=${changed ? "changed" : "unknown"} action=${action} device=${key}`);
+      if (changed === undefined) return { ok: true, value: { ...observed, effect: "unknown" } };
+      return finishSuccess({ ...observed, effect: "changed" });
+    }
+    logger.info(`[route] effect=unchanged action=${action} device=${key}`);
+    if (!ladderOn || isRetry) return { ok: true, value: { ...observed, effect: "unchanged" } };
+
+    // P1-a post-execution ladder: re-resolve an index/text target against a
+    // FRESH hierarchy and run the action once more as plain coordinates.
+    // Coordinate-called and target-less actions go straight to pixel guidance —
+    // bursts and launch_app never retry upstream.
+    const retry = await reresolveAsCoordinate((args.target ?? {}) as TargetInput, key);
+    if (retry.status === "found") {
+      const retried = await dispatch(
+        action,
+        { ...args, target: { coordinate: retry.normalized } },
+        key,
+        exec,
+        true,
+      );
+      if (!retried.ok) return retried;
+      const retriedValue = retried.value as Record<string, unknown>;
+      if (retriedValue.effect === "changed") return finishSuccess(retriedValue);
+      if (retriedValue.effect === "unknown") return { ok: true, value: retriedValue };
+      return unchangedVerdict("general");
+    }
+    return unchangedVerdict(retry.status === "missing" ? "disappeared" : "general");
+  }
+
+  /**
+   * Re-resolve the ORIGINAL index/text target against a fresh hierarchy and
+   * return it as normalized coordinates for one retry. "missing" means the
+   * target is gone (disappeared); "nontarget" means retrying makes no sense
+   * (coordinate-called, target-less, or an unreadable hierarchy).
+   */
+  async function reresolveAsCoordinate(
+    tgt: TargetInput,
+    deviceKey: string,
+  ): Promise<{ status: "found"; normalized: [number, number] } | { status: "missing" } | { status: "nontarget" }> {
+    const retryable =
+      tgt.coordinate === undefined &&
+      (typeof tgt.index === "number" || (typeof tgt.text === "string" && tgt.text.length > 0));
+    if (!retryable) return { status: "nontarget" };
+    const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}));
+    if (parseVisibleElements(xml) === undefined) return { status: "nontarget" };
+    const center =
+      typeof tgt.index === "number"
+        ? findNodeCenterByIndex(xml, tgt.index)
+        : findNodeCenterBySubstring(xml, tgt.text as string);
+    if (!center) return { status: "missing" };
+    const size = await requireScreenSize(deviceKey);
+    const nx = Math.max(0, Math.min(1000, Math.round((center.x / size.width) * 1000)));
+    const ny = Math.max(0, Math.min(1000, Math.round((center.y / size.height) * 1000)));
+    return { status: "found", normalized: [nx, ny] };
   }
 
   async function captureFrameSafe(): Promise<string | undefined> {

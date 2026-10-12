@@ -4,7 +4,7 @@
  * `tests_failed` counts assertion failures recorded along the way without
  * flipping the task to failed by itself.
  */
-import type { ToolDefinitionInput } from "../dsh-types.js";
+import type { JsonValue, ToolDefinitionInput } from "../dsh-types.js";
 
 export function defineReportTaskStatus(onReport?: () => void): ToolDefinitionInput {
   return {
@@ -37,6 +37,15 @@ export function defineReportTaskStatus(onReport?: () => void): ToolDefinitionInp
         const record = (value ?? {}) as Record<string, unknown>;
         const text = `task outcome recorded: ${String(record.outcome ?? record.status ?? "unknown")}`;
         return [{ type: "text", text }];
+      },
+      // P1-b: the terminal facts replay with the result for exit audits.
+      presentationMeta: (_args, value) => {
+        const record = (value ?? {}) as { status?: unknown; tests_failed?: unknown; outcome?: unknown };
+        const meta: { [key: string]: JsonValue } = {};
+        if (typeof record.status === "string") meta.status = record.status;
+        meta.tests_failed = typeof record.tests_failed === "number" ? record.tests_failed : 0;
+        if (typeof record.outcome === "string") meta.outcome = record.outcome;
+        return meta;
       },
     },
     async execute(args, exec) {

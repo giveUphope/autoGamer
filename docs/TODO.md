@@ -12,7 +12,7 @@
 | S10 ①（工具面 + 模型稳定性） | ✅ 通过（2026-10-10，G30 关闭，双根因见 changelogs #10：`effect()` 语义反转自注销 + 裸注册未经 `defineTool()` 编译）。R7 新会话里模型真实调用 `run_device_action` 三次、入参合法、按次调整重试；「没有这个工具」与 400 签名全部消失 |
 | S5 动作后端 | ✅ 真机 live（2026-10-10）：`py action server` + MuMu `emulator-5554`，`take_screenshot` 一次调用即成（`captured 1600x900`，回合 10s / 1 轮 2 步）。mock 后端超时那条已被真机取代 |
 | live 环境（本轮固化） | `spike/web-live.patch.yml` = **交付形态**（`autogamer-device-inner` + `@deepseek-ai/dsh-tool-jobs`，G37 已收）+ 真机 `actionServerCommand`/`actionServerEnv` + provider 端口走 1235 取证代理（`scripts/dump-proxy.mjs` → LM Studio 1234）+ **`models[].input: [text, image]`**。R6 实测 exit 0 / 0 unmatched。旧结论「`actionServerEnv` 无法解析」（c8b49c8 删过它）作废 |
-| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧：G53/G55 已结案（CHANGELOGS **#37/#38**；仓级格式另有 9 处既有红，见 **G58**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 开工：熔断矩阵已结案（CHANGELOGS **#39**，G4 关闭）；剩下 pro subagent（checker/validator 保真）+ skills 严格度梯级，注意 `check_ui_change` 的阈值与 ROI 已是现成判据，validator 升级梯直接建在它上面；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）。 |
+| 下一步（按序） | **1)** **G52 已结案**（正文见 CHANGELOGS **#32**：追问路径改由真实 `dsh-session` 提交的真 `turn/end` + 真实 `AgentRegistry` 句柄驱动，`{global:true}` 的筛选在 Tier 1 里被观察到；顺带摘掉追问消息的手镜像）。本轮新立 **G56** 已结案（CHANGELOGS **#35**：mock 补 `jsonrpc` 帧字段，真 SDK 握手通过）、**G57** 已结案（CHANGELOGS **#34**：裸 scope 注册本就生效，旧「双空」是无 scope 读法，root 空是隔离语义）。**2)** **G43**：spike 的复位与判据要固化成可复跑脚本（`ui_night_mode` 不作 oracle，只认截图）——P1 要跑更多任务就会撞它；**3)** 低成本债清零（G33 已结案，CHANGELOGS **#36**；G34/G38 见 #33）；**4)** CI 侧：G53/G55 已结案（CHANGELOGS **#37/#38**；仓级格式另有 9 处既有红，见 **G58**）；G54（本 fork `on: push` 从不触发 run；任何「CI 证据」必须写明是手动派发）；**5)** P1 智能层离线片已结案（CHANGELOGS **#40**：validator 梯 + prompt 级 checker + skills；熔断矩阵见 #39）；剩下 live 验收（模型服从、多任务质量 spike，要 VLM+真机）；**6)** 两条未闭环的证据/观察（不当结论用）：从零走通 DSH `install_bundle` 的完整成功还没拿到（G51 收尾）；同一份 dist 在 23:12 那个服务实例上两轮没触发追问、23:38/23:47 稳定触发。**已完成不再列**：G31/D17（#18/#20/#26）、G45（#14）、G47-G51（#19-#25）、G35（#16）、G32（#17）、G5（#29）、G52（#32）、G34/G38（#33）、G57（#34）、G56（#35）、G33（#36）、G53（#37）、G55（#38）、G4（#39）。 |
 | 每步的前置 | R7（**开新会话**再验，旧会话不重读声明）；改 patch 后仍跑 R6，但 **R6 只合成声明树、不挂载 preset，过 R6 ≠ preset 能挂**——判定挂载只认 roster `broken` 与 `cordis_inspect_query`（R9）。G30 这轮换来的额外一条：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛** |
 | 已顺手修掉 | 两个 live 连带缺陷（`coord.ts` `byteAt` 递归、`screenSize` 真值陷阱）已修复，记录见 changelogs #9 |
 | 测试面 | 插件 vitest **83 passed / 1 skipped**（复测：`pnpm --config.verify-deps-before-run=false test`；G52 净增 5 条真 runtime 追问证据；Tier 1 真 runtime 挂载 6 条 + 契约改写与复审守卫 6 条；复审轮的四条发现与修法见 CHANGELOGS **#28**；Tier 1 两条**变异校验**——`inject` 多写一个本图没有的服务 ⇒ 挂载红、摘掉 `Config` 导出 ⇒ reject 红；Tier 2 变异——映射值改成不存在的工具名 ⇒ fixture 档与 live 档都红；skipped 那条是 `AUTOGAMER_CONFORMANCE_PY=live` 的 opt-in 真服务比对，CI 用 `node scripts/spike-mcp.mjs` 做同一比对；CI **新增 `plugin-contracts` job**（ubuntu + windows，装真实 `@deepseek-ai/*` devDeps 后 build + test），此前插件测试从未进过 CI——现已实测双 OS success（run 38167498398，手动派发，见 G54）；存量：交付形态同步守卫 3 条 + 结果信封层级预算 2 条；R23 的「必须推迟出 append 边界」与 G42 的「层级不被 200 字符截断」都已做**变异校验**——把 followup 改回同步、把 `RENDER_HIERARCHY_BUDGET` 改回 200，对应测试确实变红）；py `tests/unit/mcp` **224 passed**（动作面 14 工具）；文档门禁 `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py`。同一轮复审**记下但本轮未做**的测试债（都不是产品差距，不占 `G*` 号）：`apply.spec.ts` 里四份重复的注册装配（`registeredTools` / `registerToolWith` / `reportWith` / 内联）应收敛成一个；`fakeContext` 的 `agentId` 形参与 `emit(type, id)` 的 id 形参没人用，`index.ts` 里「拿不到 agent handle」那条 warn 分支也从未被走到；py 侧 `adb_server.py` 的 `coordinates`→ROI 转发与「帧解码失败」两条分支无行为测试（现有测试绕过 FastMCP 直接 `mcp.call_tool`）；整套 8.4s 里几乎全是真实 `EFFECT_SETTLE_MS` 睡眠，换假定时器能顺带把「settling 时机」本身锁住 |
@@ -137,7 +137,7 @@
 ## 五、Checklist（R2' 里程碑）
 
 - [x] **P0 骨架与 spike**：`autogamer-device` 包骨架（run_device_action 工具骨架 + 闸门 + preset；`cordis.patch.yml`/peerDependencies/`dsh plugin add`/`--dump-config`）+ **S10 四点 spike**（模型稳定性/效果验证/闸门阻塞/Inbox 连发）+ **MCP 直连质量 spike**（flash skill + py action server 跑 2-3 个真实设备任务，对比上游 flash 质量——spike 过=直通，不过=回退三段式）+ conformance 测试骨架。**2026-10-11 收官**：四点 ✅、质量 spike 两任务达成且快于基线（D9 = 直通，CHANGELOGS #14/#15）、终态语义 live 闭环（G41/G44 ✅）。**P0 遗留的只有「怎么装」**：`install_bundle`（G31）与 D17 的 `tool-plugin-manager`
-- [ ] **P1 设备工具与路由**：13 动作工具 TS 包装全量（闸门/熔断/效果验证/路由决策日志）+ **pro subagent**（checker/validator 保真，盘点 04 清单验收）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵（4 解除路径/fail-open-safe 不对称/auto 端点默认键/allowed_fails=1）
+- [ ] **P1 设备工具与路由**：13 动作工具 TS 包装全量（闸门/熔断/效果验证/路由决策日志）+ **pro subagent**（checker/validator 保真，盘点 04 清单验收）+ skills（flash prompts 转化 + plan/goal 脚手架 + 严格度梯级）+ 熔断矩阵（4 解除路径/fail-open-safe 不对称/auto 端点默认键/allowed_fails=1）。**离线片已结（#39/#40），本框余 live 验收**。
 - [ ] **P2 设备层补全**：helper TS 复刻（D13/G25）+ 录屏接回（D12/G23 契约 + graceful stop）+ mock driver + 诊断 admission（锁屏 fail-closed/多设备切换/emulator_manager 对接）+ 模拟器专属演进评估
 - [ ] **P3 UI 收尾**：roster/QueueDock 验收对照 + toolview + goal 轮徽标（按需）。toolview 只能走 client 插件（守则 R18）：在 keyed slot `tool.call.toolview` 按 **wire 工具名**注册组件，Web Client **不消费** `presentCall`/`presentResult`，只定义 Host 展示方法不会增加专用卡片；factory 无副作用、样式只用 `--dsh-alias-*` token、**禁止 import 宿主 Client 包**（要像就拷贝 markup/CSS/行为并加自己的类名前缀），不许另建 presenter registry
 - [ ] **P4 旧线归档**：旧控制台原地只读 + py 遗留退役清单（artemis-client 删/replay_manager 删/CLI `artemis run` 非 worker 分支与 `trace`/`batch` 退役/webhook 按需）+ quality_ratchet/locale 锁**显式不做**（记录为有意撤除）
@@ -393,51 +393,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - ✅ **G30 关闭（2026-10-10，两轮官方检查器分级实证 + 两处真根因）**：调研改判的「asar 锚点拒挂」假设也被官方面否证（roster/插件页/清单全绿、新会话创建成功、`autogamer-device-inner` 运行中）——正确的定性路径是**功能轮差分**：新会话里 preset 其他子行的工具全部在模型清单上（fs/pwsh/jobs/web/present…），唯独缺我们两个，而行状态「运行中」⇒ 注册后立即被注销；第二轮修掉注销后 400 前移（tools[11]/[12] schema 非法）⇒ 裸注册未编译。双根因修复见 changelogs #10（effect 语义反转 + defineTool 编译），vitest 38/38 含 2 条回归锁，live 实证模型真实调用 `run_device_action` 三次。教训入册：**插件侧 wire 差分（哪几个工具在/不在）比挂载诊断更快收敛**；测试假 context 必须实现 effect 且按 cordis 语义。原 Fix A（file: URL 子行）与 Fix B（根行兜底)作废——锚点假设不成立
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
-
-### P1 智能层方案（2026-10-12 按 R22 三步序：查上游+宿主 → 本方案 → 实现）
-
-**第 1 步「查」的原文与出处**：
-
-- 上游保真数（`artemis/agents/validator/` + `tests/unit/agents/test_validator.py`）：预检最多 3 次、间隔 0.4s，
-  `XML_BYPASSED` 不重试直转 pixel（`precondition_xml.py:64-93`）；burst 永不重试（单 dispatch，中止后续）；
-  `launch_app` 单次不重试；连败 `consecutive_failures==3` 开 incident 交 Operator 自行恢复；分类
-  `disappeared/shifted/occupied/general`（`categories.py`）；checker 零副作用三不变量 + midway/final 审计
-  （`inventory/04:161,179`，S11 已编码）。
-- 宿主（`@deepseek-ai/dsh-agent/README.md:32,43`）：`ctx.agents.create/resume` + `parentAgent` 可建运行时子 agent，
-  `setup()` 预装其作用域世界；但 Dev Note 明示子通道之外无共享状态/流式输出——verdict 管道须自建
-  （读子会话日志），每审一会话加模型成本。**用户已决**：checker 走 prompt 级（本问答轮），不建子 agent。
-- S11（TODO §三）：单层路由五步 + 保真对照（validator 梯原样、checker 三不变量走 `presentationMeta`/storage、
-  run_outcome 双轴、预算）；严格度梯级是路由器配置；上游 `--verification-level` 默认 `final`。
-
-- **What**（三片，可独立落地验收）：
-  - P1-a validator 确定性梯（code，只读+执行机制，不属 R13 策略）：预执行目标解析失败→重取层级最多 3 次
-    （round-trip 即等待，不另 sleep；上游 0.4s 由本机 600ms 沉降覆盖）；层级不可解析/空→直接 task 失败
-    （不编造目标；对应 `XML_BYPASSED` 无重试）；`launch_app`/burst 语义=单 dispatch 不重试（沿用）；
-    执行后 `effect=unchanged`（仅变更类）→ 用新层级坐标重解一次 → 仍 unchanged → 回值带 pixel 指引文本
-    （令模型截图目视重定）+ category（能判则 `disappeared/shifted/occupied`，否则 `general`）；
-    同设备连败计数到 3 → 结果带 `incident:{consecutive_failures:3}` + 审计请求文本，成功清零
-    （对应上游 incident 交恢复——此处交模型下一 turn）。
-  - P1-b checker prompt 级 + 事实落盘：preset `persona` 加审计纪律节（checkpoint/exit 结构化自审、
-    verdict 形状）；validator  verdict（`effect`/`incident`/`category`）经 `output.presentationMeta` 进
-    `tool/result.meta`（R16，不自写事件）；`report_task_status` 双轴已在。
-  - P1-c skills：`autogamer-flash` 补严格度梯级节 + plan/goal 脚手架 doc；不新增 goal 工具（S11 可选，
-    本轮只给 doc，工具按需再立项）。
-  - 严格度 `strictness`（plugin Config，默认 `final` 对齐上游）：`off`= 单次无梯无 incident；
-    `final`= 全梯 + 审计提示只在 exit 路径；`checkpoints`= 全梯 + incident 带里程碑审计提示；
-    `strict`= 全梯 + 每个变更动作结果带自检提示。梯开关与审计面正交，可单测穷举。
-  **范围外**：子 agent checker（已否决）、goal 工具代码、模型侧服从（live 验收）、VLM 像素定位代码（TS 无 CV，
-  pixel 层=模型指引）。
-- **How**：梯状态机放 `runDeviceAction.ts` dispatch 内外（预：resolve 循环；后：effect 分支升级），连败计数放
-  RouterOptions 外？——放模块级 per-device Map 随插件实例（与 gate/breaker 同命，重启清零，旧 stop 语义一致），
-  不进 breaker（它是健康态，incident 是任务态）；`presentationMeta` 在两处 `defineTool` 输出上加
-  （run: `{effect, incident?, category?}`，report: 已有形状不动）；persona 文本改两处 YAML（交付 + overlay，
-  G37 教训逐字一致）；skill 改 `skills/autogamer-flash/SKILL.md` + 同步锁。单测：梯（预 3 次零调用证明？预重试每次都调
-  hierarchy——断调用次数；post 坐标重试一次；pixel 指引文本；incident@3 与成功清零；launch_app 不重试）、
-  strictness 四档行为差、meta 字段、`deliveryShape` 式 persona/skill 文本锁。
-- **Verify**：`build` + 全量 `vitest`；变异：预次数 3→1/去 post 重试/去 incident/去 meta 各红其锁；
-  `contracts.spec.ts`（schema 未变）与 R6（YAML 改动）照旧；双门禁。
-- **Done means**：[ ] P1-a 梯锁全绿；[ ] P1-b meta+persona 锁；[ ] P1-c skill 锁；[ ] 全绿；
-  [ ] P1-a/b/c 分片关账（prose 进 CHANGELOGS，可分条）。
 
 ## 六、文档索引
 

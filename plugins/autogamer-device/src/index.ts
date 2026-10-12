@@ -13,7 +13,7 @@ import { unwrapText } from "./mcpText.js";
 import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js";
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
-import { defineRunDeviceAction, deviceKeyOf } from "./tools/runDeviceAction.js";
+import { defineRunDeviceAction, deviceKeyOf, ActionIncidents } from "./tools/runDeviceAction.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
 
@@ -38,6 +38,8 @@ export const Config: object = z.object({
   breakerCooldownMs: z.number().default(30_000),
   actionCallTimeoutMs: z.number().default(30_000),
   screenSize: z.tuple([z.number(), z.number()]),
+  /** P1-a validator strictness (S11 step 5); default "final" like upstream. */
+  strictness: z.union(["off", "final", "checkpoints", "strict"]).default("final"),
 });
 
 /**
@@ -61,6 +63,7 @@ export type PluginConfig = {
   breakerCooldownMs: number;
   actionCallTimeoutMs: number;
   screenSize?: readonly unknown[];
+  strictness?: "off" | "final" | "checkpoints" | "strict";
 };
 
 export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
@@ -69,6 +72,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     allowedFails: config.allowedFails,
     cooldownMs: config.breakerCooldownMs,
   });
+  const incidents = new ActionIncidents();
   const client = new ActionClient({
     command: config.actionServerCommand,
     env: config.actionServerEnv,
@@ -172,6 +176,8 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     client,
     logger,
     defaultDeviceKey: config.defaultDeviceKey,
+    strictness: config.strictness,
+    incidents,
     resolveScreenSize,
     onAction: () => ledger.markActed(agentIdOfCall()),
     // Screenshots go to the host attachment store so the model gets a real

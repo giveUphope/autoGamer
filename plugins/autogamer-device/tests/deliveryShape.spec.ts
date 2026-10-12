@@ -61,4 +61,24 @@ describe("delivery shape: shipped patch and live overlay agree", () => {
     // and the loop registers only provider/model (never cwd).
     expect(personaPrefix(FILES.shipped)).not.toMatch(/\{\{|\}\}/);
   });
+
+  it("carries the checker audit discipline (P1-b)", () => {
+    // Byte-identical across both files by the test above: assert once here.
+    const prefix = personaPrefix(FILES.shipped);
+    expect(prefix).toContain("Audit like a checker");
+    expect(prefix).toContain("tests_failed");
+    expect(prefix).toContain("incident");
+  });
+
+  it("ships the strictness ladder and plan scaffold in the flash skill (P1-c)", () => {
+    const skill = readFileSync(
+      fileURLToPath(new URL("../skills/autogamer-flash/SKILL.md", import.meta.url)),
+      "utf-8",
+    );
+    for (const level of ["`off`", "`final`", "`checkpoints`", "`strict`"]) {
+      expect(skill).toContain(level);
+    }
+    expect(skill).toContain("incident");
+    expect(skill).toContain("verify");
+  });
 });

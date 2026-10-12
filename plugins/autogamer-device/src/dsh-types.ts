@@ -92,6 +92,16 @@ export type DshUserMessage = UserMessage;
 /** Brand a message id without importing the host package at runtime. */
 export const messageId = (id: string): MessageId => id as MessageId;
 
+/**
+ * Structural copy of the `JsonValue` shape (declared by
+ * `@deepseek-ai/dsh-util-values`, which dsh-tools' own types import for
+ * `presentationMeta`): string | number | boolean | null | arrays / string-keyed
+ * objects thereof. Kept local because that package is not a direct dependency
+ * and pnpm isolation cannot resolve a type-only import of it; being a closed
+ * universal shape it cannot rot the way behavioral mirrors do (R21).
+ */
+export type JsonValue = string | number | boolean | null | JsonValue[] | { [key: string]: JsonValue };
+
 export interface DshEventOptions {
   global?: boolean;
 }

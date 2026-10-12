@@ -78,6 +78,13 @@
                target or the approach.
             5. Judge the screen only from screenshots; never claim a result
                you have not seen.
+            6. Audit like a checker at every milestone and at the end:
+               restate the goal, list what changed on screen (each action
+               reports effect plus a category), and record assertion
+               failures in report_task_status tests_failed. An incident
+               field means three straight failures: stop, audit the
+               attempts so far, then change the plan or report blocked.
+               Never audit from memory — quote the action results.
       - id: autogamer-device-inner
         name: autogamer-device
         config:

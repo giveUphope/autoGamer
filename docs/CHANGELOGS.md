@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#39 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#40 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1623,6 +1623,44 @@ G52 探针（已删）留下一句未判定的观察：`presetScope.ctx.plugin(.
 - [x] `pnpm test` ⇒ **111 passed / 1 skipped**（净增 6）；`pnpm run build` 0 error
 - [x] 变异校验：调用点回 `??` ⇒ Tier1 空串锁红；`reset` 删 ⇒ 新增红
 - [x] 文档门禁双 exit 0
+
+### #40 P1 智能层离线片：validator 梯 + prompt 级 checker + skills
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭离线片（ checker 载体用户已决：prompt 级；live 服从验收另行；无 G 号，属 checklist 分片）
+- **优先级**: 高（P1 质量主体）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「P1 智能层方案」住在 `TODO.md`（spec 提交早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+S11 的单层路由只有骨架：目标找不到即失败、无执行后升级、无连败 incident、无严格度开关；
+checker 审计无纪律文本、无可回放事实；skill 无梯级与脚手架。上游保真数：
+预检 3 次/`XML_BYPASSED` 转 pixel/burst 与 `launch_app` 不重试/连败 3 开 incident/
+`disappeared/shifted/occupied` 分类；checker 三不变量。
+
+#### 整改方案与实施
+
+1. P1-a（`src/tools/runDeviceAction.ts` + `src/index.ts`）：预执行 index/text 解析失败重取层级共 3 次，
+   不可解析层级速败、无 target 零取数速败；`effect=unchanged`（仅变更类）→ 新层级坐标重解一次
+   （index/text 专属；坐标/无目标动作沿上游不重试）→ 仍 unchanged → `pixel_guidance` + category
+   （`disappeared`/其余 `general`；`shifted/occupied` 需像素信号，留位）；同设备连败计数到 3 挂
+   `incident` + 审计文本（`checkpoints`/`strict` 加里程碑措辞），成功清零，`unknown`/cancel/环境/内部不碰计数；
+   `strictness` Config（`off/final/checkpoints/strict`，默认 `final` 对齐上游；`off` 单次无梯无 incident；
+   `strict` 变更成功带 `self_check`）。`tests/validatorLadder.spec.ts` 17 条。
+2. P1-b：两工具 `output.presentationMeta` 落 verdict/终局（R16，unknown 形状投 `{}` 不抛）；
+   两处 preset `persona` 加规则 6 审计纪律（逐字一致，`deliveryShape` 锁）；`JsonValue` 用结构相同的
+   本地别名（`dsh-util-values` 非直接依赖，pnpm 解析不到；封闭通用形，不腐）。
+3. P1-c：`SKILL.md` 加严格度四档 + plan 里程碑/`verify`/incident 脚手架；`deliveryShape` 锁文本。
+   不建 goal 工具（S11 可选，另立项）。
+
+#### 验收标准
+
+- [x] `pnpm test` ⇒ **132 passed / 1 skipped**（净增 21）；`pnpm run build` 0 error
+- [x] 变异校验：预 3→1（2 红）、阈值 999（3 红）、去 meta（1 红）、`JsonValue` 命名导入（构建红两次，
+      一次是具名实为他物、一次是默认导出他物——本地别名终解）
+- [x] R6 未跑（本环境无 DSH 宿主，`D:` 盘不存在）：YAML 改动以 `deliveryShape` 字节一致 + 单测为据，
+      live 复验待补；`contracts.spec.ts` 仅增字段/默认值断言，无 schema 形变；文档门禁双 exit 0
 
 ## 已关闭差距史（G*）
 

@@ -71,7 +71,10 @@ vi.mock("../src/actionClient.js", () => ({
 type ToolDefinition = {
   name: string;
   execute(args: Record<string, unknown>, exec: { signal: AbortSignal }): Promise<unknown>;
-  output?: { render(args: unknown, value: unknown): { type: string; text?: string; attachment?: unknown }[] };
+  output?: {
+    render(args: unknown, value: unknown): { type: string; text?: string; attachment?: unknown }[];
+    presentationMeta?(args: unknown, value: unknown): Record<string, unknown>;
+  };
 };
 
 const { apply, Config } = await import("../src/index.js");
@@ -487,6 +490,44 @@ describe("apply(): the result envelope must not starve the hierarchy (G42)", () 
 
     expect(rendered.map((part) => part.type)).toEqual(["text", "image"]);
     expect(rendered[0].text).not.toContain("att-1");
+  });
+});
+
+describe("apply(): checker facts persist on tool/result meta (P1-b)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("projects the validator verdict and nothing else", async () => {
+    const t = await registeredTools(CONFIG);
+    expect(
+      t.runDeviceAction.output.presentationMeta?.({}, {
+        result: "Success",
+        effect: "unchanged",
+        category: "disappeared",
+        pixel_guidance: "look",
+        incident: { consecutive_failures: 3 },
+      }),
+    ).toEqual({
+      effect: "unchanged",
+      category: "disappeared",
+      incident: { consecutive_failures: 3 },
+    });
+  });
+
+  it("projects an empty meta for verdict-less values instead of throwing", async () => {
+    const t = await registeredTools(CONFIG);
+    expect(t.runDeviceAction.output.presentationMeta?.({}, { result: "Success" })).toEqual({});
+    expect(t.runDeviceAction.output.presentationMeta?.({}, null)).toEqual({});
+  });
+
+  it("projects the terminal outcome for exit audits", async () => {
+    const t = await registeredTools(CONFIG);
+    expect(
+      t.reportTaskStatus.output?.presentationMeta?.({}, {
+        status: "blocked",
+        tests_failed: 2,
+        outcome: "blocked",
+      }),
+    ).toEqual({ status: "blocked", tests_failed: 2, outcome: "blocked" });
   });
 });
 
