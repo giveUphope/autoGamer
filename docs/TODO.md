@@ -393,35 +393,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
 - 📌 **S2 spike 处置（R2' 决定）**：artemis-worker producer spike **移入 R1 回退件**——R2' 主路径不 spawn py worker job（「任务=job」映射由「turn 内动作序列 + MCP 直连」取代，已由 MCP 直连 spike 覆盖）；仅当直通质量 spike 失败、回退三段式双跑时才执行原 S2 spike
 - ✅ **host/client 双端定论**：一期纯 host 插件（安装流已验证）；client 侧 spike 推迟到 P3 需要自定义 toolview 时
 
-### 细碎收尾轮（2026-10-12 按 R22 三步序：查现状 → 本方案 → 实现）
-
-**第 1 步「查」的原文与出处**：
-
-- G8/G11/G14/G24（验锁直关，无代码）：G8 终态语义 = `reportTaskStatus.ts`（completed/blocked + tests_failed 双轴，
-  `concludeTurn`）+ G41 单测锁；exit-code 映射随 worker 消失（无残留代码）；G11 工具层错误分类 = `classify.ts` +
-  G38/G33/callTransport 三层锁；G14 状态词汇 = report 参数 enum + 值锁；G24 归一域/索引端解析 = `coord.ts` +
-  `hierarchy.ts` + G42 七锁 + 真机 1600x900/mocks 1080x2400 双证。
-- G10（`@modelcontextprotocol/client@2.0.0/dist/index.d.mts:2419`）：
-  `callTool(params, options?: CallToolRequestOptions)`，options 承 `RequestOptions.signal`（读侧 `:6072-6162`
-  监听 abort 即 cancel）。现状：`ActionClient.callTool(name, args)` 不收 signal，取消靠事后 `aborted` 判
-  （慢：等应答或自超时）；闸门释放已在 `finally`（✓ 不动）。
-- G13（inventory/01 §1.8：提交防抖 1.0s 同 goal+设备）：工具内逐动作 1s 窗会误伤合法连击（音量×2、删除×2、
-  前后截图轮询皆串行等待结果），故取 in-flight 去重——同 agent 同签名变更动作在飞即拒，完成后即放行；
-  只读动作（幂等读）与串行重复（前一次已落定）永不误伤。键 = agent + device + action + 稳定化参数（去 reason）。
-
-- **What**：① G10：`exec.signal` 穿透 `dispatch → buildCall/resolvePixelTarget/callTransport → ActionClient.callTool → SDK`
-  （`index.ts` 无 exec 的探针/帧路径不动，事后判保留）；② G13：`execute` 内 in-flight Map（变更类专属，
-  `finally` 清；`agentIdOfCall` 经 RouterOptions 进（index 接线，直驱 stub），缺省 anonymous）；
-  ③ G8/G11/G14/G24 验锁直关（本条 prose，不动码）。
-  **范围外**：G26（PID 语义需另看 transport.close，另立项）、G3/G28 池化、任何 live。
-- **How**：`ActionClient.callTool(name, args, signal?)` → SDK 第二参 `{signal}`（有才传）；
-  `callTransport`/`resolvePixelTarget`/`buildCall` 加 signal 形参；`stableKey` 小 helper（JSON 键排序去 reason）；
-  fake Context 不动（guard/dispatch 外）；Tier1 不动。
-- **Verify**：`build` + 全量 `vitest`；G10：mock `MOCK_DELAY_MS` + 100ms 后 abort ⇒ `task: action cancelled`
-  且远快于自超时（vitest 5s 即判据）；G13：并发同签名一成一拒、串行同签名双成、异签名/异 agent/只读双成；
-  变异：信号不透传 ⇒ G10 用例 5s 红；去重 Map 摘 ⇒ 并发用例双成；双门禁。
-- **Done means**：[ ] 信号透传锁；[ ] 去重五锁；[ ] 全绿；[ ] G8/G10/G11/G13/G14/G24 关账（prose 进 CHANGELOGS）。
-
 ## 六、文档索引
 
 | 文档 | 内容 |
