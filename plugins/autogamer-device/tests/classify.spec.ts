@@ -20,6 +20,15 @@ describe("classify", () => {
     expect(classifyMessage("connection refused by helper")).toBe("environment");
   });
 
+  it("reads a legacy bare Failed as environment (fail-safe, S4)", () => {
+    // normalizeOutcome maps the legacy "Failed" string to "device reported
+    // failure"; the device marker then classifies environment. An
+    // indistinguishable failure counts toward the breaker rather than slipping
+    // through — that is the fail-safe side of the asymmetry, pinned here so a
+    // future reclassification is deliberate.
+    expect(classifyMessage("device reported failure")).toBe("environment");
+  });
+
   it("a successful result never needs classification", () => {
     expect(classifyActionFailure({ ok: true, code: "OK" })).toBe("task");
   });

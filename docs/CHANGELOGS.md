@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#40 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#41 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1661,6 +1661,47 @@ checker 审计无纪律文本、无可回放事实；skill 无梯级与脚手架
       一次是具名实为他物、一次是默认导出他物——本地别名终解）
 - [x] R6 未跑（本环境无 DSH 宿主，`D:` 盘不存在）：YAML 改动以 `deliveryShape` 字节一致 + 单测为据，
       live 复验待补；`contracts.spec.ts` 仅增字段/默认值断言，无 schema 形变；文档门禁双 exit 0
+
+### #41 测试同步审查跟进：三处实现 bug 与覆盖锁
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（AGENTS 测试同步习惯的跟进提交；无 G 号）
+- **优先级**: 高（含一处 load-bearing：incident 永不到阈值）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+按 AGENTS 习惯派 review 子代理扫本轮触及的插件单测（`ses_ed0b26b6`，只读审查、未改文件），
+全量当时 132/1 绿。报告三处有证据的实现 bug + 若干覆盖缺口：
+
+- **D1（load-bearing）**：`unchangedVerdict` 计了 incident，但 `execute` 成功分支无条件 `noteSuccess`
+  （`effect !== "unknown"` 即清）——unchanged 连败每次被清零，`incident` 永不到 3，checker persona 的
+  incident 回放永不触发。
+- **D2**：`reresolveAsCoordinate` 内的传输死（`callTransport`/`requireScreenSize` 抛 `environment:`）
+  发生在 `buildCall` 的 try 之外，直达 `execute` catch 判成 `internal`（双前缀 `internal: environment: …`，
+  模型被告知勿重试、熔断不记）。
+- **D3**：`index.ts` 探针截图直调传输，死机时无前缀抛错→ `internal`，默认配置（无 `screenSize`）下首动作
+  报 internal 且熔断不开。
+- 另：`defineTool` 对分类器先验参（非法直返 false）——分类测试须传合法参；legacy `"Failed"` → environment
+  属 S4 fail-safe 已有语义，值得钉死。
+
+#### 整改方案与实施
+
+1. D1：成功分支 `effect` 为 `unchanged` 时跳过 `noteSuccess`（`unknown` 早已跳过）。
+2. D2：`reresolveAsCoordinate` 调用包 try/catch——`environment:` 前缀转环境失败返回，真无前缀才重抛走 internal。
+3. D3：探针截图传输异常返回 `undefined`（探针 miss），由 `requireScreenSize` 按既有 `environment` 文案分类开闸。
+4. 锁：unchanged 累积到 incident（Tier1 同形已有 G33 底）、mid-ladder/截图分支/D3 探针三处传输死 environment、
+   `Failed`→environment fail-safe 钉、`swipe` 缺 target/`stop_app` 空包/未知动作/合法 key 映射四组、
+   incident 里程碑正反、前缀钉死（`task:`/`environment:`，cooling 无前缀系 guard 原生形态，不断言它）。
+
+#### 验收标准
+
+- [x] `pnpm test` ⇒ **141 passed / 1 skipped**（净增 9）；`pnpm run build` 0 error
+- [x] 变异校验：D1 回退（成功分支无条件清零）⇒ 两红（恰为 D1 签名）；D2 去 catch ⇒ `internal: environment:` 红；
+      D3 去 catch ⇒ `internal: Connection closed` 红
+- [x] 未做项（如实记）：review 提的 harness 四合一收敛、假定时器、py 侧 FastMCP 面行为测试、
+      超时-dispose-respawn 锁—— Consolidation 计划见 review 会话记录，TODO 测试债行已覆盖方向，不另开工；
+      `classify.spec.ts` 成功断言 vacuous 状况保留（改函数超出本轮）
 
 ## 已关闭差距史（G*）
 

@@ -109,9 +109,43 @@ describe("router input validation (G34)", () => {
       tool.execute({ action: "launch_app", package: "", reason: "t" }, exec() as never),
     ).rejects.toThrow(/^task: package must be a non-empty string/);
     await expect(
+      tool.execute({ action: "stop_app", package: "", reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: package must be a non-empty string/);
+    await expect(
       tool.execute({ action: "open_link", url: "", reason: "t" }, exec() as never),
     ).rejects.toThrow(/^task: url must be a non-empty string/);
     expect(calls).toHaveLength(0);
+  });
+
+  it("rejects a swipe without a starting target", async () => {
+    const { tool } = setup();
+    await expect(
+      tool.execute(
+        { action: "swipe", end_coordinate: [100, 100], reason: "t" },
+        exec() as never,
+      ),
+    ).rejects.toThrow(/^task: target\.coordinate/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("rejects an unknown action without touching the device", async () => {
+    const { tool } = setup();
+    await expect(
+      tool.execute({ action: "fly", reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: unsupported action/);
+    expect(calls).toHaveLength(0);
+  });
+
+  it("dispatches known press_key mappings", async () => {
+    const { tool } = setup();
+    await tool.execute({ action: "press_key", key: "home", reason: "t" }, exec() as never);
+    await tool.execute({ action: "press_key", key: "5", reason: "t" }, exec() as never);
+    await tool.execute({ action: "press_key", key: "KEYCODE_ENTER", reason: "t" }, exec() as never);
+    expect(calls.map((call) => (call.args as { keycode: string }).keycode)).toEqual([
+      "KEYCODE_HOME",
+      "KEYCODE_5",
+      "KEYCODE_ENTER",
+    ]);
   });
 
   it("still dispatches a fully valid call", async () => {

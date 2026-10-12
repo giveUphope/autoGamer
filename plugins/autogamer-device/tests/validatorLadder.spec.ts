@@ -249,15 +249,18 @@ describe("validator ladder: incident ledger", () => {
     const messages = await failThrice();
     expect(messages[0]).not.toContain("incident");
     expect(messages[1]).not.toContain("incident");
-    expect(messages[2]).toContain("3 consecutive task failures");
+    expect(messages[2]).toMatch(/^task:.*3 consecutive task failures/);
     expect(messages[2]).toContain("report_task_status");
   });
 
   it("uses milestone wording above final", async () => {
     const messages = await failThrice("checkpoints");
+    expect(messages[0]).not.toContain("Milestone");
     expect(messages[2]).toContain("Milestone audit");
     const strict = await failThrice("strict");
     expect(strict[2]).toContain("Milestone audit");
+    const fin = await failThrice("final");
+    expect(fin[2]).not.toContain("Milestone");
   });
 
   it("never attaches an incident with strictness off", async () => {
@@ -313,5 +316,71 @@ describe("validator ladder: strictness prompts", () => {
       exec() as never,
     )) as Record<string, unknown>;
     expect(finalValue).not.toHaveProperty("self_check");
+  });
+});
+
+describe("validator ladder: unchanged streaks and mid-ladder transport death", () => {
+  it("accumulates unchanged streaks to an incident", async () => {
+    const tool = setup("checkpoints");
+    for (let i = 0; i < 3; i += 1) {
+      harness.hierarchies.push(WITH_TARGET, WITH_TARGET);
+      harness.compares.push(false, false);
+      const value = (await tool.execute(
+        { action: "click", target: { index: 1 }, reason: "t" },
+        exec() as never,
+      )) as Record<string, unknown>;
+      if (i < 2) {
+        expect(value).not.toHaveProperty("incident");
+      } else {
+        expect(value.incident).toEqual({ consecutive_failures: 3 });
+        expect(value.audit_request).toContain("Milestone audit");
+      }
+    }
+  });
+
+  it("classifies a transport death mid-ladder as environment", async () => {
+    let hierarchies = 0;
+    const failing = defineRunDeviceAction({
+      gate: new DeviceGate(),
+      breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
+      client: {
+        callTool: async (name: string) => {
+          if (name === "get_ui_hierarchy") {
+            hierarchies += 1;
+            if (hierarchies >= 2) throw new Error("Connection closed");
+            return { content: [{ type: "text", text: WITH_TARGET }] };
+          }
+          return { content: [{ type: "text", text: "Success" }] };
+        },
+      } as never,
+      logger: { info: () => {}, warn: () => {} },
+      defaultDeviceKey: "d0",
+      incidents: new ActionIncidents(),
+      resolveScreenSize: async () => ({ width: 720, height: 1600 }),
+      captureFrame: async () => "frame",
+      compareFrames: async () => false,
+    });
+    await expect(
+      failing.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^environment: action transport failed/);
+  });
+
+  it("classifies a screenshot-branch transport death as environment", async () => {
+    const failing = defineRunDeviceAction({
+      gate: new DeviceGate(),
+      breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
+      client: {
+        callTool: async () => {
+          throw new Error("Connection closed");
+        },
+      } as never,
+      logger: { info: () => {}, warn: () => {} },
+      defaultDeviceKey: "d0",
+      incidents: new ActionIncidents(),
+      resolveScreenSize: async () => ({ width: 720, height: 1600 }),
+    });
+    await expect(
+      failing.execute({ action: "take_screenshot", reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^environment: action transport failed/);
   });
 });

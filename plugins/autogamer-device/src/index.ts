@@ -85,7 +85,15 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     if (configured) return configured;
     const cached = screenSizeCache.get(key);
     if (cached) return cached;
-    const base64 = unwrapText(await client.callTool("take_screenshot", {}));
+    // A dead server here is a transport failure, not a plugin defect (D3):
+    // report the probe as missed and let requireScreenSize classify it as
+    // environment, so the breaker opens instead of staying closed on internal.
+    let base64: string;
+    try {
+      base64 = unwrapText(await client.callTool("take_screenshot", {}));
+    } catch {
+      return undefined;
+    }
     if (base64.startsWith("Error:")) return undefined;
     const size = imageSizeFromBase64(base64);
     if (size) screenSizeCache.set(key, size);

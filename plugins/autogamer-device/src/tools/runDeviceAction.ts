@@ -485,10 +485,13 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           throw new Error(`${result.failure}: ${result.message}`);
         }
         breaker.recordSuccess(key);
-        // An unknown verdict is a detection failure (fail-open): it neither
-        // counts nor resets the incident ledger — only a decided outcome moves it.
-        if (isLadderOn(options.strictness) && (result.value as { effect?: unknown } | null)?.effect !== "unknown") {
-          incidents.noteSuccess(key);
+        // Unchanged streaks count toward incident inside dispatch: resetting
+        // here would wipe them before they ever reach the threshold (D1). An
+        // unknown verdict is a detection failure (fail-open): it neither
+        // counts nor resets.
+        if (isLadderOn(options.strictness)) {
+          const effect = (result.value as { effect?: unknown } | null)?.effect;
+          if (effect !== "unknown" && effect !== "unchanged") incidents.noteSuccess(key);
         }
         logger.info(`[route] ok action=${action} device=${key}`);
         return result.value;
@@ -627,7 +630,20 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     // FRESH hierarchy and run the action once more as plain coordinates.
     // Coordinate-called and target-less actions go straight to pixel guidance —
     // bursts and launch_app never retry upstream.
-    const retry = await reresolveAsCoordinate((args.target ?? {}) as TargetInput, key);
+    //
+    // A transport death here is environment (the server died between tap and
+    // re-resolution), not a plugin defect: only genuinely unprefixed throws
+    // keep falling through to the execute-level internal bucket (D2).
+    let retry: { status: "found"; normalized: [number, number] } | { status: "missing" } | { status: "nontarget" };
+    try {
+      retry = await reresolveAsCoordinate((args.target ?? {}) as TargetInput, key);
+    } catch (error) {
+      const message = error instanceof Error ? error.message : String(error);
+      if (message.startsWith("environment:")) {
+        return { ok: false, failure: "environment", message: message.replace(/^(environment|task):\s*/, "") };
+      }
+      throw error;
+    }
     if (retry.status === "found") {
       const retried = await dispatch(
         action,

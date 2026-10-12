@@ -26,7 +26,7 @@ const BAD_ACTION_SERVER = ["g33-no-such-binary-xyz"];
 
 let seq = 0;
 
-async function boot(): Promise<Context> {
+async function boot(withScreenSize = true): Promise<Context> {
   const root = new Context();
   for (const specifier of SERVICE_PACKAGES) {
     const mod = (await import(specifier)) as { default: unknown };
@@ -41,7 +41,7 @@ async function boot(): Promise<Context> {
     } as never,
     {
       actionServerCommand: BAD_ACTION_SERVER,
-      screenSize: [1080, 2400],
+      ...(withScreenSize ? { screenSize: [1080, 2400] } : {}),
       defaultDeviceKey: "g33d",
       actionCallTimeoutMs: 5_000,
     } as never,
@@ -70,7 +70,7 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
     const root = await boot();
     const first = await call(root, "run_device_action", { action: "back", reason: "open the breaker" });
     expect(first.isError).toBe(true);
-    expect(JSON.stringify(first)).toContain("transport failed");
+    expect(JSON.stringify(first)).toContain("environment: action transport failed");
 
     const second = await call(root, "run_device_action", {
       action: "take_screenshot",
@@ -91,8 +91,27 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
     });
     expect(other.isError).toBe(true);
     const text = JSON.stringify(other);
-    expect(text).toContain("transport failed");
+    expect(text).toContain("environment: action transport failed");
     expect(text).not.toContain("cooling down");
+  });
+
+  it("classifies a dead-server probe as environment, then cools down (D3)", async () => {
+    const root = await boot(false);
+    // No screenSize configured: the probe screenshot hits the dead server.
+    const first = await call(root, "run_device_action", {
+      action: "click",
+      target: { coordinate: [500, 500] },
+      reason: "probe dies",
+    });
+    expect(first.isError).toBe(true);
+    expect(JSON.stringify(first)).toContain("environment: screen size unavailable");
+
+    const second = await call(root, "run_device_action", {
+      action: "take_screenshot",
+      reason: "guarded",
+    });
+    expect(second.isError).toBe(true);
+    expect(JSON.stringify(second)).toContain("cooling down");
   });
 
   it("never guards the report outlet", async () => {
@@ -114,7 +133,7 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
       reason: "open via empty serial",
     });
     expect(first.isError).toBe(true);
-    expect(JSON.stringify(first)).toContain("transport failed");
+    expect(JSON.stringify(first)).toContain("environment: action transport failed");
     // …then the omitted-serial (default-key) call must see the same hold.
     // Before deviceKeyOf, execute keyed "" while the guard keyed "default".
     const second = await call(root, "run_device_action", {
