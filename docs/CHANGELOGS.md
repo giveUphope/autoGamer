@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#48 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实，#48 更正 #47 一处勾早了的验收。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#49 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1969,6 +1969,46 @@ i/lf  w/lf    attr/text eol=crlf    plugins/autogamer-device/spike/run-headless.
 - [x] `git ls-files --eol | grep -c -- "-text"` ⇒ 28（在库二进制未被误当文本）
 - [x] `git ls-files --eol | grep -c "w/mixed"` ⇒ 0
 - [x] 复跑命令写进本条，后续任何人可自行核对
+
+### #49 判据红了却照样提交：表格行里写了换行，而我的命令链用管道吞掉了退出码
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（表格修复 + 判据命令形状改成可看退出码，并补进 R27 第 5 条）
+- **优先级**: 中（不是产品缺陷，但它让 #46 刚接进 CI 的那类门禁在人工路径上失效）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+改 `docs/TODO.md` 的 G54 行时，我把一段带**换行**的长文本贴进了 markdown 表格单元：
+表格行不能跨物理行，于是那一行被劈成 **8 个物理行**，`scripts/check_doc_tables.py` 立刻报两条——
+
+```
+PROBLEM: docs/TODO.md: line 119 does not close with a pipe
+PROBLEM: docs/TODO.md: block at line 127 row 2 is not a separator row
+FAIL: docs/TODO.md
+```
+
+**门禁是对的，是我的调用方式没牙**：那条链写成
+`uv run python -X utf8 scripts/check_doc_tables.py docs/TODO.md 2>&1 | tail -1 && ... && git commit ...`，
+管道末端的退出码属于 `tail`（0），`&&` 于是按"通过"继续走，**塌掉的表被提交进 `a311bb9`**。
+这正是 R27 批评过的形态，只不过这次红的是执行判据的那只手。
+
+#### 整改方案与实施
+
+- `docs/TODO.md`：把 G54 行折叠回**单一物理行**（脚本按 `| G54 |` 起点到首个以 `|` 结尾的行合并），
+  复核该单元格仍是 **3 cells**、`**` 计数 60（偶）、反引号计数 104（偶），无残留换行。
+- 命令形状统一改为 `cmd > /tmp/out 2>&1; echo "exit=$?"` 再读输出；本轮起所有门禁复跑都用这个形状。
+- 把这条教训补进 [守则 R27](migration/plugin-contract-rules.md) 的**判据第 5 条**：
+  判据命令不许拿过滤器/分页器的退出码当判据（`set -o pipefail` 或重定向后读 `$?`）。
+
+#### 验收标准
+
+- [x] `uv run python -X utf8 scripts/check_doc_tables.py; echo $?` ⇒ **exit=0**（不带管道）
+- [x] `uv run python -X utf8 scripts/check_doc_registry.py; echo $?` ⇒ **exit=0**
+- [x] `uv run python -X utf8 scripts/check_doc_tables.py --selftest; echo $?` ⇒ **exit=0**，8 例注入全触发
+- [x] G54 行单物理行、3 cells；`git status` 干净
+- [x] **变异校验**：同一行内再插一个换行 ⇒ `check_doc_tables.py` 报 `does not close with a pipe`
+      且 `echo $?` 为 1（证明修复后的判据仍有牙，且这次不会被管道吃掉）
 
 ## 已关闭差距史（G*）
 
