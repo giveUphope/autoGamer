@@ -5,9 +5,9 @@ AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`r
 审批、会话记忆全部由宿主提供。
 
 - 方案与进度：[`../../docs/TODO.md`](../../docs/TODO.md)（活文档）
-- **动手前必读**：[`../../docs/migration/plugin-contract-rules.md`](../../docs/migration/plugin-contract-rules.md)（守则 R1-R19）
+- **动手前必读**：[`../../docs/migration/plugin-contract-rules.md`](../../docs/migration/plugin-contract-rules.md)（守则逐条；现行条款与范围看 [`registry.md`](../../docs/migration/registry.md)）
 - 编号查表：[`registry.md`](../../docs/migration/registry.md)｜术语查表：[`glossary.md`](../../docs/migration/glossary.md)
-- 当前状态（2026-10-10）：🔴 **P0 未完，卡在 G30**——工具 `register()` 成功但没进 agent 工具面
+- 当前状态与阻塞点**不在本文件维护**：读 [`../../docs/TODO.md`](../../docs/TODO.md) 的「零、当前状态」。本文件曾自持一份状态副本，结案后没人回改（见 `docs/CHANGELOGS.md` **#30**）
 
 ## Layout
 

@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#30 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30 是文档层自身的漂移。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#31 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -1325,6 +1325,7 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
   `grep -rn "R1-R[0-9]\|G1-G[0-9]" docs/TODO.md docs/migration/README.md docs/migration/plugin-contract-rules.md` ⇒ **无输出**（改前 5 处）。
   两个刻意保留的形状要写清：**①** 指向性写法 `R2-R8` / `R6-R15`（「去做这类事前读这几条」）引用的是具体条款，不是全集，保留；**②** 守则首行改成 `R1…R19 首轮成文` 这种**点名那一轮**的省略号形态，同句已声明「不是条款全集，范围只看 registry」，故不入本判据的连字符形态。`CHANGELOGS.md`（本文件）与 `registry.md` 不在判据范围内——前者要原样引用改前文字，后者本就是权威处。
 - **`AGENTS.md` 是已知的例外，不是漏网**：它还写着「守则 R1-R26」。该行当前为真，且它把 R20-R26 的要点整段内联给 agent（作业入口要自足），所以本次不动它；**新增条款时必须同步这一行**——它是唯一被有意维护的复述处。
+  ⚠️ **这条豁免已被 `#31` 撤回**：把例外留给「人工记得去改」正是它腐烂的方式；现在 `AGENTS.md` 也改成指向 registry，并由门禁机械拦。
 - **入口页不再自称当前阻塞点**：`grep -rn "当前卡在" docs/migration/README.md` ⇒ **无输出**（事故经过只留在本条，§五 的规则行改引 `changelogs #30`）。
 - **旧计数不再出现**：`grep -rn "含 18 条已关闭" docs/ AGENTS.md | grep -v CHANGELOGS` ⇒ **无输出**。
 - `docs/migration/README.md` §三 表新增 `docs/CHANGELOGS.md` 行（行数 11 → 12），且**每一行体量数字须与实测对上**：
@@ -1335,6 +1336,43 @@ callee 是 `getattr` 绑定的**别名**，首参是**模块常量**——抽取
 - **尺子现在也量 CHANGELOGS 自己**：`python -X utf8 scripts/check_doc_tables.py` 的输出含 `OK: …\docs\CHANGELOGS.md`（8 table block(s) checked）；`python -X utf8 scripts/check_doc_tables.py --selftest` ⇒ `SELFTEST: ruler fires on all six injected defects`（证明加文件没把报警能力加钝）。
 - `uv run ruff check scripts/check_doc_tables.py` / `uv run ruff format --check scripts/check_doc_tables.py` 通过。
 - `TODO.md` 状态表「下一步（按序）」内 `**2)**` 恰好出现一次：`grep -o "\*\*2)\*\*" docs/TODO.md | wc -l` ⇒ 该行计数为 1。
+
+### #31 把 #30 的教训做成规则与判据：派生事实只有一处权威
+
+- **日期**: 2026-10-12
+- **状态**: ✅ 已关闭（规则入 `AGENTS.md`，两条判据入门禁，现存复述全部拆除）
+- **优先级**: 中（不修就会每轮复发：#30 一轮修了六处，实现本条的过程中又冒出五处）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「文档层经验固化：派生事实只有一处权威，且必须有机械看守」住在 `TODO.md` §五（spec 提交 `6e2bfb8` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+#30 修的是症状：六处复述被逐个改回引用，但**没有任何东西阻止下一轮再长出六处**。判据面缺位的证据在本条实现过程中当场出现：
+
+- 我在 #30 里手工重测了一遍体量数字，随后自己写方案、改守则，README 的数字**又错了 5 行**——新加的体量校验第一次运行即抓到：`docs/TODO.md` 写 410 行（实测 438）、`AGENTS.md` 写 175 行（实测 191）、守则 KB 少算、`inventory` 求和差 1 行，外加一处**路径基准不成立**：表里写 `../plugins/autogamer-device/README.md`，从 `docs/migration/` 出发指向 `docs/plugins/`，根本不存在。
+- `AGENTS.md` 与 `plugins/autogamer-device/README.md` 各自持有一份「条款全集」和一份「当前状态」。包 README 那条尤其说明问题：它写着「当前状态（2026-10-10）：🔴 **P0 未完，卡在 G30**」——G30 在 **#10** 就结案了，P0 也已收官，而包首页一直挂着它。
+- #30 的验收里我把 `AGENTS.md` 判成「有意维护的例外」，理由是它要自足。**这条判断被本条撤回**：自足靠的是指向权威 + 内联单条 id（`R6`/`R20` 这种），不是抄一个会腐烂的总数。
+
+**共同形状**：可推导的值被抄成第二份权威，而两份门禁只验「引用能否解析」和「表格形状」——抄来的值即使与源头不符也照样全绿。
+
+#### 整改方案与实施
+
+1. **规则成文**（`AGENTS.md` 新增一节 "Docs: a derived fact has exactly one authority"）：可推导的东西（编号范围/条数、文档体量、当前阻塞点）只许存在一处，别处一律指针；并给出四条去处（范围→`registry.md`、状态→`TODO.md` §零、结案正文→`CHANGELOGS.md`、体量→生成）与两条门禁名。
+2. **`scripts/check_doc_registry.py` 判定 6**：`\b([DSGR])1-\1?(\d+)` 命中的「从 1 号到当前最大号」全集形态，只允许出现在 `registry.md`（权威）、`CHANGELOGS.md`（存档须原样引用改前文字）、以及**定义该序列的 `## ` 标题行**（如 `## 二、决策记录（现行有效，D1-D17）`）；其余按 `相对路径:行号` 报错。
+   指向性写法 `R2-R8`、`R6-R15` 不在此列——它们引用具体条款而非总数，文本稳定。例外走**文件级白名单**，不设行内标记：标记清单本身会变成第二份要维护的东西。
+3. **`scripts/check_doc_tables.py` 接管体量**：新增 `check_sizes()`，默认运行即逐行核对 `docs/migration/README.md` §三 的「N 行 / X KB」与真实 stat（KB 统一一位小数）；`--refresh-sizes` 直接改写该列，从此**没有人手抄数字**。表内路径统一改成仓库根相对并在「体量口径」note 里写明约定；解析不到的行是 FAIL 而不是跳过。
+4. **现存复述全部拆除**：`AGENTS.md` 文档地图两行（`D1-D17`/`S1-S11`/`R1-R26` → `D*`/`S*` + 指向 registry）、包 README 的守则范围行与「当前状态」行（状态改指针）、`migration/README.md` §一 的规则提示行。
+5. **报警能力自证**：registry selftest 加第三条注入（`CAUGHT [total-range restatement]`，锚点从差距表现取，不写死具体编号——沿 #16 的教训）；tables selftest 加 (g) 体量数字过期、(h) 体量表整块消失两类注入，末行改为 `all {FIRED} injected defects` 用计数器而非硬编码条数。
+
+#### 验收标准
+
+- `python -X utf8 scripts/check_doc_registry.py` ⇒ exit 0，输出含 `total-range restatements outside the authority: 0`；`--selftest` ⇒ `SELFTEST: reference gate fires on all 3 injected defects` 且 registry/TODO 均字节级还原
+- `python -X utf8 scripts/check_doc_tables.py` ⇒ exit 0 含 `12 size row(s) checked`；`--selftest` ⇒ `SELFTEST: ruler fires on all 8 injected defects`；`--refresh-sizes` ⇒ 无漂移时 `0 of 12 row(s) rewritten`
+- **判据真的会红（实做）**：临时把 `AGENTS.md` 的指向写法改回「从 1 号到当前最大号」的全集形态 ⇒ `PROBLEM: AGENTS.md:31 restates the total id range ...`，exit 1，随后字节级还原（`restored identical: True`）
+- **不再有第二份状态**：`grep -rn "当前状态" plugins/autogamer-device/README.md` ⇒ 只命中指针句；`grep -rn "体量数字用" docs/migration/README.md` ⇒ 无输出（旧口径已换成脚本口径）
+- `uv run ruff check scripts/` ⇒ All checks passed；`uv run ruff format --check scripts/check_doc_registry.py scripts/check_doc_tables.py` ⇒ already formatted。
+  **但 `uv run ruff format --check scripts/` 整体仍有 1 处红**——那是既有债（`scripts/check_dependency_sources.py:55` 过长，非本轮引入，本轮未顺手改以免混进无关提交），已按 **G55** 登记
+- **偏差如实记**：① 体量数字第一次跑就纠正了我自己在 #30 手抄的值，KB 口径由「整数与一位小数混用」统一为一位小数（`inventory` 行 217 → 216.9 KB）；② #30 关于「`AGENTS.md` 是有意例外」的判断已由本条撤回，#30 原文加了一行取代标注；③ 未新增守则条款——文档卫生的作用域是全仓库而非插件契约，按 `registry.md` 的规则不占 `R*` 号
 
 ## 已关闭差距史（G*）
 

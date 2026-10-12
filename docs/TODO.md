@@ -115,6 +115,7 @@
 | G53 | 前端 lockfile 全镜像 URL 使 `check_dependency_sources` 门禁红 | 保留（**既有状态**，非插件轨道引入；CI 首次真跑才暴露）：把 `apps/showcase_ui_v2/package-lock.json` 的 `resolved` 重取为 `https://registry.npmjs.org/...` 再复跑门禁 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run | 保留：**两次 push 零 run**（`a4a0f44..5232265` 与 `5232265..1d24416` 之后 `total_count` 仍为 1，唯一那次是 `workflow_dispatch` 且 `head_sha` 是前一个提交，排除去重解释），只有 `gh workflow run` 起得来；Actions `enabled:true`、workflow `state:active` 都不管用——查清是 fork 开关、计费还是提交邮箱之前，任何「CI 证据」必须写明是手动派发 |
 | G52 | 追问路径仍只有 fake 事件总线的证据 | 保留：真实 `dsh-session` 已证明能挂到裸 `new Context()` 上（`ctx.sessions` = `SessionStore`），差的是用真 `turn/end` 驱动 G44 那条 `followup`（agent handle 需 `ctx.agents.setFactory`），补进 Tier 1 后 `apply.spec.ts` 的 fake 只留纯逻辑 |
+| G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红 | 新开（2026-10-12 做 #31 时顺手实测，既有状态、与本轮改动无关）：`uv run ruff format --check scripts/` ⇒ `1 file would be reformatted`（`check_dependency_sources.py:55` 那一行过长），而 `.github/workflows` 的 `python-quality` job 跑的是 `ruff format --check .` ⇒ 该 job 必红。修法一条命令：`uv run ruff format scripts/check_dependency_sources.py`。与 **G53**（同一脚本的**运行时**门禁红）是两件事，别合并关闭 |
 | G8 | 终态权威 | 收缩：汇报工具语义（S2）；exit code 映射随 py worker 消失 |
 | G10 | 动作中断语义 | 收缩：exec.signal → 取消 MCP 请求/释放闸门；录屏后补时补 graceful stop |
 | G11 | 熔断判定信号 | 保留：工具层错误分类（S4，不再查 DB has_steps） |
@@ -366,34 +367,6 @@ T2 的动作序列把 G42 与 S10② 都跑成了正例：`take_screenshot` → 
   - [x] skill 根路径不再写死绝对路径：官方 `!!js` + `createRequire(baseUrl).resolve('autogamer-device/package.json')` 形态**live 走通**——`<available_skills>` 列出 `autogamer-flash`，模型调 `skill({name:"autogamer-flash"})` 拿回 1784 字符正文与 `skill_resources` 基目录
   - [x] 生效判定全部来自官方检查器（R9：`--dump-config` 合成树 + profile `package.json` 的 bundles 列表，不拿 `dsh plugin list` 当证据）
   - [x] G31/G32/D17 结案进 CHANGELOGS，`registry.md` 同步，两份门禁脚本重跑（#17/#18/#26 + registry 已关闭行）
-
-### 文档层经验固化：派生事实只有一处权威，且必须有机械看守（2026-10-12，按 R22 三步序：查文档 → 本方案 → 实现）
-
-- **What**：把 changelogs **#30** 那轮修正换成长期规则，范围只覆盖「文档层 + 它的两份门禁」。交付四件——
-  ① `AGENTS.md` 增一节**写作红线「派生事实只有一处权威」**（三条去处 + 一句为什么）；
-  ② `scripts/check_doc_registry.py` 新增判定：**编号全集形态的范围**（`D1-Dn` / `S1-Sn` / `G1-Gn` / `R1-Rn`）只许出现在权威处 `registry.md`、存档 `CHANGELOGS.md`、以及**定义该序列的小节标题行**；别处复述即 FAIL；
-  ③ `scripts/check_doc_tables.py` 新增体量看守：默认校验 `docs/migration/README.md` §三 的「N 行 / X KB」与真实 stat 一致，`--refresh-sizes` 一条命令改写；
-  ④ `AGENTS.md` 现存的那处复述（「守则 R1-R26」）按新判据改成指向 registry。
-  **范围外**：不在守则里新增条款（文档卫生的作用域不是插件契约守则，且加条款要同时改 registry 与 AGENTS 的内联枚举，本身又是一处复述）；不动 py / 前端 / 插件任何代码；不建第三份门禁脚本。
-- **How**（决策与理由）——
-  (a) **规则落 `AGENTS.md` 不落守则**：守则管「插件契约红线」，本条管全仓库文档；两处都不是"同一事实"，不存在复述。
-  (b) **判据只取「从 1 起的连字符范围」形态**：`R2-R8`、`R6-R15` 是「去读这几条」的指向性引用，条款文本稳定、可核对；`R1-R26` 读作「条款全集」，每新增一条它就错一次。省略号形态（`R1…R19`，#30 用于「那一轮」的历史描述）不入判据。
-  (c) **例外只有白名单，没有行内标记**：允许处固定为三来源（`registry.md` / `CHANGELOGS.md` / `## ` 标题行）。写成 `<!-- allow-range -->` 之类会让「例外清单」变成第二个需要维护的副本——正是本条要消灭的东西。
-  (d) **体量数字改成生成**：#30 我手工重测了一遍；它是每次编辑都会变的派生值，手工抄第二次就是等着再腐烂，所以给 `--refresh-sizes`，并让默认跑校验它。
-  (e) **selftest 必须为每条新判据各加一条注入缺陷**（守则既有习惯：报警能力要自证），且沿用既有「字节级还原」写法。
-- **Verify**——
-  - `python -X utf8 scripts/check_doc_registry.py` ⇒ exit 0；`--selftest` ⇒ 除原有两条报警外新增 `CAUGHT [total-range restatement]`，且 `SELFTEST:` 总结行仍然只说真话（报警条数与实做条数一致）。
-  - `python -X utf8 scripts/check_doc_tables.py` ⇒ exit 0 且输出含体量校验计数；`--refresh-sizes` 在无漂移时 ⇒ 报「已一致」并不写盘。
-  - **判据真的会红**（临时改、验完还原）：把 `AGENTS.md` 的指向写法改回「守则 R1-R26」⇒ registry 门禁 FAIL；把 README §三 任一数字改错 ⇒ tables 门禁 FAIL 并打印期望值。
-  - `uv run ruff check scripts/` + `uv run ruff format --check scripts/` 通过。
-  - 后端/前端测试**本轮不适用**：改动只落在 `scripts/check_doc_*.py` 与 markdown，未触碰任何运行时代码路径（`make test` 与插件 `npm run test` 的覆盖面与此无关）。
-- **Done means**——
-  - [ ] `AGENTS.md` 新节落地（≤8 行，含三条去处 + 一句理由 + 两条门禁名）
-  - [ ] registry 门禁新判定在场，selftest 对该缺陷报警
-  - [ ] tables 门禁体量校验 + `--refresh-sizes` 在场，selftest 对体量错报警
-  - [ ] `AGENTS.md` 与 `migration/README.md` 内不再有任何编号全集复述（`grep -rn "\b[DSGR]1-[DSGR]\?[0-9]\+" docs/ AGENTS.md` 只命中白名单三来源）
-  - [ ] 两份门禁 + 两份 selftest 全绿；体量数字由脚本生成而非手写
-  - [ ] 本条结案正文移入 CHANGELOGS **#31**（问题 / 修法 / 验收），`TODO.md` 不留复述
 
 ### P0 执行状态（2026-10-09 动工，plugins/autogamer-device）
 

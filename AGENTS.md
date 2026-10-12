@@ -27,8 +27,8 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 
 | 文档 | 什么时候读 |
 |---|---|
-| `docs/TODO.md` | 任何 DSH 侧改动之前。方案本体：D1-D17 决策表、S1-S11 对接语义、差距清单 G*、P0-P4 checklist 与「P0 执行状态」 |
-| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则 R1-R26，每条带出处口径与可执行判据；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）**、**R23 不得在 session/event 的 emit 里 append（注入类调用先推出发布边界）**、**R24 判「某事没发生」只认会话日志（wire 看不到终结回合的最后一次工具调用，插件 logger 不进 stdout）**、**R25 定根因先读机制文档、一次只测一个变量（推荐方案前先核它是否已是现状）**、**R26 gh 的写操作必须显式 --repo（默认解析可能打到上游别人的仓库）** |
+| `docs/TODO.md` | 任何 DSH 侧改动之前。方案本体：决策表 `D*`、对接语义 `S*`、差距清单 `G*`、P0-P4 checklist 与「P0 执行状态」 |
+| `docs/migration/plugin-contract-rules.md` | 改插件、preset 或任一 `*.patch.yml` 之前。守则逐条带出处口径与可执行判据（**现行条款与范围只看 `docs/migration/registry.md`**）；尤其 **R6 改 patch 必跑 `--dump-config` 自检**、**R7 复验必须开新会话**、**R9 判「生效」只认官方检查器**、**R20 遇 DSH 行为问题先查官方一手资料（subsystems 服务/事件参考、cordis-primer、cookbook、三个官方 skill、公开 packages 源码）再动手，不许先写猜测实现**、**R21 手镜像的宿主契约必须标出处与版本，并区分「单测证明」与「live 证明」**、**R22 功能实现三步序：查文档 → 写方案 → 才写码（方案提交早于实现提交）**、**R23 不得在 session/event 的 emit 里 append（注入类调用先推出发布边界）**、**R24 判「某事没发生」只认会话日志（wire 看不到终结回合的最后一次工具调用，插件 logger 不进 stdout）**、**R25 定根因先读机制文档、一次只测一个变量（推荐方案前先核它是否已是现状）**、**R26 gh 的写操作必须显式 --repo（默认解析可能打到上游别人的仓库）** |
 | `docs/CHANGELOGS.md` | **只记已发生并结案的变更**（`### #N` 三段：问题 / 修法 / 验收），按分类组织、顶部有索引；**已关闭差距 `G*` 的正文在这里**（「已关闭差距史」节）。编号 `#N` 发布后不得改写——守则与 TODO 都按 `changelogs #N` 引用 |
 | `docs/migration/registry.md` | **要引用或新增任何编号（D/S/G/R）之前**。编号唯一权威，含 `inventory/*` 与 `TODO.md` 的 G 编号撞车冲突表；`scripts/check_doc_registry.py` 机械守着 |
 | `docs/migration/glossary.md` | 读方案时卡住词了：`realm`、`parking`、`PTC`、`roster`，尤其是 **`inject` 有两个意思**（服务依赖 vs 不唤醒的上下文追加） |
@@ -37,7 +37,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 | `docs/migration/dsh-verification.md` | 查 rc.2 各子系统结论时。注意其中 37 处包内代码行引用属 D15 之前的 asar 口径，沿用前须按声明面重验 |
 | `docs/migration/feature-inventory.md` 与 `inventory/01-05` | 担心丢 fork 现有能力时；设备与智能栈部分是上游 canonical 契约 |
 | `docs/migration/upstream-rethink.md` | 要回到"为什么基线是 google/artemis"时 |
-| `plugins/autogamer-device/README.md` | 安装流与 P0 状态 |
+| `plugins/autogamer-device/README.md` | 安装流与包内形状说明；**状态与阻塞点只在 `docs/TODO.md` §零**，别处不复制 |
 
 上游一手资料（声明面之外唯一允许的补充来源，公开仓库）：`github.com/deepseek-ai/deepseek-harness`
 @ `master` —— 三个官方 skill 在 `packages/preset/agent-preset/skills/`（
@@ -56,6 +56,22 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 - spike 现场与转储在 `plugins/autogamer-device/spike/`：`web-live.patch.yml` 是 live overlay，
   `wire-tools.py` 解析 `scripts/proxy-dump.log` 数请求里的 `tools`；`dsh-dump*` / `dsh-schema*` /
   `dump-config.*` / `web-server*.log` / token 类文件全部 gitignored，**不要提交含 token 的转储**
+
+## Docs: a derived fact has exactly one authority
+
+Anything that can be **derived** from another file (an id range, an id count, a doc's
+line/KB size, "what we are blocked on right now") must live in **one** place; everywhere
+else is a *pointer*, never a copy. A copy has no mechanism to change when its source does,
+so it is wrong on the next edit while still passing every gate.
+
+- id ranges/counts → `docs/migration/registry.md`; status & blockers → `docs/TODO.md` §零;
+  closed-change prose → `docs/CHANGELOGS.md`; doc sizes → generated, never hand-typed
+- Gates enforce it mechanically: `scripts/check_doc_registry.py` fails on a "from id #1 to the
+  current max" total-range claim outside the authority (pointing ranges like `R2-R8` are fine);
+  `scripts/check_doc_tables.py` verifies `docs/migration/README.md` §三's size table and rewrites
+  it with `--refresh-sizes`
+- Why this rule exists (don't re-derive it): `docs/CHANGELOGS.md` **#30** — six drifted copies
+  were found at once, and #31 made them un-duplicable
 
 ## Commands
 

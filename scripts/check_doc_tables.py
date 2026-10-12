@@ -12,9 +12,15 @@ broken table). Per table it proves:
   - decision ids D1..Dn are contiguous, match the range the heading claims, and
     (in TODO.md only) appear exactly once; gap ids likewise
 
+A second, different duty lives here too: docs/migration/README.md's 体量 table is a
+COPY of derived facts (line counts, KB) - hand-copied, it goes stale on every edit
+(it did, twice: changelogs #30). So the ruler verifies each row against the real file
+and `--refresh-sizes` rewrites the column instead of a human typing numbers again.
+
 Usage:
   python -X utf8 scripts/check_doc_tables.py [file ...]
   python -X utf8 scripts/check_doc_tables.py --selftest
+  python -X utf8 scripts/check_doc_tables.py --refresh-sizes
 """
 
 import re
@@ -131,10 +137,15 @@ def report(problems, label):
 
 
 def expect_caught(problems, label):
+    global FIRED
     if problems:
+        FIRED += 1
         print(f"CAUGHT [{label}]: {problems[0]}")
     else:
         raise SystemExit(f"FAIL: ruler is blind to [{label}]")
+
+
+FIRED = 0
 
 
 def inject(text, anchor, replacement, probe):
@@ -150,6 +161,107 @@ def read(path):
 
 def unique_flag_for(path):
     return Path(path).name == "TODO.md"
+
+
+# --- the derived-fact table in docs/migration/README.md (体量/实测) -------------
+
+DOC_README = ROOT / "docs" / "migration" / "README.md"
+SIZE_HEADER = "| 文档 | 体量（实测）"
+SIZE_CELL = re.compile(r"^(\d+) 行 / ([\d.]+) KB$")
+
+
+def size_rows(lines):
+    """Row indexes of the 体量 table, or None when the table is not there."""
+    head = next((i for i, ln in enumerate(lines) if ln.startswith(SIZE_HEADER)), None)
+    if head is None:
+        return None
+    rows = []
+    i = head + 2
+    while i < len(lines) and lines[i].startswith("|"):
+        rows.append(i)
+        i += 1
+    return rows
+
+
+def row_targets(cell, base):
+    """Resolve a row's doc cell to the file(s) its size must come from.
+
+    Convention (docs/migration/README.md §三 note): the first column is written
+    RELATIVE TO THE REPO ROOT. The doc's own directory is kept as a fallback so a
+    bare sibling filename still resolves, but an unresolvable cell is a failure -
+    silently skipping it is how a copied number goes unwatched again.
+    """
+    if "inventory/01" in cell:
+        return sorted((ROOT / "docs" / "migration" / "inventory").glob("*.md")) or None
+    text = cell.replace("`", "").strip()
+    for cand in ((ROOT / text).resolve(), (base / text).resolve()):
+        if cand.is_file():
+            return [cand]
+    return None
+
+
+def measured(paths):
+    total_lines = total_bytes = 0
+    for p in paths:
+        raw = p.read_bytes()
+        total_lines += raw.count(b"\n")
+        total_bytes += len(raw)
+    return total_lines, f"{total_bytes / 1024:.1f}"
+
+
+def check_sizes(text, label):
+    lines = text.split("\n")
+    base = Path(label).parent
+    rows = size_rows(lines)
+    if rows is None:
+        return [f"{label}: the 体量 table is gone - the size gate would prove nothing"], 0
+    problems = []
+    for idx in rows:
+        cells = [c.strip() for c in lines[idx].strip().strip("|").split("|")]
+        targets = row_targets(cells[0], base)
+        if targets is None:
+            problems.append(f"{label}: 体量 row line {idx + 1} ({cells[0]}) resolves to no file")
+            continue
+        want_lines, want_kb = measured(targets)
+        m = SIZE_CELL.match(cells[1])
+        if not m:
+            problems.append(
+                f"{label}: 体量 row line {idx + 1}: cell '{cells[1]}' is not 'N 行 / X KB'"
+            )
+            continue
+        if int(m.group(1)) != want_lines or m.group(2) != want_kb:
+            names = "+".join(p.name for p in targets)
+            problems.append(
+                f"{label}: 体量 row {names} says {m.group(1)} 行 / {m.group(2)} KB, "
+                f"measured {want_lines} 行 / {want_kb} KB"
+            )
+    print(f"{label}: {len(rows)} size row(s) checked")
+    return problems, len(rows)
+
+
+def refresh_sizes():
+    path = DOC_README
+    original = path.read_bytes()
+    text = original.decode("utf-8")
+    lines = text.split("\n")
+    rows = size_rows(lines)
+    if rows is None:
+        raise SystemExit(f"FAIL: {path} has no 体量 table to refresh")
+    base = path.parent
+    changed = 0
+    for idx in rows:
+        cells = [c.strip() for c in lines[idx].strip().strip("|").split("|")]
+        targets = row_targets(cells[0], base)
+        if targets is None:
+            raise SystemExit(f"FAIL: 体量 row line {idx + 1} ({cells[0]}) resolves to no file")
+        want_lines, want_kb = measured(targets)
+        cells[1] = f"{want_lines} 行 / {want_kb} KB"
+        rebuilt = "| " + " | ".join(cells) + " |"
+        if rebuilt != lines[idx]:
+            lines[idx] = rebuilt
+            changed += 1
+    path.write_bytes("\n".join(lines).encode("utf-8"))
+    print(f"OK: sizes refreshed - {changed} of {len(rows)} row(s) rewritten")
 
 
 def selftest():
@@ -191,16 +303,47 @@ def selftest():
         check(inject(good, "| D1 |", "| DX |\n", "f"), "inject f", uniq),
         "headerless or separatorless fragment",
     )
-    print("SELFTEST: ruler fires on all six injected defects")
+    # (g) a size row that no longer matches the real file must be reported, and the
+    #     anchor is taken from the table itself so the selftest cannot rot by date
+    readme_text = read(DOC_README)
+    rlines = readme_text.split("\n")
+    rows = size_rows(rlines)
+    if not rows:
+        raise SystemExit("FAIL: no 体量 rows to inject into - the size table moved")
+    report(check_sizes(readme_text, DOC_README)[0], f"{DOC_README} (size table, clean)")
+    first = rows[0]
+    cells = [c.strip() for c in rlines[first].strip().strip("|").split("|")]
+    stale = "\n".join(
+        ln.replace(cells[1], "999 行 / 1.0 KB", 1) if i == first else ln
+        for i, ln in enumerate(rlines)
+    )
+    expect_caught(
+        check_sizes(stale, DOC_README)[0],
+        "体量 copy out of date with the real file",
+    )
+    # (h) a missing size table must not read as "nothing to check"
+    expect_caught(
+        check_sizes("\n".join(ln for ln in rlines if not ln.startswith(SIZE_HEADER)), DOC_README)[
+            0
+        ],
+        "体量 table missing entirely",
+    )
+    print(f"SELFTEST: ruler fires on all {FIRED} injected defects")
 
 
 def main():
     if "--selftest" in sys.argv:
         selftest()
         return
-    paths = [a for a in sys.argv[1:] if not a.startswith("--")] or DEFAULTS
+    if "--refresh-sizes" in sys.argv:
+        refresh_sizes()
+        return
+    paths = [Path(a) for a in sys.argv[1:] if not a.startswith("--")] or DEFAULTS
     for path in paths:
         report(check(read(path), path, unique_ids=unique_flag_for(path)), path)
+    if DOC_README in paths:
+        problems, _ = check_sizes(read(DOC_README), DOC_README)
+        report(problems, f"{DOC_README} (size table)")
 
 
 if __name__ == "__main__":

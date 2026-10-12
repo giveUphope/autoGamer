@@ -12,6 +12,9 @@ Judgments (each fails loudly, none of them prints-and-forgets):
   3. ids that inventory/* defines with a different meaning are all listed as clashes
   4. the "closed" ids are individual registry rows, not folded back into one line
   5. paths and scripts registry.md points at actually exist
+  6. no doc restates an id range that means "the whole set" (D1-Dn / S1-Sn / G1-Gn /
+     R1-Rn) - only the authority (registry.md), the archive (CHANGELOGS.md, which
+     quotes pre-fix text) and the heading that DEFINES the sequence may say so
 
 Usage:
   python -X utf8 scripts/check_doc_registry.py
@@ -34,6 +37,28 @@ INVENTORY_GLOB = "docs/migration/inventory"
 KINDS = ("D", "S", "G", "R")
 # inventory-side ids that registry.md already declares as clashing / reused
 CLASHABLE = {"G8", "G9", "G10", "G11", "G12"}
+
+# A range that STARTS at 1 reads as "the whole set", so it is a copy of a derived
+# fact: it goes wrong the moment anything is added. Only the authority itself may
+# hold it, plus the archive that quotes pre-fix wording verbatim, plus the heading
+# that defines the sequence.
+TOTAL_RANGE = re.compile(r"\b([DSGR])1-\1?(\d+)")
+
+
+def total_range_claims(files: list[Path]) -> list[tuple[str, int, str]]:
+    """Every 'the whole set' range claim outside the authority (headings excepted)."""
+    hits: list[tuple[str, int, str]] = []
+    for path in files:
+        if path in (REGISTRY, CHANGELOGS):
+            continue
+        for no, line in enumerate(read(path).split("\n"), start=1):
+            if line.startswith("#"):
+                # the section that DEFINES the sequence may name its own range
+                continue
+            for m in TOTAL_RANGE.finditer(line):
+                rel = path.relative_to(ROOT).as_posix()
+                hits.append((rel, no, m.group(0)))
+    return hits
 
 
 def tracked_markdown() -> list[Path]:
@@ -173,10 +198,18 @@ def check() -> list[str]:
         if not resolve(rel):
             problems.append(f"registry.md points at {rel} which does not exist")
 
+    # 6. no second copy of "the whole set"
+    claims = total_range_claims(files)
+    for name, no, text in claims:
+        problems.append(
+            f"{name}:{no} restates the total id range {text}; cite registry.md instead "
+            "- a copied range is wrong the moment one id is added"
+        )
+
     print(
         f"corpus: {len(files)} md files; authoritative ids: {len(authoritative)} "
         f"(D{len(todo_ids['D'])} S{len(todo_ids['S'])} G{len(todo_ids['G'])} R{len(rules_ids)}); "
-        f"registry rows: {len(reg)}"
+        f"registry rows: {len(reg)}; total-range restatements outside the authority: {len(claims)}"
     )
     return problems
 
@@ -196,6 +229,7 @@ def selftest() -> None:
     goes through bytes and the restore check compares bytes too.
     """
     report(check())
+    fired = 0
     registry_bytes = REGISTRY.read_bytes()
     original = registry_bytes.decode("utf-8")
     # drop a whole class of rows: registry must then report them missing
@@ -207,6 +241,7 @@ def selftest() -> None:
         if not caught:
             raise SystemExit("FAIL: ruler is blind to deleted R rows")
         print(f"CAUGHT [deleted R rows]: {caught[0]}")
+        fired += 1
     finally:
         REGISTRY.write_bytes(registry_bytes)
     if REGISTRY.read_bytes() != registry_bytes:
@@ -225,11 +260,31 @@ def selftest() -> None:
         if not caught:
             raise SystemExit("FAIL: ruler is blind to a renamed/dangling id")
         print(f"CAUGHT [dangling id]: {caught[0]}")
+        fired += 1
     finally:
         TODO.write_bytes(todo_bytes)
     if TODO.read_bytes() != todo_bytes:
         raise SystemExit("FAIL: selftest did not restore TODO.md byte-for-byte")
-    print("SELFTEST: reference gate fires on both injected defects")
+    print("OK: TODO.md restored byte-for-byte after selftest")
+    # copy a "the whole set" range into a doc body: only registry.md may say that.
+    # Anchor on whatever gap row exists - gap ids and rows move, a hardcoded one rots.
+    gap_row = next((ln for ln in todo.split("\n") if re.match(r"^\| G\d+ \|", ln)), None)
+    if gap_row is None:
+        raise SystemExit("FAIL: no gap row to inject the range defect into - the gap table moved")
+    copied = gap_row.rstrip().rstrip("|") + " 完整口径见 D1-D17 |\n"
+    TODO.write_bytes(todo.replace(gap_row, copied, 1).encode("utf-8"))
+    try:
+        problems = check()
+        caught = [p for p in problems if "restates the total id range" in p]
+        if not caught:
+            raise SystemExit("FAIL: ruler is blind to a copied total id range")
+        print(f"CAUGHT [total-range restatement]: {caught[0]}")
+        fired += 1
+    finally:
+        TODO.write_bytes(todo_bytes)
+    if TODO.read_bytes() != todo_bytes:
+        raise SystemExit("FAIL: selftest did not restore TODO.md byte-for-byte (range defect)")
+    print(f"SELFTEST: reference gate fires on all {fired} injected defects")
 
 
 def main() -> None:
