@@ -199,8 +199,9 @@ describe("DevicePool (G3/G28)", () => {
         defaultDeviceKey: "default",
         rosterSource: async () => devices,
       });
-      const lease = await pool.acquire({ action: "tap" }); // forces one enumeration
-      lease.release();
+      // Refresh directly rather than "acquire once to force it": with every device locked or
+      // unknown there is nothing to acquire, and an auto call would legitimately never resolve.
+      await pool.refreshRoster();
       return pool;
     }
 
@@ -259,6 +260,32 @@ describe("DevicePool (G3/G28)", () => {
       });
       const lease = await pool.acquire({ action: "tap" });
       expect(lease.key).toBe("idle-one");
+      lease.release();
+    });
+
+    it("rejects an explicit serial that is locked", async () => {
+      const pool = await discovered({ serial: "A", state: "device", isLocked: true });
+      expect(pool.admissibleExplicit("A")).toBe("device A is locked");
+    });
+
+    it("fails closed on an asked-but-unknown lock state, and that is NOT the same as not asking", async () => {
+      // adb_probe.py:452 treats "Lock State Unknown" exactly like "Device Locked"; the router then
+      // 409s (tasks.py:174). A device nobody asked about must not fall into that branch.
+      const asked = await discovered({ serial: "A", state: "device", isLocked: null });
+      expect(asked.admissibleExplicit("A")).toBe("device A lock state is unknown");
+
+      const notAsked = await discovered({ serial: "A", state: "device" });
+      expect(notAsked.admissibleExplicit("A")).toBeUndefined();
+    });
+
+    it("auto skips locked and unknown devices (adb_probe.py:427-446 switches instead of dispatching)", async () => {
+      const pool = await discovered(
+        { serial: "locked-one", state: "device", isLocked: true },
+        { serial: "unknown-one", state: "device", isLocked: null },
+        { serial: "open-one", state: "device", isLocked: false },
+      );
+      const lease = await pool.acquire({ action: "tap" });
+      expect(lease.key).toBe("open-one");
       lease.release();
     });
   });

@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#58 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件（锁屏半边留 G65）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#59 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2440,6 +2440,64 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
 - [x] `AGENTS.md` 文档地图那行含 R28 指针（`grep -c "R28" AGENTS.md` ⇒ 1）
 - [x] 本条自身即按新判据写：三处失效各带命令与数字，未核实的叙述按"没做"记录而非"已做"
 
+### #59 G65 结案：锁屏三态进 `list_devices`，准入的 fail-closed 半边补齐
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（py 面工具名不变、加一个默认关的参数；插件三态可辨）
+- **优先级**: 高（#57 的准入只会判「在不在」，判不了「能不能派」）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G65 B 片」住在 `TODO.md`（spec 提交 `dc5ef6b` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`inventory/03 §1.7/:294` 点名：admission 只查 `adb devices` 不查 Keyguard 就会向锁屏设备派任务。
+读码定下三条事实（都有行号）：三态来自 `_get_confirmed_device_lock_state`
+（`adb_probe.py:235-253`，**正判要双采样**防一次抖动翻转），提交路径用 **1s 上界**
+（`:419-424`）；`"Device Locked"` 与 `"Lock State Unknown"` **同样 fail-closed**
+（`:452` → `apps/admin_console/routers/tasks.py:174` 409）；而 `_explicit_serial_error` 的
+「没问成」是**故意 fail-open**（`runtime/device_pool.py:370-373`）。⇒ 「不可判」与「没问」必须可区分，
+这是本次最容易写错的一处。
+
+#### 整改方案与实施
+
+- **`AdbDeviceProbe.device_lock_state(serial, timeout_seconds=1.0)`**：一个薄的公开方法，委托现成的
+  双采样确认版；公开它而不是让调用方戳私有函数，也不新写任何 `dumpsys` 解析或 `_parse_device_lock_state` 复制。
+- **`list_devices(include_lock_state: bool = false)`**：为真时逐台并行 gather，条目多一个 `is_locked`
+  （`true` / `false` / **`null` 不可判**）；默认关 ⇒ 便宜面不变、现有调用方零改动。
+  为什么不做成独立 `get_device_lock_state` 工具：guard 必须同步（R13）⇒ 只能读快照 ⇒
+  每设备一次往返会逼插件再建一层节流缓存（＝第二份事实）。
+- **插件侧**：`PoolDevice.isLocked?: boolean | null`，`undefined`＝没问过 ⇒ **不拒**；
+  `null`＝问过但不可判 ⇒ **拒**（fail-closed，对齐 py）；`true` ⇒ 拒。
+  auto 选设备时跳过 `true` 与 `null`（对应 `adb_probe.py:427-446` 的「换个设备试」而不是硬派）。
+  `enumerateRoster` 索取 `include_lock_state: true`——它存在的目的就是喂准入。
+- **JS stub 同形**：`is_locked` 只在被索取时出现（键缺席 ≠ null），`MOCK_LOCK=locked|unknown|open` 选值。
+  #56 立的那条「payload 键集合必须等于 `DeviceStatus.to_dict()`」检查随之按索取与否计数。
+- **两处自我纠正（实现过程中）**：
+  ① `adb_server.py` 里我用了 `asyncio.gather` 却**没有 import asyncio**——这条只在真的走
+  `include_lock_state=true` 时才炸，是「写了测试才暴露」的又一例（先跑的默认路径测试全绿）；
+  ② 第 3 条变异第一次改出了**语法错**（留下悬空 `&&`），报的是集合失败而不是断言红，
+  不算证据；改成语法合法的「只跳不可判、不跳锁着」之后才拿到真判据。
+
+#### 验收标准
+
+- [x] py：`uv run python -X utf8 -m pytest tests/unit/mcp -q` ⇒ **235 passed / 1 skipped**（基线 233；
+      只读断言由「无参数」改判为「只有 `include_lock_state` 这一个布尔参数、默认 false、仍无 serial 入参」，
+      另加两条：默认**不查**锁态（把探针换成会 raise 的函数）、索取时三态可辨）
+- [x] py 全量：`uv run python -X utf8 -m pytest tests/unit -q` ⇒ **2604 passed / 7 skipped**（基线 2602，零回归）；
+      `tests/unit/core/test_diagnostics.py` 原有 8 处锁全绿
+- [x] pin fixture 重生成：工具**名集合不变**（脚本内断言 `set(new)==set(old)`），只有 `list_devices` schema 变
+      ⇒ 插件那份 15 项清单不动，`#54` 的 CI 比对仍 exit 0
+- [x] 插件：`pnpm test` ⇒ **169 passed / 1 skipped**（基线 165，净增 4：锁着拒 / 不可判拒且与「没问」不同 /
+      auto 跳过锁与不可判 / stub 键集合按索取与否）；`run build` 0 error
+- [x] lint：`uv run ruff check` 全过；`uv run ruff format --check` ⇒ 669 files 全净（本轮 3 个文件先被格式化）
+- [x] **变异校验三条，各自报出断言**（跑完还原并复验全绿：插件 169、py mcp 235）：
+      ① 「不可判」当「没问」放行 ⇒ `expected undefined to be 'device A lock state is unknown'`；
+      ② 默认改成索取锁态 ⇒ `assert True is False` 与键集合断言双红；
+      ③ auto 不再跳过锁着的 ⇒ `expected 'locked-one' to be 'open-one'`
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+- [ ] 留白（R21 分层）：本机无设备 ⇒ 锁态的**真实取值**只有 monkeypatch 级证据；
+      「真机上锁屏设备确实被拒、且 unknown 与 unlocked 表现不同」要等设备在场
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2502,4 +2560,5 @@ G3 与 G28 要的空闲池 / parking / 全局并发上限因此一直不存在�
 | G3 | auto-serial 闸门缺口（显式 serial 队列 + auto 空闲池） | A 片落地：`src/devicePool.ts` 包一层现有 `DeviceGate`，auto 从 roster 挑第一台「未冷却 + 未占用 + gate 空闲」的设备且只占一台；显式 serial 仍走该设备链；roster 由 config 注入（默认空＝现状不变）。真枚举来源另立 **G64** 未决 | 本文件 **#55** |
 | G28 | parking + 全局并发上限的内部语义 | parking 按 `device_lock.py:332` 的口径实现（未认领票据不占全局槽、不 idle 掉别的设备），全局上限按已 admit 设备数计；六条语义锁 + 三条变异校验（其中一条第一版是虚锁，已如实记） | 本文件 **#55** |
 | G63 | py 动作面 fixture 从未在 CI 被重新比对（§零 的旧表述是假陈述，见 #53） | `python-quality` 加 `Set up Node.js` + 一步用 `--type mock` 重导比对；`spike-mcp.mjs` 未改（默认模式本就是漂移检查） | 本文件 **#54** |
+| G65 | 锁屏判定进不了插件（admission 的 fail-closed 半边） | `list_devices` 加默认关的 `include_lock_state`，复用现成双采样确认探针出三态；插件按「没问≠不可判」区分放行与拒绝 | 本文件 **#59** |
 | G64 | 设备 roster 的真来源（TS 重复枚举 vs 加只读 py 工具） | 用户选「加只读 py 工具」：`adb_server.py` 新增只读 `list_devices`（复用现成 device_pool 与 try_list_devices 的 fail-open），插件 `rosterSource` + `discoverDevices`（默认 false，保住 #55 的零变化承诺） | 本文件 **#56** |

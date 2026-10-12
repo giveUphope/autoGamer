@@ -90,6 +90,35 @@ describe("mock action server handshake (G56)", () => {
     expect(unwrapText(result)).toBe("Success");
   });
 
+  it("answers list_devices with the py key set, and adds is_locked only when asked", async () => {
+    const plain = JSON.parse(unwrapText(await mockClient().callTool("list_devices", {}))) as {
+      enumerated: boolean;
+      devices: Record<string, unknown>[];
+    };
+    expect(plain.enumerated).toBe(true);
+    expect(Object.keys(plain.devices[0]).sort()).toEqual(
+      [
+        "serial",
+        "state",
+        "model",
+        "product",
+        "is_emulator",
+        "is_busy",
+        "active_pid",
+        "active_task_desc",
+        "active_session_id",
+        "acquired_at",
+      ].sort(),
+    );
+    // "not asked" must not be representable as null: admission treats unknown as fail-closed (G65).
+    expect("is_locked" in plain.devices[0]).toBe(false);
+
+    const asked = JSON.parse(
+      unwrapText(await mockClient().callTool("list_devices", { include_lock_state: true })),
+    ) as { devices: { is_locked?: boolean | null }[] };
+    expect(asked.devices[0].is_locked).toBe(false);
+  });
+
   it("forwards host cancellation into the request instead of waiting it out", async () => {
     const client = new ActionClient({
       command: [process.execPath, "scripts/mock-action-server.mjs"],

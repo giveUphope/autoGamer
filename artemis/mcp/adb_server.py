@@ -13,6 +13,7 @@
 # limitations under the License.
 
 from collections.abc import Callable
+import asyncio
 import json
 import logging
 import os
@@ -500,19 +501,25 @@ async def compare_ui_frames(
 
 
 @_tool()
-async def list_devices() -> str:
+async def list_devices(include_lock_state: bool = False) -> str:
     """Lists attached Android devices and their readiness, touching none of them.
 
-    Read-only discovery for callers that schedule work across machines (the plugin's device pool,
-    G3/G28/G64). Enumeration is the runtime pool's own, so snapshot caching and timeout behaviour
-    stay in one place.
+    Read-only discovery for callers that schedule work across machines (the plugin's device pool and
+    submission admission, G3/G28/G64). Enumeration is the runtime pool's own, so snapshot caching
+    and timeout behaviour stay in one place.
 
     The result keeps **"could not ask adb"** distinct from **"adb answered: no devices"**:
     `enumerated` is false only when the question itself failed. Collapsing those two would turn a
     transient adb blip into an empty fleet, which is why `try_list_devices_async` exists upstream.
 
+    `include_lock_state` defaults to **false** because the answer costs 1-2 `dumpsys` calls per
+    device (Keyguard is not part of `adb devices`); ask for it only when you gate a dispatch on it.
+    Each device then carries `is_locked`: true locked, false unlocked, **null unknown** -- and
+    unknown is treated as not-admissible by the submission gate, so it must stay distinguishable
+    from false. Without the flag the key is simply absent, meaning "not asked", never "unlocked".
+
     Returns a JSON string such as '{"enumerated": true, "devices": [{"serial": "emulator-5554",
-    "state": "device", "is_busy": false, ...}]}'.
+    "state": "device", "is_busy": false, "is_locked": null}]}'.
     """
     from artemis.runtime.device_pool import device_pool
 
@@ -524,7 +531,19 @@ async def list_devices() -> str:
 
     if statuses is None:
         return json.dumps({"enumerated": False, "devices": []})
-    return json.dumps({"enumerated": True, "devices": [status.to_dict() for status in statuses]})
+
+    entries = [status.to_dict() for status in statuses]
+    if include_lock_state:
+        from artemis.core.diagnostics.probes.adb_probe import AdbDeviceProbe
+
+        probe = AdbDeviceProbe()
+        locks = await asyncio.gather(
+            *(probe.device_lock_state(entry["serial"]) for entry in entries),
+            return_exceptions=True,
+        )
+        for entry, lock in zip(entries, locks, strict=True):
+            entry["is_locked"] = None if isinstance(lock, BaseException) else lock
+    return json.dumps({"enumerated": True, "devices": entries})
 
 
 @_tool()

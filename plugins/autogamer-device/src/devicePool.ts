@@ -52,6 +52,13 @@ export interface PoolDevice {
   readonly serial: string;
   readonly state?: string;
   readonly isBusy?: boolean;
+  /**
+   * Keyguard, G65. Three states matter and they are not interchangeable:
+   * `undefined` = never asked (a pinned config roster, or `include_lock_state` off) -> must not
+   * reject anything; `null` = asked and the probe could not tell -> **fail closed**, exactly like
+   * py's "Lock State Unknown" (adb_probe.py:452 -> tasks.py:174); `true` = locked.
+   */
+  readonly isLocked?: boolean | null;
 }
 
 interface Ticket {
@@ -139,6 +146,11 @@ export class DevicePool {
     if (found.state !== undefined && found.state !== "device") {
       return `device ${serial} is attached but not ready (state: ${found.state})`;
     }
+    // The half of py's second gate that this slice can see: locked, or asked-and-unknown.
+    // "Never asked" must not fall into either branch -- that would turn a pinned roster into a
+    // fleet of rejects.
+    if (found.isLocked === true) return `device ${serial} is locked`;
+    if (found.isLocked === null) return `device ${serial} lock state is unknown`;
     return undefined;
   }
 
@@ -282,8 +294,14 @@ export class DevicePool {
     // The ladder mirrors device_pool.py:461-472 -- ready and idle first, then ready, then any
     // attached device; the last rung is what keeps a single-device fleet working when adb reports
     // it busy (py's own "fallback to any attached device").
+    // A locked or unknown-lock device is skipped and the next one gets the turn -- py's probe
+    // does the same when the preferred serial is unusable (adb_probe.py:427-446).
     const free = this.entries().filter(
-      (device) => !this.assigned.has(device.serial) && !this.isCoolingDown(device.serial),
+      (device) =>
+        !this.assigned.has(device.serial) &&
+        !this.isCoolingDown(device.serial) &&
+        device.isLocked !== true &&
+        device.isLocked !== null,
     );
     const ready = free.filter((device) => device.state === undefined || device.state === "device");
     return (

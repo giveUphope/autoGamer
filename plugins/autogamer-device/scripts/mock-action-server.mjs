@@ -24,8 +24,12 @@ const DEVICE_STATUS_KEYS = [
   "active_pid", "active_task_desc", "active_session_id", "acquired_at",
 ];
 
-function listDevicesPayload() {
+function listDevicesPayload(includeLockState) {
   const enumerated = process.env.MOCK_ENUM !== "failed";
+  // MOCK_LOCK picks the Keyguard verdict when the caller asked for one: "locked",
+  // "unknown" (null, which must fail closed downstream) or the default "open".
+  const lockMode = process.env.MOCK_LOCK ?? "open";
+  const isLocked = lockMode === "locked" ? true : lockMode === "unknown" ? null : false;
   const devices = enumerated
     ? ROSTER.map((serial) => ({
         serial,
@@ -38,10 +42,14 @@ function listDevicesPayload() {
         active_task_desc: null,
         active_session_id: null,
         acquired_at: null,
+        // Asked -> the key is present (null allowed). Not asked -> the key is absent entirely;
+        // py's admission reads those two differently (G65).
+        ...(includeLockState === true ? { is_locked: isLocked } : {}),
       }))
     : [];
   for (const device of devices) {
-    if (Object.keys(device).length !== DEVICE_STATUS_KEYS.length) {
+    const expected = DEVICE_STATUS_KEYS.length + (includeLockState === true ? 1 : 0);
+    if (Object.keys(device).length !== expected) {
       throw new Error("mock list_devices payload drifted from DeviceStatus.to_dict()");
     }
   }
@@ -78,10 +86,10 @@ const effectVerdict = () => {
   return JSON.stringify({ changed: mode !== "unchanged" });
 };
 
-function mockText(toolName) {
+function mockText(toolName, toolArgs) {
   if (toolName === "take_screenshot") return SCREENSHOT_PNG;
   if (toolName === "compare_ui_frames") return effectVerdict();
-  if (toolName === "list_devices") return listDevicesPayload();
+  if (toolName === "list_devices") return listDevicesPayload(toolArgs?.include_lock_state === true);
   return "Success";
 }
 
@@ -123,12 +131,12 @@ function handle(message) {
       console.error(`[mock] tools/call ${name} ${JSON.stringify(params?.arguments ?? {})}`);
       const delay = Number(process.env.MOCK_DELAY_MS ?? 0);
       if (delay <= 0) {
-        return { ...frame, id, result: { content: [{ type: "text", text: mockText(name) }] } };
+        return { ...frame, id, result: { content: [{ type: "text", text: mockText(name, params?.arguments) }] } };
       }
       // Async reply after the delay: exercises gate blocking and concurrent
       // turns (S10-③) without a real device.
       setTimeout(() => {
-        write({ ...frame, id, result: { content: [{ type: "text", text: mockText(name) }] } });
+        write({ ...frame, id, result: { content: [{ type: "text", text: mockText(name, params?.arguments) }] } });
       }, delay);
       return undefined;
     }

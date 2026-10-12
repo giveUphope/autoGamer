@@ -90,8 +90,60 @@ async def test_enumeration_crash_never_raises_out_of_the_tool(monkeypatch):
 
 
 @pytest.mark.asyncio
-async def test_tool_is_exposed_read_only():
+async def test_tool_stays_read_only_and_addresses_no_device():
     tools = {tool.name: tool for tool in await adb_server.mcp.list_tools()}
     assert "list_devices" in tools
-    # Nothing to address a device with: the tool takes no arguments at all.
-    assert tools["list_devices"].inputSchema.get("properties") == {}
+    schema = tools["list_devices"].inputSchema
+    # The only knob is "do you want the expensive part". There is no serial parameter: the tool
+    # lists everything or nothing, and cannot address -- let alone wake -- a device.
+    assert set(schema.get("properties", {})) == {"include_lock_state"}
+    assert schema["properties"]["include_lock_state"]["type"] == "boolean"
+    assert schema["properties"]["include_lock_state"].get("default") is False
+
+
+@pytest.mark.asyncio
+async def test_lock_state_is_not_queried_unless_asked(monkeypatch):
+    """Default shape is the cheap one: no `is_locked` key at all, and no dumpsys either.
+
+    "not asked" and "asked but unknown" mean opposite things to the caller (one must fail open, the
+    other fail closed), so absence of the key is part of the contract, not an accident.
+    """
+    from artemis.core.diagnostics.probes import adb_probe as probe_module
+    from artemis.runtime.device_pool import DeviceStatus
+
+    async def one():
+        return [DeviceStatus(serial="A", state="device")]
+
+    def boom(*a, **kw):  # pragma: no cover - must never run
+        raise AssertionError("lock state must not be probed when it was not asked for")
+
+    monkeypatch.setattr(probe_module.AdbDeviceProbe, "device_lock_state", boom)
+    patch_enumeration(monkeypatch, one)
+    entry = json.loads(await adb_server.list_devices())["devices"][0]
+    assert "is_locked" not in entry
+
+
+@pytest.mark.asyncio
+async def test_lock_state_is_tri_state_when_asked(monkeypatch):
+    from artemis.core.diagnostics.probes import adb_probe as probe_module
+    from artemis.runtime.device_pool import DeviceStatus
+
+    async def two():
+        return [
+            DeviceStatus(serial="locked-one", state="device"),
+            DeviceStatus(serial="open-one", state="device"),
+        ]
+
+    async def fake_lock(self, serial, timeout_seconds=1.0):  # noqa: ANN001, ARG001
+        return {"locked-one": True, "open-one": None}[serial]  # unknown stays None
+
+    monkeypatch.setattr(probe_module.AdbDeviceProbe, "device_lock_state", fake_lock)
+    patch_enumeration(monkeypatch, two)
+    devices = {
+        d["serial"]: d
+        for d in json.loads(await adb_server.list_devices(include_lock_state=True))["devices"]
+    }
+    assert devices["locked-one"]["is_locked"] is True
+    assert (
+        devices["open-one"]["is_locked"] is None
+    )  # asked, could not tell -- NOT the same as false

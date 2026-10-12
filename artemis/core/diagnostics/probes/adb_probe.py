@@ -232,6 +232,24 @@ class AdbDeviceProbe(BaseProbe):
             logger.debug(f"Failed to query lock state for {serial}: {exc}")
             return None
 
+    async def device_lock_state(self, serial: str, timeout_seconds: float = 1.0) -> bool | None:
+        """Public tri-state Keyguard check: ``True`` locked, ``False`` unlocked, ``None`` unknown.
+
+        Delegates to :meth:`_get_confirmed_device_lock_state` so the double sampling that stops one
+        transient sample from flapping the verdict is never re-implemented by a caller. The default
+        bound is the one the submission gate itself uses (``probe_submission_readiness``), because a
+        caller asking "can I dispatch here?" needs the same answer that gate would give.
+
+        ``None`` is a real answer, not a failure to answer: the gate treats an unknown lock state as
+        not-admissible (fail closed), so it must stay distinguishable from ``False``.
+        """
+        adb_path = self._locate_adb()
+        if adb_path is None:
+            return None
+        return await self._get_confirmed_device_lock_state(
+            adb_path, serial, timeout_seconds=timeout_seconds
+        )
+
     async def _get_confirmed_device_lock_state(
         self,
         adb_path: str,

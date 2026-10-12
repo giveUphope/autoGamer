@@ -129,9 +129,15 @@
     }
   },
   "list_devices": {
-    "description": "Lists attached Android devices and their readiness, touching none of them.\n\nRead-only discovery for callers that schedule work across machines (the plugin's device pool,\nG3/G28/G64). Enumeration is the runtime pool's own, so snapshot caching and timeout behaviour\nstay in one place.\n\nThe result keeps **\"could not ask adb\"** distinct from **\"adb answered: no devices\"**:\n`enumerated` is false only when the question itself failed. Collapsing those two would turn a\ntransient adb blip into an empty fleet, which is why `try_list_devices_async` exists upstream.\n\nReturns a JSON string such as '{\"enumerated\": true, \"devices\": [{\"serial\": \"emulator-5554\",\n\"state\": \"device\", \"is_busy\": false, ...}]}'.\n",
+    "description": "Lists attached Android devices and their readiness, touching none of them.\n\nRead-only discovery for callers that schedule work across machines (the plugin's device pool and\nsubmission admission, G3/G28/G64). Enumeration is the runtime pool's own, so snapshot caching\nand timeout behaviour stay in one place.\n\nThe result keeps **\"could not ask adb\"** distinct from **\"adb answered: no devices\"**:\n`enumerated` is false only when the question itself failed. Collapsing those two would turn a\ntransient adb blip into an empty fleet, which is why `try_list_devices_async` exists upstream.\n\n`include_lock_state` defaults to **false** because the answer costs 1-2 `dumpsys` calls per\ndevice (Keyguard is not part of `adb devices`); ask for it only when you gate a dispatch on it.\nEach device then carries `is_locked`: true locked, false unlocked, **null unknown** -- and\nunknown is treated as not-admissible by the submission gate, so it must stay distinguishable\nfrom false. Without the flag the key is simply absent, meaning \"not asked\", never \"unlocked\".\n\nReturns a JSON string such as '{\"enumerated\": true, \"devices\": [{\"serial\": \"emulator-5554\",\n\"state\": \"device\", \"is_busy\": false, \"is_locked\": null}]}'.\n",
     "inputSchema": {
-      "properties": {},
+      "properties": {
+        "include_lock_state": {
+          "default": false,
+          "title": "Include Lock State",
+          "type": "boolean"
+        }
+      },
       "title": "list_devicesArguments",
       "type": "object"
     }

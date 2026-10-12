@@ -115,7 +115,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   async function enumerateRoster(): Promise<PoolDevice[] | undefined> {
     let answer: string;
     try {
-      answer = unwrapText(await client.callTool("list_devices", {}));
+      // Discovery exists to feed admission, so it asks for Keyguard too: one RPC for the whole
+      // fleet. Per-serial probing would need a second throttle layer right here.
+      answer = unwrapText(await client.callTool("list_devices", { include_lock_state: true }));
     } catch (error) {
       logger.warn(`[pool] list_devices transport failed: ${(error as Error)?.message ?? error}`);
       return undefined;
@@ -133,13 +135,26 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     }
     if (parsed.enumerated !== true || !Array.isArray(parsed.devices)) return undefined;
     return parsed.devices.flatMap((device) => {
-      const entry = device as { serial?: unknown; state?: unknown; is_busy?: unknown };
+      const entry = device as {
+        serial?: unknown;
+        state?: unknown;
+        is_busy?: unknown;
+        is_locked?: unknown;
+      };
       if (typeof entry.serial !== "string" || entry.serial.length === 0) return [];
       return [
         {
           serial: entry.serial,
           state: typeof entry.state === "string" ? entry.state : undefined,
           isBusy: entry.is_busy === true,
+          // A missing key means "not asked"; an explicit JSON null means "asked, cannot tell".
+          // The two must not collapse: one must not reject, the other must (G65).
+          isLocked:
+            entry.is_locked === true ||
+            entry.is_locked === false ||
+            entry.is_locked === null
+              ? (entry.is_locked as boolean | null)
+              : undefined,
         } satisfies PoolDevice,
       ];
     });
