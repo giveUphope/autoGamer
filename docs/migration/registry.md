@@ -57,6 +57,7 @@
 | G53 | 前端 `package-lock.json` 的 `resolved` 全是镜像 URL，`check_dependency_sources` 门禁在 CI 与本地都红（既有状态，非插件轨道引入） |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（两次 push 后 `total_count` 仍只有那次 `workflow_dispatch`） |
 | G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红（既有状态，与 G53 的运行时红是两件事） |
+| G58 | 仓级 `ruff format --check .` 除 G55 文件外另有 9 处红（既有状态，成因待查） |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
 | G11 | 熔断判定信号：工具层错误分类，不再查 DB |
@@ -112,6 +113,8 @@
 | G56 | mock 与 `ActionClient` 握手超时 | 手拼应答缺 `jsonrpc` 字段被 SDK 读侧拒收；补帧字段后真 SDK 握手通过；详见 CHANGELOGS **#35** |
 | G57 | 插件挂进 `createScope` realm 后其工具对注册表视图不可见 | 裸 scope 注册本就生效（`register()` 打 scope 标签，读须传 scope；旧「双空」是误读）；详见 CHANGELOGS **#34** |
 | G33 | 策略内建在工具正文里 | 冷却拒绝迁 `guard()`，只读动作声明 `isConcurrencySafe`；顺带修掉 `starting` 失败缓存与组装期传输分类；详见 CHANGELOGS **#36** |
+| G53 | 前端 lockfile 全镜像 URL 使门禁红 | 221 个 `resolved` 只换 host（零漂移），门禁绿；详见 CHANGELOGS **#37** |
+| G55 | `check_dependency_sources.py` 不合 `ruff format` | 一条命令修好（`e1de835`）；仓级另 9 处红另立 G58；详见 CHANGELOGS **#38** |
 | G34 | 裸 schema 注册的输入自校验缺口 | 输入语义校验入工具（coordinate 存在即判、不静默回退，text 非空、duration 正数、key 可解、swipe 起止成对、package/url 非空），11 条单测锁死；详见 CHANGELOGS **#33** |
 | G38 | 插件内部错误被归类成任务级失败 | 第三类 `internal`：无前缀异常与逃逸抛出走 internal，不记 breaker，抛 `internal:` 并带勿重试信号；传输层保持 environment（fail-safe）；详见 CHANGELOGS **#33** |
 
