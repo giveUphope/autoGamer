@@ -22,7 +22,7 @@ src/turnLedger.ts                 回合账本：动过手却没汇报终态的�
 src/classify.ts                   工具层错误分类（environment / task）
 src/coord.ts                      0-1000 归一坐标换算 + 截图取尺寸（含 configuredScreenSize）
 src/actionClient.ts               py action server 的 MCP stdio 客户端包装
-src/mcpText.ts / src/hierarchy.ts 文本解包 / 层级解析：`#N` 按**节点身份**跟随到当前位置（G67）
+src/mcpText.ts / src/hierarchy.ts 文本解包 / 层级解析：`#N` 按**节点身份**在可达界内跟随到当前位置（G67/#63）
 src/observations.ts               活观察快照：每个 (agent, device) 只存模型最后一次所见的那份列表
 src/dsh-types.ts                  宿主契约的本地结构别名（详见下方「契约要点」，升级 DSH 必复核）
 skills/autogamer-flash/           flash 执行策略 skill

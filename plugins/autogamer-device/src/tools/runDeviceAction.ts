@@ -528,7 +528,8 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         additionalProperties: false,
         description:
           "Where to act. {index} = the #N handle from YOUR latest get_ui_hierarchy output on this device (preferred; " +
-          "it follows that element even if the screen moved it, and a handle you never saw is refused); " +
+          "it follows that same element while it can still be recognised, and is refused rather than guessed " +
+          "when it cannot be — a handle you never saw does not exist); " +
           "{coordinate:[x,y]} in 0-1000 as fallback; {text} matches text/content-desc/resource-id. " +
           "Required by click/long_press/input_text/focus_and_clear_text.",
         properties: {
