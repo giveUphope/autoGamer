@@ -86,6 +86,51 @@ describe("hierarchy: positional numbering (G42)", () => {
     });
   });
 
+  it("takes the nearest same-labelled node, and refuses when even that is out of reach", () => {
+    const observed = parseVisibleElements(
+      JSON.stringify([node("0", [40, 400, 200, 460], { text: "删除" })]),
+    )!;
+    const two = parseVisibleElements(
+      JSON.stringify([
+        node("0", [900, 1800, 1060, 1860], { text: "删除" }),
+        node("1", [45, 405, 205, 465], { text: "删除" }),
+      ]),
+    )!;
+    expect(resolveHandle(observed, two, 0)).toMatchObject({
+      status: "resolved",
+      center: { x: 125, y: 435 },
+    });
+    // Only the far twin is left: that is another element wearing the same label,
+    // not the node that moved, so it must not get the tap.
+    const onlyFar = parseVisibleElements(
+      JSON.stringify([node("0", [900, 1800, 1060, 1860], { text: "删除" })]),
+    )!;
+    expect(resolveHandle(observed, onlyFar, 0)).toEqual({ status: "gone", label: "删除" });
+  });
+
+  it("matches a node with nothing to identify it by its exact position only", () => {
+    const bare = {
+      index: "0",
+      text: "",
+      "content-desc": "",
+      "resource-id": "",
+      class: "",
+      package: "",
+      clickable: "false",
+      parsed_bounds: { left: 10, top: 20, right: 30, bottom: 40 },
+    };
+    const observed = parseVisibleElements(JSON.stringify([bare]))!;
+    expect(formatVisibleElements(observed)).toContain("(unlabeled)");
+    expect(resolveHandle(observed, observed, 0)).toMatchObject({
+      status: "resolved",
+      center: { x: 20, y: 30 },
+    });
+    const moved = parseVisibleElements(
+      JSON.stringify([{ ...bare, parsed_bounds: { left: 60, top: 80, right: 80, bottom: 100 } }]),
+    )!;
+    expect(resolveHandle(observed, moved, 0)).toEqual({ status: "gone", label: "@20,30" });
+  });
+
   it("only follows a bare class name a short way (content identifies, class does not)", () => {
     const observed = parseVisibleElements(PAYLOAD)!;
     // #1 was a class-labeled TextView container centered at (800,170).

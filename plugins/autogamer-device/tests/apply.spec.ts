@@ -8,6 +8,12 @@
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import { parseImageSize } from "../src/coord.js";
+import {
+  PIXEL_GUIDANCE,
+  SELF_CHECK_PROMPT,
+  closurePrompt,
+  incidentPrompt,
+} from "../src/tools/runDeviceAction.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
 
 /** A 1080x2400 PNG: signature + IHDR carrying the dimensions at byte 16/20. */
@@ -481,6 +487,28 @@ describe("apply(): the result envelope must not starve the hierarchy (G42)", () 
 
     expect(text).toContain(long); // the whole list reaches the model
     expect(text).toContain(`${"x".repeat(200)}…`); // other fields keep the generic budget
+  });
+
+  it("hands every prompt field over whole, not clipped mid-sentence (G68 ①)", async () => {
+    const t = await registeredTools(CONFIG);
+    // The longest serial this plugin can be asked to talk about: adb over the wire.
+    const serial = "192.168.1.100:5555";
+    const fields = {
+      pixel_guidance: PIXEL_GUIDANCE,
+      self_check: SELF_CHECK_PROMPT,
+      audit_request: incidentPrompt(3, serial, true),
+      closure_request: closurePrompt({ consecutive_failures: 3 }, serial),
+    };
+    for (const [key, text] of Object.entries(fields)) {
+      expect(text.length, `${key} is already over the envelope budget`).toBeLessThanOrEqual(200);
+    }
+    const rendered = t.runDeviceAction.output.render({}, { effect: "unchanged", ...fields }) as Array<{
+      text?: string;
+    }>;
+    const seen = rendered.map((part) => part.text ?? "").join("");
+    for (const [key, text] of Object.entries(fields)) {
+      expect(seen, `${key} reached the model truncated`).toContain(`${key}=${text}`);
+    }
   });
 
   it("renders the image as a block instead of flattening its reference", async () => {

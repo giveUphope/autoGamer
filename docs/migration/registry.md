@@ -55,7 +55,6 @@
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、subagent 化、§2.6 记忆裁定；incident 关闭通知与 run_outcome 轴锁已由 #62 关掉） |
-| G68 | #60/#62 复审轮的余下缺陷（收口文案被截断、快照声明只锁了一级、同名孪生误命中、不可解析层级仍放行旧快照） |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
@@ -125,6 +124,7 @@
 | G64 | 设备 roster 的真来源 | py 只读 `list_devices` 工具 + 插件 `rosterSource`（`discoverDevices` 默认 false）；详见 CHANGELOGS **#56** |
 | G65 | 锁屏判定进不了插件 | `list_devices(include_lock_state)` 出三态，复用双采样确认探针；详见 CHANGELOGS **#59** |
 | G67 | `{index}` 句柄按数组位置重解（违反 stale 句柄不可点的安全不变量） | 活观察快照 + 按节点身份解析；详见 CHANGELOGS **#60** |
+| G68 | #60/#62 复审轮余下缺陷（文案被信封截断、快照声明半证、句柄无界远跟、不可解析自读仍放行） | 五条各自修法与锁；含对 #60 一处声明与 #40 远跟半句的更正；详见 CHANGELOGS **#63** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

@@ -37,14 +37,18 @@ const INSERTED = JSON.stringify([
   node("显示", 120, 630),
 ]);
 const WITHOUT_DISPLAY = JSON.stringify([node("亮度", 120, 430)]);
+// #0 changed personality (a new 丙 took the first row) while 显示 stayed put.
+const REPLACED_FIRST = JSON.stringify([node("丙", 999, 999), node("显示", 120, 630)]);
 
 const log: { tool: string; args: Record<string, unknown> }[] = [];
 let hierarchies: string[] = [];
+let verdicts: (boolean | undefined)[] = [];
 let agent = "agent-1";
 
 function setup(options: { devices?: string[]; observations?: LiveObservations } = {}) {
   log.length = 0;
   hierarchies = [];
+  verdicts = [];
   agent = "agent-1";
   const pool = harness(options.devices ?? []).pool;
   const tool = defineRunDeviceAction({
@@ -66,7 +70,7 @@ function setup(options: { devices?: string[]; observations?: LiveObservations } 
     agentIdOfCall: () => agent,
     resolveScreenSize: async () => ({ width: 720, height: 1600 }),
     captureFrame: async () => "frame",
-    compareFrames: async () => true,
+    compareFrames: async () => (verdicts.length > 0 ? verdicts.shift() : true),
   });
   return tool;
 }
@@ -171,6 +175,43 @@ describe("live observation: only what the model was shown renews a handle", () =
     hierarchies.push(INSERTED);
     await tool.execute({ action: "click", target: { index: 0 }, reason: "t" }, exec() as never);
     expect(taps()[0].coordinates).toEqual([400, 40]);
+  });
+});
+
+describe("live observation: what the ladder reads privately is not a new look", () => {
+  it("does not let the post-execution re-resolution claim a fresh observation", async () => {
+    const tool = setup();
+    await observe(tool); // live list = OBSERVED: #0 亮度, #1 显示
+    // Pre-execution read, then the re-resolution after the effect came back empty.
+    hierarchies.push(OBSERVED, REPLACED_FIRST);
+    verdicts.push(false, false);
+    const first = (await tool.execute(
+      { action: "click", target: { index: 1 }, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(first.effect).toBe("unchanged");
+    expect(taps()).toHaveLength(2); // the retry stayed on 显示, which is still there
+    log.length = 0;
+    // #0 still means 亮度 from OBSERVED. Were the ladder's private read treated as
+    // a new look, #0 would now be 丙 and this would tap it.
+    hierarchies.push(REPLACED_FIRST, REPLACED_FIRST, REPLACED_FIRST);
+    await expect(
+      tool.execute({ action: "click", target: { index: 0 }, reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: #0 \("亮度"\) from the live hierarchy is no longer on device/);
+    expect(taps()).toHaveLength(0);
+  });
+
+  it("refuses a model-visible hierarchy read that is not a node list", async () => {
+    const tool = setup();
+    hierarchies.push("not-json{{{");
+    await expect(
+      tool.execute({ action: "get_ui_hierarchy", reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: hierarchy unreadable/);
+    // Nothing was observed, so no handle can be claimed either.
+    await expect(
+      tool.execute({ action: "click", target: { index: 0 }, reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: no live hierarchy for device/);
+    expect(taps()).toHaveLength(0);
   });
 });
 

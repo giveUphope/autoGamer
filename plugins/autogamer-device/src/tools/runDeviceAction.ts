@@ -303,10 +303,13 @@ export function incidentPrompt(failures: number, key: string, milestone: boolean
 }
 
 export function closurePrompt(closure: IncidentClosure, key: string): string {
+  // Kept inside RENDER_TEXT_BUDGET (G68 ①): the result envelope clips every
+  // non-hierarchy string at 200 chars, and a truncated notice reads as garbage
+  // exactly where it asks the model to settle an intent. The wording stays terse
+  // so the longest device serial (an adb endpoint) still fits whole.
   return (
-    `Execution incident CLOSED on device ${key} (it had ${closure.consecutive_failures} consecutive ` +
-    `failures): the next action succeeded. Settle the original intent against the plan and the live screen — ` +
-    `already served, still pending, or no longer needed.`
+    `Execution incident CLOSED on ${key} after ${closure.consecutive_failures} failures: ` +
+    `settle the original intent — already served, still pending, or no longer needed.`
   );
 }
 
@@ -765,15 +768,25 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       // untruncated text — normalizeOutcome clips at 4000 chars, which would
       // cut a real hierarchy dump mid-JSON and make it unparseable.
       const elements = parseVisibleElements(unwrapText(structured));
-      if (elements) {
-        // G67: this is the ONLY place the live observation is written. What the
-        // model is shown now defines which #N handles exist next turn.
-        observations.record(agentOfCall(), key, elements);
+      if (elements === undefined) {
+        // Same rule the resolution ladder already applies (G68 ⑤): an
+        // unreadable observation is the bypass case, so it must not come back
+        // to the model as a successful read of the screen.
         return {
-          ok: true,
-          value: { hierarchy: formatVisibleElements(elements), element_count: elements.length },
+          ok: false,
+          failure: "task",
+          message:
+            "hierarchy unreadable (not a node list) — re-run get_ui_hierarchy, " +
+            "or take a screenshot and use {coordinate:[x,y]}",
         };
       }
+      // G67: this is the ONLY place the live observation is written. What the
+      // model is shown now defines which #N handles exist next turn.
+      observations.record(agentOfCall(), key, elements);
+      return {
+        ok: true,
+        value: { hierarchy: formatVisibleElements(elements), element_count: elements.length },
+      };
     }
     const observed = (value ?? outcome.value) as Record<string, unknown>;
     const strictness = strictnessOf(options);

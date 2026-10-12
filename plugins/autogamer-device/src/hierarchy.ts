@@ -77,31 +77,34 @@ export function labelOf(
 
 interface NodeIdentity {
   label: string;
-  /** App-supplied content (text / content-desc / resource-id) identifies a node wherever it moved. */
-  anchored: boolean;
+  /** How far this kind of label may be followed, in device px (see MAX_HANDLE_SHIFT). */
+  bound: number;
   x: number;
   y: number;
 }
 
-function identityOf(el: VisibleElement): NodeIdentity {
-  const label = labelOf(el);
-  if (label) {
-    return {
-      label,
-      anchored: Boolean(el.text || el.desc || el.resourceId),
-      x: el.x,
-      y: el.y,
-    };
-  }
-  // Nothing identifies it, so the only thing to match on is where it was.
-  return { label: `@${el.x},${el.y}`, anchored: false, x: el.x, y: el.y };
-}
-
-// A class name is shared by many nodes, so an unanchored label is only followed
-// as far as upstream's shift bound: 100 device px (precondition_xml.py:396,
-// `100.0 * scale_factor`; scale_factor is 1 here because the plugin never works
-// in downscaled screenshot space).
+// Upstream bounds EVERY shift it is willing to call "the same target moved"
+// (precondition_xml.py:396-399: `100.0 * scale_factor`, 300 for a resource-id
+// match), because "prefer disappeared over shifted" is the conservative
+// direction (`:392-395`). scale_factor is 1 here: the plugin never works in
+// downscaled screenshot space. An unbounded follow would let a node that
+// vanished on this screen be silently answered by a same-labelled element on
+// another one.
 const MAX_HANDLE_SHIFT = 100;
+const MAX_ID_HANDLE_SHIFT = 300;
+
+function identityOf(el: VisibleElement): NodeIdentity {
+  // The label is exactly what `formatVisibleElements` showed the model, so the
+  // precedence is shared with it (labelOf). Only the REACH depends on which
+  // field carried it: upstream gives a resource-id match more room than a text
+  // one, and a bare class name is shared by many nodes.
+  const label = labelOf(el);
+  if (el.text || el.desc) return { label, bound: MAX_HANDLE_SHIFT, x: el.x, y: el.y };
+  if (el.resourceId) return { label, bound: MAX_ID_HANDLE_SHIFT, x: el.x, y: el.y };
+  if (el.class) return { label, bound: MAX_HANDLE_SHIFT, x: el.x, y: el.y };
+  // Nothing identifies it, so the only thing to match on is where it was.
+  return { label: `@${el.x},${el.y}`, bound: 0, x: el.x, y: el.y };
+}
 
 export type HandleResolution =
   | { status: "unobserved" }
@@ -134,8 +137,8 @@ export function handleFromObservation(
  * observation) go in the `fresh` hierarchy? Resolved by identity, never by
  * array position (G67): position re-resolution silently taps "whatever sits at
  * N now", which `inventory/04-agent-stack-config.md:203` lists as a safety
- * defect. Same-label candidates are disambiguated by proximity to where the
- * node was.
+ * defect. Same-label candidates are disambiguated by proximity, and a candidate
+ * further than that label can claim is treated as missing rather than moved.
  */
 export function resolveHandle(
   observed: VisibleElement[] | undefined,
@@ -151,8 +154,10 @@ export function resolveHandle(
     const distance = Math.hypot(el.x - identity.x, el.y - identity.y);
     if (!best || distance < best.distance) best = { el, distance };
   }
-  if (!best) return { status: "gone", label: identity.label };
-  if (!identity.anchored && best.distance > MAX_HANDLE_SHIFT) {
+  // Nearest wins among same-labelled candidates, and a candidate further than
+  // this label's reach is NOT the node we meant - upstream would rather report
+  // it missing than act on it (`precondition_xml.py:392-395`).
+  if (!best || best.distance > identity.bound) {
     return { status: "gone", label: identity.label };
   }
   return { status: "resolved", center: { x: best.el.x, y: best.el.y, text: identity.label } };

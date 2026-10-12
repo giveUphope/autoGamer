@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#62 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#63 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2667,6 +2667,77 @@ closed 只一轮）。本插件 `ActionIncidents.noteSuccess()` 只有一句 `co
 - [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
 - [ ] 留白（R21）：以上是单测证明。真机上模型收到 CLOSED 后是否真的去收口原意图，属 P1 live 验收
 
+### #63 G68 结案：复审轮四处缺陷——收口文案不再被信封吃掉、快照声明补上第二级的锁、句柄远跟按上界判缺失、不可解析的自读不再放行
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（G68；离线面）
+- **优先级**: 高（③⑤ 是会被静默误点的形状，①是「写了却没送到」的交付缺陷）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G68 复审轮」住在 `TODO.md` §五（spec 提交 `a551b30` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+按 AGENTS.md 的习惯给 #60/#62 派了两个只读复审子代理，报回 11 条，逐条复验后确认 5 条是代码/口径缺陷：
+
+① **模型看到的收口提示是被截断的半句**。`closurePrompt` 实测 216 字符（`d0`）/ 227（长 serial），
+而结果信封 `render` 对**除 `hierarchy` 外的每个字符串字段**都砍到 `RENDER_TEXT_BUDGET = 200`
+（`runDeviceAction.ts:105`、`:587-588`）⇒ 模型读到 `…still pending, or n…`。
+根因比这一条更宽：**全仓没有一条测试穿过 `output.render` 验模型可见文案**（唯一的渲染测试
+`apply.spec.ts` 的 G42 那条锁的是「hierarchy 不被砍 + 别的字段被砍」，正好是被漏掉的反面）。
+② **#60 的声明只锁了一半**（对已发布条目的更正，#60 正文不改写）：#60 写「validator 梯内部的重取
+（预执行 `:365`、执行后 `:742`）不写快照」，复审核实时把 `observations.record(...)` 插进
+`reresolveAsCoordinate` 再跑全量 ⇒ **188 条全绿**。预执行那一级有锁，执行后那一级没有。
+③ **锚定标签无位移上界** ⇒ 观察到的节点消失后，新树里另一个同名元素会被静默当成它。
+且 `hierarchy.ts` 的注释当时把 py 的 100px 界说成「只约束无锚定标签」——读回上游原文才发现：
+`precondition_xml.py:396-399` 对**每一次** shift 都有界（text/desc 100，resource-id 300），
+`:392-395` 还明写「宁可把 shift 误判成 disappeared，也不把 disappeared 误判成 shift」。
+`validatorLadder.spec.ts` 的 `MOVED_TARGET`（411px）把这条无界远跟钉成了期望行为。
+④ **无标签的 `@x,y` 退化签名零覆盖**：所有测试构造器都带 `class`，那条分支从未被执行过——
+#60 声称的「无标签退 center+class」当时没有锁。
+⑤ **模型自己那次 `get_ui_hierarchy` 读到不可解析载荷时按成功原样放行**（落到 `finishSuccess(observed)`），
+而同样的载荷在执行梯里是速败的（`hierarchy unreadable`）。两处口径不一致，松动的那一侧正是安全侧：
+一次失败的读屏被当成「我看过了」。
+
+#### 整改方案与实施
+
+- ①：文案压进预算（`Execution incident CLOSED on ${key} after ${n} failures: settle the original intent —
+  already served, still pending, or no longer needed.`，最长 serial（`192.168.1.100:5555`）下 146 字符，`d0` 130），
+  **并**新增一条走 `output.render` 的锁：把四条模型可见文案（`pixel_guidance`/`self_check`/
+  `audit_request`/`closure_request`）先各自断言长度 ≤ 200，再断言渲染结果里**逐字出现**。
+  预算数字本身仍只在 `runDeviceAction.ts` 一处，不进文档抄件。
+- ②：补上缺的那条锁——先观察 T1，跑一次**执行后**重解到 T2 的梯子，再拿只在 T1 里存在的 `#0` 动作 ⇒
+  仍按 T1 的身份判「不在了」并零次 tap。这条锁就是复审变异原本跑绿的那一处，现在会红。
+- ③：改成**每种标签都有自己的可达上界**（`identityOf` 带 `bound`：text/desc 100、resource-id 300、
+  只有 class 100、什么标签都没有 0＝位置必须一致），同名候选取最近的一个，超出上界一律判 `gone`。
+  这同时推翻了 #40 的另一半：411px 的远跟不再是期望行为——`MOVED_TARGET` 改成 80px 的界内移动
+  （#40「目标移动后按新坐标重试」这条功能保住），另加一条「界外不追」的锁断言 `category: disappeared`
+  且只点一次。标签判定与渲染共用 `labelOf`，不会出现「模型看到的」和「代码认的」分家。
+- ④：造一个只有 bounds、无任何标签的节点，锁两半：位置未变 ⇒ 命中；位置变了 ⇒ 拒（`bound = 0`）。
+- ⑤：模型可见的 `get_ui_hierarchy` 结果为不可解析载荷时**速败**，文案与执行梯同一条口径
+  （`task: hierarchy unreadable … re-run get_ui_hierarchy, or take a screenshot and use {coordinate}`）。
+  **没有**顺手把该设备的活观察作废：spec 里原本打算作废，核过机制后判定多余——句柄在执行时本来就要
+  对**新鲜**层级复核身份，读废一次屏并不改变「上一次真正看到的列表」，作废只会把安全论证换成额外拒绝。
+  这条改在 #63 里如实记下（原方案在 `a551b30` 的条目文本中）。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **194 passed / 1 skipped**
+      （#62 结案时 188，本轮 +6：远跟不追 1、同名歧义 2、无标签 1、执行后不写快照 1、不可解析自读 1、渲染预算 1；
+      其中 `MOVED_TARGET` 由 411px 改为 80px 属期望变更，不是新增）
+- [x] `pnpm --config.verify-deps-before-run=false run build` ⇒ 0 error
+- [x] **变异校验四条，各自报出断言名**（逐条改、逐条跑、跑完还原并复验全绿；R27 含第 6 条自证生效）：
+      A 执行后那一级也写快照 ⇒ 2 条红（含新补的 `does not let the post-execution re-resolution claim a fresh observation`）；
+      B 摘掉位移上界 ⇒ 3 条红（同名歧义两条 + `does not chase a same-labelled node that moved further than the label can claim`）；
+      C 不可解析的自读原样放行 ⇒ `refuses a model-visible hierarchy read that is not a node list` 红；
+      D 收口文案改回长句 ⇒ 渲染预算锁红
+- [x] py 侧本片零改动 ⇒ `uv run python -X utf8 -m pytest tests/unit -q` ⇒ **2604 passed / 7 skipped**（与基线同数）
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+- [ ] 留白（R21）：全部为单测证明。真机上「同名孪生是否真的没被点到」属 P1 live 验收（前置 **G59**）
+- [ ] 复审报回但**本轮不夹带**的台账/装配卫生四项，另记 **#64**：`readmeLayout.spec.ts` 没复用
+      `tests/support/srcFiles.ts` 且用全文 `includes`；`TODO.md` G66 行三处行号指针已漂；
+      §零 记的「四份重复注册装配」实际已是 5 份 `CONFIG` + 2 份 `reportWith`；`agentIdOfCall` 抛错也落进
+      `"anonymous"` 车道而注释说那条车道仅直测用
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2732,3 +2803,4 @@ closed 只一轮）。本插件 `ActionIncidents.noteSuccess()` 只有一句 `co
 | G65 | 锁屏判定进不了插件（admission 的 fail-closed 半边） | `list_devices` 加默认关的 `include_lock_state`，复用现成双采样确认探针出三态；插件按「没问≠不可判」区分放行与拒绝 | 本文件 **#59** |
 | G64 | 设备 roster 的真来源（TS 重复枚举 vs 加只读 py 工具） | 用户选「加只读 py 工具」：`adb_server.py` 新增只读 `list_devices`（复用现成 device_pool 与 try_list_devices 的 fail-open），插件 `rosterSource` + `discoverDevices`（默认 false，保住 #55 的零变化承诺） | 本文件 **#56** |
 | G67 | `{index}` 句柄按数组位置重解（违反 `inventory/04:203` 的安全不变量） | `LiveObservations` 存模型最后一次所见的列表，`resolveHandle` 按节点身份（text/desc/resource-id，无标签退 center+class，class 名带 100px 位移上界）跟随到当前位置；从未观察/句柄不在列表 ⇒ 取数之前就拒；更正 #40 的「按位置重解」半句 | 本文件 **#60** |
+| G68 | #60/#62 复审轮的缺陷：收口文案被信封截断、快照声明只锁了一级、句柄无界远跟、不可解析自读仍放行 | 文案压进预算并加走 `render` 的长度锁；补执行后一级的快照锁；每类标签配可达上界（text 100 / resource-id 300 / class 100 / 无标签 0）并更正 #40 的远跟半句；自读不可解析改为与执行梯同口径速败 | 本文件 **#63** |

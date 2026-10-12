@@ -37,7 +37,15 @@ const WITH_TARGET = JSON.stringify([
   node("显示", 40, 600, 200, 660),
 ]);
 const WITHOUT_TARGET = JSON.stringify([node("亮度", 40, 400, 200, 460)]);
+// 显示 slid 80px down: inside the reach a text label may claim (MAX_HANDLE_SHIFT).
 const MOVED_TARGET = JSON.stringify([
+  node("亮度", 40, 400, 200, 460),
+  node("显示", 40, 680, 200, 740),
+]);
+// Same label 411px away: no text label can claim that is the node it saw, so the
+// ladder reports it missing rather than chasing it (G68 ③, upstream
+// "prefer disappeared over shifted", precondition_xml.py:392-395).
+const MOVED_FAR = JSON.stringify([
   node("亮度", 40, 400, 200, 460),
   node("显示", 400, 800, 560, 860),
 ]);
@@ -181,8 +189,23 @@ describe("validator ladder: post-execution retry", () => {
     const taps = tapCalls();
     expect(taps).toHaveLength(2);
     expect(taps[0].args.coordinates).toEqual([120, 630]);
-    expect(taps[1].args.coordinates).toEqual([480, 830]);
+    expect(taps[1].args.coordinates).toEqual([120, 710]);
     expect(value).not.toHaveProperty("incident");
+  });
+
+  it("does not chase a same-labelled node that moved further than the label can claim", async () => {
+    const tool = setup();
+    await observe(tool);
+    harness.hierarchies.push(WITH_TARGET);
+    harness.compares.push(false);
+    harness.hierarchies.push(MOVED_FAR);
+    const value = (await tool.execute(
+      { action: "click", target: { index: 1 }, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(value.effect).toBe("unchanged");
+    expect(value.category).toBe("disappeared");
+    expect(tapCalls()).toHaveLength(1);
   });
 
   it("reports disappeared with guidance when the target is gone", async () => {
