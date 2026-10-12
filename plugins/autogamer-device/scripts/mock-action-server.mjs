@@ -31,15 +31,15 @@ const SCREENSHOT_PNG = (() => {
 
 /**
  * compare_ui_frames answers in the py action surface's own shape (G39 route A):
- * JSON text with a boolean `changed`, which is exactly what `compareFrames`
- * parses. MOCK_EFFECT picks the verdict so the offline drill can exercise both
- * branches and the refusal path (`Error:` prefix) without a device.
+ * `json.dumps({"changed": changed})` and nothing else -- adb_server.py emits exactly that one
+ * key, so a stub carrying an extra field would be inventing contract (changelogs #51).
+ * MOCK_EFFECT picks the verdict so the offline drill can exercise both branches and the
+ * refusal path (`Error:` prefix) without a device.
  */
 const effectVerdict = () => {
   const mode = process.env.MOCK_EFFECT ?? "changed";
   if (mode === "error") return "Error: mock refusing to compare frames";
-  const changed = mode !== "unchanged";
-  return JSON.stringify({ changed, ratio: changed ? 0.42 : 0.0 });
+  return JSON.stringify({ changed: mode !== "unchanged" });
 };
 
 function mockText(toolName) {

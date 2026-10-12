@@ -62,9 +62,10 @@ describe("mock action server handshake (G56)", () => {
       after_b64: "bbb",
       action: "back",
     });
-    const parsed = JSON.parse(unwrapText(result)) as { changed?: unknown; ratio?: unknown };
-    expect(parsed.changed).toBe(true);
-    expect(typeof parsed.ratio).toBe("number");
+    // Locked to the exact key set of the py server's `json.dumps({"changed": changed})`.
+    // An earlier version of this stub added `ratio` and asserted it, which pinned a contract
+    // the real action surface never emitted (changelogs #51).
+    expect(JSON.parse(unwrapText(result))).toEqual({ changed: true });
   });
 
   it("can serve the unchanged verdict and a refusal, both offline", async () => {

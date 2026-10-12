@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#50 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#52 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -2062,6 +2062,89 @@ adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 acti
 - [ ] 未做（明确留白）：真机那一侧未复跑（本机无设备/无 `dsh`）；mock 的 PNG 仍是 33 字节 IHDR 桩，
       不含真实像素，所以像素级 ROI 分支在离线路径上仍只能靠单测
 
+### #51 更正 #50：JS stub 给 `compare_ui_frames` 发明了 py 没有的 `ratio` 键
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已更正（stub 与 py 逐字同形，断言改锁精确键集合）
+- **优先级**: 低（不改变产品行为，但它是一条被测试锁住的**假契约**）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+`#50` 给插件自带 JS stub 补 `compare_ui_frames` 时，返回写成 `{changed, ratio}` 并加了一条
+`typeof parsed.ratio === "number"` 的断言。读 py 源码后发现**真实形状只有一个键**：
+`artemis/mcp/adb_server.py` 里 `return json.dumps({"changed": changed})`，
+失败分支是 `Error: frame decode failed: …` 与 `Error: {e}`。既有
+`tests/unit/mcp/test_adb_server_contract.py` 早就把 `{"changed": False}` / `{"changed": True}` 逐字锁住。
+⇒ stub 与它自己那条测试**共同虚构了一份 py 从不产生的契约**，与 `#28`（fixture 锁住假死信道）同类。
+#50 编号已发布，正文不改写，错记在此。
+
+#### 整改方案与实施
+
+- `plugins/autogamer-device/scripts/mock-action-server.mjs`：`effectVerdict()` 改为
+  `JSON.stringify({ changed: mode !== "unchanged" })`，注释写明「extra field = inventing contract」并指回本条。
+- `plugins/autogamer-device/tests/mockServer.spec.ts`：断言由「读 `changed` + 判 `ratio` 是数字」
+  改为 `toEqual({ changed: true })`——**键集合相等**，多一个键就会红。
+
+#### 验收标准
+
+- [x] `pnpm --config.verify-deps-before-run=false test` ⇒ **150 passed / 1 skipped**（数量不变：本条是改判形状，不是加测）
+- [x] 与 py 侧实测对齐：`--type mock` 的 `compare_ui_frames` 同帧返回 `{"changed": false}`（见 **#52** 的端到端跑）
+- [x] **变异校验**：`py` 侧 `{"changed": …}` 之外若将来多出任何键，`toEqual` 立刻红；
+      stub 侧手工塞回 `ratio` 时该测试也红（做过一次才恢复）
+- [x] 两枚文档门禁 + `--selftest` ⇒ exit 0
+
+### #52 G62 结案：`artemis mcp --type mock` —— 插件终于能吃 py 实现，而不是 JS 桩
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（新增 1 个 py 文件 + CLI 一个分支，**未改任何现有 py 文件的行为**）
+- **优先级**: 高（P2「mock driver」栏目的真实交付；也是本机无设备/无宿主时唯一还能推进的主干）
+- **分类**: 四 · DSH 插件轨道
+- **方案原文**: 本节曾以「G62 离线 action 面」住在 `TODO.md`（spec 提交 `3fccb4f` 早于实现提交，按 R22），结案即删
+
+#### 问题描述
+
+`artemis mcp --type adb` 在没有 adb server 的机器上**列得出工具、调不动**：
+`_get_controller` 在 `adb_server.py:155-159` 无条件 `AdbClient(host, port)` + `device_list()`，
+无设备即 `raise`。`ARTEMIS_MOCK_DRIVER=1` 也救不了——该 env 在旧 py 栈的 `drivers/factory.py:52` 生效，
+而 adb 面此前没有任何入口用到它（实测：`take_screenshot` 仍报
+`Controller lazy initialization failed: connect to adb server failed: [WinError 10061]`）。
+⇒ 14 工具契约与效果验证此前**只能在插件自带的 JS stub 上验**，py 实现本身离线跑不起来。
+
+#### 整改方案与实施
+
+- **新增 `artemis/mcp/mock_server.py`**：`seed_mock_controllers()` 用仓库现成的 `MockActuator`
+  （`actuators/mock.py:32`，即「`AdbActuator` 绑 `MockDeviceDriver`，走同一段生产坐标换算与 controller 分发」）
+  造出 controller，塞进 `adb_server` 的两条缓存短路。
+  **关键坑（探针第一版栽过，如实记）**：只置 `_GLOBAL_CONTROLLER` 不生效——应用自己加载 `.env`，
+  本机 `ADB_DEVICE_SERIAL=127.0.0.1:16384` 恒有值，`_get_controller` 走的是 `_CONTROLLERS[serial]` 那条。
+  ⇒ 实现把 `ARTEMIS_DEVICE_ID` 钉成 `MOCK_SERIAL`（它在查找链里**先于** `ADB_DEVICE_SERIAL`），
+  并同时登记 `MOCK_SERIAL` 与现有 `ADB_DEVICE_SERIAL` 两个键，使 mock 与 `.env` 内容无关。
+- **`artemis/interfaces/cli/commands/mcp.py`**：加 `elif st == "mock"`（复用同一个 `adb_mcp` 对象与
+  `configure_stdio_mode`，后者只做 logging 改写与 `ARTEMIS_IPC_PORT=""`，**不探设备**），
+  并更新 `--type` 帮助文本与不支持类型的报错。
+- **`tests/unit/mcp/test_mock_server.py`（4 条）**：fixture 里把 `AdbClient` 换成
+  `pytest.fail("mock surface reached real adb")`，于是「离线」不是靠机器恰好没设备，而是**被强制证明**。
+  未预置 ⇒ 解析设备即红；预置 ⇒ 截图/点击/返回键全通，`action_history` 记到坐标；
+  并把 **mock 设备自己产出的帧**喂给真比较器（`compare_ui_frames` 的形状本身已由
+  `test_adb_server_contract.py` 锁死，这里刻意**不重复锁**，见「同一事实只在一处」）。
+- **顺带更正 #51**（stub 的 `ratio` 假契约）。
+
+#### 验收标准
+
+- [x] 等价性（同一权威，不是另起一个面）：同一个 spike 分别打两面，工具清单**逐字节相同**——
+      `[spike] tools (14): back, compare_ui_frames, … tap`（`--type adb` 与 `--type mock` 的输出行 `=` 比较通过）
+- [x] `SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs` ⇒ exit 0；
+      `take_screenshot → OK` 解出来是**真 PNG**：magic `89504e470d0a1a0a`、`IHDR 1080x2400`；
+      `get_ui_hierarchy → [{"text": "Settings", "bounds": [0, 0, 1080, 100]}]`。对照：同机 `--type adb` 只得 adb 拒连
+- [x] `uv run pytest tests/unit/mcp -q` ⇒ **228 passed + 1 skipped**（基线 224+1，净增 4）
+- [x] `uv run pytest tests/unit -q` ⇒ **2597 passed, 7 skipped**（基线 2593/7 + 4，**零回归**）
+- [x] **变异校验**：摘掉 `_CONTROLLERS[MOCK_SERIAL]` 那一行 ⇒ 3 条测试红并报 `mock surface reached real adb`（做出一次才恢复）
+- [x] 插件侧 `pnpm test` ⇒ 150 passed / 1 skipped；`run build` exit 0；`uv run ruff check` 干净、`ruff format --check` 668 files 全净
+- [x] G62 从 `TODO.md` §四 移除、`registry.md` 已关闭表加行、§五「一期改造登记」第 2 项落地、两枚文档门禁重跑 exit 0
+- [ ] 留白（如实）：mock 帧是驱动给的占位图（75 字节合法 PNG，尺寸真、内容空），
+      所以**像素级 ROI 分支**在离线路径上仍只能靠单测；真机正反例仍待设备在场时复跑
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -2120,3 +2203,4 @@ adb server（`127.0.0.1:5037` 被拒即环境级失败），所以「离线 acti
 | G51 | 本机 Node TLS 信任被本地中间代理接管，走 https 的依赖安装要 `--use-system-ca` | 机制有源码出处（`scrubbedParentEnv` 保留 `NODE_OPTIONS`）；不带 flag 时 DSH 自己的 install_bundle 报 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`，带 flag 后该错误消失；前置已写进 README，并禁止用 `NODE_TLS_REJECT_UNAUTHORIZED=0` | 本文件 **#25** |
 | G60 | 两枚文档门禁从未接进 CI，抄件漂移只靠人工自证 | `ci.yml` 的 `python-quality` job 新增**无 `if`** 的 `Check documentation gates` step（registry + tables + `--selftest` 三条）。前提是先按 **#45** 把体量口径做成 LF 规范化，否则接进 CI 只会天天假红。**真 run 未观测**：G54 使 `on: push` 不产出 run，本轮不推送 | 本文件 **#46** |
 | G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变，字节类判据在本机不可信 | 新增 `.gitattributes`（`* text=auto eol=lf`、`.bat`/`.cmd` 显式 `eol=crlf`、8 种在库二进制显式 `binary`）；实测 renormalize **零个文本 blob 被重写**（带 CR 的 28 个 blob 全是二进制），2 个混行尾文件按 blob 规范化后 `w/mixed` 归 0，本机 `ruff format --check` 假红转绿 | 本文件 **#47** |
+| G62 | py action 面无「无设备可跑」路径，离线契约只能吃插件的 JS 桩 | 新增 `artemis/mcp/mock_server.py`（`MockActuator` + 预置 `adb_server` 两条缓存短路绕开 adb I/O）与 CLI `--type mock` 分支，未改任何现有 py 文件行为；与 `--type adb` 工具清单逐字相同、截图为真 PNG | 本文件 **#52**（含 **#51** 的 stub 更正） |

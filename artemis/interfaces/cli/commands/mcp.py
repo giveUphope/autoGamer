@@ -697,7 +697,11 @@ def mcp_command(
         typer.Option(
             "--type",
             "-t",
-            help="Type of MCP server to start: 'agent' (default, universal IDE mobile agent), 'adb' (raw adb), 'xml' (xml fuzzy search).",
+            help=(
+                "Type of MCP server to start: 'agent' (default, universal IDE mobile agent), "
+                "'adb' (raw adb), 'mock' (the adb tool surface over an in-memory device, no adb "
+                "and no hardware), 'xml' (xml fuzzy search)."
+            ),
         ),
     ] = "agent",
     transport: Annotated[
@@ -845,6 +849,21 @@ def mcp_command(
                 configure_stdio_mode()
                 logger.info("Starting Artemis ADB MCP Server over stdio...")
                 adb_mcp.run(transport="stdio")
+        elif st == "mock":
+            from artemis.mcp.mock_server import seed_mock_controllers
+
+            # Same FastMCP object and the same 14 tools as 'adb'; only the device is in-memory,
+            # so contract tests exercise the py implementation instead of a stub.
+            seed_mock_controllers()
+            if transport.lower() == "sse":
+                logger.info(f"Starting Artemis MOCK (device-free) MCP Server over {transport}...")
+                adb_mcp.run(transport="sse", host=host, port=port)
+            else:
+                from artemis.mcp.adb_server import configure_stdio_mode
+
+                configure_stdio_mode()
+                logger.info("Starting Artemis MOCK (device-free) MCP Server over stdio...")
+                adb_mcp.run(transport="stdio")
         elif st == "xml":
             from artemis.mcp.xml_search_server import mcp as xml_mcp
 
@@ -855,7 +874,7 @@ def mcp_command(
                 xml_mcp.run(transport="stdio")
         else:
             logger.error(
-                f"Unsupported MCP server type: {server_type}. Use 'agent', 'adb', or 'xml'."
+                f"Unsupported MCP server type: {server_type}. Use 'agent', 'adb', 'mock', or 'xml'."
             )
             raise typer.Exit(1)
     finally:

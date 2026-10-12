@@ -55,7 +55,6 @@
 | G3 | auto-serial 闸门缺口：显式 serial 队列 + auto 空闲池 |
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（三次 push 零 run，fork 级开关已排除） |
 | G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
-| G62 | py action 面无「无设备可跑」路径：`_get_controller` 无条件连 adb，离线契约只能吃插件的 JS 桩 |
 | G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
 | G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
 | G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
@@ -119,6 +118,7 @@
 | G24 | 坐标契约 | 归一域/端侧索引；详见 CHANGELOGS **#44** |
 | G60 | 两枚文档门禁从未接进 CI | `ci.yml` 新增无 `if` 的 `Check documentation gates` step；真 run 未观测（G54）；详见 CHANGELOGS **#46** |
 | G61 | 仓库无 `.gitattributes`，工作树字节随 checkout 变 | 新增 `.gitattributes` + renormalize 实测零文本 blob 改写；本机 `ruff format --check` 假红转绿；详见 CHANGELOGS **#47** |
+| G62 | py action 面无「无设备可跑」路径，离线契约只能吃插件的 JS 桩 | `artemis/mcp/mock_server.py` + CLI `--type mock`，用现成 `MockActuator` 预置两条缓存短路绕开 adb I/O；与 `--type adb` 工具清单逐字相同；详见 CHANGELOGS **#52** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 
