@@ -53,9 +53,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
   `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`，
   `pnpm --config.verify-deps-before-run=false run build|test`。不带前者时 pnpm 11 会在每次 `run` 前隐式
   install 并**重写 `pnpm-lock.yaml`**（`autoInstallPeers` 翻转，实测 +507 行）——那是环境产物，别提交
-- 声明面自检：`"D:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd" --profile web
-  --patch <abs path> --dump-config`，退出码必须为 0 且输出 grep 不到 `unmatched`（R6）；
-  schema 侧用 `--dump-config-schema`
+- 声明面自检：`dsh --profile web --patch <abs path> --dump-config`（`dsh` 取 PATH，不要写死安装盘符路径——写死曾导致找不到宿主），退出码必须为 0 且输出 grep 不到 `unmatched`（R6）；schema 侧用 `--dump-config-schema`
 - `dsh plugin` 只是 **pnpm 转发垫片**，只证明"装了"，不证明"生效"（R9）
 - spike 现场与转储在 `plugins/autogamer-device/spike/`：`web-live.patch.yml` 是 live overlay，
   `wire-tools.py` 解析 `scripts/proxy-dump.log` 数请求里的 `tools`；`dsh-dump*` / `dsh-schema*` /

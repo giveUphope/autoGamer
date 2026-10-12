@@ -57,6 +57,7 @@
 | G54 | 本 fork 的 `on: push` 从不触发 workflow run（两次 push 后 `total_count` 仍只有那次 `workflow_dispatch`） |
 | G55 | `scripts/check_dependency_sources.py` 不合 `ruff format`，CI 的仓级格式检查必红（既有状态，与 G53 的运行时红是两件事） |
 | G58 | 仓级 `ruff format --check .` 除 G55 文件外另有 9 处红（既有状态，成因待查） |
+| G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
 | G8 | 终态权威（worker 退出码映射随 py worker 消失） |
 | G10 | 动作中断语义：`exec.signal` 取消转发并释放闸门 |
 | G11 | 熔断判定信号：工具层错误分类，不再查 DB |
