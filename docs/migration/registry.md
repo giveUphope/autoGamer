@@ -76,7 +76,7 @@
 | G12 | LLM 暂停 | 随 py 智能栈不迁移消失 |
 | G15 | 共享锁 | 由 D3 裁定吸收 |
 | G16 | notes | 由 D2 与 S1 的 DSH 原生会话记忆承接 |
-| G18 | SSE | 随 D10 收缩；事件名全集保留为 conformance fixture（见 `tests/fixtures/sse-events.json`） |
+| G18 | SSE | 随 D10 收缩；事件名全集曾保留为 conformance fixture，P4 物理收缩时随旧控制台（admin_console / showcase_ui_v2）及其生成器一并删除 |
 | G19 | 轮次视图 | 旧控制台只读，DSH 原生承接 |
 | G20 | catch-up | 核实为 DSH 原生支持（`readSessionState` 等），无需自建 |
 | G21 | 通知 | 改为按需再建（D10） |
