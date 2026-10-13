@@ -19,8 +19,8 @@
  */
 import type { ArtemisBackend } from "../artemis/types.js";
 import type { PreflightResult } from "../env/preflight.js";
-import { preflightErrorText } from "../env/preflight.js";
 import type { ToolDefinitionInput } from "../dsh-types.js";
+import { requireEnv } from "./envGate.js";
 
 export interface GetDeviceStateDeps {
   backend: ArtemisBackend;
@@ -81,19 +81,21 @@ export function defineGetDeviceState(deps: GetDeviceStateDeps): ToolDefinitionIn
         return [{ type: "text", text: parts.join("; ") }];
       },
     },
-    async execute(args) {
-      const env = await deps.checkEnv();
-      if (!env.ok) throw new Error(preflightErrorText(env));
+    async execute(args, exec) {
+      await requireEnv(deps.checkEnv);
       const serial =
         typeof args.device_serial === "string" && args.device_serial.length > 0
           ? args.device_serial
           : deps.defaultDeviceSerial.length > 0
             ? deps.defaultDeviceSerial
             : undefined;
-      const state = await deps.backend.getDeviceState({
-        deviceSerial: serial,
-        includeScreenshot: args.include_screenshot === true,
-      });
+      const state = await deps.backend.getDeviceState(
+        {
+          deviceSerial: serial,
+          includeScreenshot: args.include_screenshot === true,
+        },
+        exec?.signal,
+      );
       return {
         device_serial: state.deviceSerial,
         connected: state.connected,

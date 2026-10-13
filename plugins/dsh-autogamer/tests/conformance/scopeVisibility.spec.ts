@@ -72,7 +72,11 @@ describe("conformance: scope-mounted tools resolve through the scope key (G57)",
 
     expect(inside?.keyType).toBe("symbol");
     expect(inside?.schemas).toEqual([
+      "autogamer_diagnose",
       "autogamer_get_device_state",
+      "autogamer_inspect_trace",
+      "autogamer_manage_task",
+      "autogamer_run_task",
       "report_task_status",
       "run_device_action",
     ]);

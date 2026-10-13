@@ -264,6 +264,10 @@ describe("apply(): registration lifetime (G30 regression)", () => {
       "run_device_action",
       "report_task_status",
       "autogamer_get_device_state",
+      "autogamer_run_task",
+      "autogamer_manage_task",
+      "autogamer_inspect_trace",
+      "autogamer_diagnose",
     ]);
     expect(cleanups).toHaveLength(1);
     expect(typeof cleanups[0]).toBe("function");
@@ -642,7 +646,11 @@ describe("apply(): external ARTEMIS wiring (dsh-autogamer Phase 1)", () => {
     const double = fakeContext(definitions);
     await apply(double.context as never, Config() as never);
     expect(definitions.map((d) => d.name).sort()).toEqual([
+      "autogamer_diagnose",
       "autogamer_get_device_state",
+      "autogamer_inspect_trace",
+      "autogamer_manage_task",
+      "autogamer_run_task",
       "report_task_status",
       "run_device_action",
     ]);

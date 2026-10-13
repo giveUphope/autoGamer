@@ -249,6 +249,27 @@ ready/dispose 改 effect）。六条硬冲突全部裁决完毕。
 `src/tools/getDeviceState.ts`；既有三处锁同步更新（双 conformance 断言、Config 全字段、
 G30 寿命断言）+ README Layout。
 
+### Phase 2 偏差与落地（2026-10-14）
+
+动工前重核旧 face（`pre-contraction:mcp_server/tools/*.py`），规格 §4 的后端假设多处不成立，
+映射一律按真 face 落锁（出处逐条写进 `src/artemis/types.ts` 头注）：
+1. run 取 `task_desc`/`model`（Flash/Pro），答 `trace_id`；`timeout_seconds`/`max_steps`
+   无提供方对应——承认但不转交（含注释与单测）。
+2. device state 取必填 `view_type`（screenshot/hierarchy），答纯文本（`file://…`/
+   层级转储/`Error: …`）而非 JSON —— Phase 1 的 JSON 映射已按真契约重写，旧断言同步修正。
+3. manage 即 status/stop/inject_instruction over `trace_id`（与规格一致）。
+4. inspect 固定调 `view_summary`，summary/full 在工具侧切片（首尾 3 加未覆盖失败步，
+   按 index 去重；失败启发式：fail/error 状态或显式 false）。
+5. diagnose 只转交 device_serial（旧 face 无 logcat/screenshot 开关）；工具合并本地预检
+   修复进 recommendations，不抛环境错（诊断即手动预检入口）；双坏时预检文本优先。
+6. settings：Host 侧无需代码（Config 投影即全部）；`installSection` 已裁，client 设置卡片
+   并入 Phase 3（client 基建在那里一次落地）。
+7. 适配器退化为工厂（CLI 已砍，仅剩一种后端；选择规则留给第二后端）。
+新文件：`src/artemis/adapter.ts`、`src/tools/envGate.ts`、`src/tools/runTask.ts`、
+`src/tools/manageTask.ts`、`src/tools/inspectTrace.ts`、`src/tools/diagnose.ts`；
+三处旧锁同步到七工具（双 conformance、G30 寿命、Phase 1 新增断言）+ README Layout。
+live 仍缺外部提供方（映射 refinements 待真证据）。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；

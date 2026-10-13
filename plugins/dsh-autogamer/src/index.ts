@@ -16,7 +16,11 @@ import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction, deviceKeyOf, ActionIncidents } from "./tools/runDeviceAction.js";
 import { defineGetDeviceState } from "./tools/getDeviceState.js";
-import { McpArtemisBackend } from "./artemis/mcpBackend.js";
+import { defineRunTask } from "./tools/runTask.js";
+import { defineManageTask } from "./tools/manageTask.js";
+import { defineInspectTrace } from "./tools/inspectTrace.js";
+import { defineDiagnose } from "./tools/diagnose.js";
+import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -144,7 +148,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // the shared preflight runner. The backend connects lazily on first use, so
   // constructing it here spawns nothing; the preflight warm-up below only
   // fills the 60s cache and never rejects.
-  const artemisBackend = new McpArtemisBackend({
+  const artemisBackend = createArtemisBackend({
     command: config.artemisMcpCommand ?? ["python", "-m", "mcp_server"],
     cwd:
       typeof config.artemisRepoPath === "string" && config.artemisRepoPath.length > 0
@@ -396,6 +400,22 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       }),
     ),
   );
+  const autogamerDeps = {
+    backend: artemisBackend,
+    checkEnv,
+    defaultDeviceSerial: config.defaultDeviceSerial ?? "",
+  };
+  ctx.tools.register(
+    defineTool<any, any>(
+      defineRunTask({
+        ...autogamerDeps,
+        defaultProfile: config.defaultProfile ?? "flash",
+      }),
+    ),
+  );
+  ctx.tools.register(defineTool<any, any>(defineManageTask(autogamerDeps)));
+  ctx.tools.register(defineTool<any, any>(defineInspectTrace(autogamerDeps)));
+  ctx.tools.register(defineTool<any, any>(defineDiagnose(autogamerDeps)));
 
   // Tool registration ownership belongs to the tools registry itself (its
   // entries are cordis effects on this plugin's fiber, exactly like the
