@@ -22,6 +22,9 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 上游 ARTEMIS 的能力按「现载体 → TS 落点 → 判据」逐行列清。状态列只写三态：**已具备**（TS 侧已在跑）／**部分**（TS 有骨架但契约未对齐）／**未开工**。
 
+> **读表前提（重要）**：本表的「TS 落点」与状态列描述的是**归档分支 `legacy-fork-v2-dsh-plugin` 里已有的资产**——
+> 它们**尚未搬到本分支**（搬迁是 §流程 的开放项）。所以「已具备／部分」说的是**归档里有**，不是「本分支里能 import」。
+
 | 能力（上游面） | 现载体 | TS 落点 | 判据 | 状态 |
 |---|---|---|---|---|
 | 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | 与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参 | 部分（`ActionClient` 仅为 MCP 转发） |
@@ -125,6 +128,49 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 **两个必须由用户裁定、不代决的问题**：
 
 1. **git 历史怎么处置**：工作树可以清干净，但**历史仍含上游全部内容**。三条路——(a) 保留历史：仓库事实上的 fork 记录仍在，「不留存」只在工作树层成立；(b) 重写历史 / 重建仓库：不可逆，会断开 origin 上既有分支与 PR；(c) 新建仓库、本仓库降为来源。**未裁定前，D20 的判据只覆盖工作树层，规格如实这么写。**
-2. **`upstream` remote 留不留**：删除不影响功能；保留等于留一条指向上游的元数据。
+2. **[已裁定 2026-10-14] `upstream` remote 已移除**：并设 `remote.pushDefault=origin`，另加版本化 `pre-push` 护栏
+   （白名单只放 `origin`）——起因是一条跨库 PR 误开到了上游，处置与判据见 `../TODO.md` §零。
 
 **保留物**：`LICENSE`（Apache-2.0 全文）。不额外要求 `NOTICE`——Apache-2.0 并不强制为「未保留派生内容的项目」出具 NOTICE，故本规格只要求留 `LICENSE`。
+
+> ⚠️ **待用户裁定的一条措辞**：随迁的 `LICENSE` 第 190 行是 Apache-2.0 附录里填好的一行
+> `Copyright 2026 Google LLC.`。按 Apache-2.0 §4 它属于「版权声明」；但本分支已不含该项目的任何内容，
+> 把这行原样留在本仓库会造成「本仓内容归 Google 所有」的误读。两条路：(a) 原样保留（当作出处记录）；
+> (b) 保留 LICENSE 全文、另加一个最小 `NOTICE` 说明「本项目与 google/artemis 无代码关系，仅受其设计启发」。
+> 规格不代裁——你定。
+
+## 九、资产复用映射（2026-10-14 清点，目的：避免从零实现）
+
+**一句话结论**：不必从零——归档分支 `legacy-fork-v2-dsh-plugin` 里的 **TS 资产可近乎整体搬用**（实测零上游痕迹）。
+
+### v2 · 可搬走的（productive 来源）
+
+| 资产 | 规模（实测） | D20 判定 | 处置 |
+|---|---|---|---|
+| `plugins/dsh-autogamer/src/**` | 27 文件 / 4506 行 | **零上游痕迹**：`Google LLC` / `derived from` / `originally from` / `minitap` / `Copyright` 在整棵插件树里**均为 0** | **直接搬** |
+| `plugins/dsh-autogamer/tests/**` | 35 文件 / 4896 行（内含 **33 个 spec**） | 同一目录树，同上 | **直接搬** |
+| `plugins/dsh-autogamer/scripts/**` + `spike/**` | 6 文件 / 555 行 | 同上 | 搬（spike 装置按需保留） |
+| `tests/fixtures/py-action-tools.json` | 动作面契约夹具 | 我方观测产物 | 搬 —— T2「同一输入同一输出」的判据 |
+| `docs/migration/*` 调研台账 | — | 我方记录 | **只读作设计参考**，正文不进新实现 |
+| py 全树（281 文件 ≈70k 行）+ vendored `third_party` | — | 318 个文件带上游版权头 | **不搬**；T2/T3 期间**只读设计** |
+
+**33 个 spec 就是已固化的语义**——新实现按这些语义重写、不抄文本。代表性文件（按能力分组）：
+动作效果判定 `validatorLadder.spec.ts`｜错误分类 `classify.spec.ts`｜熔断 `breaker.spec.ts` + `breakerGuard.spec.ts`｜
+闸门与并发 `gate.spec.ts` + `devicePool.spec.ts` + `deviceKey.spec.ts`｜去重 `dedup.spec.ts`｜坐标 `coord.spec.ts`｜
+层级句柄 `hierarchy.spec.ts` + `liveObservation.spec.ts`｜路由错误 `router-errors.spec.ts`｜
+终态与追问 `runTask.spec.ts` + `followup.spec.ts`｜宿主契约 `contracts.spec.ts` + `runtimeBoot.spec.ts` + `scopeVisibility.spec.ts`｜
+交付形状 `deliveryShape.spec.ts`｜预检 `preflight.spec.ts`｜诊断 `diagnose.spec.ts`。
+
+### v1（`legacy-fork-v1`）· 无实质复用价值，只作设计底本
+
+- **形态**：上游 `google/artemis` + 该 fork 的少量改动（台账记「92 commits ahead」，核心 `artemis/` 基本未改）。
+- **上游派生面**：596 个文件带 `Google LLC`、`originally from` 32、`minitap` 35 —— 大面积派生内容。
+- **fork 自研部分** = 旧控制台队列 + `showcase_ui_v2` + 迁移文档 —— 控制台按 **D9/D10** 已废弃。
+- **设备动作设计**（可读、不可搬）：**shell 调 adb**（`input tap/swipe`；文本走剪贴板注入；层级用 UIAutomator2 客户端）；
+  契约定义在 `artemis/mcp/{action_specs,action_types,action_manifest}.py`。T2 读它作设计来源。
+- **结论：否**。
+
+### 由此确定的两条动作
+
+1. **搬迁顺序**：先整块搬 TS 树，再**逐文件过 D20**（按实测预期零改动；仅插件 README 措辞要从「基于 ARTEMIS」改成「灵感来源」）。
+2. **本分支现状**：TS 资产**一个都还没搬**（`plugins/` 尚不存在）——这是 §流程「新分支特有」的第一条开放项。

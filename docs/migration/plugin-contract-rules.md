@@ -3,8 +3,10 @@
 > 用途：`dsh-autogamer` 后续每一笔改动动手**之前**先对照本表；每条都给「判据」，要求能由命令或产物机器作答，不接受"看着没问题"。
 > **随迁说明（本分支）**：本文件随 D19/D20 从归档分支 `legacy-fork-v2-dsh-plugin` 迁来。文中的
 > `CHANGELOGS #N`、`registry.md`、`TODO.md`、`G*` 编号等引用**指向归档分支的台账**（本分支不携带），
-> 作「出处」用、可直接沿用的是**条款本身与判据**，不是那些编号文件。凡判据里出现 py 工具（`uv run`、`ruff`、
-> `check_doc_*.py`、`artemis` CLI）之处，已按 D19 换成占位说明——**TS 侧重写时须换成 TS 判据**。
+> 作「出处」用、可直接沿用的是**条款本身与判据**，不是那些编号文件。**已核查（可复跑）**：条款正文不含
+> `uv run` / `ruff` / `pytest` / `check_doc_*` / `artemis mcp` 这类 py 工具引用（仅本说明段落的举例除外，
+> 复跑：`git grep -n -E 'uv run|ruff|pytest|check_doc_|artemis mcp' -- docs/migration/plugin-contract-rules.md`）
+> —— 随迁没有遗留 py 判据；**TS 侧重写时新增的判据必须用 TS 工具**，不得回落到 py 命令行。
 > 依据：上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) @ master 的官方 skill / 包 README / 源码，加上本机 0.2.0-rc.2 实测。逐条标 **文档口径**（官方文字）、**源码口径**（上游源码）、**实测口径**（本机产物）。
 > 覆盖范围：首轮成文（R1…R19）改写了 `TODO.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34；R20…R28 是此后陆续新增的条款，回写位置记在各条自己的「判据」段与 `TODO.md` / `CHANGELOGS.md` 的引用里。**现行条款数与范围只看 `registry.md`**，本行只描述那几轮的回写去向，不是条款全集。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
 

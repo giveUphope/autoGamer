@@ -19,6 +19,11 @@
   `gh api repos/giveUphope/autoGamer --jq .default_branch` → `main`；`git ls-remote --symref origin HEAD` → `ref: refs/heads/main`）。
   随之删掉旧名 ref `dsh-plugin-contraction`（此前删不掉：GitHub 不允许删除默认分支）。远端现在只有三个按用途命名的 ref：
   `main` / `legacy-fork-v1` / `legacy-fork-v2-dsh-plugin`。
+- **搬迁与复用（2026-10-14 清点完成，结论见规格 §九「资产复用映射」）**：不必从零 —— 归档分支
+  `legacy-fork-v2-dsh-plugin` 的 **TS 资产可近乎整体搬用**（实测整棵插件树零上游痕迹：`Google LLC` /
+  `derived from` / `originally from` / `minitap` / `Copyright` 均为 0；src 27 文件 4506 行、tests 35 文件 4896 行
+  含 33 个语义锁 spec）。`legacy-fork-v1` 只作设计底本（596 个文件带上游版权头，fork 自研部分已按 D9/D10 废弃）。
+  **搬迁顺序**：先整块搬 TS 树 → 再逐文件过 D20（预期零改动，仅插件 README 的「基于 ARTEMIS」措辞要改）。
 - **阶段：未开工**。本分支为新建立的空白分支；插件工程与全部 py 实现都不在此处（前者待搬迁，后者按 D19 归零）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、只留 LICENSE）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。
