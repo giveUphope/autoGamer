@@ -211,6 +211,28 @@
     （`job_kill`/`job_list`/`job_output`＝tool-jobs、`plugin_manager`、`skill`），与出货预设组成一致；
     第二个请求 `tools=0` 为标题生成类，符合预期。G71 结案依据由 **wire 差分**承接（S5/G30 明文认可的
     「插件侧 wire 差分」）。环境已还原：端点回 1234、代理已停、宿主已重启。
+- 2026-10-13 **Step 11 · `preset-autogamer` 增挂 `tool-cordis`（用户裁定「可以增加」，R22 方案先行）**：
+  - **背景**：Step 10 调研证实 `cordis_inspect_query`/`cordis_inspect_list` 由 `@deepseek-ai/dsh-tool-cordis`
+    提供、只有官方 `cordis` 预设挂它 ⇒ AutoGamer 会话无法自查工具面（R9 检查器不可用）。
+    官方 `cordis.patch.yml` 的挂法 = 无 config 平行一行，照抄即可。用户 2026-10-13 批准。
+  - **What**：给 `preset-autogamer` 加一行 `tool-cordis`（会话面自动多出 `cordis_inspect_list` /
+    `cordis_inspect_query` 两工具，wire 面 12→14）。不做：改 `src/`（插件自身仍是七个注册工具）、
+    改 `spike/headless-spike.patch.yml`（历史 spike 装置，非出货形状、无锁读它）。
+  - **How（两处同步 + 一把锁）**：`cordis.patch.yml` 与 `spike/web-live.patch.yml` 各加同一行
+    （位置对齐官方 cordis 预设：skill-filesystem 之前）；`tests/deliveryShape.spec.ts` 加
+    `toContain("@deepseek-ai/dsh-tool-cordis")`——G37/G45 的教训：两份文件必须描述同一交付形状。
+    README 的「七个工具」指 `apply()` 注册面，不受影响。
+  - **Verify**：`pnpm --config.verify-deps-before-run=false run build|test` 全绿；
+    R6：`dsh --profile web --patch <cordis.patch.yml 绝对路径> --dump-config` rc 0 且 grep 不到 `unmatched`；
+    live（R7）：冷重启宿主后 AutoGamer 新会话按 Step 10 装置复跑 wire 抓包，应见 `tools=14`
+    （12 + 检查器两件）——**待 web profile 模型端点就绪后执行**，live 部分挂起不阻塞离线面落地；
+    注意冷重启前宿主仍跑旧 preset 代际（配置层只影响之后创建的 Agent，R7）。
+  - **Done means**：
+    - [ ] 两份 patch 各含 tool-cordis 行，deliveryShape 锁更新
+    - [ ] build + vitest 全绿（本机命令带 `--config.verify-deps-before-run=false` 旗标）
+    - [ ] R6 rc 0 且无 `unmatched`
+    - [ ] live wire 抓包 `tools=14`（挂起：待端点就绪）
+    - [ ] 结果回写本条并按方案/实现两次提交
 - 2026-10-13 **Step 9 · 用户裁定落地，G71 结案（**#83**）**：待裁清单第 1、7 条已决——headless 死链
   **移除不重装**（rc 0，bundles 现为 `[dsh-base, dsh-headless]`；pnpm 11 又按 G49 机制留死 junction，
   已按 reparse point 摘除）；web 走完取证，desktop 不动；~~取证路用了**免审批的 `cordis_inspect_query`**
