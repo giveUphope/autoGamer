@@ -75,9 +75,15 @@
   - **VLM 端点侧风险排除**：向 `1234/v1/chat/completions` 发带 `image_url` 的请求**被接受**
     （`prompt_tokens: 27`，无 vision 拒绝；`finish_reason: length` 是我给的 `max_tokens=8` 太小所致）
     ⇒ 留白 18 的「端点不收图」这一半**否证**；剩下的风险只在 **DSH provider 的 `models[].input` 声明**，仍被 G71 挡。
-  - **新立 G77**：预检第 4 项只认 `uv tool list`（`src/env/preflight.ts:186-202` 断言 stdout 含 `artemis`），
-    而本机实测 `uv tool list` = **`No tools installed`**，同一台机器上 `uv run artemis mcp --type adb` 却可用
-    ⇒ fork 以 **project venv / editable** 形态存在时被误报「未安装」，真机在场也照样红。
+  - **G77 范围比原记的一行更大（实测取证）**：在有设备的机器上跑真预检（`createPreflight().run({uvPath:"uv", artemisRepoPath:"D:/DEV/autoGamer"})`）
+    七项结果 = `uv` PASS（0.12.19）、`python` PASS（python3 3.14）、`artemis-repo` PASS、
+    **`artemis-installed` FAIL**（detail 正是 `uv tool list` names no artemis install）、`adb` PASS、`adb-devices` PASS、
+    **`helper` FAIL（`no artemis binary on PATH`）** ⇒ 同一个根因打掉**两项**：project-venv / editable 形态不会在 PATH 上
+    留下 `artemis` 可执行文件。只修 `installedCheck` 预检仍整体红、每次工具调用仍被拒，所以 G77 的范围含 `helperCheck`。
+    另：`adb-devices` 这项把四个 serial 当 fleet 列出（`127.0.0.1:16384, :5555, :7555, emulator-5554`），
+    是从预检层对 **G75** 的独立佐证。
+    可用的第二种探针已验存在且只读：`uv run --project <repo> --no-sync artemis --version` → 打出
+    `ARTEMIS device-action core v1.0`，rc 0（`--no-sync` 保证预检不改动提供方环境）。
   - **新立 G78**：`adb forward --list` 实测残留 **`127.0.0.1:16384 tcp:54254 tcp:18888`**（device 18888 = helper 端口，
     由 py 侧建 forward），而 MCP server 进程已退出 ⇒ Done means 里那句「卸载无残留（adb forward 清理）」
     **不是「等真机」而是已被证伪**，且残留产生方是 py 动作面，插件的 stop/dispose 管不到它。
@@ -208,7 +214,7 @@
 | G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组，属性值是字符串（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`）**但每个节点还带 `parsed_bounds` 整数对象（真机 36/36 全有）**，且节点数被 `filter_ui_hierarchy` 的语义裁剪大幅压低（设计行为，见 §零 Step 2） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
 | G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（DSH 的 roster 指 preset 行；artemis 上游 `device_pool.py` 与本仓逐字相同、无 dedupe，详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九）。诚实路线只剩三条并已列在该节表格里，默认取 **①：交付钉显式 `Config.devices`，把自动枚举降级**（不碰 canonical 契约，且 `devicePool.ts:166` 已让「钉住就不枚举」）。待用户裁定后按 R22 写方案再动码 |
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
-| G77 | 预检「已安装」判据只认 `uv tool list`（`src/env/preflight.ts:186-202` 断言 stdout 含 `artemis`），实测本机 `uv tool list` = **`No tools installed`**，而同一台机器 `uv run artemis mcp --type adb` 可用 ⇒ fork 以 project venv / editable 形态存在时**误报未安装**，真机在场也照样红 | 判据要承认第二种安装形态（project venv：`uv run artemis --version` 或 `uv pip show artemis` 任一命中即过），并改该项的修复建议文案；改前先在有设备的机器上跑一次预检七项取证 |
+| G77 | 预检把「已安装」等同于「`uv tool list` 里有 artemis」，且 `helper` 项假定 PATH 上有 `artemis` 可执行（`src/env/preflight.ts:186-202`、`:237-239`）。真机取证：`artemis-installed` 与 `helper` **两项同因红**，而 `uv run artemis mcp` 明明可用 ⇒ fork 以 project-venv / editable 形态存在时被误报未安装 | 两项都承认第二种形态，共用同一条只读探针 `uv run --project <repo> --no-sync artemis …`（`--no-sync` 是刻意的：预检不许改动提供方环境）；`repo` 未配时保持现行为。锁五条：tool-list 命中即短路、tool-list 未命中但 venv 命中则过、两者都不命中才失败（fix 同时给 `uv tool install -e` 与 `uv sync` 两条命令）、code 0 但输出不含 artemis 不算过、helper 走同一回退 |
 | G78 | **`adb forward` 残留已实测证实**：`adb forward --list` → `127.0.0.1:16384 tcp:54254 tcp:18888`（18888 = helper 端口），而 MCP server 进程早已退出 ⇒ Done means 的「卸载无残留」**不是待验，是已被证伪**；建 forward 的一方是 py 动作面，插件 stop/dispose 管不到它 | 归属待定：插件侧兜底按 `host:port` 精确删（`--remove-all` 会误伤别处），还是 py 侧在自己生命周期内清（更接近 canonical 契约）。scrcpy 那一半仍缺二进制（留白 6/7） |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
