@@ -270,6 +270,21 @@ G30 寿命断言）+ README Layout。
 三处旧锁同步到七工具（双 conformance、G30 寿命、Phase 1 新增断言）+ README Layout。
 live 仍缺外部提供方（映射 refinements 待真证据）。
 
+### Phase 3 偏差与落地（2026-10-14）
+
+浏览器半按上游一手原文落地（decoration 模板、slots.md、client 构建面）：
+1. `dsh.client`（platform/immediately/inject）加 `./client` export，缺一不可；bundle patch
+   本来就没有 client 行（manifest 驱动）。
+2. client.js 手写 ModuleLoader 形态（tsc 发不出该格式；部署侧 tsdown 链未被文档为插件
+   API，不盲接）：React 取自浏览器模块表，`inject: ['slots']` 为模板证实的最小集。
+3. 卡片全部落在已证实的 `tool.call.toolview`（keyed，按 wire 工具名），五个任务工具各一格；
+   DeviceMirror 即设备状态格（path 行占位，无二进制通道即无真画面）。
+4. 卡片只渲染调用自带 args/result（owner props 宽容读取）；轮询、控制、设置卡片无已证实
+   通道，全部推迟到挂载实证之后（远程服务挂载路径同样未证实，不自建）。
+5. 零样式属性（token 名未证实，纯元素继承宿主主题）；除 react 外零 require。
+单测：manifest 形态、ModuleLoader 形态、五 key、import 白名单、六项 cut-API 否定锁。
+live 缺挂载实证（槽解析、key 生效、卡片渲染均需真会话）。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；

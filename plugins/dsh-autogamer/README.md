@@ -23,6 +23,7 @@ src/tools/inspectTrace.ts         轨迹查看（summary 取边加失败步，Ph
 src/tools/diagnose.ts             诊断（provider 报告合并本地预检修复，Phase 2）
 src/tools/envGate.ts              五个新工具共用的预检门禁（同一 environment: 拒绝口径）
 src/artemis/adapter.ts            后端选择（CLI 已砍，仅剩 MCP 工厂；Phase 2）
+client.js                         浏览器半（手写 ModuleLoader 形态）：五个任务工具的 toolview 卡片（Phase 3）
 src/artemis/types.ts              外部 ARTEMIS 后端接口（Phase 1：getDeviceState；其余 Phase 2）
 src/artemis/mcpBackend.ts         外部 ARTEMIS 的 MCP stdio 后端（懒连接，传输失败=environment）
 src/env/preflight.ts              环境预检 7 项（uv/Python/仓库/已安装/adb/设备/Helper），60 秒缓存

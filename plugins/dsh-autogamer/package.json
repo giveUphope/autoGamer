@@ -6,6 +6,11 @@
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"
+    },
+    "client": {
+      "platform": "web",
+      "immediately": true,
+      "inject": ["slots"]
     }
   },
   "type": "module",
@@ -13,6 +18,7 @@
   "icon": "./icon.svg",
   "exports": {
     ".": "./dist/index.js",
+    "./client": "./client.js",
     "./cordis.patch.yml": "./cordis.patch.yml",
     "./locale/*.json": "./locale/*.json",
     "./icon": "./icon.svg",
@@ -20,6 +26,7 @@
   },
   "files": [
     "dist/**/*.js",
+    "client.js",
     "cordis.patch.yml",
     "skills/**/SKILL.md",
     "locale/*.json",
