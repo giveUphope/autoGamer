@@ -270,11 +270,47 @@
     `uv run python -m pytest tests/unit tests/integration -q` 基线不回退；
     `mcp_server/rules.md` 在场 ⇒ 插件 rules 注入从 `missing-file` 转 ok（G80 live 面）。
   - **Done means**：
-    - [ ] 提供方子树恢复完毕且 import 通
-    - [ ] py 测试基线不回退
-    - [ ] 5 工具面与契约一致（清单落到本条）
-    - [ ] `config/artemis.jsonc` 本地就绪且端点值不进 git
-    - [ ] live diagnose/run_task 各一证（挂起：待端点）
+    - [x] 提供方子树恢复完毕且 import 通（`a7b85fd`，260 文件 / +6.4 万行，逐字来自 main；
+          `import mcp_server.server` 与 `from artemis.sdk import Agent` 均 rc 0。
+          追链修的四处幸存者兼容：`artemis/__init__` PEP 562 惰性出 `Agent`/`Builders`；
+          `artemis/config/__init__` 惰性出 agent/llm/output 三组提供方名字（动作面导入仍不拖 LLM 包）；
+          `artemis/runtime/__init__` 增补 daemon 五名 + `ProcessSupervisor`；
+          `artemis/mcp/action_types.py` 并回 `ObserveResult`（分支重写版原样保留）。
+          P4 边界守卫 `test_third_party_boundary.py` 参数随恢复树增长并全绿——它就是这次的判据）
+    - [x] py 测试基线不回退：**685 passed / 1 skipped**（原 448 基线含在 内，增量 = 边界守卫新参数）；
+          `ruff check` + `ruff format --check` 全绿
+    - [x] 5 工具面与契约一致：`mobile_run_task` / `mobile_manage_task` / `mobile_inspect_trace` /
+          `mobile_get_device_state` / `mobile_diagnose`（FastMCP `list_tools()` 实测）——与插件
+          `mcpBackend.ts` 五处 `call` 名字**逐字一致**（Phase 2 锁的就是这份真面，零映射工作）
+    - [x] `config/artemis.jsonc` 恢复为跟踪文件（main 原文：default 块即本机 LM Studio
+          `127.0.0.1:1234/v1` + `qwen3.6-35b-a3b-mtp`，无凭据字面量，可直接提交）
+    - [ ] live diagnose/run_task 各一证：**装置已齐**（提供方进程 + 配置就绪；`mcp_server/rules.md`
+          回归也使 G80 的 rules 注入可转 ok）。挂起点 = profile 侧 Config（`artemisRepoPath` +
+          `artemisMcpCommand` 指本仓 venv python）——待用户在宿主侧接好线后跑会话取证
+- 2026-10-13 **Step 11 · `preset-autogamer` 增挂 `tool-cordis`（用户裁定「可以增加」，R22 方案先行）**：
+  - **背景**：Step 10 调研证实 `cordis_inspect_query`/`cordis_inspect_list` 由 `@deepseek-ai/dsh-tool-cordis`
+    提供、只有官方 `cordis` 预设挂它 ⇒ AutoGamer 会话无法自查工具面（R9 检查器不可用）。
+    官方 `cordis.patch.yml` 的挂法 = 无 config 平行一行，照抄即可。用户 2026-10-13 批准。
+  - **What**：给 `preset-autogamer` 加一行 `tool-cordis`（会话面自动多出 `cordis_inspect_list` /
+    `cordis_inspect_query` 两工具，wire 面 12→14）。不做：改 `src/`（插件自身仍是七个注册工具）、
+    改 `spike/headless-spike.patch.yml`（历史 spike 装置，非出货形状、无锁读它）。
+  - **How（两处同步 + 一把锁）**：`cordis.patch.yml` 与 `spike/web-live.patch.yml` 各加同一行
+    （位置对齐官方 cordis 预设：skill-filesystem 之前）；`tests/deliveryShape.spec.ts` 加
+    `toContain("@deepseek-ai/dsh-tool-cordis")`——G37/G45 的教训：两份文件必须描述同一交付形状。
+    README 的「七个工具」指 `apply()` 注册面，不受影响。
+  - **Verify**：`pnpm --config.verify-deps-before-run=false run build|test` 全绿；
+    R6：`dsh --profile web --patch <cordis.patch.yml 绝对路径> --dump-config` rc 0 且 grep 不到 `unmatched`；
+    live（R7）：冷重启宿主后 AutoGamer 新会话按 Step 10 装置复跑 wire 抓包，应见 `tools=14`。
+  - **Done means**：
+    - [x] 两份 patch 各含 tool-cordis 行，deliveryShape 锁更新
+    - [x] build 不需要（未改 `src/`，dist 不变）；vitest 全绿 **32 files / 293 passed / 1 skipped**
+    - [x] R6 rc 0 且无 `unmatched`（合成树 1420 行含 `dsh-tool-cordis`）
+    - [x] **live wire 抓包 `tools=14` 达成**：AutoGamer 新会话（qwen3.6-35b-a3b-mtp，10 秒无报错）里
+          agent **真实调用** `cordis_inspect_list` → `cordis_inspect_query`（UI 工具卡片可见），自查清单
+          14 个 = 本包 7 + `job_*`×3 + `skill` + `plugin_manager` + 检查器两件；wire 侧三个回合请求全部
+          `tools=14` 且名单一致（双侧交叉验证）。R9 检查器从此在本包会话面可用。
+    - [x] 结果回写本条并按方案/实现两次提交（`972845d` 方案 → `5d44cd9` 实现）
+  - 环境已还原：端点回 1234、代理已停、宿主已重启在跑（新 preset 代际已生效）。desktop 按用户裁定暂不动。
 - 2026-10-13 **Step 9 · 用户裁定落地，G71 结案（**#83**）**：待裁清单第 1、7 条已决——headless 死链
   **移除不重装**（rc 0，bundles 现为 `[dsh-base, dsh-headless]`；pnpm 11 又按 G49 机制留死 junction，
   已按 reparse point 摘除）；web 走完取证，desktop 不动；~~取证路用了**免审批的 `cordis_inspect_query`**
