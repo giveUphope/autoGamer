@@ -14,9 +14,10 @@
   （`3fab0ee`，本地存档，不推送）。
 - CI 修绿（run `38371033938` 全红之后）：首个 push run 6/6 红，根因全是旧树残留——
   前端/smoke-test 的 setup-node 缓存路径、依赖源门禁的文件 glob、fixture 步调的生成器，
-  皆指向 P4 已删之物。修法（CHANGELOGS **#77**）：删 frontend/package 两 job、去
-  gen-sse 步、门禁去 npm 半与 client 行、pyproject 去 client/workspace/admin/testpaths
-  并显式声明 `artemis*` + `third_party*` 命名空间包、pyright 范围同步、uv.lock 重锁。
+  皆指向 P4 已删之物。修法（CHANGELOGS **#77**，含首绿前又红一次的补记）：删
+  frontend/package 两 job、去 gen-sse 步、门禁去 npm 半与 client 行、pyproject 去
+  client/workspace/admin/testpaths 并显式声明 `artemis*` + `third_party*` 命名空间包、
+  pyright 范围同步、uv.lock 重锁；另修根 `.gitignore` 大小写陷阱（吞过 `src/env/`）。
   另挖出一真因：P4 重写 `artemis/__init__.py` 时丢了 `_legacy_imports` 寻址器（含其模块），
   安装后上下文 `import third_party` 全灭（`python -m`/pytest 因根在 path 上幸免）——
   即 fixture 步在隔离环境红的原因，命名空间映射已代换该机制。

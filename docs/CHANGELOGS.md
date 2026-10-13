@@ -3247,6 +3247,12 @@ glob、fixture 步调用的生成器，分别指向 P4 已删的控制台、lock
 - [x] 上述本地链条全绿（本轮实跑，含隔离环境）
 - [ ] 新 push run 全绿（推送后看 run 页）
 
+补记（首个绿前 run 又红以后查明）：`src/env/preflight.ts` 从未进过仓库——根
+`.gitignore` 的 `env/` 在 Windows 大小写不敏感匹配下吞掉了整个 `src/env/` 目录，
+`git add -A` 静默跳过、本地全绿掩盖了它，CI（Linux 大小写敏感）以
+`Cannot find module './env/preflight.js'` 全红构建步。修法：venv 类规则一律锚定
+到仓库根；同类全树排查仅此一处。教训：加文件后必须看 `git status` 确认新文件在列。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。

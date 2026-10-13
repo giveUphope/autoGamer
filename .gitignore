@@ -22,13 +22,14 @@ share/python-wheels/
 *.egg
 MANIFEST
 
-# Virtual Environments
+# Virtual Environments (all anchored: unanchored names also match subdirectories
+# case-insensitively on Windows, which once hid src/env/preflight.ts from git)
 .venv/
-env/
-venv/
-ENV/
-env.bak/
-venv.bak/
+/venv/
+/ENV/
+/venv.bak/
+/env/
+/env.bak/
 
 # Testing & Coverage
 .pytest_cache/
