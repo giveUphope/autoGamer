@@ -127,3 +127,42 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
   [src/tools.ts](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/src/tools.ts)
 - 撤回一条来源：本轮曾对一个**非上游**的第三方代理 URL 取证，两次抓取返回互相矛盾的「官方口径」，已整条弃用；
   本节全部结论只来自公开仓库 `gh api` 与本机实测。
+
+## 九、设备身份口径查证（R20，2026-10-13）
+
+> 起因：**G75** —— 一台 MuMu 被 `list_devices()` 报成 4 台。守则要求「遇行为问题先查官方一手资料，不许先写猜测实现」，
+> 所以先问：**两个上游里到底有没有「同一物理设备的多条传输要合并」这个口径**。查证结果决定 G75 的解法边界。
+
+1. **DSH 侧没有 Android 设备身份概念**（源码口径，`deepseek-ai/deepseek-harness` @ `master`，全树路径检索）。
+   `device|roster|fleet` 命中 24 处但语义全部无关：DSH 的 **roster 指 preset / 工具行清单**
+   （`.agents/notes/archived/bug-fix/2026-08-09-broken-preset-roster-rows.md`、
+   `apps/cli/tests/profiles/web/tests/runtime-roster*.ts`），`device` 命中是
+   `apps/desktop/src/device-info.ts`（**桌面主机自身**信息）与 `device-local-shortcut-preferences`（本机快捷键）。
+   ⇒ **在 DSH 里找设备去重口径是找错仓库**，这条归因先纠正再往下走。
+2. **artemis 上游（canonical 设备契约）同样没有去重 / 身份口径**（源码口径，`google/artemis`）：
+   `artemis/runtime/device_pool.py` 里 `dedup|unique|identity|android_id` **零命中**，只有
+   `serial.startswith("emulator-") or "127.0.0.1" in serial or "localhost" in serial`（:309，判 `is_emulator`）
+   和 `DeviceExecutionLock._normalize_device_id`——它把 serial 洗成 filesystem-safe（非字母数字→`_`），
+   **不做跨传输合并**。上游 `tests/unit/runtime/test_device_pool.py` 的 12 条测试全是 snapshot / single-flight /
+   warm-up 一族，**没有一条测同设备多传输**。
+3. **本仓与上游逐字相同**：`diff artemis/runtime/device_pool.py <上游同路径>` = **0 行差异**（两边都 478 行）
+   ⇒ G75 **不是 fork 丢了东西**，是上游 canonical 行为；要按物理身份合并，只能改上游契约或在我们这一侧显式绕开枚举。
+4. **插件现状已有两层缓解，但都不解决身份问题**（源码口径 `plugins/dsh-autogamer/src/devicePool.ts`）：
+   - 构造期 `this.devices = [...new Set(options.devices)]`，注释原话「A serial listed twice would be two pool
+     entries for one device」（:93-94）——**只去字面重复**。
+   - `refreshRoster()`：`if (this.devices.length > 0) return;`（:166，注释「操作者钉了 roster 就整跳 RPC」），
+     发现出来的 roster 也**只按 serial 字面**建 Map（:175-179）。
+     ⇒ 敞口条件被代码限定得很干净：**Config 钉住 `devices` 时不引入误计数；不钉时才会**。
+5. **插件侧拿不到机器身份**（源码口径）：本树 15 工具动作面**没有**任意 adb 执行入口（无 `run_adb_command`），
+   所以插件无法自行读 `settings get secure android_id`。本轮实测的同机证据（四条传输 `android_id` 全等
+   `c0021066f3fbaf47`）是在本机 adb 上量的，**不是插件走得通的路**。要让 `list_devices` 带身份，得在 py 面新增字段。
+
+**由此 G75 只剩三条诚实路线**（不许写猜测实现）：
+
+| 路线 | 代价 | 是否碰 canonical 契约 |
+|---|---|---|
+| ① 交付默认钉显式 roster（`Config.devices`），自动枚举降级为「操作者明确接受按传输计数」时才开 | 改动最小 | **不碰** |
+| ② py 的 `list_devices` 增发机器身份字段 | 需与上游对齐 | **碰**（D6/D18 的稳定面） |
+| ③ 只在文档与 UI 明示「计数单位是 adb 传输，不是设备」 | 零代码 | 不碰 |
+
+选 ②③ 之前不得自造指纹：`is_emulator` + model 在多实例场景不可区分（实测四条 model 全同）。
