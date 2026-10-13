@@ -41,6 +41,7 @@ DEFAULTS = [
     ROOT / "docs" / "migration" / "glossary.md",
     ROOT / "docs" / "migration" / "upstream-plugin-forms.md",
     ROOT / "docs" / "migration" / "plugin-contract-rules.md",
+    ROOT / "docs" / "migration" / "ts-fullstack-spec.md",
 ]
 SEPARATOR = re.compile(r"^\|[\s:|-]+\|?\s*$")
 

@@ -14,32 +14,34 @@
 | 判断「我这次改动到底生效没有」 | `plugin-contract-rules.md` R9 + R7 | `TODO.md` 顶部「当前状态」 | 3 分钟 |
 | 想知道某个编号（`G30` / `R13` / `D7`）是什么 | `registry.md` | 定义所在文档 | 1 分钟 |
 | 看不懂某个词（realm、parking、PTC、熔断） | `glossary.md` | — | 1 分钟 |
-| 要动 py 侧（驱动、action server、诊断栈） | `TODO.md` 第二节 D8/D9 + 第三节 S5 | `inventory/02`、`inventory/03` 的相关段 | 按需 |
+| 要动 py 侧（驱动、action server、诊断栈） | `ts-fullstack-spec.md`（D19 终态：py 归零） | `TODO.md` 第二节 D8/D18 + 第三节 S5 | 按需 |
+| 想知道「py 到底要不要全删、怎么删」 | `ts-fullstack-spec.md` §一 终态与 §三 分期 | `TODO.md` §七 流程 | 8 分钟 |
 | 做 UI（toolview、卡片、录屏展示） | `plugin-contract-rules.md` R18 | `inventory/05` | 10 分钟 |
 | 怀疑某个能力要丢了 | `feature-inventory.md` | `inventory/0N` 明细 | 按需 |
 
 ## 二、这个项目现在在做什么（三句话）
 
 1. 整个 ARTEMIS 正在收缩成**一个 DSH 插件** `dsh-autogamer` + 若干 skills：队列、调度、UI、审批、记忆全部交给宿主，插件只提供设备执行工具与设备资源治理（D1、D9、D10）。
-2. py 侧的动作面与驱动栈**原样复用**，不重写；旧 py 智能栈（langgraph 多 agent）由「单层执行路由 S11」替代（D8、D14）。
+2. py 侧的动作面与驱动栈在**迁移期**原样复用；**终态由 D19 定义为 TS 全栈、py 归零**——上游 ARTEMIS 的能力逐步改由 TS 承载，外部 ARTEMIS 只保留为可选提供方（规格见 `ts-fullstack-spec.md`）。旧 py 智能栈（langgraph 多 agent）由「单层执行路由 S11」替代（D8、D14）。
 3. **P0 已收官**（2026-10-12）：工具面挂载、指令投递、终态语义、真机质量 spike 全部 live 通过 ⇒ **D9「直通插件」成立**，交付形态也迁到了官方 `install_bundle`。**本页不复述当前阻塞点**：进度与差距一律看 `docs/TODO.md` 第「零、当前状态」节——为什么这么定，见 changelogs **#30**。
 
 ## 三、文档清单与可信度
 
 | 文档 | 体量（实测） | 定位 | 可信度口径 |
 |---|---|---|---|
-| `docs/TODO.md` | 752 行 / 84.5 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
+| `docs/TODO.md` | 803 行 / 89.8 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
 | `docs/CHANGELOGS.md` | 3613 行 / 296.5 KB | **已结案变更的历史**：`### #N` 三段条目 + 「已关闭差距史」表（结案 `G*` 的正文去处） | 现行权威；**编号一经发布不得改写**，写入规则见该文件顶部 |
-| `docs/migration/registry.md` | 197 行 / 22.7 KB | **编号唯一权威**：全部 D / S / G / R 编号 + 已关闭差距 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
+| `docs/migration/registry.md` | 203 行 / 23.7 KB | **编号唯一权威**：全部 D / S / G / R 编号 + 已关闭差距 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
 | `docs/migration/glossary.md` | 87 行 / 8.5 KB | 术语翻译表（含 `inject` 的两个意思） | 现行权威 |
 | `docs/migration/plugin-contract-rules.md` | 304 行 / 35.9 KB | **守则全部条款**：每条带出处与判据 | 现行权威；与 todo 冲突时以守则为准并回改 todo |
+| `docs/migration/ts-fullstack-spec.md` | 92 行 / 9.7 KB | **D19 终态规格**：TS 全栈、py 归零——能力迁移矩阵、四期分期、必须先实测的契约边界 | 现行；方案已立项、尚未开工 |
 | `docs/migration/upstream-plugin-forms.md` | 230 行 / 27.8 KB | 上游插件形态第一轮调研（结论已提炼进守则）＋第二轮（八：插件管理面的安装 / 卸载契约，含一处**已收回**的 CLI 结论；九：设备身份口径查证；十：Android / adb / scrcpy 一手口径） | 现行，含**已撤回**的归因（别引用它们）；八、九、十的「未证」清单别当已证 |
 | `docs/migration/dsh-verification.md` | 217 行 / 37.0 KB | rc.2 的 48 项假设核实报告 | **混合口径**：README / CLI 类证据可用；37 处包内代码行引用属 asar 旧口径，沿用前须按声明面重验（D15） |
 | `docs/migration/feature-inventory.md` | 107 行 / 13.8 KB | 防丢失盘点索引 | 现行；设备与智能栈部分是上游 canonical 契约 |
 | `inventory/01`…`05` | 1406 行 / 215.6 KB | 盘点明细，几乎全是表格 | **内容可用，编号不可引用**：其 `**Gn · …**` 与现行 G 编号撞车（冲突表见 registry，警示行已加进每份文件顶部）；其中 `TODO.md:行号` 形式的引用属活文档旧快照，同样不可照用 |
 | `docs/migration/upstream-rethink.md` | 50 行 / 5.4 KB | 为什么基线选 google/artemis 上游 | 现行 |
 | `plugins/dsh-autogamer/README.md` | 124 行 / 10.2 KB | 插件包自己的说明：入口、三层引入流、契约要点、债务表 | 现行（2026-10-10 重写，旧版那条指向 `headless-spike.patch.yml` 的安装说明已废） |
-| `AGENTS.md` | 207 行 / 16.5 KB | agent 作业说明：文档地图、命令、门禁 | 现行 |
+| `AGENTS.md` | 208 行 / 16.7 KB | agent 作业说明：文档地图、命令、门禁 | 现行 |
 
 > 体量口径与写法：**第一列一律按仓库根写路径**（`docs/migration/registry.md`，不写 `../registry.md`），因为 `scripts/check_doc_tables.py` 就按仓库根寻址并核对第二列——寻址不到即 FAIL。
 > **行数**按 `\n` 计数，**KB** 按文件字节数（**先剥掉 CRLF 里的 CR**，即按 LF 规范化后的字节）除以 1024 保留一位小数——不这么剥，同一条 commit 在 CRLF 检出与 LF 检出下会量出两个数，表就永远只能在一种机器上成立（changelogs **#45**）。中文在 UTF-8 下占 3 字节，所以「字符数」与「字节数」差得很远——本页早期版本混过这两个口径。`inventory/01`…`05` 那一行按五份求和。

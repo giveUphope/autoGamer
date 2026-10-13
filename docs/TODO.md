@@ -1,14 +1,15 @@
-# TODO · 待办（2026-10-14 已清空，待新方案）
+# TODO · 待办（新方案：D19 TS 全栈迁移）
 
-> 2026-10-14 起旧待办一次结清：已完成的 P4 物理收缩阶段 A/B 归档为 CHANGELOGS **#71**，
-> 未完成的 10 个差距与 P4 阶段 C/D 直接放弃（去向同见 **#71**）。
-> 新方案待用户提供；收到后按守则 R22（查文档 → 写方案 → 才写码）先落自足条目再实现。
+> 2026-10-14：旧待办一次结清（去向见 CHANGELOGS **#71**）；同日收到新方案——**D19：TS 全栈、py 归零**，
+> 规格落 [ts-fullstack-spec](migration/ts-fullstack-spec.md)，执行流程见本文件 **§七**。
+> 按守则 R22（查文档 → 写方案 → 才写码），每期开工前先在本文件落自足条目。
 > 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，
 > 导航查 [导航](migration/README.md)。
 
-## 零、当前状态（2026-10-14 清空，待新方案）
+## 零、当前状态（2026-10-14，进行中里程碑：TS 全栈迁移 D19）
 
-- 当前未关闭差距 **`G72` / `G74` / `G75` / `G76` / `G78` / `G81`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+- 当前未关闭差距 **`G72` / `G74` / `G75` / `G76` / `G78` / `G81` / `G82` / `G83` / `G84` / `G85`**
+  （正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字）。**进行中里程碑 = D19 TS 全栈迁移**（§七 流程，未开工）。
   `G77` → CHANGELOGS **#79**，`G73` → **#80**，`G79` + `G80` → **#82**，`G71` → **#83** 均已结案。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
@@ -379,9 +380,9 @@
 
 已清空，见「零、当前状态」。产品方向暂以第二节与第三节的冻结基线为准，新方案到达后改写本节。
 
-## 二、决策记录（冻结基线，D1-D18）
+## 二、决策记录（冻结基线，D1-D19）
 
-2026-10-14 冻结：清空时保留作基线，新方案到达后按 R22 修订。
+2026-10-14 冻结：清空时保留作基线，新方案到达后按 R22 修订。**D19（2026-10-14）为现行终态决议，收紧 D18。**
 
 | # | 决策点 | 结论 |
 |---|---|---|
@@ -403,6 +404,7 @@
 | D16 | 插件分层与 realm | 官方口径（[upstream-plugin-forms](migration/upstream-plugin-forms.md) 二.6）：Host 插件提供共享服务（tools registry、agent loop、sessions 等），**preset 插件只向这些 registry 贡献 scoped tools / persona / prompt 片段 / policy**；preset 内提供服务的插件**必须与其全部消费方同处一个 `cordis:group` + `isolate` realm**，条目局部隔离不沿 Agent 注册 scope 传播；注册表 `mountRevision` 对「行激活失败」与「服务泄漏进 root realm」都是**直接拒绝整个 preset 挂载**（源码口径 `mount.ts:193,212-213`） |
 | D17 | 自举引入 | 给 `preset-autogamer` 挂 `@deepseek-ai/dsh-plugin-manager/tools`（官方 shipped preset 里该行的 disabled 写作 `!!js '!ctx.get('profileContext')'`，即 UI 会话中可用），让 AutoGamer agent 能对自己执行 `install_bundle`。这是上游「让 Agent 给自己造插件」的现成路径，也是把引入流从手工迁到自动的落点；执行细节与红线见 [守则 R2 / R9](migration/plugin-contract-rules.md)。**2026-10-12 已落地**：preset 的 plugins 加 `- id: tool-plugin-manager`，`disabled: !!js "!ctx.get('profileContext')"`（**先写成 `false` 是错的，见 CHANGELOGS #26**：服务行 `plugin-manager` 自己就是 `!ctx.get('profileContext')`，工具行无条件开会要求一个不存在的服务，而缺服务按 D16 拒挂整条 preset；官方 Creator preset 用的正是这个表达式）（**不是**原设想照抄 `!!js '!ctx.get("profileContext")'`——官方 README 给的启用形状就是 `disabled: false`，且写明「Preset-backed sessions use their preset's tool-plugin-manager entry」；shipped `standard`/`ptc` 都是 `disabled: true`。⚠️ 但「照抄 `false`」的写法已在 #26 修成跟随服务条件）。live 已证：R7 新会话工具面从 5 个变 7 个、多出 `plugin_manager` 与 `skill`。⚠️ 代价按官方原文记在案：「installed Host code executes in-process outside the workspace sandbox」，且 plugin_manager 的**每个**动作（含 list_plugins/list_bundles）都要 danger-full-access 或该次审批；本仓库不替用户放宽权限模式（R19）。 |
 | D18 | 长期技术栈方向 | **用户 2026-10-12 定：以 TS 为主，py 仅在「特定库成熟度高于 TS 同类库」时保留**（典型如 adb/uiautomator2 等设备库、视觉/CV 库）。新增与重构逻辑默认落 TS；py 是「库成熟度占优」的例外而非默认。本次 P4 收缩**不触发** py→TS 重写，只把保留 py 压缩到最小设备能力面（动作为主、零智能栈），作为未来 TS 迁移前的可验证基线。是 D8 之后的演进方向，不改变 D8 当下的动作面保留 |
+| D19 | 终态（现行） | **用户 2026-10-14 定：TS 全栈、py 归零**。仓库内不再承载任何 py 实现（`artemis/`、`mcp_server/`、`third_party/`、`pyproject.toml`、`uv.lock` 全删，CI 无 python job）；上游 ARTEMIS 的能力逐步改由 TS 承载；外部 ARTEMIS **只保留为可选提供方**（用户自行安装、经 adapter 显式接入），不内置、不 vendored、不开开发依赖。**收紧 D18**——其「库成熟度例外」经实测不成立（`langchain` 出现在 54 个 py 文件而 LLM 绑定由 DSH 宿主提供；OCR 是 HTTP 调用；`cv2`/`PIL` 有成熟 TS 同类；`uiautomator2` 是 on-device 协议客户端）。规格与四期路线见 [ts-fullstack-spec](migration/ts-fullstack-spec.md)，流程见 §七 |
 
 ## 三、对接语义（冻结基线，S1-S11）
 
@@ -478,6 +480,10 @@
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
 | G81 | `tsconfig.json` 的 `include` 只含 `src` ⇒ 插件的 **32 个 spec 从未被类型检查**。把 tests 纳入一次 `tsc` 实测 **144 条错误**（`apply.spec.ts` 独占 45、`preflight.spec.ts` 21、`conformance/contracts.spec.ts` 15）；vitest 只转译不查类型，所以「必填字段」这类守卫在测试里不咬人 —— G79 正是靠必填才成立的守卫，它的守卫强度现在只在 `src` 一侧 | 先量后修：加一个 `check:tests` 脚本（临时配置需覆盖 `rootDir`，否则 TS6059 全量爆），144 条不可能一把改完 ⇒ 按文件分批收敛并同步 CI；**不要在 G79/G80 的收尾提交里顺手改** |
 | G78 | **`adb forward` 残留已实测证实**：`adb forward --list` → `127.0.0.1:16384 tcp:54254 tcp:18888`（18888 = helper 端口），而 MCP server 进程早已退出 ⇒ Done means 的「卸载无残留」**不是待验，是已被证伪**；建 forward 的一方是 py 动作面，插件 stop/dispose 管不到它 | 归属待定：插件侧兜底按 `host:port` 精确删（`--remove-all` 会误伤别处），还是 py 侧在自己生命周期内清（更接近 canonical 契约）。scrcpy 那一半仍缺二进制（留白 6/7） |
+| G82 | **py 引擎仍是运行消费者**：langgraph 图（planner/operator/validator/checker）与 langchain 绑定层被 `autogamer_run_task` / `autogamer_manage_task` / `autogamer_inspect_trace` 经 `mobile_*` 消费；但 D8/D14/S11 早就声明这层「不迁移、由单层执行路由替代」 | 期 **T1**（[ts-fullstack-spec](migration/ts-fullstack-spec.md) §三）：把三条工具改 TS 侧编排，S11 路由驱动 `run_device_action`；任务状态先查 DSH 原生载体（R20），不自建容器。Done = py 引擎在插件侧可达性为空 |
+| G83 | **15 工具动作面 py-only**：实现在 `artemis/mcp/adb_server.py`（adb / uiautomator2 客户端）；插件 `ActionClient` 目前只是 MCP 转发 | 期 **T2**：TS 原生实现 + 与现面**同一输入同一输出**逐条对照（fixture 用现成 `tests/fixtures/py-action-tools.json`）。前置 = §四 的 wire 实测（层级 dump 形态、helper 协议） |
+| G84 | **效果判定 / OCR / 标注 py-only**：`compare_ui_frames` 委托 py 侧 `check_ui_change`；OCR 走 py `httpx` → Google Vision；overlay 用 py `PIL`/`cv2` | 期 **T3**：dHash 类差分 + `fetch` 直译 OCR + sharp 标注；算法与阈值从 py 读设计（属「无思路从上游取设计」）。对照表留档 |
+| G85 | **py 归零收尾未做**：`artemis/` `mcp_server/` `third_party/` `pyproject.toml` `uv.lock` 与 py 测试树仍在；CI 仍有 python job | 期 **T4**：分批删 + 每批后跑插件全套与 R6；文档口径同步（AGENTS 命令表、README 导览、§零/§六）。Done = `git ls-files '*.py'` 为空且 CI 无 python job |
 
 旧表 10 项的去向见 CHANGELOGS「已关闭差距史」（9 项放弃 + G36 行同步 UI 侧放弃），编号权威仍是 [registry](migration/registry.md)。
 
@@ -750,3 +756,48 @@ R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；�
 - [ ] 卸载无残留进程：scrcpy 那一半仍缺二进制（留白 6/7）；**adb forward 那一半 Step 2 已实测证伪**
       （server 退出后残留 `tcp:54254 → tcp:18888`）→ 转 **G78**
 - [ ] README 完整化（Phase 5 已加段落与 Layout 行，双向锁在 `#61/#64`；仍待随 G71 的交付形态更新安装流一节）
+
+## 七、TS 全栈迁移流程（D19；规格见 [ts-fullstack-spec](migration/ts-fullstack-spec.md)）
+
+> 本节只做**流程与勾选**；终态定义、能力矩阵、分期细节在规格文件。**顺序不可跳**（R22：每期开工前先落自足条目，方案提交早于实现提交）。
+> 每期收尾门禁：插件 `tsc` + `vitest` 全绿；改过 patch 跑 **R6**（`--dump-config` rc 0 且无 `unmatched`）；**R7** 开新会话；判「生效」只认 **R9**。
+> T1–T4 是分期名**不是编号**（见 registry §五）；各期对应的差距编号已在括号里给出。
+
+### 前置：契约实测（动 T2/T3 之前，任一未测不许开工对应期）
+
+- [ ] 前置-1 `adb shell uiautomator dump` 的真 wire 形态（设备 XML 与 py 扁平列表的对应关系）
+- [ ] 前置-2 helper（accessibility APK）服务协议：端口 / 握手 / 请求响应格式 / `adb forward` 生命周期（与 **G78** 同源）
+- [ ] 前置-3 `compare_ui_frames` 委托的 `check_ui_change` 算法与阈值
+- [ ] 前置-4 外部提供方接入边界：`artemisMcpCommand` / `artemisRepoPath` 在 T4 后只剩「可选外部 ARTEMIS」语义
+
+### T1 · 引擎去消费者（**G82**）
+
+- [ ] 落自足条目（What / How / Verify / Done 四段）并按 R22 先提交方案
+- [ ] `autogamer_run_task` / `autogamer_manage_task` / `autogamer_inspect_trace` 改 TS 侧编排（S11 路由驱动 `run_device_action`）
+- [ ] 跨回合任务状态载体定案（先查 DSH 原生 storage / session 投影，按 R20 取一手口径，不自建容器）
+- [ ] 三条工具不再出现 `mobile_` 调用（grep + 契约锁）
+- [ ] R7 真机跑一条完整任务，`report_task_status` 终态双轴正确
+- [ ] **Done：py 引擎在插件侧可达性为空**
+
+### T2 · 动作面 TS 化（**G83**）
+
+- [ ] 15 工具动作面 TS 原生实现（adb CLI + on-device 协议客户端）
+- [ ] 与 py 面逐条对照：**同一输入同一输出**（fixture 复用现有 `tests/fixtures/py-action-tools.json`）
+- [ ] 坐标 / 层级 / 截图三条金标准复测（沿用 Step 1 的独立测量法）
+- [ ] **Done：`artemis mcp --type adb` 不再是任何路径的运行时依赖**
+
+### T3 · 图像与 OCR TS 化（**G84**）
+
+- [ ] `compare_ui_frames` 差分落 TS（算法与阈值从 py 侧读设计）
+- [ ] OCR 改 `fetch` 直译 Google Vision
+- [ ] overlay 标注改 sharp
+- [ ] 对照表留档（同输入同输出，可复跑命令 + 实测输出）
+- [ ] **Done：效果判定与 OCR 无 py 依赖**
+
+### T4 · 收尾删 py（**G85**）
+
+- [ ] 分批删 py 树，每批后跑插件全套 + R6
+- [ ] 清 CI 的 python job 与 py 依赖安装步骤
+- [ ] 文档口径同步（`AGENTS.md` 命令表、`migration/README.md` 导览、本文件 §零 / §六）
+- [ ] `git ls-files '*.py'` 为空
+- [ ] **Done：规格 §一 四条全部成立**

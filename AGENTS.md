@@ -37,6 +37,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 | `docs/migration/dsh-verification.md` | 查 rc.2 各子系统结论时。注意其中 37 处包内代码行引用属 D15 之前的 asar 口径，沿用前须按声明面重验 |
 | `docs/migration/feature-inventory.md` 与 `inventory/01-05` | 担心丢 fork 现有能力时；设备与智能栈部分是上游 canonical 契约 |
 | `docs/migration/upstream-rethink.md` | 要回到"为什么基线是 google/artemis"时 |
+| `docs/migration/ts-fullstack-spec.md` | 动 py 侧、或问"py 到底要不要全删、怎么删"时。**D19 终态规格**：TS 全栈、py 归零；能力迁移矩阵 + 四期分期；流程与勾选在 `docs/TODO.md` §七 |
 | `plugins/dsh-autogamer/README.md` | 安装流与包内形状说明；**状态与阻塞点只在 `docs/TODO.md` §零**，别处不复制 |
 
 上游一手资料（声明面之外唯一允许的补充来源，公开仓库）：`github.com/deepseek-ai/deepseek-harness`
