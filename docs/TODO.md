@@ -8,8 +8,22 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前未关闭差距 **`G71` / `G72` / `G74` / `G75` / `G76` / `G78` / `G79`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+- 当前未关闭差距 **`G71` / `G72` / `G74` / `G75` / `G76` / `G78` / `G79` / `G80`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
   `G77` 已随 CHANGELOGS **#79** 结案，`G73` 已随 **#80** 结案。
+- 2026-10-13 **Step 4 · 收益优先级调研**（四路并行：本仓改动面审计 / Android-adb 一手口径 / DSH 交付与 live 路径 / 提供方形状）。
+  四件事改变了排序，其中**两条是收回我自己写错的结论**：
+  - **收回**：「`dsh plugin remove` 只删依赖、CLI 侧不存在卸载命令」——`operations.ts:88-97` 的 `reconcile()` 在
+    pnpm 成功后就把消失的名字从 `dsh.profile.bundles` 剔除（且仅在 `exitCode===0 && !stalled`）。
+    ⇒ **G71 存在 0 审批路径**，它不再是"要用户在 UI 里点"的独占门槛，成本评级从「需人 + 需宿主」降到「一条命令」。
+  - **收回**：G74 里「`{index}` 改吃 `parsed_bounds`」——`parsed_bounds` **早已被优先采用并有锁**
+    （`apply.spec.ts:62`、`dedup.spec.ts:17`）。写待办前没核现状，正是守则 R25 禁的那种事。
+  - **新立 G80**：`rulesInjector.ts:16` 读 `<repo>/mcp_server/rules.md`，本分支没有该文件而失败策略是 warn-skip
+    ⇒ rules 注入在真环境**静默 no-op**，Phase 5「注入已落地」只在 fake-repo 夹具下成立。
+  - **口径纠正**：§四 与 registry 里写的「13 工具动作面」不准 —— 实测与 fixture 都是 **15**；
+    13 是 `ACTION_TO_PY_TOOL` 的非 null 映射数（`runDeviceAction.ts:66-81`）。两处已按各自语境改正。
+  - **账实不符**：§零 旧行写「`pre-contraction` 为收缩前基线（`3fab0ee`，本地存档，不推送）」，但现在
+    `git branch -a --list '*pre-contraction*'` 为空、`git rev-parse pre-contraction` 报 fatal ⇒ 该 ref 现在不可解析。
+    等价内容仍可经 **`main`**（同仓，含 23 个 `mcp_server/*.py` 与 `mcp_server/rules.md`）取得——这也是 G72 的第三条路。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -102,7 +116,8 @@
   通道，旧名死链只挡后者；官方卸载/安装契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八。
 - 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
-  （`3fab0ee`，本地存档，不推送）。
+  （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
+  等价内容经 `main` 取得，见本节 Step 4。
 - CI 修绿（run `38371033938` 全红之后）：首个 push run 6/6 红，根因全是旧树残留——
   前端/smoke-test 的 setup-node 缓存路径、依赖源门禁的文件 glob、fixture 步调的生成器，
   皆指向 P4 已删之物。修法（CHANGELOGS **#77**，含首绿前又红一次的补记）：删
@@ -215,24 +230,38 @@
 
 | 编号 | 差距 | 阻塞点 / 下一步 |
 |---|---|---|
-| G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 须走官方 `plugin_manager` 的 `remove_bundle` → `install_bundle` 重做交付形态；**契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八**，此处不重述 |
-| G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 13 工具动作面 | 七工具 live（留白第 1、9 项）前须二选一：① `artemisRepoPath` 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面新增一层映射（`run_task`/`inspect_trace` 在动作面无对应工具，不能直接换命令）。2026-10-13 Step 0 实测 |
-| G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组，属性值是字符串（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`）**但每个节点还带 `parsed_bounds` 整数对象（真机 36/36 全有）**，且节点数被 `filter_ui_hierarchy` 的语义裁剪大幅压低（设计行为，见 §零 Step 2） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
-| G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（DSH 的 roster 指 preset 行；artemis 上游 `device_pool.py` 与本仓逐字相同、无 dedupe，详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九）。诚实路线只剩三条并已列在该节表格里，默认取 **①：交付钉显式 `Config.devices`，把自动枚举降级**（不碰 canonical 契约，且 `devicePool.ts:166` 已让「钉住就不枚举」）。待用户裁定后按 R22 写方案再动码 |
+| G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 走官方管理面重做交付形态。**成本比上一轮记的低**：侧边栏与 CLI 两条路都是 0 审批（`operations.ts:88-97` 的 `reconcile()` 证明 CLI `remove` 也会清 bundles——已收回旧结论）。三条入口、审批代价与坑位见本节 G71 条目与 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八 |
+| G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 **15 工具动作面**（13 是 `ACTION_TO_PY_TOOL` 的非 null 映射数，两者不是一回事） | 三条路，**②已被证据排除一半**：① Config 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面加映射层——动作面**没有 task/trace 类工具**（fixture 15 个里无 `run`/`status`/`stop`/`inject`/`view_summary`），`run_task`/`manage_task`/`inspect_trace` 三个工具无处可接，本分支也没有 REST 兜底（`git ls-files apps` = 0）；③ **用同仓的 `main` 挂一个 worktree 当提供方**（`main:mcp_server` 有 23 个 `.py`，含那 5 个工具模块与 `rules.md`），零外部依赖，代价是要为它单独 `uv sync` 一份环境并吃智能栈的重依赖。2026-10-13 Step 0/4 实测 |
+| G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本 | **只有 provider 那半边要改**：`artemis/mcpBackend.ts:170-196`（`view_type` 与 `screenshotPath: text`）、`artemis/types.ts:22-30`、`tools/getDeviceState.ts:105` + 两个 spec（`artemisMcpBackend.spec.ts:60-87`、`getDeviceState.spec.ts:36-48,104-117`），约 60 LOC。**`{index}` 侧不重复做**——它早已优先吃 `parsed_bounds` 并有锁（`apply.spec.ts:62`、`dedup.spec.ts:17`），上一轮把这条写成待办是我没核现状（R25）。**先定 G72 走哪个面**，两面的形状本就不同 |
+| G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九），且 §十 补了一条更硬的约束：adb 文档里**只有 `emulator-5554` 的 console↔adb 端口配对有身份含义**，`127.0.0.1:*` 是裸 TCP 传输、端口可能随启动变化 ⇒ **钉 TCP serial 的白名单会静默丢设备**。三条诚实路线（钉 roster / py 增发身份 / 只明示计数单位）与代价在 §九；路线 ① 的改动面极小（`cordis.patch.yml` 加 `devices`，`devicePool.ts:166` 已实现「钉住就不枚举」），但要接受"多实例时操作者手工维护"。待裁定后按 R22 写方案再动码 |
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
-| G79 | 预检 `helper` 项不传设备序列号：多传输同机时被提供方直接拒绝。G77 修复后暴露的真红——实测 detail = `Several devices are ready; pass --serial, or --all to target every idle one: 127.0.0.1:16384, 127.0.0.1:5555, 127.0.0.1:7555, emulator-5554` ⇒ **G75 打到预检层** | `helperCheck` 该带上配置的设备作 `--serial`（Config `defaultDevice`，缺则 `.env` 的 `ADB_DEVICE_SERIAL`）；与 G75 的路线裁定一并处理，别先单点打补丁 |
+| G79 | 预检 `helper` 项不传设备序列号：多传输同机时被提供方直接拒绝。G77 修复后暴露的真红——实测 detail = `Several devices are ready; pass --serial, or --all to target every idle one: 127.0.0.1:16384, 127.0.0.1:5555, 127.0.0.1:7555, emulator-5554` ⇒ **G75 打到预检层** | `artemis helper status` 确实吃 `--serial`（`helper.py:39-42,71-77`），**但没有 `--all`**。要传的是 Config 的 `defaultDeviceSerial`（`index.ts:80`；**没有** 叫 `defaultDevice` 的字段，`defaultDeviceKey`（`:47`）是闸门键不是 serial），而 `.env` 的 `ADB_DEVICE_SERIAL` **只有 py 读**（`artemis/mcp/adb_server.py:123`）——插件侧兜底它是新代码不是现状。范围：`env/preflight.ts:274-294` + 加宽 `PreflightInput`（`:26-29`）+ `index.ts:187-191`，约 30 LOC、3 条旧 spec 要改 + 2 条新增。与 G75 的路线裁定一并处理 |
+| G80 | **rules 注入在本分支静默 no-op**：`src/prompt/rulesInjector.ts:16` 读 `<artemisRepoPath>/mcp_server/rules.md`，本分支该路径不存在（`main` 上有），而失败策略是「缺文件 → warn 跳过、永不抛」⇒ 真环境里契约文本无声消失，Phase 5 的证据只在 `tests/fixtures/fake-repo/` 成立 | 与 G72 同根（提供方仓库决定这文件在不在）。要么把「文件不存在」升级成工具可见的告警面（预检/诊断里出一条），要么随 G72 定死提供方形态。现状未登记为差距前，「rules 注入已落地」这句话**不能再说成 live 已成立** |
 | G78 | **`adb forward` 残留已实测证实**：`adb forward --list` → `127.0.0.1:16384 tcp:54254 tcp:18888`（18888 = helper 端口），而 MCP server 进程早已退出 ⇒ Done means 的「卸载无残留」**不是待验，是已被证伪**；建 forward 的一方是 py 动作面，插件 stop/dispose 管不到它 | 归属待定：插件侧兜底按 `host:port` 精确删（`--remove-all` 会误伤别处），还是 py 侧在自己生命周期内清（更接近 canonical 契约）。scrcpy 那一半仍缺二进制（留白 6/7） |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
 
 - **What**：把本机 `~/.dsh/profiles/web` 的插件交付形态从「手改 `package.json` 的 `link:`」换成官方管理面装出来的形态；
   装的对象是 `dsh-autogamer`。不做：手改 profile 目录内任何文件、在 profile 目录跑 pnpm、改 `cordis.patch.yml`。
-- **How**：① 宿主 Web 侧边栏**插件**页对 `autogamer-device` 执行卸载（等价 `remove_bundle`，它会先 `selectBundle(false)`
-  清 `dsh.profile.bundles` 再 `pnpm remove`——`dsh plugin remove` 只删依赖，单独用不够）；② 对 `dsh-autogamer` 执行
-  `install_bundle`，开发形态按官方口径用 `link:<插件绝对目录>`；若走 tarball 则先 `npm pack` 出新名资产
-  （README 里那条旧名 Release 资产装上去会把包名退回旧口径）；③ 每次动作都要宿主审批，本仓库不代放宽权限模式（R19）。
+- **How**（三条入口都合规，代价不同；**上一轮写的「CLI `remove` 单独用不够」已被源码否证**，见
+  [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八的收回段——`operations.ts:88-97` 的 `reconcile()`
+  会在 pnpm 成功后把消失的名字从 `dsh.profile.bundles` 剔除）：
+  - **A. Web 侧边栏「插件」页（0 次审批）**：卸载 `autogamer-device` → 「添加插件」填绝对路径
+    `D:/DEV/autoGamer/plugins/dsh-autogamer`（对话框先跑 `inspect`）→ 立即启用 → 冷重启宿主。
+  - **B. 纯 CLI（0 次审批）**：`dsh plugin --profile web remove autogamer-device`，再
+    `dsh plugin --profile web add link:D:/DEV/autoGamer/plugins/dsh-autogamer`。
+    注意 `link:` 会被 pnpm **按 profile 目录记成相对形式**；HMR 能感知文件变化但不发
+    `plugin-manager/changed`，页面要手动刷新。
+  - **C. 会话内 `plugin_manager` 工具（每个动作都要审批，含 `list_*`）**：只有在需要机器读
+    `install_bundle` 的 `application` 字段时才值。本包 preset 的 `tool-plugin-manager` 此刻随包加载失败，
+    **不能靠它自举**。
+  - 共同注意：peer 钉的是 `0.2.0-rc.2`，若宿主版本不符会 `incompatible-version`，宿主会打印确切的
+    `allow-version` 命令（放宽版本豁免要明示风险，R19 不代批）；替换已存在的依赖返回 `restart-required`；
+    失败/取消会恢复 `package.json` 与 `pnpm-lock.yaml`（但**有意不恢复** `pnpm-workspace.yaml`）。
+    旧名 Release 资产 `autogamer-device-0.1.0.tgz` 装上去会把包名退回旧口径 ⇒ 走 tarball 必须先出新名资产。
 - **Verify**：`dsh --profile web --patch <绝对路径> --dump-config` 仍 rc 0 且 grep 不到 `unmatched`（R6）；
-  新会话里 `list_plugins` / `list_bundles` 的 `enabled`/`fiberPhase` 无 `error`（R7、R9——只认官方检查器，不认日志/进程）；
+  生效只认官方检查器（R7、R9）——优先用**免审批**的 `cordis_inspect_query` 的 `Tool` 项确认新行，
+  `list_plugins`/`list_bundles` 的 `enabled`/`fiberPhase` 作辅证（官方 skill 明写「用前者确认新行，别用 `list_plugins`」）；
   改过 TS 先 `pnpm run build` 再冷重启宿主。
 - **Done means**：
   - [ ] `dsh.profile.bundles` 里不再出现 `autogamer-device`，且该清理由管理面完成而非手改
@@ -446,7 +475,7 @@ mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
 
 留白总账（定位用，补白时直达；触发条件写明）：
 1. 外部提供方缺席 → 七工具真调用与 R7（触发：artemisRepoPath 指向可用 checkout。**2026-10-13 Step 0：本树只剩
-   13 工具动作面（`uv run artemis mcp --type adb`），`mcp_server/` 的 `.py` 计数为 0 → 形状之争已立 G72**）。
+   15 工具动作面（`uv run artemis mcp --type adb`），`mcp_server/` 的 `.py` 计数为 0 → 形状之争已立 G72**）。
 2. toolview 挂载实证：槽解析、key 生效、卡片渲染（client.js；触发：真会话 R7/R9）。
 3. 轮询/控制/设置卡片通道（触发：挂载实证 + remote 挂载路径证明）。
 4. H.264 转发：无通道，砍（重开条件：DSH 二进制通道出现）。

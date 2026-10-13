@@ -72,10 +72,25 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 > 上游 `deepseek-ai/deepseek-harness` @ `master`，2026-10-13 经 `gh api repos/.../contents/...` 取。
 > 口径标注沿用本文头的约定；本节另有**本机实测**一类，按 R21 与「单测证明 / live 证明」分开记。
 
-1. **`dsh plugin` 只是 pnpm 转发，`remove` 清不掉组合包选择**（文档口径，`docs/cli-help.zh.md` 的 `dsh plugin` 段）：自述
-   「manage a profile's plugins by **forwarding the remaining arguments to pnpm** in the profile directory」，参数示例
-   `add <pkg>`, `remove <pkg>`, `why <pkg>`。`dsh.profile.bundles` 是 dsh 自己的字段，pnpm 不触碰它——所以 CLI 卸载只删依赖，
-   bundle 选择会留着，故障照旧。**CLI 侧不存在卸载命令。**
+1. **`dsh plugin` 是 pnpm 转发，但转发之后宿主会 `reconcile()` —— 所以 CLI 卸载确实会清掉组合包选择**
+   （文档口径，`docs/cli-help.zh.md` 的 `dsh plugin` 段：「manage a profile's plugins by **forwarding the remaining
+   arguments to pnpm** in the profile directory」，参数示例 `add <pkg>`, `remove <pkg>`, `why <pkg>`；
+   **源码口径**，`packages/boot/plugin-manager/src/operations.ts:88-97`）：
+   ```
+   const bundles = previous.filter((name) => {
+     if (!beforeDeps.has(name) && !dependencies.includes(name)) return true
+     return dependencies.includes(name) && bundleManifest(name, dir, anchor) !== undefined
+   })
+   ```
+   即 `pnpm remove <name>` 成功后该名字既不在 `dependencies` 也不在 `beforeDeps` ⇒ 被从
+   `dsh.profile.bundles` 剔除；`add` 方向同一段的 `for (const name of dependencies)` 循环会把新装且声明
+   `dsh.bundle` 的包补进层。**且只在 `exitCode === 0 && !control.stalled` 时执行**（`operations.ts:464-465`）。
+
+   > **收回八节初稿的两句话**（2026-10-13 第二轮自查，R28）：我先前写下「pnpm 不碰 `dsh.profile.bundles`，
+   > 所以 CLI 卸载只删依赖、bundle 选择会留着」和「**CLI 侧不存在卸载命令**」。**两条都不成立**——我只读了
+   > `index.ts` 的 `removeBundle`，没读 `operations.ts` 的 `runProfilePnpm`→`reconcile` 收尾。
+   > 后果不只是措辞：它让 **G71** 看起来必须走宿主 UI 审批，实际存在零审批的 CLI 路径（见 §八 末与 TODO 第四节）。
+   > 教训记法与 R25 同源：断言「官方没有 X」之前要读完同一条调用链的收尾，别只读最显眼的那个方法。
 2. **`remove_bundle` 才是把两步一起做掉的那个**（源码口径，`packages/boot/plugin-manager/src/index.ts:645-669`）：
    `listBundles()` → 要求 `bundle.removable` → `if (bundle.enabled) await this.selectBundle(name, false)`（**这一步才清
    `dsh.profile.bundles`**，`README.zh.md` 原文「组合包开关修改 `package.json` 的有序 `dsh.profile.bundles` 列表」）
@@ -166,3 +181,42 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 | ③ 只在文档与 UI 明示「计数单位是 adb 传输，不是设备」 | 零代码 | 不碰 |
 
 选 ②③ 之前不得自造指纹：`is_emulator` + model 在多实例场景不可区分（实测四条 model 全同）。
+
+## 十、设备侧一手口径（Android / adb / scrcpy，2026-10-13）
+
+> 为什么写进本文：G75 / G76 / G78 与留白 19 的解法边界由 **adb 与平台的官方口径**决定，而不是由 DSH 或本仓决定。
+> 来源全部是 primary（`developer.android.com` 的 adb 文档、AOSP `platform_frameworks_base` 源码镜像、
+> Genymobile/scrcpy 源码与 FAQ、openatx/uiautomator2 README），并标注 文档口径 / 源码口径 / 实测 / 未证。
+
+1. **adb 只建模「传输」，不建模「设备」**（文档口径 + 本机 `adb help` 逐字）：emulator 由 adb 扫描
+   5555–5585 的奇数端口发现，「每个 emulator 用一对连续端口——偶数 console、奇数 adb」，
+   `emulator-5554` 的 serial 就是 adb 自己按端口造出来的字符串；**console↔adb 端口配对是唯一被文档化的身份信息**。
+   `127.0.0.1:16384` / `:7555` 属 `connect HOST[:PORT]` 的 TCP 传输，**没有任何官方文档把它绑定到某个 emulator 实例**。
+   可用旗标：`-d`(USB) / `-e`(TCP) / `-s SERIAL` / `-t TRANSPORT_ID` / `get-serialno` / `get-devpath` /
+   `--one-device SERIAL|USB`（仅 start-server）。⇒ **`transport_id` 不可当身份**（宿主分配，重连或 `kill-server` 会变，实测确认）。
+2. **HOME 是框架消化、不下发给应用的键**（源码口径，AOSP `core/java/android/view/KeyEvent.java` 原文）：
+   “Home key. **This key is handled by the framework and is never delivered to applications.**”
+   `KEYCODE_BACK` 的注释只有 “Back key.”。⇒ 与实测一致（本机 HOME 0/10、BACK 10/10）。
+    shipped 的 Android 15 `input` 只接受 **`-d DISPLAY_ID`**（实测：`-d: specify the display ID.
+   (Default: INVALID_DISPLAY for key event, DEFAULT_DISPLAY for motion event if not specified)`）——
+   **`--display` 与 `-p` 在这个 build 里不存在**。官方从未推荐用 `am start MAIN/HOME` 代替 keyevent，
+   该替代路径是本机实测有效，属**推断**；HOME 被丢的具体环节（PhoneWindowManager 策略还是视口投递）**未证**（取不到源码）。
+3. **坐标空间的正解不是 `wm size`**（文档口径，AOSP `android/view/Display.java`）：`getRotation()`
+   “will match the results of getMetrics”，而 `getRealSize()` 已 **@Deprecated**，官方指引是
+   `WindowManager#getCurrentWindowMetrics()` / `WindowMetrics#getBounds()`。
+   本机实测：`screencap` 的 PNG IHDR、uiautomator `bounds`、`input tap` 三者同处 1600x900 空间，
+   `wm size` 的 “Physical size 900x1600” 是平衡朝向 ⇒ **「取当前帧空间尺寸」这条路有官方依据，
+   手填 `wm size` 值没有**（G76 据此选校验而非注释）。`wm` 自身的 help 文本未取到，**未证**。
+4. **forward 属于 adb server，不属于建它的进程**（文档口径，`adb help`：「forward --list — list **all**
+   forward socket connections」，另有 `--remove LOCAL` / `--remove-all`）：没有任何文档承诺进程退出会清理，
+   与本机实测一致（server 已退，残留仍在）。**官方项目自己的做法可抄**：scrcpy `app/src/adb/adb.c` 的
+   `sc_adb_forward_remove()` 走 `-s <serial> forward --remove <local>` ——
+   **记住自己的本地端口、按 serial+port 精确删**，而不是 `--remove-all`（那会误伤别处的转发）。⇒ G78 的形状有了。
+5. **层级稀疏不能归因于 UIAutomator2**（源码口径，openatx/uiautomator2 README）：设备端是
+   “an HTTP service based on UiAutomator”，可按 `transport_id` 选设备。第三方 launcher（Lawnchair）
+   与 window filter 造成的稀疏度差异**无官方文档**，属**未证**——本仓那半边已由
+   `filter_ui_hierarchy` 的语义裁剪解释清楚（§零 Step 2）。
+
+**这五条对决策的直接影响**：G75 的「钉显式 serial」只剩 `emulator-5554` 有文档化身份含义，MuMu 的 TCP 端口
+可能随启动/实例变化 ⇒ 白名单会**静默丢设备**；G76 应加与截图 IHDR 的一致性校验而非只写注释；
+G78 照 scrcpy 的 serial+port 精确删；留白 19 记为「HOME 由框架消化」的已知平台行为，不再当随机故障追。

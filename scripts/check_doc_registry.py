@@ -247,18 +247,25 @@ def selftest() -> None:
     if REGISTRY.read_bytes() != registry_bytes:
         raise SystemExit("FAIL: selftest did not restore registry.md byte-for-byte")
     print("OK: registry.md restored byte-for-byte after selftest")
-    # invent a dangling id in a doc and expect it to be reported
+    # invent a dangling id in a doc and expect it to be reported.
+    # The ghost id is DERIVED (max registered G + 1), never a literal: a hardcoded
+    # one rots the moment that number gets defined, and then the mutation silently
+    # stops firing - which is the exact failure class rule R27 warns about.
     todo_bytes = TODO.read_bytes()
     todo = todo_bytes.decode("utf-8")
-    tampered = todo.replace("G30", "G77", 1)
+    known = {int(m) for m in re.findall(r"^\| G(\d+) \|", original, re.M)}
+    ghost = f"G{(max(known) + 1) if known else 9999}"
+    tampered = re.sub(r"\bG\d+\b", ghost, todo, count=1)
     if tampered == todo:
         raise SystemExit("FAIL: selftest anchor not found in TODO.md")
+    if ghost in original:
+        raise SystemExit(f"FAIL: ghost id {ghost} is not actually dangling")
     TODO.write_bytes(tampered.encode("utf-8"))
     try:
         problems = check()
-        caught = [p for p in problems if "G77" in p]
+        caught = [p for p in problems if ghost in p]
         if not caught:
-            raise SystemExit("FAIL: ruler is blind to a renamed/dangling id")
+            raise SystemExit(f"FAIL: ruler is blind to a renamed/dangling id ({ghost})")
         print(f"CAUGHT [dangling id]: {caught[0]}")
         fired += 1
     finally:
