@@ -217,6 +217,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
         "scrcpyEnabled",
         "scrcpyMaxFps",
         "scrcpyMaxWidth",
+        "scrcpyServerPath",
         "strictness",
         "traceRetentionDays",
         "uvPath",
@@ -266,6 +267,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     expect(resolved.defaultDeviceSerial).toBe("");
     expect(resolved.injectRules).toBe(true);
     expect(resolved.autoPreflight).toBe(true);
+    expect(resolved.scrcpyServerPath).toBe("");
     expect(resolved.traceRetentionDays).toBe(7);
     // The trap `configuredScreenSize()` exists to survive: an unset optional
     // tuple comes back as a truthy `[undefined, undefined]` array, never

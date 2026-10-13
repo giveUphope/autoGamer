@@ -285,6 +285,25 @@ live 仍缺外部提供方（映射 refinements 待真证据）。
 单测：manifest 形态、ModuleLoader 形态、五 key、import 白名单、六项 cut-API 否定锁。
 live 缺挂载实证（槽解析、key 生效、卡片渲染均需真会话）。
 
+### Phase 4 偏差与落地（2026-10-14）
+
+动工前先读 scrcpy 一手文档（README 许可证与官方源警告、`doc/develop.md` 执行章、
+`Options.java` 开关表），再定诚实子集：
+1. 推送序列即文档原样：push 到 `/data/local/tmp/scrcpy-server.jar`、forward
+   `tcp:{port}`（默认 27183）到 `localabstract:scrcpy`、CLASSPATH app_process 加版本
+   首参（严格一致，不兼容即拒跑）加 key=value 开关。
+2. 只用文档证实的开关：tunnel_forward/audio/control/cleanup/raw_stream/max_size/
+   max_fps/video_bit_rate；control=false（画面-only，走文档 raw recipe），触摸走
+   `adb shell input` 降级（`src/scrcpy/input.ts` 纯函数）。
+3. `stream.ts` 不存在（无 DSH 二进制通道，写了就是死代码）；`fetch-*.ts` 不存在
+   （无已核实分发端点，手动安装见 README）；stop 的 pkill 为最佳努力（上游无 kill
+   文档，warn-only）；启动 forward/握手竞态如实标注未解（需真机）。
+4. 版本来源：显式路径文件名，无版本名则拒；sidecar 先读 jar 文件名，读不出再读同级
+   `scrcpy --version`（绝不猜）。
+新文件：`src/scrcpy/server.ts`（resolve/start/stop/dispose 全懒）、`src/scrcpy/input.ts`；
+Config 加 `scrcpyServerPath`；index 只构造加析构（无工具驱动，注释写明）。
+live 全部推迟（本机无 scrcpy/adb，20fps/触摸/无残留均需真机）。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；

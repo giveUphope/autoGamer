@@ -22,6 +22,7 @@ import { defineInspectTrace } from "./tools/inspectTrace.js";
 import { defineDiagnose } from "./tools/diagnose.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
+import { ScrcpyManager } from "./scrcpy/server.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -77,6 +78,7 @@ export const Config: object = z.object({
   injectRules: z.boolean().default(true),
   autoPreflight: z.boolean().default(true),
   scrcpyEnabled: z.boolean().default(true),
+  scrcpyServerPath: z.string().default(""),
   scrcpyMaxFps: z.number().default(30),
   scrcpyMaxWidth: z.number().default(1080),
   scrcpyBitrateMbps: z.number().default(4),
@@ -123,6 +125,7 @@ export type PluginConfig = {
   injectRules?: boolean;
   autoPreflight?: boolean;
   scrcpyEnabled?: boolean;
+  scrcpyServerPath?: string;
   scrcpyMaxFps?: number;
   scrcpyMaxWidth?: number;
   scrcpyBitrateMbps?: number;
@@ -144,6 +147,21 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     rosterSource: config.discoverDevices ? () => enumerateRoster() : undefined,
   });
   const incidents = new ActionIncidents();
+  // dsh-autogamer rectification (Phase 4): the mirror manager is constructed
+  // (lazily — no spawn) and disposed with everything else, but no tool drives
+  // it yet: without a DSH binary channel there is no consumer for the video
+  // socket (Phase 0 verdict), so start() waits for a transport that exists.
+  const scrcpy = new ScrcpyManager({
+    maxWidth: config.scrcpyMaxWidth ?? 1080,
+    maxFps: config.scrcpyMaxFps ?? 30,
+    bitrateMbps: config.scrcpyBitrateMbps ?? 4,
+    ...(typeof config.defaultDeviceSerial === "string" && config.defaultDeviceSerial.length > 0
+      ? { serial: config.defaultDeviceSerial }
+      : {}),
+    ...(typeof config.scrcpyServerPath === "string" && config.scrcpyServerPath.length > 0
+      ? { serverPath: config.scrcpyServerPath }
+      : {}),
+  });
   // dsh-autogamer rectification (Phase 1): the external ARTEMIS backend and
   // the shared preflight runner. The backend connects lazily on first use, so
   // constructing it here spawns nothing; the preflight warm-up below only
@@ -427,5 +445,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.effect?.(() => () => {
     void client.dispose();
     void artemisBackend.dispose();
+    void scrcpy.dispose();
   });
 }
