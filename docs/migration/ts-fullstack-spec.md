@@ -1,7 +1,7 @@
 # TS 全栈终态规格：上游 ARTEMIS 能力收敛为 DSH 插件
 
 > 本文件是决策 **D19**（TS 全栈、py 归零）与 **D20**（溯源归零、只留 LICENSE）的展开规格。
-> 本分支的编号与开放项看 [`../TODO.md`](../TODO.md)；归档分支 `dsh-plugin-contraction` 持有旧 fork 的全部实现与调研台账（`registry` / `CHANGELOGS` / `inventory`），本分支不携带。
+> 本分支的编号与开放项看 [`../TODO.md`](../TODO.md)；归档分支 `legacy-fork-v2-dsh-plugin` 持有旧 fork 的全部实现与调研台账（`registry` / `CHANGELOGS` / `inventory`），本分支不携带。
 > 状态：**2026-10-14 立项（方案，未开工）**。每期开工前按守则 **R22** 先在 `../TODO.md` §七 落自足条目，方案提交早于实现提交。
 > 本文件不写体量与行数（体量属派生事实，一律由脚本生成，不手抄）。
 

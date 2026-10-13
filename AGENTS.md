@@ -5,8 +5,9 @@ Instructions for agents working in this repository.
 ## What this is
 
 **ARTEMIS 的后继实现**：从 `google/artemis` 只取**设计灵感**、独立重实现的 **DSH（DeepSeek Harness）插件**。
-本仓库**不是**上游代码的延续——按 **D20**，除 `LICENSE` 外不保留任何上游内容；`dsh-plugin-contraction`
-分支是旧 fork 的**参考归档**（含全部历史实现与调研台账），本分支从零重建。
+本仓库**不是**上游代码的延续——按 **D20**，除 `LICENSE` 外不保留任何上游内容。旧 fork 的两版尝试都在归档分支里：
+**`legacy-fork-v2-dsh-plugin`**（第二次尝试：收缩为 DSH 插件形态，含全部历史实现与调研台账）与
+**`legacy-fork-v1`**（初版二开，未达效果）。本分支（**`main`**）从零重建。
 
 **终态**：TS 全栈、py 归零（**D19**）。判据与四期路线见 `docs/migration/ts-fullstack-spec.md`。
 

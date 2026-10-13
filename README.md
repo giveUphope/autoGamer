@@ -13,7 +13,8 @@
 - 执行流程与开放项：[`docs/TODO.md`](docs/TODO.md)
 - 宿主契约守则：[`docs/migration/plugin-contract-rules.md`](docs/migration/plugin-contract-rules.md)
 
-旧 fork 的完整实现与调研台账在分支 **`dsh-plugin-contraction`**（参考归档，不再演进）。
+旧 fork 的两版尝试在归档分支：**`legacy-fork-v2-dsh-plugin`**（DSH 插件形态，含完整实现与调研台账，不再演进）
+与 **`legacy-fork-v1`**（初版二开）。
 
 ## 许可
 

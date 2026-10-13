@@ -1,12 +1,24 @@
 # TODO · 待办（TS 全栈重建）
 
-> 本分支的**编号权威就是本文件**（归档分支 `dsh-plugin-contraction` 的 `registry.md` 是历史）。
+> 本分支的**编号权威就是本文件**（归档分支 `legacy-fork-v2-dsh-plugin` 的 `registry.md` 是历史）。
 > 规则：任何非平凡改动先在 **§流程** 落自足条目（What / How / Verify / Done 四段），
 > **方案提交早于实现提交**（R22）；实施中每完成一个检查点当轮勾选并记录偏差。
 > 终态定义见 [ts-fullstack-spec](migration/ts-fullstack-spec.md)。
 
 ## 零、当前状态
 
+**分支命名（2026-10-14 整理，按用途）**
+
+| 分支 | 用途 |
+|---|---|
+| `main` | **现行主线**：TS 全栈、py 归零的干净重实现（本分支） |
+| `legacy-fork-v1` | 初版二开（在 fork 上二次开发），未达效果，已归档 |
+| `legacy-fork-v2-dsh-plugin` | 第二次尝试：收缩为 DSH 插件形态；**参考归档**（含全部历史实现与调研台账） |
+
+- **待用户在 GitHub 上完成一项**（本机 token 无 admin 权限，`gh repo edit --default-branch` 返 403）：
+  把**远端默认分支**从 `legacy-fork-v2-dsh-plugin`（旧名 `dsh-plugin-contraction`）切到 `main`。
+  完成前，远端那条**旧名 ref** `dsh-plugin-contraction` 删不掉——GitHub 不允许删除默认分支；
+  它的内容与 `legacy-fork-v2-dsh-plugin` 完全相同，删不删都不影响内容完整性。
 - **阶段：未开工**。本分支为新建立的空白分支；插件工程与全部 py 实现都不在此处（前者待搬迁，后者按 D19 归零）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、只留 LICENSE）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。
