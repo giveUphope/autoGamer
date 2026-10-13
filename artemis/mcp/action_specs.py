@@ -62,9 +62,7 @@ import inspect
 import types
 from typing import Annotated, Any, Literal, Union, get_args, get_origin
 
-from langchain_core.tools import StructuredTool
 from mcp.types import CallToolResult
-from pydantic import Field, create_model
 
 from artemis.core.tool_declaration import ToolDeclaration
 from artemis.mcp.action_types import ActionResult
@@ -80,7 +78,6 @@ __all__ = [
     "WireDialect",
     "exception_prefix",
     "make_wire_handler",
-    "operator_shell_tool",
     "tool_declaration",
     "wire_dialects",
 ]
@@ -711,43 +708,7 @@ def exception_prefix(action: str) -> str:
     return EXCEPTION_PREFIXES.get(action, f"Error during {action}")
 
 
-# --- Projections ---------------------------------------------------------------------
-
-
-@cache
-def _operator_args_model(name: str):
-    """Builds (once) the pydantic argument model for an operator shell."""
-    dialect = ACTION_SPECS[name].operator
-    if dialect is None:
-        raise ValueError(f"Action '{name}' has no operator dialect.")
-    fields: dict[str, Any] = {}
-    for p in dialect.params:
-        if p.required:
-            fields[p.name] = (p.annotation, Field(description=p.description))
-        else:
-            fields[p.name] = (
-                p.annotation,
-                Field(default=p.default, description=p.description),
-            )
-    return create_model(name, **fields)
-
-
-def operator_shell_tool(name: str) -> StructuredTool:
-    """Builds the Operator's declaration-only shell for one action.
-
-    The body is never executed by the Operator loop -- action calls are translated
-    into structured decisions instead -- but returns the historical marker string for
-    any caller that does invoke it.
-    """
-    dialect = ACTION_SPECS[name].operator
-    if dialect is None:
-        raise ValueError(f"Action '{name}' has no operator dialect.")
-    return StructuredTool(
-        name=name,
-        description=dialect.description,
-        args_schema=_operator_args_model(name),
-        func=lambda **kwargs: "Action Recorded",
-    )
+# --- Projections (JSON declaration dialect; no LangChain shell) ----------------------
 
 
 _SCALAR_JSON: dict[Any, dict[str, str]] = {

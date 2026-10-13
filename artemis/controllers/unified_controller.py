@@ -322,8 +322,9 @@ class UnifiedMobileController(UnifiedMobileControllerBase):
         return offsets
 
     def _record_recording_failure(self, session: RecordingSession, message: str) -> None:
-        if self.ctx and self.ctx.data_engine:
-            self.ctx.data_engine.record_video_failure(
+        data_engine = getattr(self.ctx, "data_engine", None)
+        if data_engine is not None:
+            data_engine.record_video_failure(
                 video_id=session.video_id,
                 device_id=session.device_id,
                 local_video_path=session.local_video_path,
@@ -426,10 +427,11 @@ class UnifiedMobileController(UnifiedMobileControllerBase):
             video_id = uuid4()
             start_time = time.time()
             display_state = await get_android_display_state(device_id)
+            # Contraction: the data engine is no longer on the device surface.
+            # When absent, the recording anchors to its own first frame (offset 0).
+            _data_engine = getattr(self.ctx, "data_engine", None)
             data_engine_start_time = (
-                self.ctx.data_engine.session_start_time
-                if (self.ctx and self.ctx.data_engine)
-                else start_time
+                _data_engine.session_start_time if _data_engine is not None else start_time
             )
 
             session = RecordingSession(
@@ -466,8 +468,8 @@ class UnifiedMobileController(UnifiedMobileControllerBase):
                 stderr = await process.stderr.read()
                 err_msg = stderr.decode()
                 logger.error(f"scrcpy failed to start on {device_id}: {err_msg}")
-                if self.ctx and self.ctx.data_engine:
-                    self.ctx.data_engine.record_video_start(
+                if _data_engine is not None:
+                    _data_engine.record_video_start(
                         video_id=video_id,
                         device_id=device_id,
                         local_video_path=local_video_path,
@@ -493,8 +495,8 @@ class UnifiedMobileController(UnifiedMobileControllerBase):
                 f"{timeline_note}"
             )
 
-            if self.ctx and self.ctx.data_engine:
-                self.ctx.data_engine.record_video_start(
+            if _data_engine is not None:
+                _data_engine.record_video_start(
                     video_id=video_id,
                     device_id=device_id,
                     local_video_path=local_video_path,
@@ -620,9 +622,10 @@ class UnifiedMobileController(UnifiedMobileControllerBase):
 
             remove_active_session(device_id)
 
-            # Persist update to local database if Data Engine is active
-            if self.ctx and self.ctx.data_engine:
-                self.ctx.data_engine.record_video_stop(
+            # Persist update to local database if a data engine is still attached.
+            data_engine = getattr(self.ctx, "data_engine", None)
+            if data_engine is not None:
+                data_engine.record_video_stop(
                     video_id=session.video_id,
                     device_id=device_id,
                     local_video_path=final_video_path,

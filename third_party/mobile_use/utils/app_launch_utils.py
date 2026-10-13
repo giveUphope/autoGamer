@@ -22,7 +22,6 @@ import asyncio
 
 from artemis.context import AppLaunchResult, ArtemisContext
 from artemis.controllers.unified_controller import UnifiedMobileController
-from artemis.data_engine.trace import TraceSpan
 from artemis.utils.app_launch_utils import current_foreground, observe_foreground
 from third_party.mobile_use.utils.logger import get_logger
 
@@ -109,48 +108,34 @@ async def launch_app_with_retries(
     for attempt in range(1, max_retries + 1):
         logger.info(f"Launch attempt {attempt}/{max_retries} for app {app_package}")
 
-        with TraceSpan(
-            name=f"Launch Attempt {attempt}",
-            trace_type="span",
-            ctx=ctx,
-        ) as span:
-            span.payload = {"attempt": attempt, "app_package": app_package}
+        controller = UnifiedMobileController(ctx)
+        if attempt > 1:
+            logger.warning(
+                f"Attempt {attempt - 1} failed. Force stopping"
+                f" '{app_package}' to clear frozen state before retrying..."
+            )
+            await controller.terminate_app(app_package)
+            await asyncio.sleep(1.0)
 
-            controller = UnifiedMobileController(ctx)
-            if attempt > 1:
-                logger.warning(
-                    f"Attempt {attempt - 1} failed. Force stopping"
-                    f" '{app_package}' to clear frozen state before retrying..."
-                )
-                await controller.terminate_app(app_package)
-                await asyncio.sleep(1.0)
+        launch_success = await controller.launch_app(app_package)
+        if not launch_success:
+            error_msg = f"Failed to execute launch command for {app_package}"
+            logger.error(error_msg)
+            if attempt == max_retries:
+                return False, error_msg
+            await asyncio.sleep(2)
+            continue
 
-            launch_success = await controller.launch_app(app_package)
-            if not launch_success:
-                error_msg = f"Failed to execute launch command for {app_package}"
-                logger.error(error_msg)
-                span.status = "failed"
-                span.error = error_msg
-                if attempt == max_retries:
-                    return False, error_msg
-                await asyncio.sleep(2)
-                continue
+        await asyncio.sleep(1)
 
+        success, error_msg = await _poll_for_app_ready(ctx, app_package, max_poll_seconds)
+
+        if success:
+            return True, None
+
+        if attempt < max_retries:
+            logger.warning(f"Attempt {attempt} failed: {error_msg}. Retrying...")
             await asyncio.sleep(1)
-
-            success, error_msg = await _poll_for_app_ready(ctx, app_package, max_poll_seconds)
-
-            if success:
-                span.status = "success"
-                span.result = "App is ready"
-                return True, None
-
-            span.status = "failed"
-            span.error = error_msg
-
-            if attempt < max_retries:
-                logger.warning(f"Attempt {attempt} failed: {error_msg}. Retrying...")
-                await asyncio.sleep(1)
 
     error_msg = f"Failed to launch {app_package} after {max_retries} attempts"
     logger.error(error_msg)

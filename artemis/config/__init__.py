@@ -12,34 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unified configuration package and single entry point for ARTEMIS settings, paths, and models."""
+"""Device-side configuration: settings, paths, runtime IPC and constants.
 
-from artemis.config.agent import (
-    AgentGlobalConfig,
-    CheckerConfig,
-    CommitteeConfig,
-    DEFAULT_VERIFICATION_LEVEL,
-    ExplorerConfig,
-    FlashProfileConfig,
-    MemoryChunkingConfig,
-    MemoryConfig,
-    MemoryRecallConfig,
-    MemoryReplayConfig,
-    MemoryRuntimeConfig,
-    MemoryTranscriptConfig,
-    OutputterConfig,
-    PlannerValidationConfig,
-    ProProfileConfig,
-    StepSummarizerConfig,
-    VideoAnalyzerConfig,
-    load_agent_config,
-    resolve_explorer_version,
-    VERIFICATION_LEVEL_PRESETS,
-    VerificationLevel,
-    checker_overrides_for_level,
-    run_tuning_for_profile,
-    verification_level_for_checker,
-)
+The LLM/agent configuration (``config.llm``, ``config.agent``) and the output
+event writer were removed with the smart stack (D18): the DSH host owns LLM
+configuration, so importing this package must not pull in the LLM package.
+"""
+
 from artemis.config.constants import (
     AGENT_CONFIG_FILENAME,
     DATA_ENGINE_DB_FILENAME,
@@ -75,7 +54,6 @@ from artemis.config.constants import (
     ENV_ARTEMIS_DEFAULT_PROFILE,
     ENV_ARTEMIS_DEVICE_ID,
     ENV_ARTEMIS_EDGE_PORT,
-    ENV_ARTEMIS_EXPLORER_VERSION,
     ENV_ARTEMIS_IPC_PORT,
     ENV_ARTEMIS_MCP_SERVER,
     ENV_ARTEMIS_TENANT_ID,
@@ -96,21 +74,6 @@ from artemis.config.constants import (
     ExplorerVersion,
     LLMProvider,
     LLMUtilsNode,
-)
-from artemis.config.llm import (
-    CyFunctionDetector,
-    LLM,
-    AgentNodeWithFallback,
-    LLMUtilsNodeWithFallback,
-    LLMConfig,
-    LLMConfigUtils,
-    LLMWithFallback,
-    deep_merge_llm_config,
-    get_default_llm_config,
-    initialize_llm_config,
-    load_llm_config_override,
-    parse_llm_config,
-    validate_vertex_ai_credentials,
 )
 from artemis.config.paths import (
     CONFIG_DIR,
@@ -156,11 +119,6 @@ from artemis.config.settings import (
     Settings,
     settings,
 )
-from third_party.mobile_use.config.output import (
-    OutputConfig,
-    prepare_output_files,
-    record_events,
-)
 
 __all__ = [
     # Settings & Singleton
@@ -195,47 +153,6 @@ __all__ = [
     "get_ipc_port_file",
     "get_ls_address_file",
     "is_frozen_bundle",
-    # LLM Config & Models
-    "CyFunctionDetector",
-    "LLM",
-    "LLMWithFallback",
-    "LLMConfigUtils",
-    "LLMConfig",
-    "parse_llm_config",
-    "initialize_llm_config",
-    "get_default_llm_config",
-    "deep_merge_llm_config",
-    "load_llm_config_override",
-    "validate_vertex_ai_credentials",
-    # Agent & Tool Config
-    "AgentGlobalConfig",
-    "CheckerConfig",
-    "CommitteeConfig",
-    "DEFAULT_VERIFICATION_LEVEL",
-    "ExplorerConfig",
-    "FlashProfileConfig",
-    "MemoryChunkingConfig",
-    "MemoryConfig",
-    "MemoryRecallConfig",
-    "MemoryReplayConfig",
-    "MemoryRuntimeConfig",
-    "MemoryTranscriptConfig",
-    "OutputterConfig",
-    "PlannerValidationConfig",
-    "ProProfileConfig",
-    "StepSummarizerConfig",
-    "VideoAnalyzerConfig",
-    "load_agent_config",
-    "resolve_explorer_version",
-    "VERIFICATION_LEVEL_PRESETS",
-    "VerificationLevel",
-    "checker_overrides_for_level",
-    "run_tuning_for_profile",
-    "verification_level_for_checker",
-    # Output Config
-    "OutputConfig",
-    "prepare_output_files",
-    "record_events",
     # Runtime & IPC State
     "read_ipc_port",
     "write_ipc_port",
@@ -249,9 +166,7 @@ __all__ = [
     "LLMProvider",
     "ExplorerVersion",
     "LLMUtilsNode",
-    "LLMUtilsNodeWithFallback",
     "AgentNode",
-    "AgentNodeWithFallback",
     # Filenames
     "LLM_CONFIG_FILENAME",
     "LLM_CONFIG_OVERRIDE_FILENAME",

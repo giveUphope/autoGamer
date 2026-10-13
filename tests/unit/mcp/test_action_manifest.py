@@ -12,16 +12,14 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Prompt <-> manifest consistency and actuator contract tests.
+"""Device action manifest classification and actuator contract tests.
 
-The scan below re-derives the manifest classification from the prompt sources, so
-adding a tool name to a prompt without classifying it in
-``artemis/mcp/action_manifest.py`` fails here rather than at runtime.
+The smart-agent prompts used to live in this repository and were cross-checked
+against the manifest here; they moved to the DSH host with the agent stack, so
+the prompt-scan invariants were removed with them. What remains is the device
+action manifest itself: disjoint action classification, the actuator contract,
+and the declaration surface derivation.
 """
-
-import json
-from pathlib import Path
-import re
 
 import pytest
 
@@ -29,7 +27,6 @@ from artemis.core.tool_declaration import ToolDeclaration
 from artemis.mcp.action_manifest import (
     ActuatorContractError,
     AGENT_ROLES,
-    ALL_KNOWN_TOOLS,
     BACKEND_INDEPENDENT_TOOLS,
     DEVICE_ACTIONS,
     ExtensionTool,
@@ -41,89 +38,8 @@ from artemis.mcp.action_manifest import (
     validate_actuator,
 )
 
-REPO_ROOT = Path(__file__).resolve().parents[3]
 
-# Prompt sources belonging to the agents this manifest governs (plus the
-# Validator's safety net). Other agents (log_analyzer, image_processor, ...) have their
-# own tool universes and are deliberately out of scope.
-SCOPED_PROMPT_FILES = [
-    "artemis/agents/flash/flash_runner.md",
-    "artemis/agents/validator/pixel_safety_net.md",
-]
-
-# Backtick-quoted identifiers in scoped prompts that are not tools: parameter names,
-# note keys, and the availability-slot template helper rendered by
-# apply_operator_prompt_contract. Anything new landing here should be a conscious
-# decision.
-#: Backticked identifiers in prompts that are parameters or note keys, not tools.
-NON_TOOL_IDENTIFIERS = frozenset({"analysis", "task_plan", "tool_enum", "target_description"})
-
-_TOOL_REF = re.compile(r"(?:`([a-z][a-z0-9_]{2,})`|\b([a-z][a-z0-9_]{2,})\()")
-
-
-def _scoped_prompt_sources() -> dict[str, str]:
-    """Collects all in-scope prompt texts, keyed by a short source label."""
-    sources: dict[str, str] = {}
-    for rel in SCOPED_PROMPT_FILES:
-        path = REPO_ROOT / rel
-        sources[path.name] = path.read_text(encoding="utf-8")
-
-    # The operator templates carry all operator prompt prose (teaching segments are
-    # gated in-template by availability slots; prompts.py holds no prompt text).
-    operator_json = REPO_ROOT / "artemis/agents/operator/operator.json"
-    for key, text in json.loads(operator_json.read_text(encoding="utf-8")).items():
-        sources[f"operator.json:{key}"] = text
-
-    return sources
-
-
-def _referenced_tools() -> dict[str, set[str]]:
-    """Returns {identifier: source labels} for every tool-shaped reference in scope."""
-    found: dict[str, set[str]] = {}
-    for label, text in _scoped_prompt_sources().items():
-        for match in _TOOL_REF.finditer(text):
-            name = match.group(1) or match.group(2)
-            found.setdefault(name, set()).add(label)
-    return found
-
-
-# --- Prompt <-> manifest invariants --------------------------------------------------
-
-
-def test_scan_finds_prompt_sources():
-    """The scan must cover all expected sources; silent scope loss would void the suite."""
-    sources = _scoped_prompt_sources()
-    assert "flash_runner.md" in sources
-    assert "operator.json:main_template" in sources
-
-
-def test_every_prompt_tool_reference_is_classified():
-    """Every tool referenced by an in-scope prompt must be known to the manifest."""
-    unclassified = {
-        name: sorted(labels)
-        for name, labels in _referenced_tools().items()
-        if name not in ALL_KNOWN_TOOLS and name not in NON_TOOL_IDENTIFIERS
-    }
-    assert not unclassified, (
-        "Prompts reference tools the manifest does not classify. Add each to the "
-        f"appropriate set in artemis/mcp/action_manifest.py: {unclassified}"
-    )
-
-
-def test_required_actions_are_structurally_referenced():
-    """A REQUIRED action must actually appear in a prompt; otherwise demote it."""
-    referenced = set(_referenced_tools())
-    unreferenced = REQUIRED_ACTIONS - referenced
-    assert not unreferenced, (
-        f"REQUIRED_ACTIONS not referenced by any prompt: {sorted(unreferenced)}. "
-        "Required status exists only to protect structural prompt dependencies."
-    )
-
-
-def test_internal_actions_never_appear_in_prompts():
-    """INTERNAL actions are adapter plumbing and must stay invisible to every model."""
-    leaked = INTERNAL_ACTIONS & set(_referenced_tools())
-    assert not leaked, f"Internal actions leaked into prompts: {sorted(leaked)}"
+# --- Manifest classification ---------------------------------------------------------
 
 
 def test_manifest_sets_are_disjoint():

@@ -284,8 +284,10 @@ class AdbActuator:
         return ActionResult.success("press_key", f"Pressed key '{key}'.")
 
     async def manage_app(self, action: str, app_name: str) -> ActionResult:
-        # Imported lazily: launch_app pulls in tool wrappers that are costly at import.
-        from artemis.tools.mobile.launch_app import find_package
+        # Deterministic package resolution lives in the vendored device layer;
+        # the old artemis.tools launch tool was a LangChain tool that pulled in
+        # the whole smart stack (D18: NL name resolution is the host LLM's job).
+        from third_party.mobile_use.tools.mobile.launch_app import find_package
         from third_party.mobile_use.utils.app_launch_utils import launch_app_with_retries
 
         res = find_package(self.ctx, app_name, use_fallback=False)

@@ -12,12 +12,11 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Python Runtime and System Configuration Diagnostic Probes."""
+"""Python runtime diagnostic probe (contracted; the LLM config probe moved to host)."""
 
 import platform
 import sys
 
-from artemis.config import parse_llm_config
 from artemis.core.diagnostics.probes.base import BaseProbe
 from artemis.core.diagnostics.schema import (
     ProbeAction,
@@ -99,71 +98,5 @@ class PythonRuntimeProbe(BaseProbe):
                         label="Install with uv",
                         payload="uv python install 3.12",
                     ),
-                ],
-            )
-
-
-class SystemConfigProbe(BaseProbe):
-    """Probe verifying config/artemis.jsonc and settings integrity."""
-
-    @property
-    def probe_id(self) -> str:
-        return "system_config"
-
-    @property
-    def category(self) -> ProbeCategory:
-        return ProbeCategory.RUNTIME
-
-    @property
-    def is_blocker(self) -> bool:
-        return True
-
-    async def probe(self) -> ProbeResult:
-        try:
-            cfg = parse_llm_config()
-            planner_model = getattr(getattr(cfg, "planner", None), "model", "Gemini 2.5 Flash")
-            metadata = {
-                "valid": True,
-                "config_file": "config/artemis.jsonc",
-                "planner_model": planner_model,
-            }
-            return ProbeResult(
-                id=self.probe_id,
-                category=self.category,
-                title="Artemis System Configuration",
-                status=ProbeStatus.PASS,
-                is_blocker=self.is_blocker,
-                summary="Config Valid",
-                description=f"System configuration loaded and validated (Planner model: {planner_model}).",
-                metadata=metadata,
-                actions=[
-                    ProbeAction(
-                        action_type="hint",
-                        label="Config Healthy",
-                        payload="config/artemis.jsonc is loaded and valid.",
-                    )
-                ],
-            )
-        except Exception as e:
-            metadata = {
-                "valid": False,
-                "config_file": "config/artemis.jsonc",
-                "error": str(e),
-            }
-            return ProbeResult(
-                id=self.probe_id,
-                category=self.category,
-                title="Artemis System Configuration",
-                status=ProbeStatus.FAIL,
-                is_blocker=self.is_blocker,
-                summary="Config Error",
-                description=f"Failed to parse config/artemis.jsonc: {e}",
-                metadata=metadata,
-                actions=[
-                    ProbeAction(
-                        action_type="command",
-                        label="Run Artemis Init",
-                        payload="artemis init",
-                    )
                 ],
             )

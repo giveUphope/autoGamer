@@ -22,27 +22,21 @@ conditions, fix policy and rendering on top.
 
 from __future__ import annotations
 
-import asyncio
 from collections.abc import Sequence
 from typing import Literal
 
 from artemis.core.diagnostics.engine import readiness_engine
-from artemis.core.diagnostics.probes.host_probe import IntegrationHostProbe
 from artemis.core.diagnostics.schema import ProbeResult, ProbeStatus, SystemReadinessReport
 
 Verdict = Literal["ready", "degraded", "blocked"]
 
-#: Fix order. Runtime problems mask everything after them, credentials mask
-#: device problems (a task cannot start without a model), and the toolchain is
-#: optional.
+#: Fix order for the contracted device surface. The Python runtime comes first,
+#: then the adb/device gate, then the optional toolchain. The LLM credentials,
+#: system-config and MCP-integration-host probes moved to the DSH host.
 CHECK_ORDER: dict[str, int] = {
     "python_runtime": 0,
-    "system_config": 1,
-    "integration_host": 2,
-    "gemini_api_key": 3,
-    "android_adb": 4,
-    "toolchain": 5,
-    "vision_ocr_key": 6,
+    "android_adb": 1,
+    "toolchain": 2,
 }
 
 
@@ -51,13 +45,9 @@ def sort_by_fix_order(results: Sequence[ProbeResult]) -> list[ProbeResult]:
     return sorted(results, key=lambda r: CHECK_ORDER.get(r.id, len(CHECK_ORDER)))
 
 
-async def collect_readiness() -> tuple[SystemReadinessReport, ProbeResult]:
-    """Run the engine probes and the integration-host probe concurrently."""
-    report, host = await asyncio.gather(
-        readiness_engine.run_all(force_refresh=True),
-        IntegrationHostProbe().probe(),
-    )
-    return report, host
+async def collect_readiness() -> SystemReadinessReport:
+    """Run the device/host readiness probes and return the coalesced report."""
+    return await readiness_engine.run_all(force_refresh=True)
 
 
 def base_verdict(results: Sequence[ProbeResult]) -> Verdict:

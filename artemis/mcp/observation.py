@@ -94,26 +94,16 @@ async def observe(
         minimal_list_str = "Not available due to hierarchy error."
         hierarchy_ok = False
 
+    # Contraction: the data-engine persistence layer is no longer on the device
+    # action surface; screenshots are staged in the temp screenshots dir.
     screenshot_path = None
-    if ctx.data_engine:
-        try:
-            image_name = ctx.data_engine.get_or_create_image(
-                screenshot_bytes,
-                ui_tree=xml_hierarchy,
-                ocr_result=ocr_results,
-            )
-            screenshot_path = str(ctx.data_engine.get_image_path(image_name))
-        except Exception as e:
-            logger.error(f"Failed to save image in DataEngine: {e}")
-
-    if not screenshot_path:
-        try:
-            temp_dir = get_temp_dir("screenshots")
-            temp_file = temp_dir / f"screenshot_{int(time.time())}.jpg"
-            temp_file.write_bytes(screenshot_bytes)
-            screenshot_path = str(temp_file)
-        except Exception as e:
-            logger.error(f"Failed to save fallback screenshot: {e}")
+    try:
+        temp_dir = get_temp_dir("screenshots")
+        temp_file = temp_dir / f"screenshot_{int(time.time())}.jpg"
+        temp_file.write_bytes(screenshot_bytes)
+        screenshot_path = str(temp_file)
+    except Exception as e:
+        logger.error(f"Failed to save screenshot: {e}")
 
     from pathlib import Path
 

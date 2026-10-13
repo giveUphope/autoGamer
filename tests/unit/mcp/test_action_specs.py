@@ -12,40 +12,34 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""The canonical action manifest's conformance suite.
+"""The device action manifest's conformance suite (contracted surface).
 
-Two kinds of protection:
+Two kinds of protection remain after the smart agent stack moved to the host:
 
-* **Fixture pins** freeze the exact schema each model surface receives (operator
-  shells, Flash declarations, the action server manifest). A schema change must be a
-  conscious act: regenerate the fixture in the same commit and say why.
-* **Projection identity** checks that the Flash declaration of every shared action
-  is the operator shell's own description and parameters, so the two profiles can
-  never see different tools under one name -- the historical definition of drift.
+* **Fixture pins** freeze the exact JSON schema the in-process action server and
+  the MCP tool declarations expose (a schema change must be a conscious act:
+  regenerate the fixture in the same commit and say why).
+* **Wire/market coverage** checks that every wire dialect maps to an Actuator
+  method and that the declared actions cover exactly the manifest's device
+  actions without leaking internal-only actions.
+
+The Operator/Validator LangChain shells and their projection tests lived here
+before the contraction; they are gone with the LLM-facing tool layer.
 """
 
 import json
 from pathlib import Path
 
-from langchain_core.utils.function_calling import convert_to_openai_tool
 import pytest
 
-from artemis.agents.operator.prompts import (
-    _PHYSICAL_ACTIONS_ORDER,
-    _TURN_ENDING_ORDER,
-    OPERATOR_PROMPT_TOOLSET,
-)
-from artemis.agents.validator.tool_declarations import VALIDATOR_TOOLS_DECLARATION
 from artemis.mcp.action_manifest import (
     INTERNAL_ACTIONS,
     OPTIONAL_ACTIONS,
     REQUIRED_ACTIONS,
 )
-from artemis.mcp.action_names import OPERATOR_ACTION_TO_CANONICAL
 from artemis.mcp.action_specs import (
     ACTION_SPECS,
     OPERATOR_SHELL_ORDER,
-    operator_shell_tool,
     tool_declaration,
     wire_dialects,
 )
@@ -65,14 +59,6 @@ def _fixture(name: str) -> dict:
 
 
 # --- Fixture pins --------------------------------------------------------------------
-
-
-def test_operator_shells_match_fixture():
-    expected = _fixture("operator_shells.json")
-    assert set(expected) == set(OPERATOR_SHELL_ORDER)
-    for name in OPERATOR_SHELL_ORDER:
-        generated = convert_to_openai_tool(operator_shell_tool(name))
-        assert generated == expected[name], f"operator shell '{name}': {FIXTURE_HINT}"
 
 
 def test_tool_declarations_match_fixture():
@@ -115,57 +101,7 @@ async def test_action_server_manifest_matches_fixture():
         assert generated[name] == expected[name], f"server tool '{name}': {FIXTURE_HINT}"
 
 
-def test_validator_declaration_order_is_stable():
-    assert [d.name for d in VALIDATOR_TOOLS_DECLARATION] == [
-        "click",
-        "long_press",
-        "input_text",
-        "swipe",
-        "press_key",
-        "read_note",
-        "list_notes",
-        "manage_app",
-        "wait_for_delay",
-    ]
-
-
-# --- Projection identity: Flash binds the operator shell, projected ------------------
-
-
-def _without_optional_noise(schema: dict) -> dict:
-    """The pydantic-generated property schema minus what only marks optionality.
-
-    ``default`` and the ``null`` alternative say "optional"; the declaration says
-    that through ``required`` alone.
-    """
-    out = {k: v for k, v in schema.items() if k not in ("anyOf", "default")}
-    if "anyOf" in schema:
-        members = [m for m in schema["anyOf"] if m.get("type") != "null"]
-        out.update(members[0] if len(members) == 1 else {"anyOf": members})
-    return out
-
-
-def test_flash_declarations_are_the_operator_shells_projected():
-    """One definition, two bindings: for every action with an operator shell, the
-    Flash ``ToolDeclaration`` carries the shell's description, parameter names,
-    descriptions, types (index-or-coordinates unions included) and required set."""
-    for spec in ACTION_SPECS.values():
-        if spec.operator is None:
-            continue
-        shell = convert_to_openai_tool(operator_shell_tool(spec.name))["function"]
-        declaration = tool_declaration(spec.name)
-        assert declaration.description == shell["description"], spec.name
-        shell_props = shell["parameters"]["properties"]
-        decl_props = declaration.parameters["properties"]
-        assert list(decl_props) == list(shell_props), spec.name
-        for param, schema in shell_props.items():
-            assert decl_props[param] == _without_optional_noise(schema), (
-                f"'{spec.name}.{param}' diverges between the operator shell and the"
-                " Flash declaration."
-            )
-        assert declaration.parameters["required"] == shell["parameters"].get("required", []), (
-            spec.name
-        )
+# --- Declaration schema --------------------------------------------------------------
 
 
 def test_point_targets_accept_an_index_or_coordinates_in_both_profiles():
@@ -182,11 +118,6 @@ def test_point_targets_accept_an_index_or_coordinates_in_both_profiles():
         "sequence",
         "target_descriptions",
     ]
-
-
-def test_shared_descriptions_are_identical_between_profiles():
-    for name in ("swipe", "press_key", "manage_app", "wait_for_delay"):
-        assert tool_declaration(name).description == operator_shell_tool(name).description
 
 
 def test_documented_differences_concern_the_wire_only():
@@ -214,21 +145,6 @@ def test_every_wire_dialect_matches_the_actuator_protocol():
     for spec in wire_dialects():
         method = getattr(Actuator, spec.name, None)
         assert callable(method), f"wire dialect '{spec.name}' has no corresponding Actuator method."
-
-
-def test_prompt_enum_orders_come_from_the_manifest():
-    assert _PHYSICAL_ACTIONS_ORDER == OPERATOR_SHELL_ORDER
-    assert set(_TURN_ENDING_ORDER) == set(OPERATOR_SHELL_ORDER)
-    assert set(OPERATOR_SHELL_ORDER) <= OPERATOR_PROMPT_TOOLSET
-
-
-def test_operator_verbs_lower_onto_manifest_actions():
-    """The Operator's internal decision verbs resolve to canonical manifest names."""
-    unresolved = set(OPERATOR_ACTION_TO_CANONICAL.values()) - set(ACTION_SPECS)
-    assert not unresolved, (
-        f"action_names maps operator verbs onto names the manifest does not know:"
-        f" {sorted(unresolved)}"
-    )
 
 
 def test_manifest_wait_for_delay_uses_milliseconds():

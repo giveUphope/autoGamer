@@ -58,6 +58,23 @@ if _global_env.exists() and _global_env.resolve() != _canonical_env.resolve():
 logger = get_logger(__name__)
 
 
+# Provider identity that authenticates with Google credentials (the Gemini
+# Developer API plus Vertex AI). Kept local so ``config`` does not import the
+# LLM package: the canonical set lives in ``artemis.llm.google.provider`` which
+# is not part of the contracted device surface (D18).
+_GOOGLE_FAMILY_PROVIDERS = frozenset({"google", "gemini", "vertexai", "vertex"})
+
+
+def _is_google_family_provider(value: object) -> bool:
+    """True for every provider that authenticates with Google credentials."""
+    if value is None:
+        return False
+    normalized = (
+        str(getattr(value, "value", value)).lower().replace("_", "").replace("-", "").strip()
+    )
+    return normalized in _GOOGLE_FAMILY_PROVIDERS
+
+
 def is_placeholder_key(val: str | SecretStr | None) -> bool:
     """Check if an API credential is empty or an unconfigured placeholder value."""
     if val is None:
@@ -194,11 +211,9 @@ class Settings(BaseSettings):
         Returns:
             SecretStr containing the API key or None if not configured.
         """
-        from artemis.llm.google.provider import is_google_family_provider
-
         provider_lower = provider.lower()
         key: SecretStr | None = None
-        if is_google_family_provider(provider_lower):
+        if _is_google_family_provider(provider_lower):
             key = self.GOOGLE_API_KEY or self.GEMINI_API_KEY or self.GCP_API_KEY
         elif provider_lower in ("ocr", "vision", "google_vision"):
             key = self.OCR_API_KEY or self.VISION_API_KEY
@@ -224,12 +239,10 @@ class Settings(BaseSettings):
             persist_to_env: Whether to save the key to the app directory's .env file.
         """
         secret = SecretStr(key)
-        from artemis.llm.google.provider import is_google_family_provider
-
         provider_lower = provider.lower()
         env_key_name = None
 
-        if is_google_family_provider(provider_lower):
+        if _is_google_family_provider(provider_lower):
             self.GOOGLE_API_KEY = secret
             self.GEMINI_API_KEY = secret
             self.GCP_API_KEY = secret
@@ -262,7 +275,7 @@ class Settings(BaseSettings):
 
         if persist_to_env and env_key_name:
             keys_to_update = [env_key_name]
-            if is_google_family_provider(provider_lower):
+            if _is_google_family_provider(provider_lower):
                 keys_to_update = [ENV_GEMINI_API_KEY, ENV_GOOGLE_API_KEY, ENV_GCP_API_KEY]
             elif provider_lower in ("ocr", "vision", "google_vision"):
                 keys_to_update = [ENV_OCR_API_KEY, ENV_VISION_API_KEY]

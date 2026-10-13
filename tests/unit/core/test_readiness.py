@@ -12,14 +12,13 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Unit tests for the readiness core shared by ``artemis doctor`` and ``mobile_diagnose``."""
+"""Unit tests for the device readiness core shared by ``artemis doctor``."""
 
 import asyncio
 import time
 from unittest.mock import AsyncMock
 
 from artemis.core.diagnostics import readiness
-from artemis.core.diagnostics.probes.host_probe import IntegrationHostProbe
 from artemis.core.diagnostics.readiness import (
     CHECK_ORDER,
     adb_keys_corrupted,
@@ -88,7 +87,7 @@ def test_base_verdict_all_pass_is_ready():
 
 
 def test_base_verdict_warning_blocker_is_blocked_not_degraded():
-    results = [_probe("python_runtime"), _probe("integration_host", ProbeStatus.WARN)]
+    results = [_probe("python_runtime"), _probe("custom_blocker", ProbeStatus.WARN)]
     assert base_verdict(results) == "blocked"
 
 
@@ -125,18 +124,10 @@ def test_sort_by_fix_order_follows_check_order_and_appends_unknown_ids():
     ]
     ordered = [r.id for r in sort_by_fix_order(results)]
     assert ordered == ["python_runtime", "android_adb", "toolchain", "custom_probe"]
-    assert list(CHECK_ORDER) == [
-        "python_runtime",
-        "system_config",
-        "integration_host",
-        "gemini_api_key",
-        "android_adb",
-        "toolchain",
-        "vision_ocr_key",
-    ]
+    assert list(CHECK_ORDER) == ["python_runtime", "android_adb", "toolchain"]
 
 
-def test_collect_readiness_gathers_engine_report_and_host_probe(monkeypatch):
+def test_collect_readiness_gathers_the_engine_report(monkeypatch):
     report = SystemReadinessReport(
         overall_ready=True,
         blocker_count=1,
@@ -145,13 +136,10 @@ def test_collect_readiness_gathers_engine_report_and_host_probe(monkeypatch):
         os_type="windows",
         timestamp=time.time(),
     )
-    host = _probe("integration_host")
     run_all = AsyncMock(return_value=report)
     monkeypatch.setattr(readiness.readiness_engine, "run_all", run_all)
-    monkeypatch.setattr(IntegrationHostProbe, "probe", AsyncMock(return_value=host))
 
-    got_report, got_host = asyncio.run(collect_readiness())
+    got_report = asyncio.run(collect_readiness())
 
     assert got_report is report
-    assert got_host is host
     run_all.assert_awaited_once_with(force_refresh=True)

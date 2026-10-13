@@ -29,7 +29,6 @@ from artemis.controllers.unified_controller import UnifiedMobileController
 from artemis.drivers.mock.mock_driver import MockDeviceDriver
 from artemis.utils.video import (
     build_scrcpy_record_command,
-    extract_frames_at_timestamps,
     get_ffmpeg_path,
     normalize_recording_to_mp4,
     plan_timeline_pieces,
@@ -56,19 +55,6 @@ async def test_audio_extraction_rejects_silent_video_without_running_ffmpeg(tmp_
             await extract_audio_from_video(silent_video)
 
     assert spawn.await_count == 1
-
-
-def test_targeted_frame_extraction_uses_requested_timestamps():
-    fixture = Path(__file__).parents[1] / "tools" / "inputs" / "recording.mp4"
-    frames = extract_frames_at_timestamps(
-        fixture,
-        [0.0, 0.2, 0.4, 0.2, -1.0],
-        max_frames=3,
-        max_dimension=320,
-    )
-
-    assert [timestamp for timestamp, _ in frames] == [0.0, 0.2, 0.4]
-    assert all(data.startswith(b"\xff\xd8") for _, data in frames)
 
 
 def test_scrcpy_recording_locks_each_segment_orientation(tmp_path):
@@ -447,41 +433,6 @@ async def test_segment_cache_is_scoped_to_recording_generation(mock_ctx, tmp_pat
     assert regenerated.generation == 1
     assert render.await_count == 2
     remove_active_session("emulator-5554")
-
-
-def test_data_engine_video_lifecycle(tmp_path):
-    from artemis.data_engine.engine import DataEngine
-    from artemis.context import ArtemisContext
-
-    mock_c = MagicMock(spec=ArtemisContext)
-    mock_c.execution_setup = MagicMock(traces_path=str(tmp_path / "traces"))
-    mock_c.device = None
-    engine = DataEngine(mock_c)
-    session_id = engine.start_session(goal="Test Video Engine")
-
-    vid = uuid4()
-    vpath = tmp_path / "recording.mp4"
-    vpath.write_bytes(b"video bytes")
-
-    # Start video recording
-    engine.record_video_start(vid, "device-1", vpath)
-    rec = engine.storage.get_video_recording(vid)
-    assert rec is not None
-    assert rec.device_id == "device-1"
-
-    # Stop video recording
-    engine.record_video_stop(vid, "device-1", vpath, time.time() - 10.0, time.time())
-    sess = engine.storage.get_session(session_id)
-    assert sess.video_filepath == str(vpath)
-
-    # Move video path on finalize
-    new_vpath = tmp_path / "archived" / "recording.mp4"
-    new_vpath.parent.mkdir(parents=True, exist_ok=True)
-    new_vpath.write_bytes(b"video bytes")
-    engine.update_video_path(new_vpath)
-
-    sess_updated = engine.storage.get_session(session_id)
-    assert sess_updated.video_filepath == str(new_vpath)
 
 
 @pytest.mark.asyncio

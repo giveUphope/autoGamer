@@ -14,10 +14,11 @@
 
 """System, environment, and device diagnostics (artemis doctor).
 
-The command renders the same readiness probes the web console's device wizard
-and the ``mobile_diagnose`` MCP tool run (:mod:`artemis.core.diagnostics`), so
-the terminal, the browser and the IDE agree on one verdict. Only two rows are
-CLI-specific and not engine probes: Node.js/npm and the Showcase UI build.
+The command renders the device/host readiness probes
+(:mod:`artemis.core.diagnostics`): the Python runtime, the adb/toolchain and
+the connected device, plus the accessibility helper. The LLM credentials,
+OCR, LLM system-config, Node.js/npm and Showcase UI rows moved to the DSH host
+with the smart stack and web console.
 """
 
 from __future__ import annotations
@@ -26,7 +27,6 @@ import asyncio
 from dataclasses import dataclass
 import json
 import platform as sys_platform
-import shutil
 import subprocess
 from typing import Any
 
@@ -36,7 +36,6 @@ from rich.panel import Panel
 from rich.table import Table
 import typer
 
-from artemis.config.paths import ROOT_DIR
 from artemis.core.diagnostics.engine import readiness_engine
 from artemis.core.diagnostics.readiness import (
     Verdict,
@@ -46,7 +45,7 @@ from artemis.core.diagnostics.readiness import (
     sort_by_fix_order,
 )
 from artemis.core.diagnostics.schema import ProbeResult, ProbeStatus
-from artemis.platform import OSType, platform
+from artemis.platform import platform
 from artemis.runtime.device_lock import DeviceExecutionLock
 
 
@@ -77,8 +76,8 @@ class FixOutcome:
 
 
 async def _collect() -> list[ProbeResult]:
-    report, host = await collect_readiness()
-    return sort_by_fix_order([*report.probes, host])
+    report = await collect_readiness()
+    return sort_by_fix_order(report.probes)
 
 
 async def _apply_fixes(results: list[ProbeResult]) -> list[FixOutcome]:
@@ -131,66 +130,6 @@ async def _diagnose(fix: bool) -> tuple[list[ProbeResult], list[FixOutcome]]:
 # ---------------------------------------------------------------------------
 # CLI-only extra rows (not engine probes)
 # ---------------------------------------------------------------------------
-
-
-def _npm_row() -> ExtraRow:
-    npm_path = shutil.which("npm")
-    if npm_path:
-        return ExtraRow(
-            key="nodejs_npm",
-            title="Node.js / npm",
-            status="pass",
-            status_markup="[bold green]✔ Installed[/bold green]",
-            summary="Installed",
-            detail=f"{npm_path} (Ready to build Showcase UI)",
-        )
-    hint = (
-        "winget install OpenJS.NodeJS.LTS"
-        if platform.os_type == OSType.WINDOWS
-        else "brew install node"
-        if platform.os_type == OSType.MACOS
-        else "sudo apt-get install -y nodejs npm"
-    )
-    return ExtraRow(
-        key="nodejs_npm",
-        title="Node.js / npm",
-        status="missing",
-        status_markup="[dim]⚪ Optional[/dim]",
-        summary="Not Found",
-        detail=f"Not found in PATH. ({hint})",
-    )
-
-
-def _showcase_row() -> ExtraRow:
-    from artemis.resources import get_bundled_showcase_dist
-
-    base_dist = ROOT_DIR / "apps" / "showcase_ui_v2" / "dist"
-    candidates = [
-        base_dist / "browser" / "index.html",
-        base_dist / "index.html",
-    ]
-    found_showcase = next((p for p in candidates if p.exists()), None)
-    if found_showcase is None:
-        bundled_showcase = get_bundled_showcase_dist()
-        if bundled_showcase is not None:
-            found_showcase = bundled_showcase / "index.html"
-    if found_showcase:
-        return ExtraRow(
-            key="showcase_ui",
-            title="Showcase UI",
-            status="pass",
-            status_markup="[bold green]✔ Compiled[/bold green]",
-            summary="Compiled",
-            detail=f"{found_showcase.parent} (ready)",
-        )
-    return ExtraRow(
-        key="showcase_ui",
-        title="Showcase UI",
-        status="missing",
-        status_markup="[bold yellow]○ Not Compiled[/bold yellow]",
-        summary="Not Compiled",
-        detail="Run ./start.sh or artemis ui to auto-compile.",
-    )
 
 
 def _helper_row(results: list[ProbeResult]) -> ExtraRow | None:
@@ -431,7 +370,7 @@ def doctor_command(
 ) -> None:
     """Run diagnostics to inspect system dependencies, device connectivity, and configuration."""
     results, fixes = asyncio.run(_diagnose(fix))
-    extras = [_npm_row(), _showcase_row()]
+    extras: list[ExtraRow] = []
     helper_row = _helper_row(results)
     if helper_row is not None:
         extras.append(helper_row)

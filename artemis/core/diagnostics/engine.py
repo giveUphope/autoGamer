@@ -23,14 +23,7 @@ from typing import Any
 from artemis.core.diagnostics.adb_server_connection import adb_server_connection
 from artemis.core.diagnostics.probes.adb_probe import AdbDeviceProbe
 from artemis.core.diagnostics.probes.base import BaseProbe
-from artemis.core.diagnostics.probes.credentials_probe import (
-    LLMCredentialsProbe,
-    VisionOCRProbe,
-)
-from artemis.core.diagnostics.probes.runtime_probe import (
-    PythonRuntimeProbe,
-    SystemConfigProbe,
-)
+from artemis.core.diagnostics.probes.runtime_probe import PythonRuntimeProbe
 from artemis.core.diagnostics.probes.toolchain_probe import ToolchainProbe
 from artemis.core.diagnostics.schema import (
     DeviceInfo,
@@ -62,10 +55,7 @@ class ReadinessEngine:
     def __init__(self):
         self._probes: dict[str, BaseProbe] = {}
         self._python_probe = PythonRuntimeProbe()
-        self._config_probe = SystemConfigProbe()
         self._toolchain_probe = ToolchainProbe()
-        self._credentials_probe = LLMCredentialsProbe()
-        self._ocr_probe = VisionOCRProbe()
         self._adb_probe = AdbDeviceProbe()
         self._report_cache: SystemReadinessReport | None = None
         self._report_cache_time = 0.0
@@ -73,12 +63,10 @@ class ReadinessEngine:
         self._cache_generation = 0
         self._report_lock = asyncio.Lock()
 
-        # Register default core probes in logical lifecycle order
+        # Register default core probes (device/host surface only; the LLM
+        # credentials/OCR and LLM system-config probes moved to the DSH host).
         self.register_probe(self._python_probe)
-        self.register_probe(self._config_probe)
         self.register_probe(self._toolchain_probe)
-        self.register_probe(self._credentials_probe)
-        self.register_probe(self._ocr_probe)
         self.register_probe(self._adb_probe)
 
     def register_probe(self, probe: BaseProbe) -> None:

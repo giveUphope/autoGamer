@@ -20,13 +20,9 @@ from enum import Enum
 import logging
 import os
 from pathlib import Path
-import queue
 import sys
-import threading
 
 from colorama import Fore, Style, init
-
-from artemis.data_engine.context_vars import CURRENT_TRACE_ID
 
 init(autoreset=True)
 
@@ -38,69 +34,6 @@ class LogLevel(Enum):
     WARNING = ("WARNING", Fore.YELLOW, "⚠")
     ERROR = ("ERROR", Fore.RED, "❌")
     CRITICAL = ("CRITICAL", Fore.RED + Style.BRIGHT, "💥")
-
-
-class DataEngineHandler(logging.Handler):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        self._log_queue = queue.Queue(maxsize=5000)
-        self._worker_thread = threading.Thread(target=self._drain_queue, daemon=True)
-        self._worker_thread.start()
-
-    def _drain_queue(self):
-        while True:
-            item = self._log_queue.get()
-            if item is None:
-                break
-            engine_mod = sys.modules.get("artemis.data_engine.engine")
-            if engine_mod and getattr(engine_mod, "_CURRENT_DATA_ENGINE", None):
-                _CURRENT_DATA_ENGINE = engine_mod._CURRENT_DATA_ENGINE
-                if _CURRENT_DATA_ENGINE and _CURRENT_DATA_ENGINE.current_session_id:
-                    record_name, message, level_name, formatted, parent_id = item
-                    _CURRENT_DATA_ENGINE.record_trace(
-                        type="log",
-                        name=record_name,
-                        payload={
-                            "message": message,
-                            "level": level_name,
-                            "formatted": formatted,
-                        },
-                        status="success",
-                        parent_trace_id=parent_id,
-                    )
-            self._log_queue.task_done()
-
-    def emit(self, record):
-        engine_mod = sys.modules.get("artemis.data_engine.engine")
-        if not engine_mod or not getattr(engine_mod, "_CURRENT_DATA_ENGINE", None):
-            return
-        _CURRENT_DATA_ENGINE = engine_mod._CURRENT_DATA_ENGINE
-
-        if _CURRENT_DATA_ENGINE and _CURRENT_DATA_ENGINE.current_session_id:
-            log_entry = self.format(record)
-            log_level = getattr(record, "log_level", None)
-            if log_level and hasattr(log_level, "value"):
-                level_name, _color, _symbol = log_level.value
-            else:
-                level_name = record.levelname
-
-            parent_id = CURRENT_TRACE_ID.get()
-
-            try:
-                self._log_queue.put_nowait(
-                    (
-                        record.name,
-                        record.getMessage(),
-                        level_name,
-                        log_entry,
-                        parent_id,
-                    )
-                )
-            except queue.Full as e:
-                raise RuntimeError(
-                    "DataEngine log queue is full - cannot accept more log"
-                    " entries without dropping records"
-                ) from e
 
 
 class ArtemisLogger:
@@ -124,12 +57,7 @@ class ArtemisLogger:
 
         self._setup_console_handler(console_level)
 
-        # Add DataEngineHandler
-        data_engine_handler = DataEngineHandler()
-        data_engine_handler.setLevel(logging.DEBUG)
         formatter = logging.Formatter(fmt="%(asctime)s | %(name)s | %(levelname)s | %(message)s")
-        data_engine_handler.setFormatter(formatter)
-        self.logger.addHandler(data_engine_handler)
 
         if os.environ.get("ARTEMIS_MCP_SERVER") == "true":
             traces_dir = os.environ.get("ARTEMIS_TRACES_PATH", "traces")

@@ -16,10 +16,16 @@
 # Originally from mobile-use (https://github.com/minitap-ai/mobile-use).
 # See third_party/mobile_use/METADATA for the upstream source and local modifications.
 
-"""Resolve a natural-language app name to an installed package via the Hopper agent."""
+"""Resolve an application name to an installed package (deterministic).
+
+Natural-language app-name resolution previously ran through an LLM "Hopper"
+subagent. Under the DSH plugin split (decision D18) the LLM lives in the host, so
+the device surface only resolves a concrete package id (an exact installed
+match) and caches it; fuzzy/natural-language matching is the host's job before it
+calls the device action.
+"""
 
 from artemis.context import ArtemisContext
-from third_party.mobile_use.agents.hopper.hopper import HopperOutput, hopper
 from third_party.mobile_use.controllers.platform_specific_commands_controller import (
     list_packages_async,
 )
@@ -29,14 +35,16 @@ logger = get_logger(__name__)
 
 
 LAUNCH_APP_DOCSTRING = (
-    "[ACTION] Finds and launches an application on the device using its natural language name."
+    "[ACTION] Finds and launches an application on the device using its package name."
 )
 
 
 async def find_package(ctx: ArtemisContext, app_name: str, use_fallback: bool = True) -> str | None:
-    """Finds the package name for a given application name.
+    """Return the package id when ``app_name`` is installed, else None.
 
-    Returns None if package not found or on error.
+    Results are cached on ``ctx.package_cache``. The ``use_fallback`` argument is
+    retained for signature compatibility with the old Hopper-based call; it no
+    longer triggers LLM resolution (the host resolves natural-language names).
     """
     package_cache = getattr(ctx, "package_cache", None)
     if package_cache is None or not isinstance(package_cache, dict):
@@ -54,36 +62,18 @@ async def find_package(ctx: ArtemisContext, app_name: str, use_fallback: bool = 
         all_packages = await list_packages_async(ctx=ctx)
         package_set = {p.strip() for p in all_packages.split("\n") if p.strip()}
 
-        # Fast path: If app_name is already directly an installed package name
+        # Deterministic path: accept the name only when it is physically installed.
         if app_name in package_set:
             if isinstance(package_cache, dict):
                 package_cache[app_name] = app_name
             return app_name
 
-        hopper_output: HopperOutput = await hopper(
-            ctx=ctx,
-            request=(f"I'm looking for the package name of the following app: '{app_name}'"),
-            data=all_packages,
-            use_fallback=use_fallback,
-        )
-        if not hopper_output.found or not hopper_output.output:
-            if isinstance(package_cache, dict):
-                package_cache[app_name] = None
-            return None
-
-        package_name = hopper_output.output.strip()
-        if package_name not in package_set:
-            logger.warning(
-                f"Hopper returned package '{package_name}' for '{app_name}', "
-                "but it is NOT physically installed on the device!"
-            )
-            if isinstance(package_cache, dict):
-                package_cache[app_name] = None
-            return None
-
+        # Not an installed package id. Natural-language resolution is the host
+        # LLM's responsibility (D18), so the device surface reports "not found"
+        # rather than guessing with an on-device model.
         if isinstance(package_cache, dict):
-            package_cache[app_name] = package_name
-        return package_name
+            package_cache[app_name] = None
+        return None
     except Exception as e:  # pylint: disable=broad-exception-caught
         logger.error(f"Failed to find package for '{app_name}': {e}")
         return None

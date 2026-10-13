@@ -12,33 +12,18 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""☕ ARTEMIS: Autonomous Multimodal Android Agent & Testing Framework."""
+"""ARTEMIS device-action core for the DSH plugin (contracted, D18).
+
+The smart agent stack (the ``Agent``/``Builders`` SDK, the ``artemis_client``
+task client and the LLM-facing interfaces) now lives in the DSH host. Importing
+:mod:`artemis` only re-exports the device driver base; the device-action MCP
+servers and drivers are imported directly by module path.
+"""
 
 from artemis._version import __version__
-from artemis import _legacy_imports
-
-# Old import paths of the modules moved to third_party/ (deprecated).
-_legacy_imports.install()
-
-from artemis.interfaces.sdk.client import ArtemisClient, ConcurrencyMode
-from artemis.interfaces.sdk.task import StreamEvent, StreamEventType, Task
-from artemis_client import Capabilities, Device, TaskHandle, TaskResult
-from artemis.sdk.agent import Agent
-from artemis.sdk.builders import Builders
 from artemis.drivers.base import BaseDeviceDriver
 
 __all__ = [
     "__version__",
-    "ArtemisClient",
-    "Capabilities",
-    "ConcurrencyMode",
-    "Device",
-    "StreamEvent",
-    "StreamEventType",
-    "Agent",
-    "Builders",
-    "Task",
-    "TaskHandle",
-    "TaskResult",
     "BaseDeviceDriver",
 ]

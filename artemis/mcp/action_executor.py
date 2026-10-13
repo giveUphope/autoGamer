@@ -12,67 +12,44 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""MCP-backed action executor for the FlashRunner.
+"""Device-action executor over the in-process MCP action session.
 
-Device actions use the in-process MCP session. Argument normalization,
-element-index resolution, coordinate descriptions, smart swipes, post-action
-observations, state updates, tracing, and helper tools are handled here on the
-agent side.
+Contraction (D18): this is now a pure device-dialect lowering layer with no
+LangGraph state, no LLM, and no agent-side helper tools. It turns the agent
+dialect (a ``click``/``long_press``/``input_text`` target that is either an
+element index into the observed ``--- Visible UI Elements ---`` list, or a
+normalized ``[x, y]`` pair carrying the caller's ``target_description``) into
+wire coordinates, runs it through the action session, and observes the screen.
 
-Flash binds the same agent dialect as the Pro Operator: a ``click``,
-``long_press`` or ``input_text`` target is either an element index into the
-indexed ``--- Visible UI Elements ---`` list (resolved here to the element's
-center, its observed text/bounds/id recorded) or a normalized ``[x, y]`` pair
-carrying the model's own ``target_description``. The wire only ever sees
-coordinates.
-
-Device action status comes from ``ActionResult.ok``; helper tools report failures
-through ``ToolFailure`` or an explicit status.
+The current screen (the element list an index resolves against, and the raw
+hierarchy used by smart swipes) is passed explicitly as ``index_elements`` /
+``ui_hierarchy``; nothing reads or writes a shared graph state. The wire only
+ever sees coordinates. Device action status comes from ``ActionResult.ok``.
 """
 
 import ast
-import hashlib
 import json
 from pathlib import Path
-from typing import Any
+from typing import Any, Literal
 
-from artemis.core.tool_failure import ToolFailure, is_tool_failure
+from pydantic import BaseModel, Field
+
 from artemis.context import ArtemisContext
 from artemis.controllers.unified_controller import UnifiedMobileController
-from artemis.data_engine.trace import TraceSpan
 from artemis.mcp.action_manifest import OPTIONAL_ACTIONS, REQUIRED_ACTIONS
 from artemis.mcp.action_specs import exception_prefix
 from artemis.mcp.action_session import ActionSession, get_action_session
 from artemis.mcp.action_types import ActionCode, ActionResult
 from artemis.mcp.actuators.adb import AdbActuator
-from artemis.agents.validator.tool_declarations import (
-    ToolExecutionResult,
-    normalize_coordinate_target,
-)
-from artemis.tools.history import HISTORY_TOOL_NAMES, history_tool_by_name
-from artemis.tools.tool_wrapper import split_multimodal_result
 from artemis.utils.coordinates import (
     compute_smart_swipe_coordinates,
     parse_swipe_parameters,
-)
-from artemis.utils.notes import (
-    format_list_notes_failure,
-    format_list_notes_success,
-    format_read_note_failure,
-    list_notes_info,
-    read_note_content,
 )
 from third_party.mobile_use.utils.logger import get_logger
 
 logger = get_logger(__name__)
 
-__all__ = ["McpActionExecutor"]
-
-
-#: Non-device tools executed agent-side (never behind the action server).
-AGENT_TOOL_NAMES: frozenset[str] = (
-    frozenset({"read_note", "list_notes", "ask_explorer", "video_analyzer"}) | HISTORY_TOOL_NAMES
-)
+__all__ = ["McpActionExecutor", "ToolExecutionResult", "normalize_coordinate_target"]
 
 #: Actions whose ``target`` is a single point: an element index or an [x, y] pair.
 _POINT_TARGET_ACTIONS: frozenset[str] = frozenset({"click", "long_press", "input_text"})
@@ -82,8 +59,68 @@ class _ArgError(ValueError):
     """Argument-translation failure whose message is already fully formatted."""
 
 
+class ToolExecutionResult(BaseModel):
+    """Standardized result produced by executing a device action.
+
+    A plain data carrier (no LangChain conversion): the caller decides how to
+    fold the text summary, observed element list and screenshot into its own
+    context.
+    """
+
+    tool_call_id: str
+    tool_name: str
+    status: Literal["success", "error", "cancelled"]
+    text_summary: str
+    screenshot_bytes: bytes | None = None
+    screenshot_path: str | None = None
+    ui_elements_text: str | None = None
+    elements: list[dict[str, Any]] | None = None
+    raw_result: Any = None
+    metadata: dict[str, Any] = Field(default_factory=dict)
+
+
+def normalize_coordinate_target(target: Any) -> int | list[int] | Any:
+    """Normalizes coordinate targets or index references to standard types.
+
+    Supports:
+    - Integer index: e.g. 1 or "1" -> 1
+    - Coordinate list: e.g. [500, 280] or ["500", "280"] -> [500, 280]
+    - Serialized coordinate string: e.g. "[500, 280]" or "500, 280" -> [500, 280]
+    """
+    if isinstance(target, int):
+        return target
+
+    if isinstance(target, (list, tuple)):
+        if len(target) == 2:
+            try:
+                return [int(target[0]), int(target[1])]
+            except (ValueError, TypeError):
+                pass
+        elif len(target) == 1:
+            return normalize_coordinate_target(target[0])
+
+    if isinstance(target, str):
+        cleaned = target.strip()
+        if cleaned.isdigit() or (cleaned.startswith("-") and cleaned[1:].isdigit()):
+            return int(cleaned)
+        try:
+            parsed = json.loads(cleaned)
+            return normalize_coordinate_target(parsed)
+        except (json.JSONDecodeError, TypeError):
+            pass
+        if "," in cleaned:
+            parts = [p.strip().strip("[]() ") for p in cleaned.split(",")]
+            if len(parts) == 2:
+                try:
+                    return [int(parts[0]), int(parts[1])]
+                except (ValueError, TypeError):
+                    pass
+
+    return target
+
+
 class McpActionExecutor:
-    """Routes agent tool calls through the unified action MCP session."""
+    """Routes device tool calls through the unified action MCP session."""
 
     def __init__(
         self,
@@ -95,9 +132,8 @@ class McpActionExecutor:
         self.ctx = ctx
         self.actuator = actuator or getattr(ctx, "actuator", None) or AdbActuator(ctx, controller)
         self.controller = self.actuator.controller
-        # Identifies the calling agent / profile to the Explorer tier resolver
-        # (``explorer.flash_mode`` vs ``explorer.pro_mode``); the agent itself
-        # never sees or chooses the tier.
+        # Retained for profiles that may label the calling adapter; the executor
+        # itself spawns no LLM tier.
         self.agent_name = agent_name
         self._session: ActionSession | None = None
 
@@ -118,28 +154,26 @@ class McpActionExecutor:
         name: str,
         args: dict[str, Any],
         tool_call_id: str,
-        state: Any,
         *,
         index_elements: list[dict[str, Any]] | None = None,
+        ui_hierarchy: Any = None,
     ) -> ToolExecutionResult:
-        """Executes the named tool and wraps the outcome for the calling agent.
+        """Executes the named device tool and wraps the outcome for the caller.
 
         ``index_elements`` is the element list an index target (``click(3)``)
-        resolves against; ``None`` means ``state.indexed_elements`` at call
-        time. A multi-action turn passes the list from the observation the
-        model decided on, so its later indices are not resolved against the
-        list refreshed by its earlier actions (``state.indexed_elements`` is
-        still refreshed after every action: it is what the next observation
-        shows).
+        resolves against; ``ui_hierarchy`` is the raw hierarchy smart swipes
+        consult. Both are explicit -- the executor holds no shared state.
         """
         raw_name = name.split(":")[-1] if ":" in name else name
 
-        if raw_name in AGENT_TOOL_NAMES:
-            return await self._execute_agent_tool(raw_name, name, args, tool_call_id, state)
-
         if raw_name in self.action_tool_names:
             return await self._execute_device_action(
-                raw_name, name, args, tool_call_id, state, index_elements=index_elements
+                raw_name,
+                name,
+                args,
+                tool_call_id,
+                index_elements=index_elements,
+                ui_hierarchy=ui_hierarchy,
             )
 
         return ToolExecutionResult(
@@ -157,83 +191,64 @@ class McpActionExecutor:
         name: str,
         args: dict[str, Any],
         tool_call_id: str,
-        state: Any,
         *,
         index_elements: list[dict[str, Any]] | None = None,
+        ui_hierarchy: Any = None,
     ) -> ToolExecutionResult:
-        span = TraceSpan(name=raw_name, trace_type="action", ctx=self.ctx)
-        span.payload = {"args": args}
-
         message = ""
         res: ActionResult | None = None
         img_bytes: bytes | None = None
         shot_path: str | None = None
         xml_list: str | None = None
+        elements: list[dict[str, Any]] | None = None
         target_semantics: dict[str, Any] = {}
         target_coordinates: list[int] | None = None
-        with span:
-            try:
-                session = await self._session_or_start()
-                wire_name, wire_args, finalize, target_semantics = self._translate(
-                    raw_name, args, state, index_elements=index_elements
+        try:
+            session = await self._session_or_start()
+            wire_name, wire_args, finalize, target_semantics = self._translate(
+                raw_name,
+                args,
+                index_elements=index_elements,
+                ui_hierarchy=ui_hierarchy,
+            )
+            if raw_name in _POINT_TARGET_ACTIONS:
+                # The normalized point the action was sent to: the recorded
+                # coordinates of an index target (the model named an index,
+                # not a point).
+                target_coordinates = wire_args.get("target")
+            extension = raw_name not in (REQUIRED_ACTIONS | OPTIONAL_ACTIONS)
+
+            if extension:
+                raw_result = await session.call_raw(wire_name, wire_args)
+                message = next(
+                    (b.text for b in raw_result.content if getattr(b, "type", "") == "text"),
+                    f"Extension tool '{raw_name}' completed.",
                 )
-                if raw_name in _POINT_TARGET_ACTIONS:
-                    # The normalized point the action was sent to: the recorded
-                    # coordinates of an index target (the model named an index,
-                    # not a point).
-                    target_coordinates = wire_args.get("target")
-                extension = raw_name not in (REQUIRED_ACTIONS | OPTIONAL_ACTIONS)
+                res = ActionResult.success(raw_name, message)
+            else:
+                res = await session.call(wire_name, wire_args)
+                message = finalize(res) if finalize else res.message
 
-                if extension:
-                    raw_result = await session.call_raw(wire_name, wire_args)
-                    message = next(
-                        (b.text for b in raw_result.content if getattr(b, "type", "") == "text"),
-                        f"Extension tool '{raw_name}' completed.",
-                    )
-                    res = ActionResult.success(raw_name, message)
-                else:
-                    res = await session.call(wire_name, wire_args)
-                    message = finalize(res) if finalize else res.message
+            if res.ok or self._observe_despite_failure(raw_name, res):
+                obs = await session.observe(settle_ms=400)
+                if obs.ok:
+                    shot_path = obs.screenshot_path
+                    xml_list = obs.elements_text
+                    if obs.hierarchy_ok:
+                        elements = obs.elements
+                    if shot_path:
+                        try:
+                            img_bytes = Path(shot_path).read_bytes()
+                        except Exception as read_err:
+                            logger.warning(f"Failed to read observed screenshot: {read_err}")
+        except _ArgError as e:
+            res = ActionResult.failure(raw_name, str(e), code=ActionCode.INVALID_ARGS)
+            message = str(e)
+        except Exception as e:
+            message = f"{exception_prefix(raw_name)}: {e}"
+            res = ActionResult.failure(raw_name, message, detail=repr(e))
 
-                if res.ok or self._observe_despite_failure(raw_name, res):
-                    obs = await session.observe(settle_ms=400)
-                    if obs.ok:
-                        shot_path = obs.screenshot_path
-                        xml_list = obs.elements_text
-                        if obs.hierarchy_ok:
-                            state.indexed_points = [el["center"] for el in obs.elements]
-                            state.indexed_elements = obs.elements
-                        if shot_path:
-                            try:
-                                img_bytes = Path(shot_path).read_bytes()
-                            except Exception as read_err:
-                                logger.warning(f"Failed to read observed screenshot: {read_err}")
-            except _ArgError as e:
-                res = ActionResult.failure(raw_name, str(e), code=ActionCode.INVALID_ARGS)
-                message = str(e)
-            except Exception as e:
-                message = f"{exception_prefix(raw_name)}: {e}"
-                res = ActionResult.failure(raw_name, message, detail=repr(e))
-
-            if shot_path:
-                state.latest_screenshot = shot_path
-
-            status = "success" if res.ok else "error"
-            post_image_name = None
-            if shot_path:
-                post_image_name = Path(shot_path).stem
-            elif img_bytes:
-                post_image_name = hashlib.sha256(img_bytes).hexdigest()
-            span.result = {
-                "outcome": message,
-                "post_image_name": post_image_name,
-                "has_xml": bool(xml_list),
-                "status": status,
-            }
-            if status == "error":
-                span.status = "failed"
-                span.error = message
-
+        status = "success" if res.ok else "error"
         return ToolExecutionResult(
             tool_call_id=tool_call_id,
             tool_name=name,
@@ -242,6 +257,7 @@ class McpActionExecutor:
             screenshot_bytes=img_bytes,
             screenshot_path=shot_path,
             ui_elements_text=xml_list,
+            elements=elements,
             metadata={
                 "code": res.code.value,
                 "normalized_coordinates": res.normalized_coordinates,
@@ -268,9 +284,9 @@ class McpActionExecutor:
         self,
         raw_name: str,
         args: dict[str, Any],
-        state: Any,
         *,
         index_elements: list[dict[str, Any]] | None = None,
+        ui_hierarchy: Any = None,
     ) -> tuple[str, dict[str, Any], Any, dict[str, Any]]:
         """Maps agent-facing args to wire args; returns (name, args, finalize, recorded).
 
@@ -279,15 +295,12 @@ class McpActionExecutor:
         format: the observed element fields of an index target, or the validated
         ``target_description`` of a coordinate target. Focused input and
         directional swipes have no target, so they record nothing.
-        ``index_elements`` overrides the list index targets resolve against
-        (see :meth:`execute`).
         """
         if raw_name == "click":
             target, recorded = self._resolve_target(
                 args.get("target") or args.get("coordinates"),
                 "click",
                 args,
-                state,
                 index_elements=index_elements,
             )
             return (
@@ -306,7 +319,6 @@ class McpActionExecutor:
                 args.get("target") or args.get("coordinates"),
                 "long press",
                 args,
-                state,
                 index_elements=index_elements,
             )
             return (
@@ -325,7 +337,7 @@ class McpActionExecutor:
             recorded = {}
             if raw_target:
                 target, recorded = self._resolve_target(
-                    raw_target, "input text", args, state, index_elements=index_elements
+                    raw_target, "input text", args, index_elements=index_elements
                 )
             return (
                 "input_text",
@@ -352,7 +364,9 @@ class McpActionExecutor:
             )
 
         if raw_name == "swipe":
-            return self._translate_swipe(args, state, index_elements=index_elements)
+            return self._translate_swipe(
+                args, index_elements=index_elements, ui_hierarchy=ui_hierarchy
+            )
 
         if raw_name == "press_key":
             return "press_key", {"key": args.get("key", "BACK")}, None, {}
@@ -401,7 +415,6 @@ class McpActionExecutor:
         raw: Any,
         label: str,
         args: dict[str, Any],
-        state: Any,
         *,
         index_elements: list[dict[str, Any]] | None = None,
     ) -> tuple[list[int], dict[str, Any]]:
@@ -409,13 +422,13 @@ class McpActionExecutor:
 
         An element index carries observed semantics (text, bounds, id, class
         straight from the indexed list); a coordinate pair carries only the
-        model's own ``target_description``. The two never mix (Pro parity).
+        caller's ``target_description``. The two never mix (Pro parity).
         """
         target = normalize_coordinate_target(raw)
         if isinstance(target, bool):
             target = None
         if isinstance(target, (int, float)):
-            return self._resolve_index(int(target), label, state, index_elements=index_elements)
+            return self._resolve_index(int(target), label, index_elements=index_elements)
         if isinstance(target, (list, tuple)) and len(target) == 2:
             recorded = self._require_description(args, label)
             return [int(target[0]), int(target[1])], recorded
@@ -429,7 +442,6 @@ class McpActionExecutor:
         self,
         index: int,
         label: str,
-        state: Any,
         *,
         index_elements: list[dict[str, Any]] | None = None,
     ) -> tuple[list[int], dict[str, Any]]:
@@ -437,10 +449,10 @@ class McpActionExecutor:
 
         The recorded fields are what the Operator records for an index target,
         with bounds normalized like every other Flash coordinate. The index is
-        resolved against ``index_elements`` when given, else against the
-        state's current list.
+        resolved against ``index_elements`` when given, else against an empty
+        list.
         """
-        elements = self._index_elements(state, index_elements)
+        elements = index_elements or []
         if not 1 <= index <= len(elements):
             hint = (
                 " The list is empty on this screen."
@@ -450,8 +462,7 @@ class McpActionExecutor:
             raise _ArgError(
                 f"Error during {label}: Invalid target index {index}.{hint} Use an index"
                 " shown in the Visible UI Elements list, or normalized [x, y]"
-                " coordinates with a target_description (ask_explorer can locate an"
-                " element that is visible but not listed)."
+                " coordinates with a target_description."
             )
         element = elements[index - 1]
         width, height = self._screen_size()
@@ -536,8 +547,7 @@ class McpActionExecutor:
                 raise _ArgError(
                     f"Error during click sequence: entry {position} ({raw_target!r}) is an"
                     " element index; click_sequence takes normalized [x, y] coordinate"
-                    " pairs only. Use the element's coordinates from the element list,"
-                    " or ask_explorer to locate it."
+                    " pairs only. Use the element's coordinates from the element list."
                 )
             if isinstance(target, (list, tuple)) and len(target) == 2:
                 nx, ny = int(target[0]), int(target[1])
@@ -546,21 +556,12 @@ class McpActionExecutor:
             resolved.append([nx, ny])
         return resolved
 
-    @staticmethod
-    def _index_elements(
-        state: Any, index_elements: list[dict[str, Any]] | None
-    ) -> list[dict[str, Any]]:
-        """The element list index targets resolve against (``None`` -> state)."""
-        if index_elements is not None:
-            return index_elements
-        return getattr(state, "indexed_elements", None) or []
-
     def _translate_swipe(
         self,
         args: dict[str, Any],
-        state: Any,
         *,
         index_elements: list[dict[str, Any]] | None = None,
+        ui_hierarchy: Any = None,
     ) -> tuple[str, dict[str, Any], Any, dict[str, Any]]:
         width, height = self._screen_size()
         default_duration = args.get("duration", 400)
@@ -573,8 +574,8 @@ class McpActionExecutor:
             x1, y1, x2, y2, smart_dur = compute_smart_swipe_coordinates(
                 direction=target,
                 target=args.get("target"),
-                indexed_elements=self._index_elements(state, index_elements) if state else None,
-                ui_hierarchy=getattr(state, "latest_ui_hierarchy", None) if state else None,
+                indexed_elements=index_elements,
+                ui_hierarchy=ui_hierarchy,
                 width=width,
                 height=height,
                 duration=final_duration,
@@ -620,141 +621,3 @@ class McpActionExecutor:
             )
 
         raise _ArgError(f"Error during swipe: Invalid direction: {args}")
-
-    # --- Non-device tools (stay agent-side) ------------------------------------------
-
-    async def _execute_agent_tool(
-        self,
-        raw_name: str,
-        name: str,
-        args: dict[str, Any],
-        tool_call_id: str,
-        state: Any,
-    ) -> ToolExecutionResult:
-        span = TraceSpan(name=raw_name, trace_type="tool", ctx=self.ctx)
-        span.payload = {"args": args}
-        ok: bool | None = None
-        blocks: list[dict[str, Any]] | None = None
-        with span:
-            if raw_name == "read_note":
-                text = await self._read_note(
-                    args.get("key", ""), args.get("start_line"), args.get("end_line")
-                )
-            elif raw_name == "list_notes":
-                text = await self._list_notes()
-            elif raw_name == "video_analyzer":
-                text, ok = await self._video_analyzer(
-                    args.get("time_description") or args.get("TimeDescription") or "",
-                    args.get("purpose") or args.get("Purpose") or "",
-                )
-            elif raw_name in HISTORY_TOOL_NAMES:
-                text, blocks = await self._history_tool(raw_name, args)
-            else:
-                text, ok = await self._ask_explorer(
-                    # ``task_description`` is the pre-contract argument name
-                    # kept for old MCP clients.
-                    args.get("query") or args.get("task_description") or "",
-                    args.get("context_feedback"),
-                    state,
-                )
-            span.result = {"outcome": text}
-            if ok is False:
-                span.status = "failed"
-                span.error = text
-
-        # The Explorer and the video analyzer report their status explicitly;
-        # note and history texts carry it structurally (a ``ToolFailure``), so a
-        # history lookup's "no match" answer is an answer, not an error.
-        if ok is None:
-            ok = not is_tool_failure(text)
-        return ToolExecutionResult(
-            tool_call_id=tool_call_id,
-            tool_name=name,
-            status="success" if ok else "error",
-            text_summary=text,
-            # Content blocks (a step screenshot) ride along for callers that
-            # forward multimodal tool results; the text summary stays complete.
-            raw_result=blocks,
-        )
-
-    async def _read_note(self, key: str, start_line: int | None, end_line: int | None) -> str:
-        try:
-            base_dir = self.ctx.data_engine.base_dir if self.ctx.data_engine else None
-            if not base_dir:
-                return format_read_note_failure(key, "DataEngine not initialized.")
-            return read_note_content(base_dir, key, start_line, end_line)
-        except Exception as e:
-            return format_read_note_failure(key, str(e))
-
-    async def _list_notes(self) -> str:
-        try:
-            base_dir = self.ctx.data_engine.base_dir if self.ctx.data_engine else None
-            if not base_dir:
-                return format_list_notes_failure("DataEngine not initialized.")
-            return format_list_notes_success(list_notes_info(base_dir))
-        except Exception as e:
-            return format_list_notes_failure(str(e))
-
-    async def _history_tool(
-        self, raw_name: str, args: dict[str, Any]
-    ) -> tuple[str, list[dict] | None]:
-        """Runs one of the shared history tools (the same instances the Pro
-        agents bind), dispatched generically by name.
-
-        Returns the text answer and, for a screenshot, the multimodal content
-        blocks the tool produced.
-        """
-        tool = history_tool_by_name(raw_name)
-        if tool is None:
-            return ToolFailure(f"Error: Tool '{raw_name}' not supported."), None
-        accepted = {k: v for k, v in args.items() if k in tool.args_schema.model_fields}
-        try:
-            result = await tool.execute(ctx=self.ctx, **accepted)
-        except Exception as e:
-            logger.error(f"Error running {raw_name}: {e}")
-            return ToolFailure(f"{raw_name} failed: {e}"), None
-        text, images = split_multimodal_result(result)
-        if images:
-            return text or "Screenshot attached.", result
-        return text, None
-
-    async def _video_analyzer(self, time_description: str, purpose: str) -> tuple[str, bool]:
-        """Runs the video-analyzing subagent over the session recording.
-
-        Same subagent the Pro operator's ``video_analyzer`` LangChain tool
-        delegates to; imported lazily because the video stack is heavy.
-        """
-        from artemis.agents.video_analyzer.video_analyzer import VideoAnalyzer
-
-        try:
-            outcome, status = await VideoAnalyzer(self.ctx).run(time_description, purpose)
-        except Exception as e:
-            logger.error(f"Error running video analyzer: {e}")
-            return f"Error running video analyzer: {e}", False
-        if status in ("failed", "error"):
-            return f"Video analysis failed: {outcome}", False
-        return outcome, True
-
-    async def _ask_explorer(
-        self, query: str, context_feedback: str | None, state: Any
-    ) -> tuple[str, bool]:
-        """Runs the Explorer pipeline for this executor's agent; returns ``(text, ok)``.
-
-        ``ok`` is False only when the Explorer run itself failed: a clean
-        "not found" is a successful answer the agent has to reason about.
-        """
-        # Imported lazily: the explorer stack is heavy and recursive (it spawns an LLM
-        # sub-agent), which is also why it must never live behind the action server.
-        from artemis.tools.explorer_tool import locate, register_candidates, render_text
-
-        try:
-            outcome = await locate(
-                self.ctx, state, query, context_feedback or "", agent_name=self.agent_name
-            )
-            registered = register_candidates(self.ctx, state, outcome)
-            # Candidates join ``state.indexed_elements``, and this executor's
-            # ``click`` resolves an index against that list (Pro parity), so the
-            # answer teaches the index syntax next to the coordinates.
-            return render_text(query, outcome, registered, index_targets=True), not outcome.error
-        except Exception as e:
-            return f"Error executing ask_explorer: {e}", False
