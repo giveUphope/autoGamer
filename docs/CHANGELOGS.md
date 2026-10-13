@@ -3245,7 +3245,7 @@ glob、fixture 步调用的生成器，分别指向 P4 已删的控制台、lock
 #### 验收标准
 
 - [x] 上述本地链条全绿（本轮实跑，含隔离环境）
-- [ ] 新 push run 全绿（推送后看 run 页）
+- [x] 新 push run 全绿：run `38376354428`（`d8a6d2e`，4/4 job success，双 OS）
 
 补记（首个绿前 run 又红以后查明）：`src/env/preflight.ts` 从未进过仓库——根
 `.gitignore` 的 `env/` 在 Windows 大小写不敏感匹配下吞掉了整个 `src/env/` 目录，
