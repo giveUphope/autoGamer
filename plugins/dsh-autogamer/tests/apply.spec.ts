@@ -7,6 +7,7 @@
  * assert the coordinates the py action server actually receives.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fileURLToPath } from "node:url";
 import { parseImageSize } from "../src/coord.js";
 import {
   PIXEL_GUIDANCE,
@@ -122,6 +123,7 @@ function fakeContext(
   const listeners: Array<{ handler: (session: unknown, event: unknown) => void; options?: { global?: boolean } }> = [];
   const guards: Array<(execution: { name: string; arguments: unknown }) => string | undefined> = [];
   const followups: unknown[] = [];
+  const sections: { name: string; order: number; text: string }[] = [];
   const agent = { id: agentId, followup: (message: unknown) => { followups.push(message); } };
   const context = {
     logger: { info: () => {}, warn: () => {}, error: () => {} },
@@ -144,6 +146,12 @@ function fakeContext(
       return () => {};
     },
     ...(attachments ? { attachments } : {}),
+    systemPrompt: {
+      section: (input: { name: string; order: number; text: string }) => {
+        sections.push(input);
+        return undefined;
+      },
+    },
     effect(setup: () => unknown): void {
       cleanups.push(setup());
     },
@@ -152,6 +160,7 @@ function fakeContext(
     context,
     cleanups,
     followups,
+    sections,
     guards: () => guards,
     listenerOptions: () => listeners.map((l) => l.options),
     emit: (type: string, id = agentId) => {
@@ -664,5 +673,29 @@ describe("apply(): external ARTEMIS wiring (dsh-autogamer Phase 1)", () => {
     const second: ToolDefinition[] = [];
     await apply(fakeContext(second).context as never, Config({ autoPreflight: false }) as never);
     expect(preflightProbe.runs).toBe(0);
+  });
+});
+
+describe("apply(): provider rules reach the system prompt (Phase 5)", () => {
+  const REPO = fileURLToPath(new URL("./fixtures/fake-repo", import.meta.url));
+
+  it("contributes the provider rules file when configured", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, Config({ artemisRepoPath: REPO }) as never);
+    expect(double.sections).toHaveLength(1);
+    expect(double.sections[0]?.name).toBe("dsh-autogamer-rules");
+    expect(double.sections[0]?.text).toContain("mobile tester");
+  });
+
+  it("skips silently without a repo path, and stays off when flagged off", async () => {
+    const plain: ToolDefinition[] = [];
+    const withoutRepo = fakeContext(plain);
+    await apply(withoutRepo.context as never, Config() as never);
+    expect(withoutRepo.sections).toHaveLength(0);
+    const flagged: ToolDefinition[] = [];
+    const off = fakeContext(flagged);
+    await apply(off.context as never, Config({ artemisRepoPath: REPO, injectRules: false }) as never);
+    expect(off.sections).toHaveLength(0);
   });
 });

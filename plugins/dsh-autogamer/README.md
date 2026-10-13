@@ -25,6 +25,7 @@ src/tools/envGate.ts              五个新工具共用的预检门禁（同一 
 src/artemis/adapter.ts            后端选择（CLI 已砍，仅剩 MCP 工厂；Phase 2）
 src/scrcpy/server.ts              镜像服务生命周期（resolve/start/stop；argv 逐条对 scrcpy 开发文档，Phase 4）
 src/scrcpy/input.ts               触摸转 adb input 纯函数（降级控制路线，Phase 4）
+src/prompt/rulesInjector.ts       提供方 rules.md 经 systemPrompt.section() 注入（每次挂载重读，Phase 5）
 client.js                         浏览器半（手写 ModuleLoader 形态）：五个任务工具的 toolview 卡片（Phase 3）
 src/artemis/types.ts              外部 ARTEMIS 后端接口（Phase 1：getDeviceState；其余 Phase 2）
 src/artemis/mcpBackend.ts         外部 ARTEMIS 的 MCP stdio 后端（懒连接，传输失败=environment）
@@ -77,6 +78,10 @@ dsh --profile web --patch <abs>/spike/web-live.patch.yml --dump-config
   `cordis_inspect_query`（`Tool` = 本 agent 能调用哪些工具、`Config.listConfigs`）、
   `inspectCompositions()`。
 - **声明只影响之后创建的 agent**（R7）：验证一律开新会话，旧会话保留其启动时的 revision。
+- **提供方 rules 注入系统提示**（Phase 5）：`artemisRepoPath` 下 `mcp_server/rules.md`
+  在每次挂载时重读，经官方 `systemPrompt.section()` 贡献（`injectRules` 开关，默认开；
+  缺路径/缺文件/读失败一律 warn 跳过，不阻断挂载）。挂载可解性由 Tier-1 真 runtime
+  挂载实证（`systemPrompt` 在 inject 表里），文本到达模型上下文仍需真会话。
 - **设备画面要手动装 scrcpy**（Phase 4）：插件不下载二进制。只从官方源装
   （Genymobile/scrcpy，按其签名验证页验签），把 `scrcpy` 放进 PATH（ release 包里的
   scrcpy-server jar 会被自动找到），或把 jar 路径配进 `scrcpyServerPath`。版本必须

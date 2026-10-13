@@ -332,6 +332,20 @@ mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
 15. README release URL 旧名（历史资产，保持；下版本换新）。
 16. dsh.client 挂载实证（package.json；触发：真会话）。
 
+### Phase 5 偏差与落地（2026-10-14）
+
+rules 注入走 Phase 0 核实的真 API 全程可测：
+1. `systemPrompt.contribute` 不存在 → 改 `section({name, order, text})`（order 取规格的 50）。
+2. 路径纠正：`<repo>/mcp_server/rules.md`（fork 实证，非仓库根）。
+3. inject 加 `systemPrompt`：可解性由 Tier-1 真 runtime 挂载实证（boot 真服务 + 本插件
+   真 inject 表，挂载即证明，G30 机理反用为锁）；文本到达模型上下文仍需真会话。
+4. 失败策略：缺旗标/缺路径/缺文件/读失败/空内容一律 warn 跳过，永不抛，永不阻断挂载。
+5. 无消费者 Config 去留：`scrcpyEnabled` 接通（关则不建 manager）；`defaultTimeoutSeconds`
+   与 `traceRetentionDays` 保留（规格必填，无消费者，注释写明）。
+新文件：`src/prompt/rulesInjector.ts`；dsh-types 加 systemPrompt 镜像（含出处）；
+README 加段落与 Layout 行。
+错误路径补齐见 Review（本条 P5 前一节）。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；
@@ -342,5 +356,5 @@ R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；�
 
 - [x] Phase 0：十项核实结论回写本条，六条硬冲突逐条裁决（确认/降级/砍掉）
 - [x] 插件 id 改名定案并同步（`dsh-autogamer`，用户定稿）
-- [ ] Phase 1–5 按验收逐阶段落地
+- [x] Phase 1–5 按验收逐阶段落地（离线面；live 见留白总账）
 - [ ] 卸载无残留进程（scrcpy、adb forward 清理）+ README 完整化

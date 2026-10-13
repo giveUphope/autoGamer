@@ -81,6 +81,17 @@ describe("conformance: real DSH runtime tool registry (G5 Tier 1)", () => {
     ]);
   });
 
+  it("mounts with systemPrompt in inject: the Tier-1 in-process resolvability proof", async () => {
+    // Cordis refuses the property GET of an undeclared service and leaves a
+    // row pending when a declared one cannot resolve — so reaching a mounted
+    // plugin with 'systemPrompt' in its own inject list proves the rules
+    // injector's service resolves in preset scope (G30's root cause, inverted
+    // into a lock). Text reaching model context still needs a live session.
+    expect(pluginModule.inject).toContain("systemPrompt");
+    const ctx = await bootWithPlugin();
+    expect(typeof ctx.tools.register).toBe("function");
+  });
+
   it("compiles every tool through defineTool into an object-rooted wire schema", async () => {
     const ctx = await bootWithPlugin();
     const schemas = ctx.tools.schemas() as WireSchema[];

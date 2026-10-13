@@ -23,6 +23,7 @@ import { defineDiagnose } from "./tools/diagnose.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
+import { setupRulesInjection } from "./prompt/rulesInjector.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -66,8 +67,10 @@ export const Config: object = z.object({
    * dsh-autogamer rectification: external ARTEMIS provider wiring.
    * No `.description()` calls on purpose — that builder form is unverified on
    * the installed schemastery, and the settings auto-form works without
-   * descriptions. `traceRetentionDays` is still unread (retention has no
-   * consumer yet); `injectRules` is read by the rules injector (Phase 5).
+   * descriptions. `traceRetentionDays` and `defaultTimeoutSeconds` are
+   * reserved (spec-required, no consumer yet: no retention sweeper and no
+   * task-lifetime timeout policy exist); `injectRules` is read by the rules
+   * injector (Phase 5).
    */
   artemisRepoPath: z.string().default(""),
   artemisMcpCommand: z.array(z.string()).default(["python", "-m", "mcp_server"]),
@@ -95,7 +98,7 @@ export const Config: object = z.object({
  * row pending — the G30 shape — so this list is a live-verified claim, not an
  * aspiration.
  */
-export const inject = ["tools", "attachments", "agents"];
+export const inject = ["tools", "attachments", "agents", "systemPrompt"];
 // NOTE (reviewed P5 eve): the scheme also asks for 'settings' here, but that
 // service is upstream-only (not installed) and an unresolvable inject in
 // preset scope leaves the row pending — the G30 shape. It waits for a live
@@ -152,17 +155,22 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // (lazily — no spawn) and disposed with everything else, but no tool drives
   // it yet: without a DSH binary channel there is no consumer for the video
   // socket (Phase 0 verdict), so start() waits for a transport that exists.
-  const scrcpy = new ScrcpyManager({
-    maxWidth: config.scrcpyMaxWidth ?? 1080,
-    maxFps: config.scrcpyMaxFps ?? 30,
-    bitrateMbps: config.scrcpyBitrateMbps ?? 4,
-    ...(typeof config.defaultDeviceSerial === "string" && config.defaultDeviceSerial.length > 0
-      ? { serial: config.defaultDeviceSerial }
-      : {}),
-    ...(typeof config.scrcpyServerPath === "string" && config.scrcpyServerPath.length > 0
-      ? { serverPath: config.scrcpyServerPath }
-      : {}),
-  });
+  // Disabled by config: no manager at all (this finally gives scrcpyEnabled
+  // a consumer — review item 13).
+  const scrcpy =
+    config.scrcpyEnabled !== false
+      ? new ScrcpyManager({
+          maxWidth: config.scrcpyMaxWidth ?? 1080,
+          maxFps: config.scrcpyMaxFps ?? 30,
+          bitrateMbps: config.scrcpyBitrateMbps ?? 4,
+          ...(typeof config.defaultDeviceSerial === "string" && config.defaultDeviceSerial.length > 0
+            ? { serial: config.defaultDeviceSerial }
+            : {}),
+          ...(typeof config.scrcpyServerPath === "string" && config.scrcpyServerPath.length > 0
+            ? { serverPath: config.scrcpyServerPath }
+            : {}),
+        })
+      : undefined;
   // dsh-autogamer rectification (Phase 1): the external ARTEMIS backend and
   // the shared preflight runner. The backend connects lazily on first use, so
   // constructing it here spawns nothing; the preflight warm-up below only
@@ -446,6 +454,19 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.effect?.(() => () => {
     void client.dispose();
     void artemisBackend.dispose();
-    void scrcpy.dispose();
+    void scrcpy?.dispose();
   });
+
+  // dsh-autogamer rectification (Phase 5): provider rules into the system
+  // prompt via the official section() API. Enhancement-only: a missing repo,
+  // file, or content skips with a warning inside setupRulesInjection, so this
+  // call never throws and never blocks the mount.
+  setupRulesInjection(
+    ctx.systemPrompt,
+    {
+      artemisRepoPath: config.artemisRepoPath ?? "",
+      injectRules: config.injectRules !== false,
+    },
+    logger.warn,
+  );
 }
