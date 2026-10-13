@@ -152,6 +152,16 @@
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
   （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
   等价内容经 `main` 取得，见本节 Step 4。
+- 2026-10-13 **Step 7 的范围更正（重要，别把 G71 读成"本机都修好了"）**：Step 7 的全部读数
+  **只属于 `web` 这一个 profile**。本机实际有四个 profile，各自的组合包选择是独立的：
+  `desktop`（`base + web-app + experimental-agent-team-profile`，**没有本包**）、
+  `headless`（**仍挂着旧名死链** `autogamer-device` → `link:D:/DEV/autoGamer/plugins/autogamer-device`，
+  与 G71 修掉的是同一个缺陷，未修）、`sdk`（干净）、`web`（本轮修好的）。
+  用户 22:56:27 起的 5 个 `DeepSeek Harness.exe` 进程走的是 **desktop**（其 `cordis.yml` 同一时刻被重写）
+  ⇒ **G71 的"生效"证据不适用于用户日常环境**，要装到哪个 profile 得先问。
+  另澄清一条排除项：本机**只有一个 dsh 安装**（`D:\DeepSeek Harness`，exe 构建于 Sep 29 18:34，
+  CLI `0.2.0-rc.2`），`where.exe dsh` 与 npm/pnpm 全局 bin 均无第二个 dsh ⇒ 不存在"另装了一个 dsh"，
+  差异全在 profile 层。
 - 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
   （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
@@ -269,7 +279,7 @@
 
 | 编号 | 差距 | 阻塞点 / 下一步 |
 |---|---|---|
-| G71 | 本机 web profile 的组合包选择曾指旧名 `autogamer-device`（`link:` 靶子在改名提交 `70cc7af` 后已无 `package.json`）→ profile 级挂载失败。**profile 层已于 Step 5 修好**（CLI 零审批：bundles 现为 `dsh-autogamer`，不带 `--patch` 的 `--dump-config` rc 0 且合成树含我们的层） | 官方管理面读数已到位（Step 7）：插件页 已安装 1、详情页 **2 个组件 · 2 运行中**、预设菜单可选 `AutoGamer` ⇒ 挂载层与注册表层都通。**只剩一条**：工具是否真在 AutoGamer agent 的可调用面上（G30 教训「注册成功 ≠ Agent 看得见」，故不能由「运行中」代替）——要一次真会话取证（创造模式 `cordis_inspect_query` 或代理抓请求数 `tools`），两条路都花一次模型往返，等用户点头。读数明细见 §零 Step 7 |
+| G71 | 本机 web profile 的组合包选择曾指旧名 `autogamer-device`（`link:` 靶子在改名提交 `70cc7af` 后已无 `package.json`）→ profile 级挂载失败。**范围只限 `web` profile**（本机四个 profile 各自独立：`web` 已修、`headless` 仍挂同一个旧名死链、`desktop`＝用户日常那个 未装本包）。**profile 层已于 Step 5 修好**（CLI 零审批：bundles 现为 `dsh-autogamer`，不带 `--patch` 的 `--dump-config` rc 0 且合成树含我们的层） | 官方管理面读数已到位（Step 7）：插件页 已安装 1、详情页 **2 个组件 · 2 运行中**、预设菜单可选 `AutoGamer` ⇒ 挂载层与注册表层都通。**只剩一条**：工具是否真在 AutoGamer agent 的可调用面上（G30 教训「注册成功 ≠ Agent 看得见」，故不能由「运行中」代替）——要一次真会话取证（创造模式 `cordis_inspect_query` 或代理抓请求数 `tools`），两条路都花一次模型往返，等用户点头。读数明细见 §零 Step 7 |
 | G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 **15 工具动作面**（13 是 `ACTION_TO_PY_TOOL` 的非 null 映射数，两者不是一回事） | 三条路，**②已被证据排除一半**：① Config 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面加映射层——动作面**没有 task/trace 类工具**（fixture 15 个里无 `run`/`status`/`stop`/`inject`/`view_summary`），`run_task`/`manage_task`/`inspect_trace` 三个工具无处可接，本分支也没有 REST 兜底（`git ls-files apps` = 0）；③ **用同仓的 `main` 挂一个 worktree 当提供方**（`main:mcp_server` 有 23 个 `.py`，含那 5 个工具模块与 `rules.md`），零外部依赖，代价是要为它单独 `uv sync` 一份环境并吃智能栈的重依赖。2026-10-13 Step 0/4 实测 |
 | G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本 | **只有 provider 那半边要改**：`artemis/mcpBackend.ts:170-196`（`view_type` 与 `screenshotPath: text`）、`artemis/types.ts:22-30`、`tools/getDeviceState.ts:105` + 两个 spec（`artemisMcpBackend.spec.ts:60-87`、`getDeviceState.spec.ts:36-48,104-117`），约 60 LOC。**`{index}` 侧不重复做**——它早已优先吃 `parsed_bounds` 并有锁（`apply.spec.ts:62`、`dedup.spec.ts:17`），上一轮把这条写成待办是我没核现状（R25）。**先定 G72 走哪个面**，两面的形状本就不同 |
 | G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九），且 §十 补了一条更硬的约束：adb 文档里**只有 `emulator-5554` 的 console↔adb 端口配对有身份含义**，`127.0.0.1:*` 是裸 TCP 传输、端口可能随启动变化 ⇒ **钉 TCP serial 的白名单会静默丢设备**。三条诚实路线（钉 roster / py 增发身份 / 只明示计数单位）与代价在 §九；路线 ① 的改动面极小（`cordis.patch.yml` 加 `devices`，`devicePool.ts:166` 已实现「钉住就不枚举」），但要接受"多实例时操作者手工维护"。待裁定后按 R22 写方案再动码 |
