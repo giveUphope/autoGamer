@@ -8,7 +8,8 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前未关闭差距 **`G71` / `G72` / `G73` / `G74` / `G75` / `G76` / `G77` / `G78`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+- 当前未关闭差距 **`G71` / `G72` / `G73` / `G74` / `G75` / `G76` / `G78` / `G79`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+  `G77` 已随 CHANGELOGS **#79** 结案。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -87,6 +88,10 @@
   - **新立 G78**：`adb forward --list` 实测残留 **`127.0.0.1:16384 tcp:54254 tcp:18888`**（device 18888 = helper 端口，
     由 py 侧建 forward），而 MCP server 进程已退出 ⇒ Done means 里那句「卸载无残留（adb forward 清理）」
     **不是「等真机」而是已被证伪**，且残留产生方是 py 动作面，插件的 stop/dispose 管不到它。
+- 2026-10-13 **Step 3 · 第一个修复落地**（`G77` 结案见 CHANGELOGS **#79**；新暴露 `G79`）：预检承认 project-venv 形态后，
+  真机真环境跑通 `artemis-installed → PASS  project venv: ARTEMIS device-action core v1.0`；插件全套
+  **32 files / 289 passed / 1 skipped**（+5 条锁），三条变异逐条证伪（红点分别在 `preflight.spec.ts:145`、`:166`、`:218`，
+  还原后 `diff -q` 与备份相同）。`helper` 项修完仍红，但**原因换了且是真红**：提供方要求 `--serial`（多传输歧义）→ 立 **G79**。
 - 2026-10-13 仓库卫生与主线定位（正文见 CHANGELOGS **#78**）：`origin` 上三条死分支已删；本地安全网分支
   `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
   `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
@@ -214,7 +219,7 @@
 | G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组，属性值是字符串（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`）**但每个节点还带 `parsed_bounds` 整数对象（真机 36/36 全有）**，且节点数被 `filter_ui_hierarchy` 的语义裁剪大幅压低（设计行为，见 §零 Step 2） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
 | G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（DSH 的 roster 指 preset 行；artemis 上游 `device_pool.py` 与本仓逐字相同、无 dedupe，详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九）。诚实路线只剩三条并已列在该节表格里，默认取 **①：交付钉显式 `Config.devices`，把自动枚举降级**（不碰 canonical 契约，且 `devicePool.ts:166` 已让「钉住就不枚举」）。待用户裁定后按 R22 写方案再动码 |
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
-| G77 | 预检把「已安装」等同于「`uv tool list` 里有 artemis」，且 `helper` 项假定 PATH 上有 `artemis` 可执行（`src/env/preflight.ts:186-202`、`:237-239`）。真机取证：`artemis-installed` 与 `helper` **两项同因红**，而 `uv run artemis mcp` 明明可用 ⇒ fork 以 project-venv / editable 形态存在时被误报未安装 | 两项都承认第二种形态，共用同一条只读探针 `uv run --project <repo> --no-sync artemis …`（`--no-sync` 是刻意的：预检不许改动提供方环境）；`repo` 未配时保持现行为。锁五条：tool-list 命中即短路、tool-list 未命中但 venv 命中则过、两者都不命中才失败（fix 同时给 `uv tool install -e` 与 `uv sync` 两条命令）、code 0 但输出不含 artemis 不算过、helper 走同一回退 |
+| G79 | 预检 `helper` 项不传设备序列号：多传输同机时被提供方直接拒绝。G77 修复后暴露的真红——实测 detail = `Several devices are ready; pass --serial, or --all to target every idle one: 127.0.0.1:16384, 127.0.0.1:5555, 127.0.0.1:7555, emulator-5554` ⇒ **G75 打到预检层** | `helperCheck` 该带上配置的设备作 `--serial`（Config `defaultDevice`，缺则 `.env` 的 `ADB_DEVICE_SERIAL`）；与 G75 的路线裁定一并处理，别先单点打补丁 |
 | G78 | **`adb forward` 残留已实测证实**：`adb forward --list` → `127.0.0.1:16384 tcp:54254 tcp:18888`（18888 = helper 端口），而 MCP server 进程早已退出 ⇒ Done means 的「卸载无残留」**不是待验，是已被证伪**；建 forward 的一方是 py 动作面，插件 stop/dispose 管不到它 | 归属待定：插件侧兜底按 `host:port` 精确删（`--remove-all` 会误伤别处），还是 py 侧在自己生命周期内清（更接近 canonical 契约）。scrcpy 那一半仍缺二进制（留白 6/7） |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）

@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#78 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#79 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）；#79 预检承认 project-venv 提供方形态（G77 结案，含三条变异的证伪记录）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -3312,6 +3312,52 @@ glob、fixture 步调用的生成器，分别指向 P4 已删的控制台、lock
 口头归因：`web/package.json` mtime 仍是 `2026-10-12 02:10`，被每次 `dsh` 调用重写的只是
 生成的 `cordis.yml`（内容 `[]` 模板）。
 
+### #79 预检承认 project-venv 提供方形态（G77 结案）
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（真机真环境 + 三条变异均验）
+- **优先级**: 高（预检是每次工具调用的门禁，红则全链不可用）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+在有设备的机器上跑真预检（§零 Step 2）：七项里 **`artemis-installed` 与 `helper` 两项同因红**。
+`installedCheck` 把「装过」等同于 `uv tool list` 里有 artemis（本机实测输出 `No tools installed`），
+`helperCheck` 又假定 PATH 上存在 `artemis` 可执行文件；同一台机器上 `uv run artemis mcp --type adb`
+却完全可用（§零 Step 0 已验）。根因是提供方的第二种安装形态——**project venv / editable**（`uv sync`）
+不留 PATH 二进制，也不是 `uv tool` 的记录对象。旧文件头注释还把「不用 `uv run`」的理由写错过：
+它担心"bare `uv run` 在调用方目录执行"，而 `uv run --project <repo>` 恰好就是消除该问题的形态。
+
+#### 整改方案与实施
+
+`plugins/dsh-autogamer/src/env/preflight.ts`：
+
+1. 新增共享探针 `venvProbe()` = `[uvPath, "run", "--project", <repo>, "--no-sync", "artemis", …]`。
+   **`--no-sync` 是刻意的**：预检只读，不得改动提供方环境。
+2. `installedCheck`：先 `uv tool list`；未命中且配了 repo 才走探针；**两者都不含 artemis 才失败**，
+   失败文案同时给两条安装命令（`uv tool install -e` 与 `uv sync --project`）。两处 `pass` 的 detail
+   标明是哪种形态答的（`uv tool:` / `project venv:`），便于远程诊断不猜。
+3. `helperCheck` 接 `input`：先 PATH，失败再走同一探针。
+4. `firstArtemisLine()`：真 banner 的第一行是 `┌──── ARTEMIS ────┐`，只 `trim()` 会把边框当详情；
+   故剥掉 box-drawing 字符后取**最长的含名行**（那行才带版本）。
+5. 文件头的偏差说明按上述事实重写（旧表述不静默保留，R28）。
+
+`tests/preflight.spec.ts`：新增 5 条锁、改 2 条旧锁。必须改的原因是测试夹具 `scripted()` 对**未登记的命令
+默认返回 `{code:0}`**——不显式脚本化 venv 探针，那两条旧「应当失败」的用例会因假绿而失去意义。
+
+#### 验收标准
+
+- [x] `pnpm run build` rc 0；`pnpm run test` = **32 files / 289 passed / 1 skipped**（原 284/1）
+- [x] **R27 变异校验三条全部证伪**（每条先断言锚点命中数 = 1，再注入）：
+  M1 去掉 venv 分支 → 红在 `preflight.spec.ts:145`；M2 只看退出码不要求输出含 artemis → 红 2 条，
+  含 `:166` 的「`exit 0` 但无 artemis 不算过」；M3 去掉 helper 的 venv 回退 → 红在 `:218`。
+  还原后 `diff -q` 与备份逐字节相同，全套复绿
+- [x] 真机真环境：预检 `artemis-installed` → **`PASS  project venv: ARTEMIS device-action core v1.0`**
+- [x] 文档双门禁 rc 0
+
+遗留（不在本条关闭范围）：`helper` 项现在因**另一个原因**红——`Several devices are ready; pass --serial,
+or --all to target every idle one`，即 **G75** 的多传输歧义打到了预检层，且该项未传设备序列号 → 另立 **G79**。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -3388,3 +3434,4 @@ glob、fixture 步调用的生成器，分别指向 P4 已删的控制台、lock
 | G66 | G27 保真差集余下项 | ③④已随 **#62** 关闭；①②⑤⑥放弃（分类/subagent 化/记忆裁定未实现） | 本文件 **#71** |
 | G69 | pre-commit 钩子从未安装 | 放弃：写 git hooks 需用户点头，未做；CI 侧遮挡已随 #69 修完 | 本文件 **#71** |
 | G70 | dispatch-only py 测试步从未绿过 | 放弃：成因未定（复现被叫停），整仓三集命令面未收敛 | 本文件 **#71** |
+| G77 | 预检把「已安装」等同于 `uv tool list` 命中，且 helper 项假定 PATH 上有 `artemis` | 两项都承认 project-venv / editable 形态，共用只读探针 `uv run --project <repo> --no-sync artemis …`；5 条新锁 + 3 条变异证伪 + 真机预检转 PASS | 本文件 **#79** |

@@ -120,11 +120,62 @@ describe("preflight: the seven checks", () => {
     expect(failedId(gone)).toContain("artemis-repo");
   });
 
-  it("fails the install check when uv tool list names no artemis", async () => {
-    const { deps } = scripted({ ...healthy(), "uv tool list": { code: 0, stdout: "sometool v2" } });
+  it("fails the install check when neither install form names artemis", async () => {
+    const { deps } = scripted({
+      ...healthy(),
+      "uv tool list": { code: 0, stdout: "sometool v2" },
+      "uv run --project /repo --no-sync artemis --version": { code: 1, stderr: "error: Failed to spawn: `artemis`" },
+    });
     const result = await createPreflight(deps).run(INPUT);
     expect(failedId(result)).toEqual(["artemis-installed"]);
     expect(preflightErrorText(result)).toContain("uv tool install -e");
+    expect(preflightErrorText(result)).toContain("uv sync --project");
+  });
+
+  it("accepts a project-venv provider that `uv tool list` cannot see (G77)", async () => {
+    const { deps } = scripted({
+      ...healthy(),
+      "uv tool list": { code: 0, stdout: "No tools installed" },
+      "uv run --project /repo --no-sync artemis --version": {
+        code: 0,
+        stdout: "┌──────────── ARTEMIS ────────────┐\n│ ARTEMIS device-action core v1.0 │\n└─────────────────────────────────┘",
+      },
+    });
+    const result = await createPreflight(deps).run(INPUT);
+    expect(result.ok).toBe(true);
+    const installed = result.checks.find((check) => check.id === "artemis-installed");
+    // The detail must name the form that answered, and skip the box-drawing line.
+    expect(installed?.detail).toBe("project venv: ARTEMIS device-action core v1.0");
+  });
+
+  it("short-circuits: a PATH-form install never spawns the venv probe", async () => {
+    const { calls, deps } = scripted(healthy());
+    await createPreflight(deps).run(INPUT);
+    expect(calls.map((command) => command.join(" "))).not.toContain(
+      "uv run --project /repo --no-sync artemis --version",
+    );
+  });
+
+  it("does not read a venv probe that exits 0 without naming artemis as an install", async () => {
+    const { deps } = scripted({
+      ...healthy(),
+      "uv tool list": { code: 0, stdout: "sometool v2" },
+      "uv run --project /repo --no-sync artemis --version": { code: 0, stdout: "" },
+    });
+    const result = await createPreflight(deps).run(INPUT);
+    expect(failedId(result)).toEqual(["artemis-installed"]);
+  });
+
+  it("never probes the venv without a repo path, and says so", async () => {
+    const { calls, deps } = scripted({ ...healthy(), "uv tool list": { code: 0, stdout: "sometool v2" } });
+    const result = await createPreflight(deps).run({ uvPath: "uv", artemisRepoPath: "" });
+    expect(failedId(result)).toEqual(["artemis-repo", "artemis-installed"]);
+    // `preflightErrorText` reports only the FIRST failure, so assert this check's own detail.
+    const installed = result.checks.find((check) => check.id === "artemis-installed");
+    expect(installed?.detail).toContain("artemisRepoPath is not set");
+    expect(calls.map((command) => command.join(" "))).not.toContain(
+      "uv run --project  --no-sync artemis --version",
+    );
   });
 
   it("counts only `device` lines, so offline/emulator noise is not a fleet", async () => {
@@ -146,20 +197,32 @@ describe("preflight: the seven checks", () => {
     expect(failedId(result)).toEqual(["uv", "artemis-installed"]);
   });
 
-  it("fails the helper check when no artemis binary exists", async () => {
+  it("fails the helper check when neither install form answers", async () => {
     const { deps } = scripted({
       ...healthy(),
       "artemis helper status": { code: 1, errorMessage: "ENOENT: spawn artemis ENOENT" },
+      "uv run --project /repo --no-sync artemis helper status": { code: 1, stderr: "No module named artemis" },
     });
     const result = await createPreflight(deps).run(INPUT);
     expect(failedId(result)).toEqual(["helper"]);
-    expect(preflightErrorText(result)).toContain("no artemis binary on PATH");
+    expect(preflightErrorText(result)).toContain("neither form answered");
+  });
+
+  it("accepts the helper through the project venv when no PATH binary exists (G77)", async () => {
+    const { deps } = scripted({
+      ...healthy(),
+      "artemis helper status": { code: 1, errorMessage: "ENOENT: spawn artemis ENOENT" },
+      "uv run --project /repo --no-sync artemis helper status": { code: 0, stdout: "helper: installed (v3)" },
+    });
+    const result = await createPreflight(deps).run(INPUT);
+    expect(result.ok).toBe(true);
   });
 
   it("fails the helper check with its own fix, not the adb one", async () => {
     const { deps } = scripted({
       ...healthy(),
       "artemis helper status": { code: 1, stdout: "", stderr: "helper apk missing" },
+      "uv run --project /repo --no-sync artemis helper status": { code: 1, stdout: "", stderr: "helper apk missing" },
     });
     const result = await createPreflight(deps).run(INPUT);
     expect(failedId(result)).toEqual(["helper"]);

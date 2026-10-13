@@ -59,7 +59,7 @@
 | G74 | 映射层按**已删的 5 工具面**锁形状：`take_screenshot` 实测返回裸 base64 JPEG 而非 `file://…` 文本；层级节点属性值是字符串但带 `parsed_bounds` 整数对象，且节点数被语义裁剪压低 | `../TODO.md` 第四节（测量在 §零 Step 1、Step 2） |
 | G75 | **一台 MuMu 被 roster 报成 4 台**（4 条 adb 传输、`android_id` 全等、`ro.serialno` 全空）→ 闸门/并发上限/熔断 4 倍计数 | `../TODO.md` 第四节（测量在 §零 Step 1） |
 | G76 | 坐标空间缺防护：主视口 `Rotation90` 使帧空间 1600x900 而 `wm size` 报 900x1600；截图取源路径已验正确，Config 手填 `screenSize` 无一致性校验 | `../TODO.md` 第四节（测量在 §零 Step 1） |
-| G77 | 预检把「已安装」等同于 `uv tool list` 命中，且 `helper` 项假定 PATH 上有 `artemis` → project-venv / editable 形态下**两项同因误报** | `../TODO.md` 第四节（真预检取证在 §零 Step 2） |
+| G79 | 预检 `helper` 项不传设备序列号，多传输同机时被提供方直接拒绝（`Several devices are ready; pass --serial, or --all`）⇒ **G75 打到预检层** | `../TODO.md` 第四节（测量在 §零 Step 3） |
 | G78 | `adb forward` 残留实测证实（server 退出后 `tcp:54254 → tcp:18888` 仍在），建 forward 的是 py 动作面 → Done means 的「无残留」被证伪而非待验 | `../TODO.md` 第四节（测量在 §零 Step 2） |
 
 **已关闭**（定义来源：`../CHANGELOGS.md`「已关闭差距史」逐行表；差距结案后从 `TODO.md` 第四节移除，正文进 CHANGELOGS）：
@@ -136,6 +136,7 @@
 | G66 | G27 保真差集余下项 | ③④已由 #62 关闭；余部放弃；详见 CHANGELOGS **#71** |
 | G69 | pre-commit 钩子从未安装 | 放弃，未实现；详见 CHANGELOGS **#71** |
 | G70 | dispatch-only py 测试步从未绿过 | 放弃，成因未定；详见 CHANGELOGS **#71** |
+| G77 | 预检把「已安装」等同于 `uv tool list` 命中，`helper` 又假定 PATH 有 `artemis` | 两项都承认 project-venv 形态，只读探针 `uv run --project <repo> --no-sync`；详见 CHANGELOGS **#79** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 

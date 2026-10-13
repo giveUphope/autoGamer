@@ -3,12 +3,14 @@
  *
  * Seven checks, straight from the scheme (§6): uv, Python ≥ 3.12, the provider
  * repo path, the provider install, adb, an attached device, and the Helper.
- * Two deliberate deviations from the scheme text, both because the scheme's
- * exact commands do not exist:
- * - Helper is probed through the `artemis` binary on PATH (what `uv tool
- *   install` exposes), not `uv run artemis …` — bare `uv run` executes in the
- *   caller's directory, not the provider repo, so the scheme's command probes
- *   the wrong environment.
+ * Deliberate deviations from the scheme text:
+ * - The provider may be installed two ways (G77): `uv tool install`, which puts
+ *   `artemis` on PATH, or a project venv / editable checkout, which does not.
+ *   `installed` and `helper` therefore accept either, probing the second form as
+ *   `uv run --project <repo> --no-sync artemis …` — `--project` avoids the scheme's
+ *   trap (bare `uv run` executes in the *caller's* directory, not the provider repo)
+ *   and `--no-sync` keeps the probe read-only, because a preflight must never mutate
+ *   the provider environment.
  * - No schemastery `.description()` calls anywhere: that builder form is
  *   unverified on the installed schemastery, and the settings auto-form works
  *   without descriptions.
@@ -118,6 +120,23 @@ function head(text: string): string {
   return text.split("\n").map((line) => line.trim()).find((line) => line.length > 0) ?? "";
 }
 
+const ARTEMIS_NAME = /\bartemis\b/i;
+
+const INSTALL_FIX =
+  "Install ARTEMIS either way: `uv tool install -e <artemis-repo-path>` (PATH form) or `uv sync --project <artemis-repo-path>` (project venv form)";
+
+/**
+ * The provider's own `--version` banner spells its name on the box border too, so pick the
+ * longest line naming it -- that is the one carrying the version, not the frame.
+ */
+function firstArtemisLine(text: string): string {
+  const lines = text
+    .split("\n")
+    .map((line) => line.replace(/[│┌┐└┘─]/gu, "").trim())
+    .filter((line) => ARTEMIS_NAME.test(line));
+  return lines.sort((a, b) => b.length - a.length)[0] ?? head(text);
+}
+
 export interface PreflightRunner {
   run(input: PreflightInput): Promise<PreflightResult>;
 }
@@ -183,23 +202,41 @@ export function createPreflight(deps?: Partial<PreflightDeps>): PreflightRunner 
     return pass("artemis-repo", input.artemisRepoPath);
   }
 
+  /** The project-venv form of the provider; `--project` targets the repo, `--no-sync` keeps it read-only. */
+  function venvProbe(input: PreflightInput, args: string[]): string[] {
+    return [input.uvPath, "run", "--project", input.artemisRepoPath.trim(), "--no-sync", "artemis", ...args];
+  }
+
+  function repoConfigured(input: PreflightInput): boolean {
+    return input.artemisRepoPath.trim().length > 0;
+  }
+
   async function installedCheck(input: PreflightInput): Promise<PreflightCheck> {
-    const result = await d.run([input.uvPath, "tool", "list"], { timeoutMs: 30_000 });
-    if (result.code !== 0) {
+    const listed = await d.run([input.uvPath, "tool", "list"], { timeoutMs: 30_000 });
+    if (listed.code !== 0) {
       return fail(
         "artemis-installed",
-        missingBinary(result) ? `no ${input.uvPath} binary` : `exit ${result.code}: ${head(result.stderr)}`,
-        `Install ARTEMIS: \`uv tool install -e ${input.artemisRepoPath || "<artemis-repo-path>"}\``,
+        missingBinary(listed) ? `no ${input.uvPath} binary` : `exit ${listed.code}: ${head(listed.stderr)}`,
+        INSTALL_FIX,
       );
     }
-    if (!/\bartemis\b/i.test(result.stdout)) {
-      return fail(
-        "artemis-installed",
-        "`uv tool list` names no artemis install",
-        `Install ARTEMIS: \`uv tool install -e ${input.artemisRepoPath || "<artemis-repo-path>"}\``,
-      );
+    if (ARTEMIS_NAME.test(listed.stdout)) {
+      return pass("artemis-installed", `uv tool: ${head(listed.stdout)}`);
     }
-    return pass("artemis-installed", head(result.stdout));
+    // G77: an editable checkout is invisible to `uv tool list`, so ask the repo's own env.
+    if (!repoConfigured(input)) {
+      return fail("artemis-installed", "`uv tool list` names no artemis install and artemisRepoPath is not set", INSTALL_FIX);
+    }
+    const venv = await d.run(venvProbe(input, ["--version"]), { timeoutMs: 30_000 });
+    if (venv.code === 0 && ARTEMIS_NAME.test(`${venv.stdout}\n${venv.stderr}`)) {
+      return pass("artemis-installed", `project venv: ${firstArtemisLine(`${venv.stdout}\n${venv.stderr}`)}`);
+    }
+    return fail(
+      "artemis-installed",
+      `neither form found: \`uv tool list\` has no artemis, and \`uv run --project ${input.artemisRepoPath.trim()} --no-sync artemis --version` +
+        ` exited ${venv.code}: ${head(`${venv.stdout}\n${venv.stderr}`)}`,
+      INSTALL_FIX,
+    );
   }
 
   async function adbCheck(): Promise<PreflightCheck> {
@@ -234,18 +271,26 @@ export function createPreflight(deps?: Partial<PreflightDeps>): PreflightRunner 
     return pass("adb-devices", serials.join(", "));
   }
 
-  async function helperCheck(): Promise<PreflightCheck> {
-    const result = await d.run(["artemis", "helper", "status"]);
-    if (result.code !== 0) {
+  async function helperCheck(input: PreflightInput): Promise<PreflightCheck> {
+    const onPath = await d.run(["artemis", "helper", "status"]);
+    if (onPath.code === 0) return pass("helper", head(onPath.stdout));
+    if (repoConfigured(input)) {
+      const venv = await d.run(venvProbe(input, ["helper", "status"]), { timeoutMs: 30_000 });
+      if (venv.code === 0) return pass("helper", head(venv.stdout));
       return fail(
         "helper",
-        missingBinary(result)
-          ? "no artemis binary on PATH"
-          : `exit ${result.code}: ${head(result.stdout)} ${head(result.stderr)}`.trim(),
-        "Install ARTEMIS (`uv tool install -e <artemis-repo-path>`), then `artemis helper install`",
+        `neither form answered: PATH \`artemis helper status\` exited ${onPath.code}, ` +
+          `project venv exited ${venv.code}: ${head(`${venv.stdout}\n${venv.stderr}`)}`,
+        `${INSTALL_FIX}, then \`artemis helper install\``,
       );
     }
-    return pass("helper", head(result.stdout));
+    return fail(
+      "helper",
+      missingBinary(onPath)
+        ? "no artemis binary on PATH"
+        : `exit ${onPath.code}: ${head(onPath.stdout)} ${head(onPath.stderr)}`.trim(),
+      `${INSTALL_FIX}, then \`artemis helper install\``,
+    );
   }
 
   return {
@@ -259,7 +304,7 @@ export function createPreflight(deps?: Partial<PreflightDeps>): PreflightRunner 
         await installedCheck(input),
         await adbCheck(),
         await devicesCheck(),
-        await helperCheck(),
+        await helperCheck(input),
       ];
       const result: PreflightResult = {
         ok: checks.every((check) => check.ok),
