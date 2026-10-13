@@ -143,6 +143,20 @@ describe("mcp backend: task methods speak the old face", () => {
       /^internal: /,
     );
   });
+
+  it("a non-object structured result is internal: too", async () => {
+    const fake = fakeConnection({ structuredContent: "just a string" });
+    await expect(backendWith(fake).manageTask({ taskId: "t", action: "status" })).rejects.toThrow(
+      /^internal: /,
+    );
+  });
+
+  it("a dict answer with no text block at all is internal:", async () => {
+    const fake = fakeConnection({ content: [{ type: "image" }] });
+    await expect(backendWith(fake).manageTask({ taskId: "t", action: "status" })).rejects.toThrow(
+      /^internal: /,
+    );
+  });
 });
 
 describe("mcp backend: lifecycle", () => {

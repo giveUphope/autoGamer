@@ -164,6 +164,22 @@ describe("mirror: start/stop order against a fake adb", () => {
     expect(spawned).toHaveLength(0);
   });
 
+  it("warns instead of throwing when teardown is best-effort", async () => {
+    const warnings: string[] = [];
+    const { deps } = scripted({
+      files: { "/srv/scrcpy-server-v3.1.jar": true },
+      runs: {
+        "adb forward --remove tcp:27183": { code: 1, stdout: "", stderr: "no such forward" },
+        "adb shell pkill -f com.genymobile.scrcpy.Server": { code: 0, stdout: "", stderr: "" },
+      },
+    });
+    const manager = new ScrcpyManager({ ...MIRROR, serverPath: "/srv/scrcpy-server-v3.1.jar" }, deps);
+    await manager.start();
+    await manager.stop((message: string) => warnings.push(message));
+    expect(warnings).toHaveLength(1);
+    expect(warnings[0]).toContain("forward --remove failed");
+  });
+
   it("stop removes the forward and attempts the kill, then disposes quietly", async () => {
     const { deps, calls } = scripted({ files: { "/srv/scrcpy-server-v3.1.jar": true } });
     const manager = new ScrcpyManager({ ...MIRROR, serverPath: "/srv/scrcpy-server-v3.1.jar" }, deps);

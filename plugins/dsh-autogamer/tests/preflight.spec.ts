@@ -136,6 +136,26 @@ describe("preflight: the seven checks", () => {
     expect(failedId(result)).toEqual(["adb-devices"]);
   });
 
+  it("a missing uv binary fails both the uv and the install checks", async () => {
+    const { deps } = scripted({
+      ...healthy(),
+      "uv --version": { code: 1, errorMessage: "ENOENT: spawn uv ENOENT" },
+      "uv tool list": { code: 1, errorMessage: "ENOENT: spawn uv ENOENT" },
+    });
+    const result = await createPreflight(deps).run(INPUT);
+    expect(failedId(result)).toEqual(["uv", "artemis-installed"]);
+  });
+
+  it("fails the helper check when no artemis binary exists", async () => {
+    const { deps } = scripted({
+      ...healthy(),
+      "artemis helper status": { code: 1, errorMessage: "ENOENT: spawn artemis ENOENT" },
+    });
+    const result = await createPreflight(deps).run(INPUT);
+    expect(failedId(result)).toEqual(["helper"]);
+    expect(preflightErrorText(result)).toContain("no artemis binary on PATH");
+  });
+
   it("fails the helper check with its own fix, not the adb one", async () => {
     const { deps } = scripted({
       ...healthy(),

@@ -304,6 +304,34 @@ live 缺挂载实证（槽解析、key 生效、卡片渲染均需真会话）�
 Config 加 `scrcpyServerPath`；index 只构造加析构（无工具驱动，注释写明）。
 live 全部推迟（本机无 scrcpy/adb，20fps/触摸/无残留均需真机）。
 
+### Review（P5 前，2026-10-14）
+
+账实核对（全绿 276/1 前提下）：修 4 处 stale——index 头注 P0 字样、Config 注释 scrcpy
+已接线、settings 注释 Phase 2 已过、README 的 `disabled: false`（#26 早已改跟随条件）；
+补 5 条覆盖（stop-warn、structured 非对象、无文本载荷、uv 双坏、helper 缺二进制）。
+有意未覆盖：各模块的真执行器（defaultRun/defaultWhich/spawnDetached）——环境相关，
+mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
+两次编辑差点吃掉相邻用例头（锚定只取头行是大忌，见本次两个修复提交意外的 diff 习惯：
+新 `it` 必须连同被挤的旧头一起重写）。
+
+留白总账（定位用，补白时直达；触发条件写明）：
+1. 外部提供方缺席 → 七工具真调用与 R7（触发：artemisRepoPath 指向可用 checkout）。
+2. toolview 挂载实证：槽解析、key 生效、卡片渲染（client.js；触发：真会话 R7/R9）。
+3. 轮询/控制/设置卡片通道（触发：挂载实证 + remote 挂载路径证明）。
+4. H.264 转发：无通道，砍（重开条件：DSH 二进制通道出现）。
+5. scrcpy 下载脚本：不建（手动安装见插件 README；重开条件：已核实分发端点）。
+6. 无残留进程：stop 的 pkill 最佳努力（server.ts；触发：真机）。
+7. forward/握手竞态（server.ts start 注释；触发：真机）。
+8. 后端映射 refinements（P2 记录；触发：真提供方证据）。
+9. run_task 500ms 对真提供方（触发：真提供方）。
+10. `uv tool list` 解析假设（preflight.ts installedCheck；触发：真输出）。
+11. defaultTimeoutSeconds 无消费者（Config；P5 定去留）。
+12. traceRetentionDays 无消费者（Config；P5 定去留）。
+13. scrcpyEnabled 无读取处（manager 按需启动；P5 定去留）。
+14. settings inject/section 活证明（触发：真会话挂载）。
+15. README release URL 旧名（历史资产，保持；下版本换新）。
+16. dsh.client 挂载实证（package.json；触发：真会话）。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；

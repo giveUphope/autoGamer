@@ -1,5 +1,5 @@
 /**
- * dsh-autogamer plugin entry (P0 skeleton, docs/TODO.md R2').
+ * dsh-autogamer plugin entry (rectified P1-P4, docs/TODO.md §六).
  * Contracts verified through declared surfaces only (dsh --dump-config-schema,
  * dsh --help, shipped READMEs — no asar reading, user ruling 2026-10-10): a
  * cordis plugin module exports {name, inject, Config?, apply}; Config must be
@@ -63,11 +63,11 @@ export const Config: object = z.object({
    */
   discoverDevices: z.boolean().default(false),
   /**
-   * dsh-autogamer rectification (Phase 1): external ARTEMIS provider wiring.
+   * dsh-autogamer rectification: external ARTEMIS provider wiring.
    * No `.description()` calls on purpose — that builder form is unverified on
    * the installed schemastery, and the settings auto-form works without
-   * descriptions. scrcpy/trace fields are Phase 4/5-owned and unread until
-   * then; injectRules is Phase 5-owned.
+   * descriptions. `traceRetentionDays` is still unread (retention has no
+   * consumer yet); `injectRules` is read by the rules injector (Phase 5).
    */
   artemisRepoPath: z.string().default(""),
   artemisMcpCommand: z.array(z.string()).default(["python", "-m", "mcp_server"]),
@@ -96,10 +96,11 @@ export const Config: object = z.object({
  * aspiration.
  */
 export const inject = ["tools", "attachments", "agents"];
-// NOTE (Phase 1): the scheme asks for 'settings' here too, but that service is
-// upstream-only (not installed) and an unresolvable inject in preset scope
-// leaves the row pending — the G30 shape. It lands in Phase 2 with a live
-// mount proof, together with the settings section.
+// NOTE (reviewed P5 eve): the scheme also asks for 'settings' here, but that
+// service is upstream-only (not installed) and an unresolvable inject in
+// preset scope leaves the row pending — the G30 shape. It waits for a live
+// mount proof, together with the settings section and the client settings
+// card (both deferred for the same reason).
 
 /** Makes each nudge's message id unique within this process, across agents. */
 let nudgeSequence = 0;

@@ -67,7 +67,7 @@ dsh --profile web --patch <abs>/spike/web-live.patch.yml --dump-config
 - **交付形态**：走 `plugin_manager` 的 `install_bundle`，或 Web 侧边栏「插件」面板。已发布的资产是
   `https://github.com/giveUphope/autoGamer/releases/download/autogamer-device-v0.1.0/autogamer-device-0.1.0.tgz`
   （prerelease；`npm pack` 的产物，因此带 `dist/` 与 `skills/`——**git 依赖只含已提交文件，装 git 地址会缺 `dist/`**）。
-  D17 已落地：本包 preset 里挂着 `tool-plugin-manager`（`disabled: false`），会话里的 agent 能自装。
+  D17 已落地：本包 preset 里挂着 `tool-plugin-manager`（`disabled` 跟随服务条件，见 CHANGELOGS **#26**），会话里的 agent 能自装。
 - ⚠️ **本机 TLS 前置（实测）**：如果这台机器的 HTTPS 被本地拦截型工具接管（`openssl s_client` 会看到
   它的根 CA 签发者），那么宿主与 pnpm 取 Release 资产会报 `UNABLE_TO_VERIFY_LEAF_SIGNATURE`，
   而 `git`/`gh` 照常工作（它们信任 Windows 证书库）。解法是**启动宿主时带上 Node 官方开关**：
