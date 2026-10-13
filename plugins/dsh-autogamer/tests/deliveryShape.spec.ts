@@ -47,7 +47,7 @@ describe("delivery shape: shipped patch and live overlay agree", () => {
   it("contribute the same preset plugins, including the persona row (G45)", () => {
     const shipped = contributedNames(FILES.shipped);
     expect(shipped).toContain("@deepseek-ai/dsh-persona");
-    expect(shipped).toContain("autogamer-device");
+    expect(shipped).toContain("dsh-autogamer");
     expect(shipped).toContain("@deepseek-ai/dsh-tool-jobs");
     expect(contributedNames(FILES.live)).toEqual(shipped);
   });

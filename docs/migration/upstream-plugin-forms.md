@@ -1,7 +1,7 @@
 # 上游插件形态与工具形态调研（2026-10-10）
 
 > 来源口径：`github.com/deepseek-ai/deepseek-harness` @ `master` 的公开文档与源码，符合 [TODO.md](../TODO.md) 的 D15（声明面 + 公开上游，不解包 app.asar）。每条标 **文档口径** / **源码口径**；本机尚未复验的写 **未实测**。
-> 取用方式：`gh api repos/deepseek-ai/deepseek-harness/...`（仓库确认为 public、default branch `master`，描述「DeepSeek Harness: Everything is a Plugin」）。原文副本落在 `plugins/autogamer-device/spike/sandbox/`（gitignored，只作取证现场，不作引用依据）。
+> 取用方式：`gh api repos/deepseek-ai/deepseek-harness/...`（仓库确认为 public、default branch `master`，描述「DeepSeek Harness: Everything is a Plugin」）。原文副本落在 `plugins/dsh-autogamer/spike/sandbox/`（gitignored，只作取证现场，不作引用依据）。
 
 ## 一、为什么要查
 
@@ -18,7 +18,7 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 5. **挂载会被整体拒绝**（源码口径，`packages/preset/agent-preset-registry/src/mount.ts`）：`auditRows()`（:134）收集「Rows that never started or whose import or activation rejected」（:116）；`mountRevision` 里 `:193` 注释「**Failed rows and root-realm service leaks reject the mount**」，`:212-213` 分别 `throw` 出失败行清单与 `Preset services require isolate realms: ...`。`leakedServices()`（:69）读的是「子树把实现发布进 **root realm**」的服务名。
 6. **isolate realm 是硬约束**（文档口径，注册表 README 第 58 行）：「preset 的服务提供方及其消费方必须共享同一个 `cordis:group` 隔离 realm。**条目局部隔离不会沿 Agent 注册 scope 传播：组外的普通 Context 查找（包括 `agent.ctx`）仍选择 Host realm**」。`editing-cordis-compositions` 的 placement 段（:78-80）给出分层约定：Host 插件提供共享服务（含 tools registry、agent loop、sessions…），**preset 插件向这些 registry 贡献 scoped tools / persona / prompt 片段 / policy**。
 7. **官方给了现成的活门禁**（文档口径，三处）：`list_plugins` 报告每行的 `enabled` 与 `fiberPhase`，`set_plugin` / `set_bundle` 在有上层胜出时回答 `overridden`（composition-reference:25）；「A declaration whose activation fails **stays on the roster with its diagnostic** and cannot compose a session until the bundle is fixed and reinstalled」（editing skill Verify 段）；`inspectCompositions()` 返回 preset ID、活动模块引用与解析基址、**以及泄漏的服务名**（注册表 README:62）；`cordis_inspect_query` 能直接问「**the Tools this Agent can call**」（development SKILL 第 30 行的 Tool 项）。
-8. **我们的 inner 写法与官方 shipped 形态同构，不是格式问题**（源码口径）：`packages/bundle/web-app/presets/minimal.patch.yml` / `standard.patch.yml` 里工具插件就是裸子项 `- id: tool-fs` / `- id: tool-jobs` + `name: '@deepseek-ai/dsh-…'`，与我们的 `- id: autogamer-device-inner / name: autogamer-device / config: {actionServerCommand: […]}` 同形。带服务的官方样板则包在 `name: cordis:group` + `group: true` + `isolate: {terminals: true}` 里（minimal 的 `persistent-shell`）。外部 bundle 的插件确实可出现在 patch 中（composition-reference:29「Plugins outside this list come from installed bundles」）。
+8. **我们的 inner 写法与官方 shipped 形态同构，不是格式问题**（源码口径）：`packages/bundle/web-app/presets/minimal.patch.yml` / `standard.patch.yml` 里工具插件就是裸子项 `- id: tool-fs` / `- id: tool-jobs` + `name: '@deepseek-ai/dsh-…'`，与我们的 `- id: dsh-autogamer-inner / name: dsh-autogamer / config: {actionServerCommand: […]}` 同形。带服务的官方样板则包在 `name: cordis:group` + `group: true` + `isolate: {terminals: true}` 里（minimal 的 `persistent-shell`）。外部 bundle 的插件确实可出现在 patch 中（composition-reference:29「Plugins outside this list come from installed bundles」）。
 9. **版本差**：上游 releases 已有 `dsh-v0.2.1-alpha.2`（2026-10-09）与 `dsh-v0.2.1-alpha.1`（2026-10-03），本机 spike 跑的是 `0.2.0-rc.2`（2026-09-29）。alpha.1 的主题按公开报道是「让 Agent 给自己造插件」，即上面那两个 skill 的落地。
 
 ## 三、收回上一轮的两条结论

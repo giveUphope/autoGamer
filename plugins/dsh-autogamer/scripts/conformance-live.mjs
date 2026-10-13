@@ -10,7 +10,7 @@
  *              tool *registration* is not — that is `cordis_inspect_query` /
  *              the roster's `broken` flag (rule R9), which needs the running app.
  *
- *   node plugins/autogamer-device/scripts/conformance-live.mjs \
+ *   node plugins/dsh-autogamer/scripts/conformance-live.mjs \
  *     --expect-tool run_device_action --expect-tool report_task_status
  *
  * Env: DSH_BIN overrides the launcher path; AUTOGAMER_SESSION picks a session id.

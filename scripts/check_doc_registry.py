@@ -144,7 +144,7 @@ def referenced_paths_in_registry() -> list[str]:
 def resolve(rel: str) -> bool:
     """A cited path resolves if it exists at the root or inside the plugin."""
     base = rel.replace("\\", "/").lstrip("/")
-    candidates = [ROOT / base, ROOT / "plugins" / "autogamer-device" / base]
+    candidates = [ROOT / base, ROOT / "plugins" / "dsh-autogamer" / base]
     if not base.startswith(("docs/", "plugins/", "scripts/")):
         candidates.insert(0, ROOT / "docs" / base)
     return any(c.exists() for c in candidates)

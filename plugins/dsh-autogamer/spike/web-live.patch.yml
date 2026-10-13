@@ -42,7 +42,7 @@
   config:
     default: autogamer
 
-- id: autogamer-device
+- id: dsh-autogamer
   disabled: true
 
 - id: preset-autogamer
@@ -85,8 +85,8 @@
                field means three straight failures: stop, audit the
                attempts so far, then change the plan or report blocked.
                Never audit from memory — quote the action results.
-      - id: autogamer-device-inner
-        name: autogamer-device
+      - id: dsh-autogamer-inner
+        name: dsh-autogamer
         config:
           actionServerCommand:
             - D:/DEV/autoGamer/.venv/Scripts/python.exe
@@ -104,7 +104,7 @@
         name: "@deepseek-ai/dsh-skill-filesystem"
         config:
           customSkillDirs:
-            - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('autogamer-device/package.json')), 'skills')
+            - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-autogamer/package.json')), 'skills')
       - id: tool-skill
         name: "@deepseek-ai/dsh-tool-skill"
       # D17 row, kept identical to cordis.patch.yml (tests/deliveryShape.spec.ts

@@ -88,7 +88,7 @@ jobs:
         with:
           node-version: "22.22.3"
           cache: pnpm
-          cache-dependency-path: plugins/autogamer-device/pnpm-lock.yaml
+          cache-dependency-path: plugins/dsh-autogamer/pnpm-lock.yaml
 
       # The drift check imports the plugin's OWN MCP client, and that client only exists in
       # `dist/` - a build product, not repository content. Without these two steps the step below
@@ -96,7 +96,7 @@ jobs:
       # (run 38296414103) while passing on any dev machine that happens to have a stale dist
       # lying around (changelogs #68).
       - name: Build the plugin for the fixture check
-        working-directory: plugins/autogamer-device
+        working-directory: plugins/dsh-autogamer
         run: |
           pnpm install --frozen-lockfile
           pnpm run build
@@ -107,13 +107,13 @@ jobs:
       # check: any difference between the live listing and the checked-in fixture exits non-zero.
       # Reproduce both halves locally before changing this step - the runner's view is the one
       # without a build product:
-      #   rm -rf plugins/autogamer-device/dist
-      #   SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/autogamer-device/scripts/spike-mcp.mjs   # exit 1, ERR_MODULE_NOT_FOUND
-      #   npm --prefix plugins/autogamer-device run build                                                     # then the same command exits 0
+      #   rm -rf plugins/dsh-autogamer/dist
+      #   SPIKE_COMMAND="uv run artemis mcp --type mock" node plugins/dsh-autogamer/scripts/spike-mcp.mjs   # exit 1, ERR_MODULE_NOT_FOUND
+      #   npm --prefix plugins/dsh-autogamer run build                                                     # then the same command exits 0
       - name: Check the py action surface against the plugin fixture
         env:
           SPIKE_COMMAND: uv run artemis mcp --type mock
-        run: node plugins/autogamer-device/scripts/spike-mcp.mjs
+        run: node plugins/dsh-autogamer/scripts/spike-mcp.mjs
 
       # Device, cloud, manual, and end-to-end suites require dedicated
       # infrastructure and intentionally do not run on GitHub-hosted runners.
@@ -171,7 +171,7 @@ jobs:
           - windows-latest
     defaults:
       run:
-        working-directory: plugins/autogamer-device
+        working-directory: plugins/dsh-autogamer
 
     steps:
       - name: Check out repository
@@ -188,7 +188,7 @@ jobs:
         with:
           node-version: "22.22.3"
           cache: pnpm
-          cache-dependency-path: plugins/autogamer-device/pnpm-lock.yaml
+          cache-dependency-path: plugins/dsh-autogamer/pnpm-lock.yaml
 
       # The @deepseek-ai/* devDependencies are the real DSH runtime the
       # conformance suite boots; no desktop install, no model, no device.

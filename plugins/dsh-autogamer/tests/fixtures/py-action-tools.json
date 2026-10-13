@@ -1,6 +1,6 @@
 {
   "captured": "2026-10-13",
-  "source": "live MCP stdio listing of `uv run artemis mcp --type adb` (node plugins/autogamer-device/scripts/spike-mcp.mjs --write)",
+  "source": "live MCP stdio listing of `uv run artemis mcp --type adb` (node plugins/dsh-autogamer/scripts/spike-mcp.mjs --write)",
   "pyActionServerTools": [
     "back",
     "compare_ui_frames",

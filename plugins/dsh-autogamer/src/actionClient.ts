@@ -69,7 +69,7 @@ export class ActionClient {
       args: this.options.command.slice(1),
       env: this.options.env,
     });
-    const client = new Client({ name: "autogamer-device", version: "0.1.0" });
+    const client = new Client({ name: "dsh-autogamer", version: "0.1.0" });
     try {
       await client.connect(transport);
     } catch (error) {

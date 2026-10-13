@@ -9,7 +9,7 @@
 | 你要做的事 | 先读 | 再读 | 大概 |
 |---|---|---|---|
 | 第一次进这个项目，想知道它要变成什么 | 本页 § 二 | `TODO.md` 第一、二节 | 5 分钟 |
-| 改 `plugins/autogamer-device` 的任何代码 | `plugin-contract-rules.md`（R20-R22 是动手前置，R2 / R6-R15 是接线红线） | `TODO.md` 的 S 段对应条 | 10 分钟 |
+| 改 `plugins/dsh-autogamer` 的任何代码 | `plugin-contract-rules.md`（R20-R22 是动手前置，R2 / R6-R15 是接线红线） | `TODO.md` 的 S 段对应条 | 10 分钟 |
 | 改 `*.patch.yml` 或 preset 声明 | `plugin-contract-rules.md` R2-R8 | `registry.md` 查编号 | 5 分钟 |
 | 判断「我这次改动到底生效没有」 | `plugin-contract-rules.md` R9 + R7 | `TODO.md` 顶部「当前状态」 | 3 分钟 |
 | 想知道某个编号（`G30` / `R13` / `D7`）是什么 | `registry.md` | 定义所在文档 | 1 分钟 |
@@ -20,7 +20,7 @@
 
 ## 二、这个项目现在在做什么（三句话）
 
-1. 整个 ARTEMIS 正在收缩成**一个 DSH 插件** `autogamer-device` + 若干 skills：队列、调度、UI、审批、记忆全部交给宿主，插件只提供设备执行工具与设备资源治理（D1、D9、D10）。
+1. 整个 ARTEMIS 正在收缩成**一个 DSH 插件** `dsh-autogamer` + 若干 skills：队列、调度、UI、审批、记忆全部交给宿主，插件只提供设备执行工具与设备资源治理（D1、D9、D10）。
 2. py 侧的动作面与驱动栈**原样复用**，不重写；旧 py 智能栈（langgraph 多 agent）由「单层执行路由 S11」替代（D8、D14）。
 3. **P0 已收官**（2026-10-12）：工具面挂载、指令投递、终态语义、真机质量 spike 全部 live 通过 ⇒ **D9「直通插件」成立**，交付形态也迁到了官方 `install_bundle`。**本页不复述当前阻塞点**：进度与差距一律看 `docs/TODO.md` 第「零、当前状态」节——为什么这么定，见 changelogs **#30**。
 
@@ -28,7 +28,7 @@
 
 | 文档 | 体量（实测） | 定位 | 可信度口径 |
 |---|---|---|---|
-| `docs/TODO.md` | 248 行 / 28.5 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
+| `docs/TODO.md` | 247 行 / 28.6 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
 | `docs/CHANGELOGS.md` | 3145 行 / 264.7 KB | **已结案变更的历史**：`### #N` 三段条目 + 「已关闭差距史」表（结案 `G*` 的正文去处） | 现行权威；**编号一经发布不得改写**，写入规则见该文件顶部 |
 | `docs/migration/registry.md` | 185 行 / 20.1 KB | **编号唯一权威**：全部 D / S / G / R 编号 + 已关闭差距 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
 | `docs/migration/glossary.md` | 87 行 / 8.5 KB | 术语翻译表（含 `inject` 的两个意思） | 现行权威 |
@@ -38,7 +38,7 @@
 | `docs/migration/feature-inventory.md` | 107 行 / 13.8 KB | 防丢失盘点索引 | 现行；设备与智能栈部分是上游 canonical 契约 |
 | `inventory/01`…`05` | 1406 行 / 215.6 KB | 盘点明细，几乎全是表格 | **内容可用，编号不可引用**：其 `**Gn · …**` 与现行 G 编号撞车（冲突表见 registry，警示行已加进每份文件顶部）；其中 `TODO.md:行号` 形式的引用属活文档旧快照，同样不可照用 |
 | `docs/migration/upstream-rethink.md` | 50 行 / 5.4 KB | 为什么基线选 google/artemis 上游 | 现行 |
-| `plugins/autogamer-device/README.md` | 100 行 / 7.7 KB | 插件包自己的说明：入口、三层引入流、契约要点、债务表 | 现行（2026-10-10 重写，旧版那条指向 `headless-spike.patch.yml` 的安装说明已废） |
+| `plugins/dsh-autogamer/README.md` | 100 行 / 7.7 KB | 插件包自己的说明：入口、三层引入流、契约要点、债务表 | 现行（2026-10-10 重写，旧版那条指向 `headless-spike.patch.yml` 的安装说明已废） |
 | `AGENTS.md` | 207 行 / 16.5 KB | agent 作业说明：文档地图、命令、门禁 | 现行 |
 
 > 体量口径与写法：**第一列一律按仓库根写路径**（`docs/migration/registry.md`，不写 `../registry.md`），因为 `scripts/check_doc_tables.py` 就按仓库根寻址并核对第二列——寻址不到即 FAIL。

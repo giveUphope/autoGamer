@@ -1,6 +1,6 @@
 # DSH 插件契约守则（编号红线）
 
-> 用途：`autogamer-device` 后续每一笔改动动手**之前**先对照本表；每条都给「判据」，要求能由命令或产物机器作答，不接受"看着没问题"。
+> 用途：`dsh-autogamer` 后续每一笔改动动手**之前**先对照本表；每条都给「判据」，要求能由命令或产物机器作答，不接受"看着没问题"。
 > 依据：上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) @ master 的官方 skill / 包 README / 源码，加上本机 0.2.0-rc.2 实测。逐条标 **文档口径**（官方文字）、**源码口径**（上游源码）、**实测口径**（本机产物）。
 > 覆盖范围：首轮成文（R1…R19）改写了 `TODO.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34；R20…R28 是此后陆续新增的条款，回写位置记在各条自己的「判据」段与 `TODO.md` / `CHANGELOGS.md` 的引用里。**现行条款数与范围只看 `registry.md`**，本行只描述那几轮的回写去向，不是条款全集。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
 
@@ -21,7 +21,7 @@
 | `--patch <path>`（可重复，应用在 profile 层之后） | 官方声明的 overlay 机制 | **允许，作为开发期主路径**（**文档口径** `dsh --help` 的 Options 段） |
 | `plugin_manager` 工具 / Web 侧边栏「插件」面板 | 正规引入与启停 | **允许，交付形态走这条**（**文档口径** `dsh-plugin-manager` = 「shared by dsh CLI, Web and agent tools」；`dsh-client-ui-plugin-manager` = 「the sidebar Plugins panel **installs, enables, disables, retries, and composes**」） |
 
-- **判据**：实验用 patch 文件一律放 `plugins/autogamer-device/spike/`，路径里不得出现 `~/.dsh/profiles/**` 的写入。
+- **判据**：实验用 patch 文件一律放 `plugins/dsh-autogamer/spike/`，路径里不得出现 `~/.dsh/profiles/**` 的写入。
 - **纠正记录**：上一轮我把 `--patch` 也归入"官方禁止的一侧"，过度收敛——被禁的是手写 profile 常驻文件，`--patch` 是 `dsh --help` 里明列的选项。同时我把侧边栏面板误判成只读展示页，实际它具备安装/启停能力。
 
 ## R3 preset 只能由 bundle 补丁承载
@@ -84,7 +84,7 @@ preset 的服务提供方与其**全部**消费方要共处一个 `cordis:group`
 没有 Config 声明的插件行会被判 `config=absent`，preset 子挂载随之被静默跳过；外来 schema 对象（如 zod）被拒：`Config is not a native Schemastery schema`。
 
 - **出处**：**实测口径**（本机 spike + `--dump-config` 产物）。
-- **判据**：`plugins/autogamer-device/tests/conformance/contracts.spec.ts` 的原生性断言 + `tests/apply.spec.ts` 的接线断言（两者都做过删除实验，回退 zod / 退回旧判据会变红）。
+- **判据**：`plugins/dsh-autogamer/tests/conformance/contracts.spec.ts` 的原生性断言 + `tests/apply.spec.ts` 的接线断言（两者都做过删除实验，回退 zod / 退回旧判据会变红）。
 - **附带坑（实测口径）**：Schemastery 把未配置的可选 tuple 归一化成**真值 `[undefined, undefined]`**，所以"是否配置过"必须判数值本身，不能判数组真假——已由 `configuredScreenSize()` 承接并锁死。
 
 ## R11 版本门禁

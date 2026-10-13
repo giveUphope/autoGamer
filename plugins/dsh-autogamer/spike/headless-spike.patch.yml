@@ -20,7 +20,7 @@
     provider: local
     model: qwen3.6-35b-a3b-mtp
 
-- id: autogamer-device
+- id: dsh-autogamer
   disabled: true
 
 - id: "@deepseek-ai/dsh-base"
@@ -34,11 +34,11 @@
       config:
         id: autogamer
         plugins:
-          - name: autogamer-device-inner
+          - name: dsh-autogamer-inner
           - name: "@deepseek-ai/dsh-tool-jobs"
-    - id: autogamer-device-inner
-      name: autogamer-device
+    - id: dsh-autogamer-inner
+      name: dsh-autogamer
       config:
         actionServerCommand:
           - node
-          - D:/DEV/autoGamer/plugins/autogamer-device/scripts/mock-action-server.mjs
+          - D:/DEV/autoGamer/plugins/dsh-autogamer/scripts/mock-action-server.mjs

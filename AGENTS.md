@@ -19,7 +19,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 - `mcp_server/`, `packages/artemis-client/`, `tests/unit|integration|e2e/`, `docs/research/`
   (design docs worth reading before touching sensitive areas)
 
-## DSH plugin track (`plugins/autogamer-device`) — current mainline
+## DSH plugin track (`plugins/dsh-autogamer`) — current mainline
 
 项目正按 R2' 收缩成一个 DSH 插件。方案、决策和进度都在 `docs/TODO.md`（活文档），**动手前先读它和守则，别从代码倒推约定**。
 
@@ -37,7 +37,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 | `docs/migration/dsh-verification.md` | 查 rc.2 各子系统结论时。注意其中 37 处包内代码行引用属 D15 之前的 asar 口径，沿用前须按声明面重验 |
 | `docs/migration/feature-inventory.md` 与 `inventory/01-05` | 担心丢 fork 现有能力时；设备与智能栈部分是上游 canonical 契约 |
 | `docs/migration/upstream-rethink.md` | 要回到"为什么基线是 google/artemis"时 |
-| `plugins/autogamer-device/README.md` | 安装流与包内形状说明；**状态与阻塞点只在 `docs/TODO.md` §零**，别处不复制 |
+| `plugins/dsh-autogamer/README.md` | 安装流与包内形状说明；**状态与阻塞点只在 `docs/TODO.md` §零**，别处不复制 |
 
 上游一手资料（声明面之外唯一允许的补充来源，公开仓库）：`github.com/deepseek-ai/deepseek-harness`
 @ `master` —— 三个官方 skill 在 `packages/preset/agent-preset/skills/`（
@@ -46,7 +46,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
 `packages/preset/agent-preset-registry/src/mount.ts`、`packages/bundle/web-app/presets/*.patch.yml`、
 `docs/cli-help.zh.md`。**解包 `app.asar` 取证一律禁止（R1）**。
 
-**插件侧命令**（在 `plugins/autogamer-device/` 内）
+**插件侧命令**（在 `plugins/dsh-autogamer/` 内）
 
 - `npm run build`（tsc，插件走 `dist/`，**改 TS 后必须重新 build 再冷重启 dsh**）/ `npm run test`（vitest）
 - **本机装依赖与跑脚本要带旗标**（CI 用 pnpm 10 不受影响）：
@@ -55,7 +55,7 @@ real/mock Android devices through task workers, plus a web console (FastAPI + Vu
   install 并**重写 `pnpm-lock.yaml`**（`autoInstallPeers` 翻转，实测 +507 行）——那是环境产物，别提交
 - 声明面自检：`dsh --profile web --patch <abs path> --dump-config`（`dsh` 取 PATH，不要写死安装盘符路径——写死曾导致找不到宿主），退出码必须为 0 且输出 grep 不到 `unmatched`（R6）；schema 侧用 `--dump-config-schema`
 - `dsh plugin` 只是 **pnpm 转发垫片**，只证明"装了"，不证明"生效"（R9）
-- spike 现场与转储在 `plugins/autogamer-device/spike/`：`web-live.patch.yml` 是 live overlay，
+- spike 现场与转储在 `plugins/dsh-autogamer/spike/`：`web-live.patch.yml` 是 live overlay，
   `wire-tools.py` 解析 `scripts/proxy-dump.log` 数请求里的 `tools`；`dsh-dump*` / `dsh-schema*` /
   `dump-config.*` / `web-server*.log` / token 类文件全部 gitignored，**不要提交含 token 的转储**
 

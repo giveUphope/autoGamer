@@ -1,8 +1,8 @@
 /**
  * P0 MCP direct-connect spike / G5 Tier 2 action-surface generator.
  * Run from the repo root so `uv run` resolves the project env:
- *   ARTEMIS_MOCK_DRIVER=1 node plugins/autogamer-device/scripts/spike-mcp.mjs
- *   ARTEMIS_MOCK_DRIVER=1 node plugins/autogamer-device/scripts/spike-mcp.mjs --write
+ *   ARTEMIS_MOCK_DRIVER=1 node plugins/dsh-autogamer/scripts/spike-mcp.mjs
+ *   ARTEMIS_MOCK_DRIVER=1 node plugins/dsh-autogamer/scripts/spike-mcp.mjs --write
  *
  * Verifies: the pipe (list + call round-trip), the real action-tool surface,
  * and result normalization. Actions may fail with adb-down messages when no
@@ -45,7 +45,7 @@ const localDate = () => new Date(Date.now() - new Date().getTimezoneOffset() * 6
 export function buildFixture(tools) {
   return {
     captured: localDate(),
-    source: "live MCP stdio listing of `uv run artemis mcp --type adb` (node plugins/autogamer-device/scripts/spike-mcp.mjs --write)",
+    source: "live MCP stdio listing of `uv run artemis mcp --type adb` (node plugins/dsh-autogamer/scripts/spike-mcp.mjs --write)",
     pyActionServerTools: tools,
     notes: [
       "2026-10-11: compare_ui_frames added (G39 route A) - the read-only effect verdict the plugin router calls, delegating to artemis/utils/image_diff.check_ui_change.",

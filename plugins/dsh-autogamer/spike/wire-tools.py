@@ -9,7 +9,7 @@ with " =====", so parse line-anchored. Run: python -X utf8 spike/wire-tools.py
 import json
 import re
 
-LOG = r"D:/DEV/autoGamer/plugins/autogamer-device/scripts/proxy-dump.log"
+LOG = r"D:/DEV/autoGamer/plugins/dsh-autogamer/scripts/proxy-dump.log"
 HEADER = re.compile(r"^===== (\S+) (\w+) (\S+) =====\s*$")
 
 with open(LOG, encoding="utf-8", errors="replace") as fh:

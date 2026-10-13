@@ -1,4 +1,4 @@
-# autogamer-device
+# dsh-autogamer
 
 AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`run_device_action` 执行工具、
 `report_task_status` 终态汇报、`autogamer` agent 预设，以及设备资源治理。队列、调度、UI、
@@ -42,7 +42,7 @@ npm run build && npm run test
 
 # 把本包挂进 web profile（pnpm 垫片：只证明「装了」，不证明「生效」）
 "D:/DeepSeek Harness/resources/runtime/cli/bin/dsh.cmd" plugin --profile web \
-  add file:/D/DEV/autoGamer/plugins/autogamer-device
+  add file:/D/DEV/autoGamer/plugins/dsh-autogamer
 
 # 每次改 patch 后的强制自检（R6）：exit 0 且 grep 不到 unmatched
 dsh --profile web --patch <abs>/spike/web-live.patch.yml --dump-config

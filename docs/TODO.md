@@ -119,9 +119,8 @@
 背景：用户 2026-10-14 提供完整规格（原标题 DSH-ARTEMIS，实现名已更正为 dsh-autogamer；
 2026-10-14 修订版同步工具名前缀 `artemis_*` → `autogamer_*`，与插件命名空间一致，
 description 注明底层由 Google ARTEMIS 驱动；此为用户定稿，推翻需明示）。
-定位：不是另起插件，而是对当前实现（`plugins/autogamer-device`）的矫正；规格内 `dsh-artemis`
-一律读作 `dsh-autogamer`（插件 id 是否由 `autogamer-device` 改名，Phase 0 定，改名牵连
-patch/preset/fixture/测试）。
+定位：不是另起插件，而是对当前实现（`plugins/dsh-autogamer`）的矫正；规格内 `dsh-artemis`
+一律读作 `dsh-autogamer`（插件 id 已由 `autogamer-device` 改名，见本条 Phase 0 结论）。
 
 ### What（做 / 不做）
 
@@ -158,8 +157,8 @@ Phase 4 设备实时画面 → Phase 5 rules 注入与打磨；每阶段独立�
 5. ARTEMIS 作外部依赖与本仓是其 fork 的现实冲突——规格 §1 的 5 个 MCP 工具面即已删的顶层
    MCP 面；MCP/CLI 后端需要外部 ARTEMIS 提供方（路径配置），本分支 uv 破损，
    CLI 路径的 JSON 输出格式一并在 Phase 0 核实。
-6. 插件 id 改名（`autogamer-device` → `dsh-autogamer`）是否执行，Phase 0 定；执行则 patch、
-   preset、fixture、测试同步改，R6 重跑。
+6. 插件 id 改名（`autogamer-device` → `dsh-autogamer`）已执行（用户定稿）：目录、包名、
+   patch 根行与 inner 行、MCP 客户端名、测试与脚本路径、CI 路径、文档引用同步改，R6 重跑。
 全程门禁：改 patch 跑 R6，新会话验跑 R7，判生效只认 R9；任何降级必须在 UI 或错误信息中明示，
 不静默失败。
 
@@ -226,7 +225,7 @@ ARTEMIS 侧（本仓 git 历史，一手）：
 - `ctx.on('ready')`/`ctx.on('dispose')` 在 typings 里查无（Events 仅 internal 成员）；
   生命周期改用 `ctx.effect` 清理函数，预检保持首次工具调用时懒执行。规格 §3.1 入口形状
   据此改写。
-- 插件 id 改名（`autogamer-device` → `dsh-autogamer`）仍未定，Phase 1 动工前定。
+- 插件 id 改名（`autogamer-device` → `dsh-autogamer`）已执行，用户定稿，见本条 Done means。
 
 Phase 0 总账：§12 十项全部有结论——确认 6（包形态、defineTool、settings 真实 API、
 systemPrompt section、inject 服务表、MCP 启动），砍掉 4（对话卡片槽系、RPC、H.264
@@ -243,6 +242,6 @@ R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；�
 ### Done means
 
 - [x] Phase 0：十项核实结论回写本条，六条硬冲突逐条裁决（确认/降级/砍掉）
-- [ ] 插件 id 改名定案（改或不改）并同步
+- [x] 插件 id 改名定案并同步（`dsh-autogamer`，用户定稿）
 - [ ] Phase 1–5 按验收逐阶段落地
 - [ ] 卸载无残留进程（scrcpy、adb forward 清理）+ README 完整化
