@@ -57,6 +57,14 @@ Instructions for agents working in this repository.
 
 - **只有一个 remote：`origin`**（本项目自己的仓库），且 `remote.pushDefault=origin` —— 裸 `git push` 只走它。
   **不得**添加指向第三方上游（如 `google/artemis`）且带 push 地址的 remote；本项目产出只留在 `origin`。
+- **机械护栏（已装，版本化）**：`.githooks/pre-push` + `core.hooksPath=.githooks` —— 非白名单远端**拒绝更新任何 ref**。
+  白名单 = `giveUphope/autoGamer`。**新克隆/新机器要重装一次**：`git config core.hooksPath .githooks`。
+  检验法（A/B，已实测）：对一个本地一次性 bare 仓库推送**被拦**（exit 1），加 `--no-verify` 才通过
+  —— 能对照出「是钩子拦的」，不是别的什么在拦。
+  **已知边界（别当它万能）**：git 在**连上远端并列出 ref 之后**才跑 `pre-push`（要更新的 ref 走 stdin），
+  所以它挡的是「推送」而非「连接」；对**不可达**目标的推送会在连接阶段就失败，因此看不到钩子的消息。
+  **PR 的创建本身不在任何本地钩子的覆盖范围内** —— 它只能靠上面的规则与正确判据把关。
+  逃生口 `git push --no-verify <url> <refspec>` 存在，但属**故意行为**，必须在台账里写明理由。
 - **不要对任何第三方上游开 PR / 建分支 / 推内容**。若确实要读上游源码作设计参考，用只读形态：
   添加后立刻 `git remote set-url --push <name> no-push`。
 - **判「有没有误开的 PR」不能用** `gh pr list --repo <本仓>` —— 它只列 **base 在本仓**的 PR，

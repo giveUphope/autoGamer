@@ -27,9 +27,16 @@
   使裸 `git push` 只走 origin。**理由**：这两条是「误把东西交到上游」的结构性入口——`upstream` 在场时
   `gh` 的仓库解析可能落到它，而这条隐患**已经真实发生过一次**（见下条）。若日后仍需读上游设计，
   请按只读形态重新添加（`git remote add` 后立刻 `git remote set-url --push <name> no-push`）。
-- **待用户在 GitHub 上完成第二项**：关闭误开的跨库 PR **`google/artemis#182`**
-  （head `giveUphope:legacy-fork-v2-dsh-plugin` → base `google/artemis:main`，状态 OPEN）。
-  本机 token 对该仓库无写权限（`gh pr close` 返 403），须在 PR 页面点 Close。
+- **推送护栏（2026-10-14 落地并验证）**：三件一起上 —— ① `upstream` remote 已删；② `remote.pushDefault=origin`；
+  ③ 版本化的 `.githooks/pre-push` + `core.hooksPath=.githooks`（非白名单远端一律拒绝更新 ref）。
+  **A/B 实测**（对一个本地一次性 bare 仓库）：非白名单推送 = `exit 1` + `BLOCKED` 消息；加 `--no-verify` 才通过
+  —— 对照能证明「是钩子拦的」。边界与重装方法见 `AGENTS.md`「远端与 PR 纪律」。
+  **护栏不覆盖**：PR 的创建（任何本地钩子都管不到，只能靠规则与正确判据），以及**不可达目标**的推送
+  （`pre-push` 在连接之后才运行，连接失败就看不到钩子消息）。
+- **跨库 PR `google/artemis#182` 仍未关闭（实测）**：用户 2026-10-14 表示已关闭，但同一查询
+  `gh pr view 182 --repo google/artemis --json state,closedAt` 返回 `{"state":"OPEN","closedAt":null}`，
+  与关闭前读数相同 ⇒ **该次关闭未生效**（或关到了别的对象）。页面：`https://github.com/google/artemis/pull/182`
+  （本机 token 对该仓库无写权限，只能由你在页面上操作）。任一时刻可用上面那条命令复查。
 - **教训（写进 AGENTS）**：`gh pr list --repo <本仓>` **只列 base 在本仓的 PR**，看不到「从本仓发到上游」的 PR
   ——曾据此得出「无开放 PR」的错误结论并用它论证改名无连带影响（R27：一个不能失灵的判据等于没判据）。
 

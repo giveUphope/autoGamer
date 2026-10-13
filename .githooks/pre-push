@@ -1,0 +1,37 @@
+#!/bin/sh
+# pre-push guard — project policy, see AGENTS.md "远端与 PR 纪律".
+#
+# Only the allowlisted origin may receive a push from this repository. Every
+# other target is refused, and no refs are updated.
+#
+# Where it sits in the timeline: git runs pre-push AFTER contacting the remote
+# and listing its refs (the refs to update arrive on stdin), so a connection may
+# already have happened. Nothing is pushed, though — a non-zero exit aborts the
+# push. There is no earlier hook that could refuse before the connection.
+#
+# Why this exists: a cross-repo pull request once ended up on the third-party
+# upstream (google/artemis) and this repo's `upstream` remote made that easy.
+# The remote is gone now; this hook removes the remaining path.
+#
+# Escape hatch (use deliberately, and record why in the change log):
+#   git push --no-verify <url> <refspec>
+
+ALLOW="giveUphope/autoGamer"
+remote="${1:-}"
+url="${2:-}"
+
+case "$url" in
+  *"$ALLOW"*) exit 0 ;;
+esac
+
+cat >&2 <<EOF
+pre-push BLOCKED: refusing to push to remote '$remote'
+  url: $url
+
+Only the allowlisted origin ($ALLOW) may receive pushes from this repo.
+No refs were updated.
+
+If the target really is legitimate, push explicitly and say why:
+  git push --no-verify <url> <refspec>
+EOF
+exit 1
