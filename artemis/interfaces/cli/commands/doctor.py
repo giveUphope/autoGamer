@@ -269,8 +269,8 @@ def _render_footer(console: Console, verdict: Verdict, results: list[ProbeResult
         console.print(
             Panel(
                 "[bold green]🎉 All system checks passed![/bold green]\n\n"
-                "Run your first automation task now:\n"
-                '  [bold cyan]artemis run "Open Settings and check Battery level"[/bold cyan]',
+                "Start the device-action surface the DSH plugin calls:\n"
+                "  [bold cyan]artemis mcp --type adb[/bold cyan]",
                 title="Status: Ready",
                 expand=False,
             )
@@ -282,8 +282,8 @@ def _render_footer(console: Console, verdict: Verdict, results: list[ProbeResult
             Panel(
                 "[bold green]Required checks passed.[/bold green] Optional components are "
                 "missing; tasks can run, but some features (video replay, OCR) are off.\n\n"
-                "Run your first automation task now:\n"
-                '  [bold cyan]artemis run "Open Settings and check Battery level"[/bold cyan]',
+                "Start the device-action surface the DSH plugin calls:\n"
+                "  [bold cyan]artemis mcp --type adb[/bold cyan]",
                 title="Status: Ready (optional gaps)",
                 expand=False,
             )

@@ -8,8 +8,8 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前未关闭差距 **`G71` / `G72` / `G73` / `G74` / `G75` / `G76` / `G78` / `G79`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
-  `G77` 已随 CHANGELOGS **#79** 结案。
+- 当前未关闭差距 **`G71` / `G72` / `G74` / `G75` / `G76` / `G78` / `G79`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+  `G77` 已随 CHANGELOGS **#79** 结案，`G73` 已随 **#80** 结案。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -88,10 +88,12 @@
   - **新立 G78**：`adb forward --list` 实测残留 **`127.0.0.1:16384 tcp:54254 tcp:18888`**（device 18888 = helper 端口，
     由 py 侧建 forward），而 MCP server 进程已退出 ⇒ Done means 里那句「卸载无残留（adb forward 清理）」
     **不是「等真机」而是已被证伪**，且残留产生方是 py 动作面，插件的 stop/dispose 管不到它。
-- 2026-10-13 **Step 3 · 第一个修复落地**（`G77` 结案见 CHANGELOGS **#79**；新暴露 `G79`）：预检承认 project-venv 形态后，
-  真机真环境跑通 `artemis-installed → PASS  project venv: ARTEMIS device-action core v1.0`；插件全套
-  **32 files / 289 passed / 1 skipped**（+5 条锁），三条变异逐条证伪（红点分别在 `preflight.spec.ts:145`、`:166`、`:218`，
-  还原后 `diff -q` 与备份相同）。`helper` 项修完仍红，但**原因换了且是真红**：提供方要求 `--serial`（多传输歧义）→ 立 **G79**。
+- 2026-10-13 **Step 3 · 两个修复落地**（`G77` → CHANGELOGS **#79**；`G73` → **#80**；新暴露 `G79`）：
+  预检承认 project-venv 形态后，真机真环境跑通 `artemis-installed → PASS  project venv: ARTEMIS device-action core v1.0`；
+  插件全套 **32 files / 289 passed / 1 skipped**（+5 锁），三条变异逐条证伪（红点 `preflight.spec.ts:145` / `:166` / `:218`）。
+  `doctor` 收尾不再提示已删的 `artemis run`，并补了一条**吃「已注册命令集」的防腐烂锁**（旧文案原本被一条测试锁着，
+  谁改谁红）；py 全套 **448 passed / 1 skipped**（+1）。两轮的变异各自注回旧文案/去掉分支，均转红后还原。
+  `helper` 项修完仍红，但**原因换了且是真红**：提供方要求 `--serial`（多传输歧义）→ 立 **G79**。
 - 2026-10-13 仓库卫生与主线定位（正文见 CHANGELOGS **#78**）：`origin` 上三条死分支已删；本地安全网分支
   `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
   `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
@@ -215,7 +217,6 @@
 |---|---|---|
 | G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 须走官方 `plugin_manager` 的 `remove_bundle` → `install_bundle` 重做交付形态；**契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八**，此处不重述 |
 | G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 13 工具动作面 | 七工具 live（留白第 1、9 项）前须二选一：① `artemisRepoPath` 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面新增一层映射（`run_task`/`inspect_trace` 在动作面无对应工具，不能直接换命令）。2026-10-13 Step 0 实测 |
-| G73 | `artemis doctor` 结尾提示 `artemis run "…"`，而本分支 CLI Commands 只有 `doctor` / `mcp` / `helper`（`uv run artemis --help` 实测）——已删命令的残留文案 | 低优先；改文案即可，不动功能 |
 | G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组，属性值是字符串（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`）**但每个节点还带 `parsed_bounds` 整数对象（真机 36/36 全有）**，且节点数被 `filter_ui_hierarchy` 的语义裁剪大幅压低（设计行为，见 §零 Step 2） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
 | G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（DSH 的 roster 指 preset 行；artemis 上游 `device_pool.py` 与本仓逐字相同、无 dedupe，详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九）。诚实路线只剩三条并已列在该节表格里，默认取 **①：交付钉显式 `Config.devices`，把自动枚举降级**（不碰 canonical 契约，且 `devicePool.ts:166` 已让「钉住就不枚举」）。待用户裁定后按 R22 写方案再动码 |
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |

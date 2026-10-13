@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#79 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）；#79 预检承认 project-venv 提供方形态（G77 结案，含三条变异的证伪记录）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#80 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）；#79 预检承认 project-venv 提供方形态（G77 结案，含三条变异的证伪记录）；#80 doctor 收尾文案不再提示已删命令（G73 结案，新增一条吃已注册命令集的防腐烂锁）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -3358,6 +3358,49 @@ glob、fixture 步调用的生成器，分别指向 P4 已删的控制台、lock
 遗留（不在本条关闭范围）：`helper` 项现在因**另一个原因**红——`Several devices are ready; pass --serial,
 or --all to target every idle one`，即 **G75** 的多传输歧义打到了预检层，且该项未传设备序列号 → 另立 **G79**。
 
+### #80 doctor 收尾文案不再提示已删命令（G73 结案）
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭
+- **优先级**: 低（文案，但它是用户看完 `doctor` 后唯一照做的指令）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+`uv run artemis --help` 的 Commands 在本分支只有 `doctor` / `mcp` / `helper`（§零 Step 0 实测），
+而 `artemis doctor` 的 ready 与 degraded 两个收尾 Panel 都写着
+`Run your first automation task now: artemis run "Open Settings and check Battery level"`
+（`artemis/interfaces/cli/commands/doctor.py:271-273`、`:284-286`）——`run` 随智能栈一起删掉了
+（`tests/unit/test_cli.py:53` 的 `test_removed_commands_are_unknown` 早就把 `run` 列为未知命令）。
+更糟的是**这条 stale 文案被一条测试锁着**：`test_cli_doctor_all_pass_renders_table_in_fix_order`
+断言输出里含那句 `artemis run "…"`，于是旧文案既有实现又有锁，谁改谁红。
+
+#### 整改方案与实施
+
+1. 文案：两个 Panel 都改成指向真实存在且此刻可用的东西——
+   `Start the device-action surface the DSH plugin calls:` + `artemis mcp --type adb`
+   （收缩后插件就是这个动作面的唯一消费方，这也是用户下一步真正要做的事）。
+2. 那条锁着旧文案的断言同批改成新句（**行为变了，锁必须在同一个提交里跟着变**）。
+3. 新增一条**不会腐烂**的锁 `test_cli_doctor_footer_advertises_only_existing_commands`：
+   用 `typer.main.get_command(app).commands` 当场取出已注册命令集，正则扫输出里每个 `artemis <命令>`，
+   断言它是已注册集的子集；ready 与 degraded 两条路径都验。允许名单不手抄——
+   命令面以后再变，这条锁自己跟上。
+
+#### 验收标准
+
+- [x] `pytest tests/unit/test_cli.py -q` → 16 passed；全量 `pytest tests/unit tests/integration -q` →
+      **448 passed / 1 skipped**（原 447/1，+1 为新增锁）
+- [x] **R27 变异校验**：把 `artemis run "Open Settings"` 注回两处 Panel（锚点命中数 = 2）→
+      `test_cli_doctor_footer_advertises_only_existing_commands` 与那条改过的旧锁**双双变红**（2 failed / 7 passed）；
+      还原后 `diff -q` 与备份相同、复绿
+- [x] `uv run ruff check` / `ruff format --check` 两个触达文件均通过；`scripts/quality_ratchet.py` 通过
+- [x] 文档双门禁 rc 0
+
+#### 附带记录（不在本条关闭）
+
+`grep -rn 'artemis run' docs/` 仍命中 `feature-inventory.md:24` 与 `inventory/02:87,88,160` —— 那些是
+**对已退役 py 世界的历史描述**（S5 env 缺口、G7 双跑挂点），不是对现行 CLI 的断言，按原样保留。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -3435,3 +3478,4 @@ or --all to target every idle one`，即 **G75** 的多传输歧义打到了预�
 | G69 | pre-commit 钩子从未安装 | 放弃：写 git hooks 需用户点头，未做；CI 侧遮挡已随 #69 修完 | 本文件 **#71** |
 | G70 | dispatch-only py 测试步从未绿过 | 放弃：成因未定（复现被叫停），整仓三集命令面未收敛 | 本文件 **#71** |
 | G77 | 预检把「已安装」等同于 `uv tool list` 命中，且 helper 项假定 PATH 上有 `artemis` | 两项都承认 project-venv / editable 形态，共用只读探针 `uv run --project <repo> --no-sync artemis …`；5 条新锁 + 3 条变异证伪 + 真机预检转 PASS | 本文件 **#79** |
+| G73 | `artemis doctor` 收尾提示已删命令 `artemis run` | 两处 Panel 改指 `artemis mcp --type adb`；旧锁同批改；新增一条吃「已注册命令集」的防腐烂锁，变异证伪成立 | 本文件 **#80** |

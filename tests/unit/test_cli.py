@@ -144,6 +144,47 @@ def _install_doctor_fakes(monkeypatch, probes, *, heal_result=None):
     return {"run_all": run_all, "heal": heal}
 
 
+def test_cli_doctor_footer_advertises_only_existing_commands(monkeypatch):
+    """G73: a readiness hint must not name a command this CLI no longer has.
+
+    The footer used to say `artemis run "..."` after ``run`` was deleted. Deriving
+    the allowed names from the app itself keeps this lock from rotting when the
+    command surface changes again.
+    """
+    import re
+
+    import typer.main
+    from typer.core import TyperGroup
+
+    group = typer.main.get_command(app)
+    assert isinstance(group, TyperGroup)
+    registered = set(group.commands)
+
+    def advertised(text: str) -> set[str]:
+        """Every `artemis <command>` the output tells the user to run."""
+        return set(re.findall(r"artemis\s+([a-z][a-z_-]+)", text))
+
+    _install_doctor_fakes(monkeypatch, _all_pass_probes())
+    ready = runner.invoke(app, ["doctor"])
+    assert ready.exit_code == 0, ready.output
+    assert advertised(ready.output) <= registered, ready.output
+    assert "artemis mcp --type adb" in ready.output
+
+    _install_doctor_fakes(
+        monkeypatch,
+        [
+            _probe("python_runtime"),
+            _probe(
+                "android_adb", metadata={"installed": True, "adb_keys": {"is_corrupted": False}}
+            ),
+            _probe("toolchain", blocker=False, status="fail", summary="scrcpy missing"),
+        ],
+    )
+    degraded = runner.invoke(app, ["doctor"])
+    assert advertised(degraded.output) <= registered, degraded.output
+    assert "artemis mcp --type adb" in degraded.output
+
+
 def test_cli_doctor_all_pass_renders_table_in_fix_order(monkeypatch):
     """All-green run: engine rows in fix order, exit 0, ready footer."""
     _install_doctor_fakes(monkeypatch, _all_pass_probes())
@@ -156,7 +197,7 @@ def test_cli_doctor_all_pass_renders_table_in_fix_order(monkeypatch):
     assert out.count("✔ OK") == 3
     assert "Node.js / npm" not in out and "Showcase UI" not in out
     assert "All system checks passed" in out
-    assert 'artemis run "Open Settings and check Battery level"' in out
+    assert "artemis mcp --type adb" in out
 
     order = ["Title python_runtime", "Title android_adb", "Title toolchain"]
     positions = [out.index(name) for name in order]

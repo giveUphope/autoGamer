@@ -49,13 +49,12 @@
 
 ## 三、G · 差距清单
 
-**现行在册**（2026-10-13 起 8 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
+**现行在册**（2026-10-13 起 7 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
 
 | 编号 | 一句话 | 定义位置 |
 |---|---|---|
 | G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子已无 `package.json` → profile 级挂载与 `--dump-config-schema` 失败；须走官方 `remove_bundle` → `install_bundle` 重做交付形态 | `../TODO.md` 第四节 + [upstream-plugin-forms](upstream-plugin-forms.md) 八 |
 | G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand` 指向 pre-contraction 的 `mcp_server` 5 工具面，本分支 `mcp_server/` 已无 `.py`，只有 `artemis mcp --type adb` 的 13 工具动作面 | `../TODO.md` 第四节 |
-| G73 | `artemis doctor` 结尾提示已删命令 `artemis run`（本分支 Commands 只有 doctor / mcp / helper） | `../TODO.md` 第四节 |
 | G74 | 映射层按**已删的 5 工具面**锁形状：`take_screenshot` 实测返回裸 base64 JPEG 而非 `file://…` 文本；层级节点属性值是字符串但带 `parsed_bounds` 整数对象，且节点数被语义裁剪压低 | `../TODO.md` 第四节（测量在 §零 Step 1、Step 2） |
 | G75 | **一台 MuMu 被 roster 报成 4 台**（4 条 adb 传输、`android_id` 全等、`ro.serialno` 全空）→ 闸门/并发上限/熔断 4 倍计数 | `../TODO.md` 第四节（测量在 §零 Step 1） |
 | G76 | 坐标空间缺防护：主视口 `Rotation90` 使帧空间 1600x900 而 `wm size` 报 900x1600；截图取源路径已验正确，Config 手填 `screenSize` 无一致性校验 | `../TODO.md` 第四节（测量在 §零 Step 1） |
@@ -137,6 +136,7 @@
 | G69 | pre-commit 钩子从未安装 | 放弃，未实现；详见 CHANGELOGS **#71** |
 | G70 | dispatch-only py 测试步从未绿过 | 放弃，成因未定；详见 CHANGELOGS **#71** |
 | G77 | 预检把「已安装」等同于 `uv tool list` 命中，`helper` 又假定 PATH 有 `artemis` | 两项都承认 project-venv 形态，只读探针 `uv run --project <repo> --no-sync`；详见 CHANGELOGS **#79** |
+| G73 | `artemis doctor` 收尾提示已删命令 `artemis run` | 文案改指 `artemis mcp --type adb`，旧锁同批改，新增吃已注册命令集的防腐烂锁；详见 CHANGELOGS **#80** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 
