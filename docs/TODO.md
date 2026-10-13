@@ -196,6 +196,44 @@ ARTEMIS 侧（本仓 git 历史，一手）：
 
 待回写：`defineTool`/settings/systemPrompt/inject 服务表（另一路核实中）→ 硬冲突 2/3/4 待裁。
 
+### Phase 0 核实结论（续，2026-10-14：工具/设置/提示三路，已安装产物与上游一手）
+
+工具定义（dsh-tools 0.2.0-rc.2 的类型产物）：
+- `defineTool` 确认：选项含 name/description/parameters/output/execute，另有
+  isConcurrencySafe、deferLoading、timeoutMs（声明 only，R15 不执行）、output 内 render
+  与 presentationMeta。description 为纯 string，无 en/zh 对象形态 → 规格 §3.2/§4/§5 的
+  description 对象写法砍掉，改纯 string（语言 Phase 1 定）。
+- output 字段名即 output（含 schema），与规格一致。
+- 硬冲突 4 裁决：确认（按真实签名实现；schema 须完整 JSON Schema，G30 不变）。
+
+设置区（上游 settings 包一手）：
+- `installSection` 查无；真实 API 为 configure（页面策略）加 revisioned form edits，
+  Config 表单元由投影自动渲染。规格 §5 的 installSection 写法砍掉；预检面板改用已证实的
+  settings 系槽（Phase 2 落点）。
+- 硬冲突 3 裁决：确认（改用真实 API；R19 义务不变）。
+
+系统提示（dsh-system-prompt 0.2.0-rc.2 加上游 practices 一手）：
+- `contribute` 查无；真实 API 为 section（name/order/text，数字 order 排序）。rules 注入
+  改用 section()，每次加载重读外部文件（规格 §7 主路径成立，仅 API 名修正）；这是官方
+  提示扩展位，非自写会话事件，与 R16 不冲突。
+- 硬冲突 2 裁决：确认（改用 section()）。
+
+服务与生命周期（已安装 typings 与 cordis 4.0.4 一手）：
+- inject 服务表确认：tools、systemPrompt、sessions、agents、attachments、llm、sandbox、
+  invariants（settings、skills 只在上游）；pluginManager 不是服务（是 agent 工具名），
+  不影响既有 tool-plugin-manager 工具行。规格 §3.1 的 tools/settings 组合可用
+ （settings 类型来源 Phase 1 定）。
+- `ctx.on('ready')`/`ctx.on('dispose')` 在 typings 里查无（Events 仅 internal 成员）；
+  生命周期改用 `ctx.effect` 清理函数，预检保持首次工具调用时懒执行。规格 §3.1 入口形状
+  据此改写。
+- 插件 id 改名（`autogamer-device` → `dsh-autogamer`）仍未定，Phase 1 动工前定。
+
+Phase 0 总账：§12 十项全部有结论——确认 6（包形态、defineTool、settings 真实 API、
+systemPrompt section、inject 服务表、MCP 启动），砍掉 4（对话卡片槽系、RPC、H.264
+推送、CLI 后端），降级 2（DeviceMirror 改截图轮询、scrcpy 外部提供），纠正 4
+（description 纯 string、installSection 改真实 API、contribute 改 section()、
+ready/dispose 改 effect）。六条硬冲突全部裁决完毕。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；
@@ -204,7 +242,7 @@ R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；�
 
 ### Done means
 
-- [ ] Phase 0：十项核实结论回写本条，六条硬冲突逐条裁决（确认/降级/砍掉）
+- [x] Phase 0：十项核实结论回写本条，六条硬冲突逐条裁决（确认/降级/砍掉）
 - [ ] 插件 id 改名定案（改或不改）并同步
 - [ ] Phase 1–5 按验收逐阶段落地
 - [ ] 卸载无残留进程（scrcpy、adb forward 清理）+ README 完整化
