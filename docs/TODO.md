@@ -238,6 +238,43 @@
           复跑装置 = Step 10 的 dump-proxy + wire-tools.py + 端点临时切 1235
     - [x] 结果回写本条并按方案/实现两次提交（`972845d` 方案 → `5d44cd9` 实现）
   - 环境已还原：端点回 1234、代理已停、宿主已重启在跑（新 preset 代际已生效）。desktop 按用户裁定暂不动。
+- 2026-10-13 **Step 12 · G72 路线④：分支本地提供方（用户裁定：不依赖 main、在本分支实现）**：
+  - **裁定与定位**：原推荐路线③（`main` 挂 worktree 当提供方）被用户否决——main 不再演进、不得依赖；
+    改为把提供方**复活到 `dsh-plugin-contraction` 分支**（`git restore --source=main` 只是复制，main 本身不动）。
+    决策增量记档：D8「智能栈不迁移」原指插件不内嵌智能栈；本条按 §六 规格把智能栈以**外部提供方进程**
+    形态放回本仓（`artemisMcpCommand` 拉 `python -m mcp_server`），与 S5「插件作 MCP client 转发」一致。
+  - **实测依据（2026-10-13 摸底）**：main 的 `mcp_server` 26 文件（含 `rules.md` ⇒ 恢复后 G80 的 rules
+    注入同时变真）；它**不直接 import 智能栈**，依赖扇面 = `artemis.runtime`（缺 `trace_store` +
+    daemon 四件套：`daemon_client`/`server_lifecycle`/`supervisor` + `runtime/__init__` 收窄的五个导出名
+    `ensure_daemon_running`/`submit_task_to_daemon`/`is_daemon_running`/`stop_task_on_daemon`/`process_supervisor`）、
+    `artemis.data_engine.history_reader`、`artemis.tools.history`、`artemis.utils.{task_tree,ocr_xml_fusion,ocr_api,visualization}`、
+    `artemis.core.diagnostics` 缺件、`artemis.sdk`（9 文件，worker 子进程经 `from artemis.sdk import Agent`
+    懒加载）→ `artemis.agents`（67 文件，图与 LLM 栈）。agent 执行 = `background/task_runner.py` 子进程。
+    HEAD 现存 72 个 artemis 文件与 main 的 diff 是**删除为主**（删 5.67 万行 / 加 205 行），存活文件基本同源 ⇒
+    恢复兼容风险集中在 `runtime/__init__.py`（HEAD 收窄版，保其现有导出、**增补**缺名，不整文件替换）。
+    运行时依赖（langgraph/langchain/google 系）在 pyproject **从未被删**；`paths.py` 在；`.env` 与
+    `endpoint_library.json`（均 gitignored）在本机还在，缺 `config/artemis.jsonc`（main 跟踪该文件）。
+  - **What**：恢复 ≈114 文件到本分支（`mcp_server/**` + `artemis/sdk/**` + `artemis/agents/**` + 上述散件）、
+    `runtime/__init__.py` 增补导出、`uv sync` 补环境、`config/artemis.jsonc` 就绪、提供方工具面与
+    插件 `types.ts` 契约逐字对齐（run=`task_desc`/`model`→`trace_id`；device_state 必填 `view_type` 答纯文本；
+    manage 三动作；inspect 四动作；diagnose 仅 device_serial）。不做：不改 main、不改插件 TS/patch、
+    不动 third_party、不迁 UI 控制台。
+  - **How**：① `git restore --source=main -- mcp_server artemis/sdk artemis/agents` + 散件清单；
+    ② `runtime/__init__.py` 增补五个导出名（保 HEAD 全部现有导出）；③ `uv sync`（uv.lock 变更要提交）；
+    ④ import 追链 `uv run python -c "import mcp_server.server"` 迭代到通；⑤ `config/artemis.jsonc`
+    default 块指 LM Studio（**本地端点值不提交**，按 main 原文是否含端点定提交形态）；
+    ⑥ 起服务探针验 5 工具面（一次性探针脚本放 `$env:TEMP`，不入库）；⑦ py 全套 pytest 基线不回退；
+    ⑧ live：profile Config 指本仓（`artemisMcpCommand` 用 `.venv/Scripts/python.exe` 绝对路径 +
+    `artemisRepoPath`），`autogamer_diagnose`/`run_task` 真调用各一证（待端点就绪）。
+  - **Verify**：`import mcp_server.server` rc 0；工具面清单与 `types.ts` 头注逐字一致；
+    `uv run python -m pytest tests/unit tests/integration -q` 基线不回退；
+    `mcp_server/rules.md` 在场 ⇒ 插件 rules 注入从 `missing-file` 转 ok（G80 live 面）。
+  - **Done means**：
+    - [ ] 提供方子树恢复完毕且 import 通
+    - [ ] py 测试基线不回退
+    - [ ] 5 工具面与契约一致（清单落到本条）
+    - [ ] `config/artemis.jsonc` 本地就绪且端点值不进 git
+    - [ ] live diagnose/run_task 各一证（挂起：待端点）
 - 2026-10-13 **Step 9 · 用户裁定落地，G71 结案（**#83**）**：待裁清单第 1、7 条已决——headless 死链
   **移除不重装**（rc 0，bundles 现为 `[dsh-base, dsh-headless]`；pnpm 11 又按 G49 机制留死 junction，
   已按 reparse point 摘除）；web 走完取证，desktop 不动；~~取证路用了**免审批的 `cordis_inspect_query`**
