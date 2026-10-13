@@ -228,11 +228,11 @@
     （12 + 检查器两件）——**待 web profile 模型端点就绪后执行**，live 部分挂起不阻塞离线面落地；
     注意冷重启前宿主仍跑旧 preset 代际（配置层只影响之后创建的 Agent，R7）。
   - **Done means**：
-    - [ ] 两份 patch 各含 tool-cordis 行，deliveryShape 锁更新
-    - [ ] build + vitest 全绿（本机命令带 `--config.verify-deps-before-run=false` 旗标）
-    - [ ] R6 rc 0 且无 `unmatched`
-    - [ ] live wire 抓包 `tools=14`（挂起：待端点就绪）
-    - [ ] 结果回写本条并按方案/实现两次提交
+    - [x] 两份 patch 各含 tool-cordis 行，deliveryShape 锁更新
+    - [x] build 不需要（未改 `src/`，dist 不变）；vitest 全绿 **32 files / 293 passed / 1 skipped**
+    - [x] R6 rc 0 且无 `unmatched`（合成树 1420 行含 `dsh-tool-cordis`）
+    - [ ] live wire 抓包 `tools=14`（挂起：待端点就绪；冷重启前宿主仍跑旧 preset 代际）
+    - [x] 结果回写本条并按方案/实现两次提交（`972845d` 方案 → `5d44cd9` 实现）
 - 2026-10-13 **Step 9 · 用户裁定落地，G71 结案（**#83**）**：待裁清单第 1、7 条已决——headless 死链
   **移除不重装**（rc 0，bundles 现为 `[dsh-base, dsh-headless]`；pnpm 11 又按 G49 机制留死 junction，
   已按 reparse point 摘除）；web 走完取证，desktop 不动；~~取证路用了**免审批的 `cordis_inspect_query`**
