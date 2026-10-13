@@ -231,8 +231,13 @@
     - [x] 两份 patch 各含 tool-cordis 行，deliveryShape 锁更新
     - [x] build 不需要（未改 `src/`，dist 不变）；vitest 全绿 **32 files / 293 passed / 1 skipped**
     - [x] R6 rc 0 且无 `unmatched`（合成树 1420 行含 `dsh-tool-cordis`）
-    - [ ] live wire 抓包 `tools=14`（挂起：待端点就绪；冷重启前宿主仍跑旧 preset 代际）
+    - [x] **live wire 抓包 `tools=14` 达成（2026-10-13，端点就绪后）**：AutoGamer 新会话（qwen3.6-35b-a3b-mtp，
+          10 秒无报错）里 agent **真实调用** `cordis_inspect_list` → `cordis_inspect_query`（UI 工具卡片可见），
+          自查清单 14 个 = 本包 7 + `job_*`×3 + `skill` + `plugin_manager` + 检查器两件；wire 侧三个回合请求
+          全部 `tools=14` 且名单一致（双侧交叉验证）。R9 检查器从此在本包会话面可用。
+          复跑装置 = Step 10 的 dump-proxy + wire-tools.py + 端点临时切 1235
     - [x] 结果回写本条并按方案/实现两次提交（`972845d` 方案 → `5d44cd9` 实现）
+  - 环境已还原：端点回 1234、代理已停、宿主已重启在跑（新 preset 代际已生效）。desktop 按用户裁定暂不动。
 - 2026-10-13 **Step 9 · 用户裁定落地，G71 结案（**#83**）**：待裁清单第 1、7 条已决——headless 死链
   **移除不重装**（rc 0，bundles 现为 `[dsh-base, dsh-headless]`；pnpm 11 又按 G49 机制留死 junction，
   已按 reparse point 摘除）；web 走完取证，desktop 不动；~~取证路用了**免审批的 `cordis_inspect_query`**
