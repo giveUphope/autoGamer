@@ -287,6 +287,28 @@
     - [ ] live diagnose/run_task 各一证：**装置已齐**（提供方进程 + 配置就绪；`mcp_server/rules.md`
           回归也使 G80 的 rules 注入可转 ok）。挂起点 = profile 侧 Config（`artemisRepoPath` +
           `artemisMcpCommand` 指本仓 venv python）——待用户在宿主侧接好线后跑会话取证
+- 2026-10-14 **Step 13 · 提供方收缩（用户裁定：D18 TS 主栈方向重申，py 只能以模块形态存在）**：
+  - **背景与认账**：Step 12 的闭包恢复是「保证能 import」的机械方法，**拉回了远超提供方所需的内容**
+    （255 文件含死代码）。用户指出这与仓库预期（D18：TS 主栈，py 仅以模块/库形态引入）相差太远。
+  - **What**：收缩为**提供方真引用面 + 引擎本体**：删除 38 个零引用文件——旧控制台构建资产
+    `artemis/resources/showcase_ui/**`（13）、旧 CLI 命令七件（`cli/commands/{batch,init,run,server,
+    server_lifecycle,trace,ui}.py`，HEAD 动作面本就不依赖它们）、`artemis/interfaces/sdk/**`（3，D10
+    已裁的 artemis-client 残 world）、legacy 垫片三件（`main.py`/`_legacy_imports.py`/`__main__.py`）、
+    旧独立 `mcp/action_server.py`（新 15 工具面 = `adb_server.py`）、`artemis/telemetry/**`（5）、
+    `artemis/drivers/cloud/cloud_driver.py`、`artemis/config/core/**`（3）、`third_party/mobile_use/
+    {testing,utils/cli_helpers}.py`。**保留**：agents 引用的老动作面执行层（`action_executor`/`action_specs`/
+    `action_session`/`action_names`/`observation`——grep 实证它们是引擎本体，flash/validator/operator 直接
+    import）、全部 drivers、全部 package `__init__`。
+  - **How**：逐 pattern `git grep -E` 零引用验证（含排除自身的负向过滤）后才删；删后四重验证 =
+    `import mcp_server.server` + `from artemis.sdk import Agent` + 提供方工具面 + pytest 全套 + ruff 双检。
+  - **边界声明（D18 语义落档）**：py 侧 = **按模块引入的 vendored 提供方**（`mcp_server` 进程 +
+    其 agent 引擎闭包，代码冻结自上游、不手写演进）；TS 侧（DSH 插件）是主栈与唯一开发面。
+    引擎体量（agents/graph/llm ≈ 一百余文件）是「任务执行语义」的最小闭包——再缩只能重定义任务语义
+    （如未来 TS agent 替代，属 D18 演进项，另立方案）。
+  - **Done means**：
+    - [ ] 38 文件删除且四重验证全绿
+    - [ ] 边界声明落档本条
+    - [ ] 结果回写并提交
 - 2026-10-13 **Step 11 · `preset-autogamer` 增挂 `tool-cordis`（用户裁定「可以增加」，R22 方案先行）**：
   - **背景**：Step 10 调研证实 `cordis_inspect_query`/`cordis_inspect_list` 由 `@deepseek-ai/dsh-tool-cordis`
     提供、只有官方 `cordis` 预设挂它 ⇒ AutoGamer 会话无法自查工具面（R9 检查器不可用）。
