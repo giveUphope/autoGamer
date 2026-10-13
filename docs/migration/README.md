@@ -28,8 +28,8 @@
 
 | 文档 | 体量（实测） | 定位 | 可信度口径 |
 |---|---|---|---|
-| `docs/TODO.md` | 247 行 / 28.6 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
-| `docs/CHANGELOGS.md` | 3145 行 / 264.7 KB | **已结案变更的历史**：`### #N` 三段条目 + 「已关闭差距史」表（结案 `G*` 的正文去处） | 现行权威；**编号一经发布不得改写**，写入规则见该文件顶部 |
+| `docs/TODO.md` | 263 行 / 29.9 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
+| `docs/CHANGELOGS.md` | 3176 行 / 266.5 KB | **已结案变更的历史**：`### #N` 三段条目 + 「已关闭差距史」表（结案 `G*` 的正文去处） | 现行权威；**编号一经发布不得改写**，写入规则见该文件顶部 |
 | `docs/migration/registry.md` | 185 行 / 20.1 KB | **编号唯一权威**：全部 D / S / G / R 编号 + 已关闭差距 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
 | `docs/migration/glossary.md` | 87 行 / 8.5 KB | 术语翻译表（含 `inject` 的两个意思） | 现行权威 |
 | `docs/migration/plugin-contract-rules.md` | 304 行 / 35.9 KB | **守则全部条款**：每条带出处与判据 | 现行权威；与 todo 冲突时以守则为准并回改 todo |
@@ -38,7 +38,7 @@
 | `docs/migration/feature-inventory.md` | 107 行 / 13.8 KB | 防丢失盘点索引 | 现行；设备与智能栈部分是上游 canonical 契约 |
 | `inventory/01`…`05` | 1406 行 / 215.6 KB | 盘点明细，几乎全是表格 | **内容可用，编号不可引用**：其 `**Gn · …**` 与现行 G 编号撞车（冲突表见 registry，警示行已加进每份文件顶部）；其中 `TODO.md:行号` 形式的引用属活文档旧快照，同样不可照用 |
 | `docs/migration/upstream-rethink.md` | 50 行 / 5.4 KB | 为什么基线选 google/artemis 上游 | 现行 |
-| `plugins/dsh-autogamer/README.md` | 100 行 / 7.7 KB | 插件包自己的说明：入口、三层引入流、契约要点、债务表 | 现行（2026-10-10 重写，旧版那条指向 `headless-spike.patch.yml` 的安装说明已废） |
+| `plugins/dsh-autogamer/README.md` | 104 行 / 8.2 KB | 插件包自己的说明：入口、三层引入流、契约要点、债务表 | 现行（2026-10-10 重写，旧版那条指向 `headless-spike.patch.yml` 的安装说明已废） |
 | `AGENTS.md` | 207 行 / 16.5 KB | agent 作业说明：文档地图、命令、门禁 | 现行 |
 
 > 体量口径与写法：**第一列一律按仓库根写路径**（`docs/migration/registry.md`，不写 `../registry.md`），因为 `scripts/check_doc_tables.py` 就按仓库根寻址并核对第二列——寻址不到即 FAIL。

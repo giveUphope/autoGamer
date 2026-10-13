@@ -83,6 +83,24 @@ type ToolDefinition = {
   };
 };
 
+/**
+ * The preflight runner is module-mocked here so apply() never spawns real
+ * `uv`/`adb` processes across its dozens of wiring tests: the real runner's
+ * subprocess behaviour is locked in tests/preflight.spec.ts with injected
+ * doubles, and the warm-up call itself is asserted below.
+ */
+const preflightProbe = vi.hoisted(() => ({ runs: 0 }));
+
+vi.mock("../src/env/preflight.js", () => ({
+  createPreflight: () => ({
+    run: async () => {
+      preflightProbe.runs += 1;
+      return { ok: true, checks: [], finishedAt: "2026-10-14T00:00:00.000Z" };
+    },
+  }),
+  preflightErrorText: () => "environment: mocked preflight failure",
+}));
+
 const { apply, Config } = await import("../src/index.js");
 
 /**
@@ -180,6 +198,7 @@ beforeEach(() => {
   harness.clientOptions.length = 0;
   harness.changed = true;
   harness.disposed = 0;
+  preflightProbe.runs = 0;
 });
 
 describe("apply(): screen size sourcing wiring", () => {
@@ -236,7 +255,7 @@ describe("apply(): registration lifetime (G30 regression)", () => {
     const { context, cleanups } = fakeContext(definitions);
     await apply(context as never, Config() as never);
 
-    // Both tools must still be registered once apply() resolved: cordis
+    // All three tools must still be registered once apply() resolved: cordis
     // effect() takes the RETURNED function as the disposer. The broken
     // ancestor passed teardown as the callback body, so it executed inline,
     // disposing both registrations within apply() while every official
@@ -244,6 +263,7 @@ describe("apply(): registration lifetime (G30 regression)", () => {
     expect(definitions.map((definition) => definition.name)).toEqual([
       "run_device_action",
       "report_task_status",
+      "autogamer_get_device_state",
     ]);
     expect(cleanups).toHaveLength(1);
     expect(typeof cleanups[0]).toBe("function");
@@ -613,5 +633,28 @@ describe("apply(): breaker refusal lives in a registry guard (G33)", () => {
     expect(guard({ name: "report_task_status", arguments: { status: "completed" } })).toBeUndefined();
     // Fresh breaker: our own tool is admitted too.
     expect(guard({ name: "run_device_action", arguments: { action: "back" } })).toBeUndefined();
+  });
+});
+
+describe("apply(): external ARTEMIS wiring (dsh-autogamer Phase 1)", () => {
+  it("registers autogamer_get_device_state alongside the two router tools", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, Config() as never);
+    expect(definitions.map((d) => d.name).sort()).toEqual([
+      "autogamer_get_device_state",
+      "report_task_status",
+      "run_device_action",
+    ]);
+  });
+
+  it("warms the preflight cache on mount unless autoPreflight is off", async () => {
+    const first: ToolDefinition[] = [];
+    await apply(fakeContext(first).context as never, Config() as never);
+    expect(preflightProbe.runs).toBeGreaterThanOrEqual(1);
+    preflightProbe.runs = 0;
+    const second: ToolDefinition[] = [];
+    await apply(fakeContext(second).context as never, Config({ autoPreflight: false }) as never);
+    expect(preflightProbe.runs).toBe(0);
   });
 });

@@ -68,9 +68,10 @@ describe("conformance: real DSH runtime tool registry (G5 Tier 1)", () => {
     expect(typeof ctx.agents.currentInitiator).toBe("function");
   });
 
-  it("registers exactly the two tools the preset advertises", async () => {
+  it("registers exactly the three tools the preset advertises", async () => {
     const ctx = await bootWithPlugin();
     expect(ctx.tools.schemas().map((schema: WireSchema) => schema.name).sort()).toEqual([
+      "autogamer_get_device_state",
       "report_task_status",
       "run_device_action",
     ]);

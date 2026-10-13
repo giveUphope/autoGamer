@@ -200,13 +200,26 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
         "actionServerCommand",
         "actionServerEnv",
         "allowedFails",
+        "artemisMcpCommand",
+        "artemisRepoPath",
+        "autoPreflight",
         "breakerCooldownMs",
         "defaultDeviceKey",
+        "defaultDeviceSerial",
+        "defaultProfile",
+        "defaultTimeoutSeconds",
         "devices",
         "discoverDevices",
+        "injectRules",
         "maxConcurrentDevices",
         "screenSize",
+        "scrcpyBitrateMbps",
+        "scrcpyEnabled",
+        "scrcpyMaxFps",
+        "scrcpyMaxWidth",
         "strictness",
+        "traceRetentionDays",
+        "uvPath",
       ].sort(),
     );
     for (const [name, sub] of Object.entries(fields)) {
@@ -243,6 +256,17 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     // G64 discovery stays off by default: turning it on spreads auto calls across machines,
     // which is a scheduling-semantics change and therefore an explicit operator decision.
     expect(resolved.discoverDevices).toBe(false);
+    // dsh-autogamer Phase 1: the external-provider wiring defaults to
+    // "unconfigured but harmless" — empty repo path, PATH uv/artemis, warm-up on.
+    expect(resolved.artemisRepoPath).toBe("");
+    expect(resolved.artemisMcpCommand).toEqual(["python", "-m", "mcp_server"]);
+    expect(resolved.uvPath).toBe("uv");
+    expect(resolved.defaultProfile).toBe("flash");
+    expect(resolved.defaultTimeoutSeconds).toBe(1800);
+    expect(resolved.defaultDeviceSerial).toBe("");
+    expect(resolved.injectRules).toBe(true);
+    expect(resolved.autoPreflight).toBe(true);
+    expect(resolved.traceRetentionDays).toBe(7);
     // The trap `configuredScreenSize()` exists to survive: an unset optional
     // tuple comes back as a truthy `[undefined, undefined]` array, never
     // undefined, so `if (config.screenSize)` always looks "configured".

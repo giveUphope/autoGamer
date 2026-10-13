@@ -233,6 +233,22 @@ systemPrompt section、inject 服务表、MCP 启动），砍掉 4（对话卡�
 （description 纯 string、installSection 改真实 API、contribute 改 section()、
 ready/dispose 改 effect）。六条硬冲突全部裁决完毕。
 
+### Phase 1 偏差与落地（2026-10-14）
+
+相对规格的偏差（均有出处，均已落锁）：
+1. CLI 后端砍掉（Phase 0 已裁决，此处归档）：旧 `run` 无 JSON 契约，适配器只留 MCP 后端。
+2. Config 无 description：schemastery builder 形态未证实，设置自动页不依赖它。
+3. 预检暖机经 apply 内 fire-and-forget（typings 无 ready 事件）；失败只进缓存，工具调用时重判。
+4. Helper 经 PATH 的 `artemis` 探测（非 `uv run artemis`，后者在调用方目录执行，探错环境）。
+5. settings inject 与 section 推迟到 Phase 2（待 live 挂载证明，G30 形态风险）。
+6. 后端接口最小化（其余 4 方法 Phase 2 随工具落地，不写抛错桩）。
+7. 新增 `artemisMcpCommand` 字段（规格假设固定启动命令，提供方安装形态各异）。
+8. live 验收推迟：无外部 ARTEMIS 提供方，真实设备状态与 R7 新会话验证待提供方配置后补；
+   mock/单测覆盖全部新路径（预检 7 项、后端映射与错误词汇、工具门禁与渲染）。
+新文件：`src/artemis/types.ts`、`src/artemis/mcpBackend.ts`、`src/env/preflight.ts`、
+`src/tools/getDeviceState.ts`；既有三处锁同步更新（双 conformance 断言、Config 全字段、
+G30 寿命断言）+ README Layout。
+
 ### Verify
 
 每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；

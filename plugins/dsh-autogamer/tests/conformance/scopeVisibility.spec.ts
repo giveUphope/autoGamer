@@ -71,7 +71,11 @@ describe("conformance: scope-mounted tools resolve through the scope key (G57)",
     } as never);
 
     expect(inside?.keyType).toBe("symbol");
-    expect(inside?.schemas).toEqual(["report_task_status", "run_device_action"]);
+    expect(inside?.schemas).toEqual([
+      "autogamer_get_device_state",
+      "report_task_status",
+      "run_device_action",
+    ]);
     expect(inside?.get).toBe("run_device_action");
     // Scoped registrations do not leak into the global view (D16 isolation).
     expect(root.tools.schemas()).toHaveLength(0);

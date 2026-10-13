@@ -1,8 +1,8 @@
 # dsh-autogamer
 
 AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`run_device_action` 执行工具、
-`report_task_status` 终态汇报、`autogamer` agent 预设，以及设备资源治理。队列、调度、UI、
-审批、会话记忆全部由宿主提供。
+`report_task_status` 终态汇报、`autogamer_get_device_state` 只读设备状态（外部 ARTEMIS 透传）、
+`autogamer` agent 预设，以及设备资源治理。队列、调度、UI、审批、会话记忆全部由宿主提供。
 
 - 方案与进度：[`../../docs/TODO.md`](../../docs/TODO.md)（活文档）
 - **动手前必读**：[`../../docs/migration/plugin-contract-rules.md`](../../docs/migration/plugin-contract-rules.md)（守则逐条；现行条款与范围看 [`registry.md`](../../docs/migration/registry.md)）
@@ -12,9 +12,13 @@ AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`r
 ## Layout
 
 ```
-src/index.ts                      插件入口：Config（原生 Schemastery）+ apply() 注册两个工具
+src/index.ts                      插件入口：Config（原生 Schemastery）+ apply() 注册三个工具
 src/tools/runDeviceAction.ts      执行工具：闸门 → MCP 转发 → 错误分类 → 路由日志
 src/tools/reportTaskStatus.ts     终态汇报（completed / blocked + tests_failed 双轴）
+src/tools/getDeviceState.ts       只读设备状态（预检门禁 + 外部 ARTEMIS 透传，Phase 1）
+src/artemis/types.ts              外部 ARTEMIS 后端接口（Phase 1：getDeviceState；其余 Phase 2）
+src/artemis/mcpBackend.ts         外部 ARTEMIS 的 MCP stdio 后端（懒连接，传输失败=environment）
+src/env/preflight.ts              环境预检 7 项（uv/Python/仓库/已安装/adb/设备/Helper），60 秒缓存
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
 src/devicePool.ts                 闸门之上的调度：parking / 只认已认领 / 全局并发 N / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）

@@ -15,6 +15,9 @@ import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js"
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction, deviceKeyOf, ActionIncidents } from "./tools/runDeviceAction.js";
+import { defineGetDeviceState } from "./tools/getDeviceState.js";
+import { McpArtemisBackend } from "./artemis/mcpBackend.js";
+import { createPreflight } from "./env/preflight.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -54,6 +57,26 @@ export const Config: object = z.object({
    * across machines instead of sharing one key), so it stays an explicit operator decision (#55).
    */
   discoverDevices: z.boolean().default(false),
+  /**
+   * dsh-autogamer rectification (Phase 1): external ARTEMIS provider wiring.
+   * No `.description()` calls on purpose — that builder form is unverified on
+   * the installed schemastery, and the settings auto-form works without
+   * descriptions. scrcpy/trace fields are Phase 4/5-owned and unread until
+   * then; injectRules is Phase 5-owned.
+   */
+  artemisRepoPath: z.string().default(""),
+  artemisMcpCommand: z.array(z.string()).default(["python", "-m", "mcp_server"]),
+  uvPath: z.string().default("uv"),
+  defaultProfile: z.union(["flash", "pro"]).default("flash"),
+  defaultTimeoutSeconds: z.number().default(1800),
+  defaultDeviceSerial: z.string().default(""),
+  injectRules: z.boolean().default(true),
+  autoPreflight: z.boolean().default(true),
+  scrcpyEnabled: z.boolean().default(true),
+  scrcpyMaxFps: z.number().default(30),
+  scrcpyMaxWidth: z.number().default(1080),
+  scrcpyBitrateMbps: z.number().default(4),
+  traceRetentionDays: z.number().default(7),
   /** P1-a validator strictness (S11 step 5); default "final" like upstream. */
   strictness: z.union(["off", "final", "checkpoints", "strict"]).default("final"),
 });
@@ -67,6 +90,10 @@ export const Config: object = z.object({
  * aspiration.
  */
 export const inject = ["tools", "attachments", "agents"];
+// NOTE (Phase 1): the scheme asks for 'settings' here too, but that service is
+// upstream-only (not installed) and an unresolvable inject in preset scope
+// leaves the row pending — the G30 shape. It lands in Phase 2 with a live
+// mount proof, together with the settings section.
 
 /** Makes each nudge's message id unique within this process, across agents. */
 let nudgeSequence = 0;
@@ -83,6 +110,19 @@ export type PluginConfig = {
   devices?: string[];
   maxConcurrentDevices?: number;
   discoverDevices?: boolean;
+  artemisRepoPath?: string;
+  artemisMcpCommand?: string[];
+  uvPath?: string;
+  defaultProfile?: "flash" | "pro";
+  defaultTimeoutSeconds?: number;
+  defaultDeviceSerial?: string;
+  injectRules?: boolean;
+  autoPreflight?: boolean;
+  scrcpyEnabled?: boolean;
+  scrcpyMaxFps?: number;
+  scrcpyMaxWidth?: number;
+  scrcpyBitrateMbps?: number;
+  traceRetentionDays?: number;
 };
 
 export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
@@ -100,6 +140,29 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     rosterSource: config.discoverDevices ? () => enumerateRoster() : undefined,
   });
   const incidents = new ActionIncidents();
+  // dsh-autogamer rectification (Phase 1): the external ARTEMIS backend and
+  // the shared preflight runner. The backend connects lazily on first use, so
+  // constructing it here spawns nothing; the preflight warm-up below only
+  // fills the 60s cache and never rejects.
+  const artemisBackend = new McpArtemisBackend({
+    command: config.artemisMcpCommand ?? ["python", "-m", "mcp_server"],
+    cwd:
+      typeof config.artemisRepoPath === "string" && config.artemisRepoPath.length > 0
+        ? config.artemisRepoPath
+        : undefined,
+    callTimeoutMs: config.actionCallTimeoutMs,
+  });
+  const preflight = createPreflight();
+  const checkEnv = () =>
+    preflight.run({
+      uvPath: config.uvPath ?? "uv",
+      artemisRepoPath: config.artemisRepoPath ?? "",
+    });
+  if (config.autoPreflight !== false) {
+    // No ctx.on('ready') exists in the typings (Phase 0): warm the cache
+    // without blocking the mount instead.
+    void checkEnv().catch(() => undefined);
+  }
   // G67: which #N handles exist is per (agent, device) and per plugin instance - the
   // list the model was last shown, nothing more.
   const observations = new LiveObservations();
@@ -324,15 +387,25 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.tools.register(
     defineTool<any, any>(defineReportTaskStatus(() => ledger.markReported(agentIdOfCall()))),
   );
+  ctx.tools.register(
+    defineTool<any, any>(
+      defineGetDeviceState({
+        backend: artemisBackend,
+        checkEnv,
+        defaultDeviceSerial: config.defaultDeviceSerial ?? "",
+      }),
+    ),
+  );
 
   // Tool registration ownership belongs to the tools registry itself (its
   // entries are cordis effects on this plugin's fiber, exactly like the
   // shipped tool-jobs plugin — it registers bare, with no effect wrapper).
-  // The only resource needing an explicit teardown is the MCP client. Cordis
+  // The resources needing an explicit teardown are the two MCP clients. Cordis
   // effect() runs the callback NOW and keeps its RETURNED function as the
   // disposer; passing teardown as the callback disposed our own tools during
   // apply() (changelogs #10, the G30 root cause).
   ctx.effect?.(() => () => {
     void client.dispose();
+    void artemisBackend.dispose();
   });
 }
