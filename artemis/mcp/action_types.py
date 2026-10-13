@@ -23,9 +23,9 @@ tests can all import it cheaply.
 from enum import Enum
 from typing import Any
 
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
 
-__all__ = ["ActionCode", "ActionResult"]
+__all__ = ["ActionCode", "ActionResult", "ObserveResult"]
 
 
 class ActionCode(str, Enum):
@@ -66,3 +66,26 @@ class ActionResult(BaseModel):
         **kwargs: Any,
     ) -> "ActionResult":
         return cls(ok=False, code=code, action=action, message=message, **kwargs)
+
+
+class ObserveResult(BaseModel):
+    """Post-action observation: persisted screenshot plus the parsed element list.
+
+    Restored verbatim from main for the mcp_server provider (G72 route 4): the
+    smart stack's observe/replay path consumes it; the new 15-tool action face
+    does not.
+    """
+
+    ok: bool
+    code: ActionCode = ActionCode.OK
+    message: str = ""
+    screenshot_path: str | None = None
+    image_name: str | None = None
+    """Stem of ``screenshot_path``; stable key used by trace/replay consumers."""
+    width: int | None = None
+    height: int | None = None
+    elements_text: str | None = None
+    elements: list[dict[str, Any]] = Field(default_factory=list)
+    hierarchy_ok: bool = True
+    """False when the screenshot succeeded but the UI hierarchy parse failed; callers
+    must then keep their previous element index rather than clobbering it."""

@@ -42,6 +42,23 @@ from artemis.runtime.awake_service import (
     start_awake_service,
 )
 
+# Task-daemon surface restored for the mcp_server provider (G72 route 4: the
+# provider subtree came back from main onto this branch). The DSH host replaced
+# the daemon in the plugin world, but the provider's task face imports these
+# names unconditionally at module level, so they must resolve.
+from artemis.runtime.daemon_client import (  # noqa: E402
+    ensure_daemon_running,
+    get_daemon_session,
+    get_daemon_status,
+    is_artemis_daemon,
+    is_daemon_running,
+    stop_task_on_daemon,
+    submit_batch_to_daemon,
+    submit_task_to_daemon,
+    wait_for_daemon_task,
+)
+from artemis.runtime.supervisor import ProcessSupervisor, process_supervisor  # noqa: E402
+
 __all__ = [
     "ADB_ENDPOINT_ID_ENV",
     "AdbEndpoint",
@@ -53,12 +70,23 @@ __all__ = [
     "DevicePool",
     "DeviceStatus",
     "InvalidAdbEndpoint",
+    "ProcessSupervisor",
     "current_adb_endpoint",
     "device_pool",
+    "ensure_daemon_running",
     "ensure_device_awake",
+    "get_daemon_session",
+    "get_daemon_status",
+    "is_artemis_daemon",
+    "is_daemon_running",
     "pid_is_alive",
+    "process_supervisor",
     "sanitize_device_state",
     "screen_awake_service",
     "shutdown_awake_service",
     "start_awake_service",
+    "stop_task_on_daemon",
+    "submit_batch_to_daemon",
+    "submit_task_to_daemon",
+    "wait_for_daemon_task",
 ]

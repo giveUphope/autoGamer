@@ -17,7 +17,59 @@
 The LLM/agent configuration (``config.llm``, ``config.agent``) and the output
 event writer were removed with the smart stack (D18): the DSH host owns LLM
 configuration, so importing this package must not pull in the LLM package.
+G72 route 4 note: the mcp_server provider subtree (restored from main) needs a
+slice of the agent config surface back. Those names resolve through the module
+``__getattr__`` below, which imports ``config.agent`` lazily — the action face
+keeps importing this package without pulling the LLM stack.
 """
+
+
+def __getattr__(name: str):  # noqa: D103 - PEP 562 lazy provider surface (G72)
+    _AGENT_SURFACE = {
+        "checker_overrides_for_level",
+        "CheckerConfig",
+        "ExplorerConfig",
+        "ExplorerVersion",
+        "FlashProfileConfig",
+        "MemoryRuntimeConfig",
+        "MemoryTranscriptConfig",
+        "OutputterConfig",
+        "ProProfileConfig",
+        "StepSummarizerConfig",
+        "VideoAnalyzerConfig",
+        "load_agent_config",
+        "resolve_explorer_version",
+        "run_tuning_for_profile",
+    }
+    _LLM_SURFACE = {
+        "AgentNodeWithFallback",
+        "CyFunctionDetector",
+        "LLM",
+        "LLMConfig",
+        "LLMUtilsNode",
+        "LLMUtilsNodeWithFallback",
+        "LLMWithFallback",
+        "deep_merge_llm_config",
+        "get_default_llm_config",
+        "initialize_llm_config",
+        "load_llm_config_override",
+        "parse_llm_config",
+        "validate_vertex_ai_credentials",
+    }
+    if name in _AGENT_SURFACE:
+        from artemis.config import agent
+
+        return getattr(agent, name)
+    if name in _LLM_SURFACE:
+        from artemis.config import llm
+
+        return getattr(llm, name)
+    if name in ("OutputConfig", "record_events", "prepare_output_files"):
+        from third_party.mobile_use.config import output as _output
+
+        return getattr(_output, name)
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
+
 
 from artemis.config.constants import (
     AGENT_CONFIG_FILENAME,

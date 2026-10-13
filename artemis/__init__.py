@@ -18,6 +18,12 @@ The smart agent stack (the ``Agent``/``Builders`` SDK, the ``artemis_client``
 task client and the LLM-facing interfaces) now lives in the DSH host. Importing
 :mod:`artemis` only re-exports the device driver base; the device-action MCP
 servers and drivers are imported directly by module path.
+
+G72 route 4: the mcp_server provider subtree is back on this branch as an
+external provider process, and ``third_party.mobile_use.main`` imports
+``Agent``/``Builders`` from this namespace. They resolve through the module
+``__getattr__`` below, which pulls :mod:`artemis.sdk` lazily — importing
+``artemis`` alone still does not drag in the LLM stack.
 """
 
 from artemis._version import __version__
@@ -27,3 +33,15 @@ __all__ = [
     "__version__",
     "BaseDeviceDriver",
 ]
+
+
+def __getattr__(name: str):  # noqa: D103 - PEP 562 lazy provider surface (G72)
+    if name == "Agent":
+        from artemis.sdk import Agent
+
+        return Agent
+    if name == "Builders":
+        from artemis.sdk.builders import Builders
+
+        return Builders
+    raise AttributeError(f"module {__name__!r} has no attribute {name!r}")
