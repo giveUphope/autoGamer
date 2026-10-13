@@ -18,7 +18,7 @@ import pytest
 
 from artemis.mcp.action_manifest import DEVICE_ACTIONS
 from artemis.mcp.action_types import ActionCode
-from artemis.mcp.actuators import Actuator, AdbActuator, MockActuator
+from artemis.mcp.actuators import AdbActuator, MockActuator
 
 
 @pytest.fixture
@@ -26,8 +26,7 @@ def actuator() -> MockActuator:
     return MockActuator(width=1000, height=2000)
 
 
-def test_mock_actuator_satisfies_protocol(actuator):
-    assert isinstance(actuator, Actuator)
+def test_mock_actuator_satisfies_contract(actuator):
     assert isinstance(actuator, AdbActuator)
     assert actuator.capabilities() == DEVICE_ACTIONS
     assert actuator.extensions() == []

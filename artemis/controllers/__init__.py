@@ -18,24 +18,12 @@ All new development should use artemis.drivers instead.
 
 from artemis.drivers.base import BaseDeviceDriver, KeyCode, ScreenData, SwipeDirection
 from artemis.drivers.factory import create_driver, get_driver
-from artemis.drivers.types import (
-    Bounds,
-    CoordinatesSelectorRequest,
-    PercentagesSelectorRequest,
-    SwipeRequest,
-    TapOutput,
-)
 
 __all__ = [
     "BaseDeviceDriver",
     "KeyCode",
     "ScreenData",
     "SwipeDirection",
-    "Bounds",
-    "CoordinatesSelectorRequest",
-    "PercentagesSelectorRequest",
-    "SwipeRequest",
-    "TapOutput",
     "create_driver",
     "get_driver",
 ]

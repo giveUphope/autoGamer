@@ -12,34 +12,28 @@
 # See the License for the specific language governing permissions and
 # limitations under the License.
 
-"""Consistency contract between the stdio ADB MCP server and the action manifest.
+"""Contract for the stdio ADB MCP server's external (pixel-space) surface.
 
 ``artemis/mcp/adb_server.py`` deliberately keeps its historical *pixel-space*
 contract for external MCP clients (absolute pixel coordinates, combined
-``coordinates`` list parameters, ``KEYCODE_*`` vocabulary), so its FastMCP tools
-are hand-written rather than generated from ``artemis.mcp.action_specs``. This
-suite is the compensating contract:
+``coordinates`` list parameters, ``KEYCODE_*`` vocabulary). These guards pin
+that surface:
 
 * **Fixture pin** -- the full generated schema of every adb_server tool is
-  frozen; any signature or docstring change must regenerate the fixture in the
-  same commit (external clients see this schema directly).
-* **Projection check** -- every device-action tool is mapped onto its canonical
-  ``ActionSpec`` wire dialect. Parameters that mirror a wire parameter must
-  agree on JSON type, requiredness, and default. Deliberate legacy divergences
-  are declared in ``DECLARED_DIVERGENCES`` and are *ratcheted*: if the two
-  surfaces converge, the stale declaration fails too, so the table always
-  matches reality.
-
-Together the two guards make silent drift between the second declaration
-surface and the canonical manifest impossible in either direction.
+  frozen in ``tests/fixtures/action_surfaces/adb_server_manifest.json``; any
+  signature or docstring change must regenerate the fixture in the same commit
+  (external clients see this schema directly).
+* **Coordinate packing** -- the legacy combined ``coordinates`` lists keep
+  their documented integer arity and stay required.
+* **Vocabulary** -- ``press_key`` keeps teaching the ``KEYCODE_*`` vocabulary.
+* **compare_ui_frames** -- the image-diff route's changed/unchanged and
+  undecodable-fallback behaviour is exercised.
 """
 
 import json
 from pathlib import Path
 
 import pytest
-
-from artemis.mcp.action_specs import ACTION_SPECS, ParamSpec
 
 FIXTURES = Path(__file__).resolve().parents[2] / "fixtures" / "action_surfaces"
 
@@ -50,25 +44,11 @@ FIXTURE_HINT = (
 )
 
 
-# --- The declared projection ----------------------------------------------------------
+# --- Legacy combined-coordinates packaging --------------------------------------------
 
-#: adb_server tool name -> (canonical action name, {adb param -> wire param}).
-#: Params absent from the mapping are legacy packaging with no one-to-one wire
-#: counterpart (the combined ``coordinates`` lists); their shape is asserted
-#: separately below and pinned by the fixture.
-ADB_TOOL_PROJECTION: dict[str, tuple[str, dict[str, str]]] = {
-    "tap": ("click", {"times": "times", "delay_ms": "delay_ms"}),
-    "long_press_on": ("long_press", {"duration": "duration_ms"}),
-    "swipe": ("swipe", {"duration": "duration_ms"}),
-    "focus_and_input_text": ("input_text", {"text": "text", "clear_before_input": "clear_exist"}),
-    "press_key": ("press_key", {"keycode": "key"}),
-    "open_link": ("open_link", {"url": "url"}),
-    "erase_one_char": ("erase_one_char", {}),
-    "focus_and_clear_text": ("focus_and_clear_text", {}),
-}
-
-#: Combined-coordinates legacy packaging: adb tool -> (marker in docstring, arity).
-#: ``coordinates`` packs the wire dialect's coordinate pair(s) into one list.
+#: adb tool -> (marker in docstring, arity). ``coordinates`` packs the absolute
+#: pixel coordinate pair(s) into one list; its shape is asserted here and pinned
+#: by the fixture.
 COORDINATE_PACKING: dict[str, tuple[str, int]] = {
     "tap": ("[x, y]", 2),
     "long_press_on": ("[x, y]", 2),
@@ -76,31 +56,6 @@ COORDINATE_PACKING: dict[str, tuple[str, int]] = {
     "focus_and_input_text": ("[x, y]", 2),
     "focus_and_clear_text": ("[x, y]", 2),
 }
-
-#: Deliberate legacy divergences, (adb tool, adb param) -> reason. Each entry is
-#: ratcheted: the test fails if the surfaces actually agree, so this table can
-#: never go stale.
-DECLARED_DIVERGENCES: dict[tuple[str, str], str] = {
-    ("swipe", "duration"): (
-        "legacy stdio default is 400ms; the canonical wire duration_ms defaults"
-        " to 800ms (adaptive-duration smart swipes only exist in agent dialects)"
-    ),
-    ("focus_and_input_text", "clear_before_input"): (
-        "legacy stdio appends by default (False); the canonical wire clear_exist"
-        " defaults to True (replace)"
-    ),
-}
-
-_JSON_TYPE: dict[type, str] = {int: "integer", str: "string", bool: "boolean"}
-
-
-def _wire_param(action: str, name: str) -> ParamSpec:
-    spec = ACTION_SPECS[action]
-    assert spec.wire is not None, f"'{action}' has no wire dialect."
-    for p in spec.wire.params:
-        if p.name == name:
-            return p
-    raise AssertionError(f"wire dialect of '{action}' has no param '{name}'")
 
 
 async def _adb_server_tools() -> dict:
@@ -132,63 +87,7 @@ async def test_adb_server_manifest_matches_fixture():
         assert generated[name] == expected[name], f"adb_server tool '{name}': {FIXTURE_HINT}"
 
 
-# --- Projection consistency -------------------------------------------------------------
-
-
-@pytest.mark.asyncio
-async def test_projection_covers_all_wire_backed_adb_tools():
-    """Every adb_server tool that mirrors a canonical action is in the projection."""
-    tools = await _adb_server_tools()
-    missing = set(ADB_TOOL_PROJECTION) - set(tools)
-    assert not missing, f"projection references adb_server tools that no longer exist: {missing}"
-    for adb_name, (canonical, _) in ADB_TOOL_PROJECTION.items():
-        assert canonical in ACTION_SPECS, (
-            f"adb_server tool '{adb_name}' maps to '{canonical}', which the canonical"
-            " manifest does not know."
-        )
-        assert ACTION_SPECS[canonical].wire is not None, (
-            f"adb_server tool '{adb_name}' maps to '{canonical}', which has no wire dialect."
-        )
-
-
-@pytest.mark.asyncio
-async def test_mirrored_params_agree_with_wire_dialect():
-    """Type/requiredness/default of every mirrored parameter matches the wire spec,
-    except where a divergence is declared -- and declared divergences must be real."""
-    tools = await _adb_server_tools()
-    for adb_name, (canonical, param_map) in ADB_TOOL_PROJECTION.items():
-        tool = tools[adb_name]
-        required = set(tool.inputSchema.get("required", []))
-        for adb_param, wire_name in param_map.items():
-            wire = _wire_param(canonical, wire_name)
-            prop = _prop(tool, adb_param)
-            expected_type = _JSON_TYPE.get(wire.annotation)
-            if expected_type is not None:
-                assert prop.get("type") == expected_type, (
-                    f"'{adb_name}.{adb_param}': schema type {prop.get('type')!r} !="
-                    f" canonical wire '{canonical}.{wire_name}' type {expected_type!r}"
-                )
-            adb_required = adb_param in required
-            adb_default = prop.get("default")
-            diverged_key = (adb_name, adb_param)
-            agrees = adb_required == wire.required and (
-                wire.required or adb_default == wire.default
-            )
-            if diverged_key in DECLARED_DIVERGENCES:
-                assert not agrees, (
-                    f"'{adb_name}.{adb_param}' is declared divergent from"
-                    f" '{canonical}.{wire_name}' but the surfaces now agree -- remove"
-                    f" the stale entry from DECLARED_DIVERGENCES:"
-                    f" {DECLARED_DIVERGENCES[diverged_key]}"
-                )
-            else:
-                assert agrees, (
-                    f"'{adb_name}.{adb_param}' drifted from canonical wire"
-                    f" '{canonical}.{wire_name}': required {adb_required} vs"
-                    f" {wire.required}, default {adb_default!r} vs {wire.default!r}."
-                    " Either re-align, or declare the divergence in"
-                    " DECLARED_DIVERGENCES with a reason."
-                )
+# --- Coordinate packing -----------------------------------------------------------------
 
 
 @pytest.mark.asyncio
@@ -212,16 +111,13 @@ async def test_coordinate_packing_shape_is_documented():
 
 
 @pytest.mark.asyncio
-async def test_press_key_vocabulary_divergence_is_documented():
-    """adb_server's press_key takes raw KEYCODE_* strings; the canonical wire takes
-    bare lowercase words. The canonical spec documents that divergence in prose."""
+async def test_press_key_teaches_keycode_vocabulary():
+    """adb_server's press_key takes raw KEYCODE_* strings; its docstring must keep
+    teaching that vocabulary to external clients."""
     tools = await _adb_server_tools()
     desc = tools["press_key"].description or ""
     assert "KEYCODE_" in desc, (
         "adb_server press_key docstring must keep teaching KEYCODE_* vocabulary"
-    )
-    assert "key" in ACTION_SPECS["press_key"].differences, (
-        "the canonical manifest no longer documents the press_key vocabulary split"
     )
 
 

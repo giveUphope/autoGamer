@@ -22,26 +22,12 @@ from artemis.drivers.base import (
 )
 from artemis.drivers.factory import create_driver, get_driver
 from artemis.drivers.mock.mock_driver import MockDeviceDriver
-from artemis.drivers.types import (
-    Bounds,
-    CoordinatesSelectorRequest,
-    DeviceInfo,
-    PercentagesSelectorRequest,
-    SwipeRequest,
-    TapOutput,
-)
 
 __all__ = [
     "BaseDeviceDriver",
     "KeyCode",
     "ScreenData",
     "SwipeDirection",
-    "Bounds",
-    "CoordinatesSelectorRequest",
-    "PercentagesSelectorRequest",
-    "SwipeRequest",
-    "TapOutput",
-    "DeviceInfo",
     "create_driver",
     "get_driver",
     "MockDeviceDriver",

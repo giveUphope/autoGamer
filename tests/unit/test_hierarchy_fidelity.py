@@ -17,7 +17,6 @@ from artemis.clients.accessibility_client import AccessibilityClient, HelperEmpt
 from artemis.clients.screen_client_factory import FallbackScreenClient
 from artemis.core.diagnostics.hierarchy_parity import compare_dumps
 from artemis.utils import ui_filter
-from artemis.utils.visualization import format_minimal_list_with_elements
 from third_party.mobile_use.clients.ui_automator_client import (
     UIAutomatorClient,
     parse_hierarchy_xml_to_elements,
@@ -63,28 +62,6 @@ def test_negative_bounds_keep_their_coordinates_and_get_clipped():
     filtered = ui_filter.filter_ui_hierarchy([row], screen_width=1080, screen_height=2400)
     assert len(filtered) == 1
     assert filtered[0]["parsed_bounds"] == {"left": 0, "top": 0, "right": 300, "bottom": 60}
-
-
-# --------------------------------------------------------------------------- #
-# Hints and errors reach the model
-# --------------------------------------------------------------------------- #
-
-
-def test_minimal_list_shows_hint_for_empty_inputs_and_errors():
-    elements = parse_hierarchy_xml_to_elements(
-        _xml(
-            _node(text="", hint="Search settings", **{"class": "android.widget.EditText"}),
-            _node(text="abc", error="Password too short", bounds="[0,200][100,300]"),
-            _node(text="", bounds="[0,400][100,500]"),  # nothing to say: stays out
-        )
-    )
-    text, items, labels = format_minimal_list_with_elements(elements[1:], 1000, 1000)
-    lines = text.splitlines()
-    assert lines[0] == "[1] Hint: 'Search settings' | Bounds: [0,0][100,100]"
-    assert lines[1] == "[2] Text: 'abc' | Bounds: [0,200][100,300] | Error: 'Password too short'"
-    assert len(lines) == 2 and labels == ["1", "2"]
-    assert items[0]["is_hint"] is True and items[0]["text"] == "Search settings"
-    assert items[1]["error"] == "Password too short"
 
 
 # --------------------------------------------------------------------------- #

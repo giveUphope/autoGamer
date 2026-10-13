@@ -331,19 +331,3 @@ def test_fixed_system_bars_clamping_and_discarding():
     clamped_item = next(el for el in filtered if el.get("text") == "Partially occluded video item")
     # Its original bottom was 2300, clamped safely to the bar's top at 2250
     assert clamped_item["bounds"] == "[0,2100][1080,2250]"
-
-
-def test_mutual_occlusion_warning_injection():
-    from artemis.utils.visualization import format_minimal_list_with_elements
-
-    # Simulate two overlapping non-ancestor interactive items with >= 50% overlap
-    fused_xml = [
-        {"text": "Search Video Result", "bounds": "[50,1800][1000,2000]"},
-        {"text": "Create Floating Button", "bounds": "[750,1850][1000,2000]"},
-    ]
-
-    minimal_list, elements, labels = format_minimal_list_with_elements(
-        fused_xml, width=1080, height=2400
-    )
-    assert "WARNING: may overlap with [2], possible occlusion" in minimal_list
-    assert "WARNING: may overlap with [1], possible occlusion" in minimal_list

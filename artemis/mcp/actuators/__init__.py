@@ -14,8 +14,7 @@
 
 """Actuator backends: pluggable implementations of the device action contract."""
 
-from artemis.mcp.actuators.base import Actuator
 from artemis.mcp.actuators.adb import AdbActuator
 from artemis.mcp.actuators.mock import MockActuator
 
-__all__ = ["Actuator", "AdbActuator", "MockActuator"]
+__all__ = ["AdbActuator", "MockActuator"]
