@@ -128,10 +128,18 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 
 **未证（别当已证）**
 
-- `G59` 记的是本机 `--dump-config-schema` **常驻**失败，那一定论在断链之前；本节只解释**当前这次** rc=1 的直接成因，
-  能不能回收 G59 的「常驻」二字**未复现**——要在一个 link 完好、bundles 指现存包名的 profile 上重跑才可判。
-- `remove_bundle` 对「带 `error` 的死链组合包」能否一路走完（`enabled → selectBundle(false) → pnpm remove`），只读过源码，
-  **本机未执行**。→ 在办工作记 `G71`。
+- ~~`G59` 的「常驻」二字未复现~~ ⇒ **2026-10-13 已定案（本机实测）**：G71 修好后同一条命令仍 rc=1，
+  但两条 bundle 加载错已消失，剩下 5 条 `unrecognized Loader tree carrier` 与 `--dump-config` 的条目表逐一对位，
+  落在 **`preset-standard`(179) / `preset-ptc`(180) / `preset-minimal`(181) / `preset-cordis`(182) /
+  `preset-autogamer`(184)** —— **前四个是宿主自带的 shipped preset，第五个才是我们的**，五者同错同形。
+  对照：`--profile headless` 与 `--profile desktop` 的 schema dump 同样 rc=1 但 carrier 错 **0 条**（不含这些行），
+  而 `--dump-config` 全程 rc 0、`unmatched` 0。⇒ **「常驻失败」现在可以说成：web profile 必现、成因在宿主
+  schema dumper 走 preset 子项的固有行为、与本包形状无关**。
+  仍未证的一条：为什么同一棵树在 `--dump-config` 与 `--dump-config-schema` 两条路径上宽严不同。
+- ~~`remove_bundle` 对带 `error` 的死链组合包能否一路走完，本机未执行~~ ⇒ **本机已执行**（G71）：
+  `dsh plugin --profile web remove autogamer-device` rc 0，`dsh.profile.bundles` 里旧名**直接消失**、
+  `dependencies` 与 lock 同步清掉 —— 走的是 `reconcile()` 而非 `removeBundle()` 那条路径，
+  效果等价且**零审批**（见本节第 1 条的收回段）。
 - 0.2.1-alpha.\* 相对 rc.2 在这个面上的变化：未读 CHANGELOG，未实测。
 
 **本节出处**（补入 §七 之外的增量）
