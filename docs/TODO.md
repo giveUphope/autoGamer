@@ -15,10 +15,10 @@
 | `legacy-fork-v1` | 初版二开（在 fork 上二次开发），未达效果，已归档 |
 | `legacy-fork-v2-dsh-plugin` | 第二次尝试：收缩为 DSH 插件形态；**参考归档**（含全部历史实现与调研台账） |
 
-- **待用户在 GitHub 上完成一项**（本机 token 无 admin 权限，`gh repo edit --default-branch` 返 403）：
-  把**远端默认分支**从 `legacy-fork-v2-dsh-plugin`（旧名 `dsh-plugin-contraction`）切到 `main`。
-  完成前，远端那条**旧名 ref** `dsh-plugin-contraction` 删不掉——GitHub 不允许删除默认分支；
-  它的内容与 `legacy-fork-v2-dsh-plugin` 完全相同，删不删都不影响内容完整性。
+- **[已结清 2026-10-14] 远端默认分支已切到 `main`**（用户操作，实测两路读数一致：
+  `gh api repos/giveUphope/autoGamer --jq .default_branch` → `main`；`git ls-remote --symref origin HEAD` → `ref: refs/heads/main`）。
+  随之删掉旧名 ref `dsh-plugin-contraction`（此前删不掉：GitHub 不允许删除默认分支）。远端现在只有三个按用途命名的 ref：
+  `main` / `legacy-fork-v1` / `legacy-fork-v2-dsh-plugin`。
 - **阶段：未开工**。本分支为新建立的空白分支；插件工程与全部 py 实现都不在此处（前者待搬迁，后者按 D19 归零）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、只留 LICENSE）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。
@@ -33,10 +33,10 @@
   —— 对照能证明「是钩子拦的」。边界与重装方法见 `AGENTS.md`「远端与 PR 纪律」。
   **护栏不覆盖**：PR 的创建（任何本地钩子都管不到，只能靠规则与正确判据），以及**不可达目标**的推送
   （`pre-push` 在连接之后才运行，连接失败就看不到钩子消息）。
-- **跨库 PR `google/artemis#182` 仍未关闭（实测）**：用户 2026-10-14 表示已关闭，但同一查询
-  `gh pr view 182 --repo google/artemis --json state,closedAt` 返回 `{"state":"OPEN","closedAt":null}`，
-  与关闭前读数相同 ⇒ **该次关闭未生效**（或关到了别的对象）。页面：`https://github.com/google/artemis/pull/182`
-  （本机 token 对该仓库无写权限，只能由你在页面上操作）。任一时刻可用上面那条命令复查。
+- **[已结清 2026-10-14] 跨库 PR `google/artemis#182` 已关闭**（用户操作，实测 `state: CLOSED`、
+  `closedAt: 2026-10-13T17:34:01Z`；并复查 `gh pr list --repo google/artemis --author giveUphope --state open` **为空**
+  ⇒ 上游不再有本 fork 的任何开放 PR）。
+  ⚠️ 过程记一笔：第一次报告「已关闭」时实测仍是 OPEN（`closedAt: null`）——**只有复查读数才算数**（R27 / R28）。
 - **教训（写进 AGENTS）**：`gh pr list --repo <本仓>` **只列 base 在本仓的 PR**，看不到「从本仓发到上游」的 PR
   ——曾据此得出「无开放 PR」的错误结论并用它论证改名无连带影响（R27：一个不能失灵的判据等于没判据）。
 
