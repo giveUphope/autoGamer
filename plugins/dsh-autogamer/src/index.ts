@@ -23,7 +23,7 @@ import { defineDiagnose } from "./tools/diagnose.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
-import { setupRulesInjection } from "./prompt/rulesInjector.js";
+import { setupRulesInjection, type RulesInjectionOutcome } from "./prompt/rulesInjector.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -188,7 +188,11 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     preflight.run({
       uvPath: config.uvPath ?? "uv",
       artemisRepoPath: config.artemisRepoPath ?? "",
+      defaultDeviceSerial: config.defaultDeviceSerial ?? "",
     });
+  // G80: the rules outcome is recorded here so `autogamer_diagnose` can report *why* the
+  // provider contract is missing instead of the mount quietly skipping it.
+  let rulesOutcome: RulesInjectionOutcome = "disabled";
   if (config.autoPreflight !== false) {
     // No ctx.on('ready') exists in the typings (Phase 0): warm the cache
     // without blocking the mount instead.
@@ -442,7 +446,15 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   );
   ctx.tools.register(defineTool<any, any>(defineManageTask(autogamerDeps)));
   ctx.tools.register(defineTool<any, any>(defineInspectTrace(autogamerDeps)));
-  ctx.tools.register(defineTool<any, any>(defineDiagnose(autogamerDeps)));
+  ctx.tools.register(
+    defineTool<any, any>(
+      defineDiagnose({
+        ...autogamerDeps,
+        rulesStatus: () => rulesOutcome,
+        artemisRepoPath: config.artemisRepoPath ?? "",
+      }),
+    ),
+  );
 
   // Tool registration ownership belongs to the tools registry itself (its
   // entries are cordis effects on this plugin's fiber, exactly like the
@@ -461,7 +473,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // prompt via the official section() API. Enhancement-only: a missing repo,
   // file, or content skips with a warning inside setupRulesInjection, so this
   // call never throws and never blocks the mount.
-  setupRulesInjection(
+  rulesOutcome = setupRulesInjection(
     ctx.systemPrompt,
     {
       artemisRepoPath: config.artemisRepoPath ?? "",

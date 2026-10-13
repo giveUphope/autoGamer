@@ -61,7 +61,7 @@ describe("rules injector: the guarded path to section()", () => {
         read: probe.deps.read,
       },
     );
-    expect(result).toBe(false);
+    expect(result).toBe("disabled");
     expect(touched).toBe(false);
     expect(probe.sections).toHaveLength(0);
   });
@@ -74,7 +74,7 @@ describe("rules injector: the guarded path to section()", () => {
       (message) => probe.warnings.push(message),
       probe.deps,
     );
-    expect(result).toBe(false);
+    expect(result).toBe("no-repo");
     expect(probe.warnings.join()).toContain("artemisRepoPath is empty");
   });
 
@@ -87,7 +87,7 @@ describe("rules injector: the guarded path to section()", () => {
       (message) => probe.warnings.push(message),
       probe.deps,
     );
-    expect(result).toBe(false);
+    expect(result).toBe("missing-file");
     expect(probe.sections).toHaveLength(0);
   });
 
@@ -103,7 +103,7 @@ describe("rules injector: the guarded path to section()", () => {
         (message) => unreadable.warnings.push(message),
         unreadable.deps,
       ),
-    ).toBe(false);
+    ).toBe("read-failed");
     const empty = harness({ files: { [rulesFilePath("/r")]: "  \n " } });
     expect(
       setupRulesInjection(
@@ -112,7 +112,7 @@ describe("rules injector: the guarded path to section()", () => {
         (message) => empty.warnings.push(message),
         empty.deps,
       ),
-    ).toBe(false);
+    ).toBe("empty");
     expect(empty.sections).toHaveLength(0);
   });
 
@@ -124,7 +124,7 @@ describe("rules injector: the guarded path to section()", () => {
       (message) => probe.warnings.push(message),
       probe.deps,
     );
-    expect(result).toBe(true);
+    expect(result).toBe("injected");
     expect(probe.sections).toEqual([
       { name: RULES_SECTION_NAME, order: RULES_SECTION_ORDER, text: "# testing mindset\n" },
     ]);

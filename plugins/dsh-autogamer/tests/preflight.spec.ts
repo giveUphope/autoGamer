@@ -11,7 +11,7 @@ import {
   type PreflightDeps,
 } from "../src/env/preflight.js";
 
-const INPUT = { uvPath: "uv", artemisRepoPath: "/repo" };
+const INPUT = { uvPath: "uv", artemisRepoPath: "/repo", defaultDeviceSerial: "" };
 
 function scripted(
   answers: Record<string, Partial<ExecResult>>,
@@ -113,7 +113,7 @@ describe("preflight: the seven checks", () => {
 
   it("fails the repo check on an empty path or a missing manifest", async () => {
     const { deps } = scripted(healthy());
-    const empty = await createPreflight(deps).run({ uvPath: "uv", artemisRepoPath: "  " });
+    const empty = await createPreflight(deps).run({ ...INPUT, artemisRepoPath: "  " });
     expect(failedId(empty)).toContain("artemis-repo");
     const missing = scripted(healthy(), { exists: () => false });
     const gone = await createPreflight(missing.deps).run(INPUT);
@@ -168,7 +168,7 @@ describe("preflight: the seven checks", () => {
 
   it("never probes the venv without a repo path, and says so", async () => {
     const { calls, deps } = scripted({ ...healthy(), "uv tool list": { code: 0, stdout: "sometool v2" } });
-    const result = await createPreflight(deps).run({ uvPath: "uv", artemisRepoPath: "" });
+    const result = await createPreflight(deps).run({ ...INPUT, artemisRepoPath: "" });
     expect(failedId(result)).toEqual(["artemis-repo", "artemis-installed"]);
     // `preflightErrorText` reports only the FIRST failure, so assert this check's own detail.
     const installed = result.checks.find((check) => check.id === "artemis-installed");
@@ -216,6 +216,30 @@ describe("preflight: the seven checks", () => {
     });
     const result = await createPreflight(deps).run(INPUT);
     expect(result.ok).toBe(true);
+  });
+
+  it("asks the helper about the configured device when the fleet is ambiguous (G79)", async () => {
+    const { calls, deps } = scripted({
+      ...healthy(),
+      "artemis helper status": { code: 1, stderr: "Several devices are ready; pass --serial, or --all" },
+      "artemis helper status --serial 127.0.0.1:16384": { code: 0, stdout: "helper: installed (v3)" },
+    });
+    const result = await createPreflight(deps).run({ ...INPUT, defaultDeviceSerial: "127.0.0.1:16384" });
+    expect(failedId(result)).toEqual([]);
+    expect(calls.map((command) => command.join(" "))).toContain("artemis helper status --serial 127.0.0.1:16384");
+  });
+
+  it("passes --serial to the project-venv form too (G79)", async () => {
+    const { calls, deps } = scripted({
+      ...healthy(),
+      "artemis helper status --serial em-1": { code: 1, errorMessage: "ENOENT: spawn artemis ENOENT" },
+      "uv run --project /repo --no-sync artemis helper status --serial em-1": { code: 0, stdout: "helper: installed (v3)" },
+    });
+    const result = await createPreflight(deps).run({ ...INPUT, defaultDeviceSerial: "em-1" });
+    expect(result.ok).toBe(true);
+    expect(calls.map((command) => command.join(" "))).toContain(
+      "uv run --project /repo --no-sync artemis helper status --serial em-1",
+    );
   });
 
   it("fails the helper check with its own fix, not the adb one", async () => {

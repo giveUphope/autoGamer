@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#81 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）；#79 预检承认 project-venv 提供方形态（G77 结案，含三条变异的证伪记录）；#80 doctor 收尾不再提示已删命令（G73 结案，新增一条吃已注册命令集的防腐烂锁）；#81 门禁自测的注入变异会腐烂——悬空 id 改由登记表推导。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#82 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）；#79 预检承认 project-venv 提供方形态（G77 结案，含三条变异的证伪记录）；#80 doctor 收尾不再提示已删命令（G73 结案，新增一条吃已注册命令集的防腐烂锁）；#81 门禁自测的注入变异会腐烂——悬空 id 改由登记表推导；#82 预检按配置设备问 helper、rules 注入暴露「为什么没注入」（G79 + G80 结案，真机七项首次全绿）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -3449,6 +3449,51 @@ caught = [p for p in problems if "G77" in p]
 教训：判据的自测里**任何写死的编号都是定时炸弹**——它会在那一天真的被登记时安静地停止工作。
 推导 + 自证（断言变异目标确实处于"非法"状态）才是可复跑的证明。
 
+### #82 预检按配置设备问 helper，rules 注入把「为什么没注入」暴露出来（G79 + G80 结案）
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（两条差距同批）
+- **优先级**: 高（预检是每次工具调用的门禁；rules 缺失此前不可见）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+两条都是 G77/#79 修完后在同一台真机上暴露的：
+
+1. **G79**：`helperCheck` 跑 `artemis helper status` **不传设备**。一台 MuMu 暴露 4 条 adb 传输（G75），
+   提供方直接拒绝：实测 detail = `Several devices are ready; pass --serial, or --all to target every idle one:
+   127.0.0.1:16384, 127.0.0.1:5555, 127.0.0.1:7555, emulator-5554`。`artemis helper status` 吃 `--serial`
+   （`helper.py:39-42,71-77`）但**没有 `--all`**。
+2. **G80**：`rulesInjector.ts` 读 `<artemisRepoPath>/mcp_server/rules.md`，本分支该文件不存在
+   （`main` 上有），而失败策略是「warn + 跳过、永不抛」，`index.ts` 又把 `setupRulesInjection` 的
+   `boolean` 返回值**丢掉了** ⇒ 四种不同原因（关掉 / 没配仓库 / 没文件 / 读失败 / 空）在外部全都长得一样，
+   「rules 注入已落地」这句话在 live 侧无从判断。
+
+#### 整改方案与实施
+
+1. `PreflightInput` 加 **必填** `defaultDeviceSerial`（必填是刻意的：可选就是这次漏传的成因），
+   `helperCheck` 在值非空时给 **PATH 与 project-venv 两条形态**都追加 `--serial <值>`，为空保持现行为；
+   `index.ts` 用 `config.defaultDeviceSerial` 填。
+2. `setupRulesInjection` 返回值 `boolean` → 结构化结果
+   `injected / disabled / no-repo / missing-file / read-failed / empty`；`index.ts` 记下它，
+   `defineDiagnose` 新增 `rulesStatus()` 与 `artemisRepoPath` 两个依赖，非 `injected` 且非 `disabled` 时
+   往 `recommendations` 追加一条写明原因与路径的告警。**没有新增第 8 项阻塞预检**——七项 id 集有锁，
+   且缺 rules 不该阻断设备动作；`disabled` 是操作者的选择，保持安静。
+
+#### 验收标准
+
+- [x] `pnpm run build` rc 0；`pnpm run test` = **32 files / 293 passed / 1 skipped**（原 289，+4 条新锁）
+- [x] **R27 变异三条**：MA 去掉告警追加 → 红 1 条；MB 把 `disabled` 也纳入告警 → 红 1 条；
+      MC `helperCheck` 永远不带 `--serial` → **红 2 条**（两条 G79 锁各一）。三条均先断言锚点命中数 = 1，还原后比对相同
+- [x] **真机验收**：`defaultDeviceSerial=""` → `FAIL helper`（仍是那句 fleet 拒绝）；
+      `="127.0.0.1:16384"` → **`PASS helper`，且七项预检 `overall ok: true`** —— 这条链上第一次全绿
+- [x] G80 的 live 证据：对 `D:/DEV/autoGamer` 真跑一次注入，结果 = **`missing-file`**（可机读，不再是一个 `false`）
+- [x] 文档双门禁 rc 0
+
+附带发现（不在本条修）：`tsconfig.json` 的 `include` 只有 `src` ⇒ **插件的 32 个 spec 从未被类型检查过**；
+把 tests 纳入一次 `tsc` 实测 **144 条错误**（`apply.spec.ts` 一个文件 45 条）。这直接削弱「必填字段」这类守卫，
+另立 **G81**。
+
 ## 已关闭差距史（G*）
 
 > 编号唯一权威仍是 `migration/registry.md`；本节承载「当初是什么问题、怎么关掉的、证据在哪」，由 `scripts/check_doc_registry.py` 作为已关闭编号的定义来源之一。
@@ -3527,3 +3572,5 @@ caught = [p for p in problems if "G77" in p]
 | G70 | dispatch-only py 测试步从未绿过 | 放弃：成因未定（复现被叫停），整仓三集命令面未收敛 | 本文件 **#71** |
 | G77 | 预检把「已安装」等同于 `uv tool list` 命中，且 helper 项假定 PATH 上有 `artemis` | 两项都承认 project-venv / editable 形态，共用只读探针 `uv run --project <repo> --no-sync artemis …`；5 条新锁 + 3 条变异证伪 + 真机预检转 PASS | 本文件 **#79** |
 | G73 | `artemis doctor` 收尾提示已删命令 `artemis run` | 两处 Panel 改指 `artemis mcp --type adb`；旧锁同批改；新增一条吃「已注册命令集」的防腐烂锁，变异证伪成立 | 本文件 **#80** |
+| G79 | 预检 `helper` 不传设备序列号，多传输同机被提供方拒绝 | `PreflightInput` 加**必填** `defaultDeviceSerial`，PATH 与 venv 两条形态都追加 `--serial`；真机七项预检首次全绿 | 本文件 **#82** |
+| G80 | rules 注入缺文件时静默 no-op，`boolean` 返回值被丢弃、四种原因不可分 | 返回值改结构化结果，经 `autogamer_diagnose` 的 `recommendations` 暴露原因与路径；不新增第 8 项阻塞预检 | 本文件 **#82** |

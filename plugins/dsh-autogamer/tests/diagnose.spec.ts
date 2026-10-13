@@ -8,6 +8,7 @@ import { describe, expect, it } from "vitest";
 import type { ArtemisBackend, Diagnosis } from "../src/artemis/types.js";
 import type { PreflightResult } from "../src/env/preflight.js";
 import { defineDiagnose } from "../src/tools/diagnose.js";
+import type { RulesInjectionOutcome } from "../src/prompt/rulesInjector.js";
 
 const HEALTHY: PreflightResult = { ok: true, checks: [], finishedAt: "t" };
 const BROKEN: PreflightResult = {
@@ -25,7 +26,12 @@ const REPORT: Diagnosis = {
   recommendations: ["restart adb"],
 };
 
-function defineWith(options?: { report?: Diagnosis; env?: PreflightResult; failBackend?: Error }): {
+function defineWith(options?: {
+  report?: Diagnosis;
+  env?: PreflightResult;
+  failBackend?: Error;
+  rulesStatus?: RulesInjectionOutcome;
+}): {
   tool: ReturnType<typeof defineDiagnose>;
   serials: (string | undefined)[];
 } {
@@ -46,6 +52,8 @@ function defineWith(options?: { report?: Diagnosis; env?: PreflightResult; failB
     backend,
     checkEnv: async () => options?.env ?? HEALTHY,
     defaultDeviceSerial: "",
+    rulesStatus: () => options?.rulesStatus ?? "injected",
+    artemisRepoPath: "/repo",
   });
   return { tool, serials };
 }
@@ -67,6 +75,24 @@ describe("diagnose: the merge", () => {
       recommendations: ["restart adb"],
     });
     expect((value.recent_crashes as { package?: string }[])[0]?.package).toBe("com.x");
+  });
+
+  it("surfaces a missing provider rules file instead of skipping it silently (G80)", async () => {
+    const { tool } = defineWith({ rulesStatus: "missing-file" });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    const recos = value.recommendations as string[];
+    const warning = recos.find((entry) => entry.includes("rules are NOT in the model's context"));
+    expect(warning).toBeDefined();
+    expect(warning).toContain("reason: missing-file");
+    expect(warning).toContain("mcp_server/rules.md");
+    // the provider's own recommendation must survive the append
+    expect(recos).toContain("restart adb");
+  });
+
+  it("stays quiet when the operator turned rules injection off on purpose", async () => {
+    const { tool } = defineWith({ rulesStatus: "disabled" });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect((value.recommendations as string[]).some((entry) => entry.includes("rules are NOT"))).toBe(false);
   });
 
   it("appends local preflight fixes instead of throwing on a broken environment", async () => {

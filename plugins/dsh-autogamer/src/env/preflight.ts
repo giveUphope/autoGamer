@@ -26,6 +26,12 @@ import { join } from "node:path";
 export interface PreflightInput {
   uvPath: string;
   artemisRepoPath: string;
+  /**
+   * G79: required on purpose. `artemis helper status` refuses to answer when several
+   * transports are ready ("pass --serial, or --all"), and an optional field is exactly
+   * how that got missed - the provider has no `--all`, so the caller must name a device.
+   */
+  defaultDeviceSerial: string;
 }
 
 export interface ExecResult {
@@ -272,14 +278,19 @@ export function createPreflight(deps?: Partial<PreflightDeps>): PreflightRunner 
   }
 
   async function helperCheck(input: PreflightInput): Promise<PreflightCheck> {
-    const onPath = await d.run(["artemis", "helper", "status"]);
+    // G79: with more than one ready transport the provider refuses to guess
+    // (`Several devices are ready; pass --serial`), and `helper status` has no
+    // --all - so ask about the configured device when there is one.
+    const serial = (input.defaultDeviceSerial ?? "").trim();
+    const args = serial.length > 0 ? ["helper", "status", "--serial", serial] : ["helper", "status"];
+    const onPath = await d.run(["artemis", ...args]);
     if (onPath.code === 0) return pass("helper", head(onPath.stdout));
     if (repoConfigured(input)) {
-      const venv = await d.run(venvProbe(input, ["helper", "status"]), { timeoutMs: 30_000 });
+      const venv = await d.run(venvProbe(input, args), { timeoutMs: 30_000 });
       if (venv.code === 0) return pass("helper", head(venv.stdout));
       return fail(
         "helper",
-        `neither form answered: PATH \`artemis helper status\` exited ${onPath.code}, ` +
+        `neither form answered: PATH \`artemis ${args.join(" ")}\` exited ${onPath.code}, ` +
           `project venv exited ${venv.code}: ${head(`${venv.stdout}\n${venv.stderr}`)}`,
         `${INSTALL_FIX}, then \`artemis helper install\``,
       );

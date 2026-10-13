@@ -8,22 +8,8 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前未关闭差距 **`G71` / `G72` / `G74` / `G75` / `G76` / `G78` / `G79` / `G80`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
-  `G77` 已随 CHANGELOGS **#79** 结案，`G73` 已随 **#80** 结案。
-- 2026-10-13 **Step 4 · 收益优先级调研**（四路并行：本仓改动面审计 / Android-adb 一手口径 / DSH 交付与 live 路径 / 提供方形状）。
-  四件事改变了排序，其中**两条是收回我自己写错的结论**：
-  - **收回**：「`dsh plugin remove` 只删依赖、CLI 侧不存在卸载命令」——`operations.ts:88-97` 的 `reconcile()` 在
-    pnpm 成功后就把消失的名字从 `dsh.profile.bundles` 剔除（且仅在 `exitCode===0 && !stalled`）。
-    ⇒ **G71 存在 0 审批路径**，它不再是"要用户在 UI 里点"的独占门槛，成本评级从「需人 + 需宿主」降到「一条命令」。
-  - **收回**：G74 里「`{index}` 改吃 `parsed_bounds`」——`parsed_bounds` **早已被优先采用并有锁**
-    （`apply.spec.ts:62`、`dedup.spec.ts:17`）。写待办前没核现状，正是守则 R25 禁的那种事。
-  - **新立 G80**：`rulesInjector.ts:16` 读 `<repo>/mcp_server/rules.md`，本分支没有该文件而失败策略是 warn-skip
-    ⇒ rules 注入在真环境**静默 no-op**，Phase 5「注入已落地」只在 fake-repo 夹具下成立。
-  - **口径纠正**：§四 与 registry 里写的「13 工具动作面」不准 —— 实测与 fixture 都是 **15**；
-    13 是 `ACTION_TO_PY_TOOL` 的非 null 映射数（`runDeviceAction.ts:66-81`）。两处已按各自语境改正。
-  - **账实不符**：§零 旧行写「`pre-contraction` 为收缩前基线（`3fab0ee`，本地存档，不推送）」，但现在
-    `git branch -a --list '*pre-contraction*'` 为空、`git rev-parse pre-contraction` 报 fatal ⇒ 该 ref 现在不可解析。
-    等价内容仍可经 **`main`**（同仓，含 23 个 `mcp_server/*.py` 与 `mcp_server/rules.md`）取得——这也是 G72 的第三条路。
+- 当前未关闭差距 **`G71` / `G72` / `G74` / `G75` / `G76` / `G78` / `G81`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+  `G77` → CHANGELOGS **#79**，`G73` → **#80**，`G79` + `G80` → **#82** 均已结案。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -112,6 +98,20 @@
   `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
   `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
   vitest 32 files / 284 passed / 1 skipped、R6 `--dump-config` rc 0 且非空过）。
+- 2026-10-13 **Step 4 · 收益优先级调研**（四路并行：本仓改动面审计 / Android-adb 一手口径 / DSH 交付与 live 路径 / 提供方形状）。
+  四件事改变了排序，其中**两条是收回我自己写错的结论**：
+  - **收回**：「`dsh plugin remove` 只删依赖、CLI 侧不存在卸载命令」——`operations.ts:88-97` 的 `reconcile()` 在
+    pnpm 成功后就把消失的名字从 `dsh.profile.bundles` 剔除（且仅在 `exitCode===0 && !stalled`）。
+    ⇒ **G71 存在 0 审批路径**，它不再是"要用户在 UI 里点"的独占门槛，成本评级从「需人 + 需宿主」降到「一条命令」。
+  - **收回**：G74 里「`{index}` 改吃 `parsed_bounds`」——`parsed_bounds` **早已被优先采用并有锁**
+    （`apply.spec.ts:62`、`dedup.spec.ts:17`）。写待办前没核现状，正是守则 R25 禁的那种事。
+  - **新立 G80**：`rulesInjector.ts:16` 读 `<repo>/mcp_server/rules.md`，本分支没有该文件而失败策略是 warn-skip
+    ⇒ rules 注入在真环境**静默 no-op**，Phase 5「注入已落地」只在 fake-repo 夹具下成立。
+  - **口径纠正**：§四 与 registry 里写的「13 工具动作面」不准 —— 实测与 fixture 都是 **15**；
+    13 是 `ACTION_TO_PY_TOOL` 的非 null 映射数（`runDeviceAction.ts:66-81`）。两处已按各自语境改正。
+  - **账实不符**：§零 旧行写「`pre-contraction` 为收缩前基线（`3fab0ee`，本地存档，不推送）」，但现在
+    `git branch -a --list '*pre-contraction*'` 为空、`git rev-parse pre-contraction` 报 fatal ⇒ 该 ref 现在不可解析。
+    等价内容仍可经 **`main`**（同仓，含 23 个 `mcp_server/*.py` 与 `mcp_server/rules.md`）取得——这也是 G72 的第三条路。
 - 一处状态更正（别当矛盾）：`--dump-config` 绿而 `--dump-config-schema` 红是**两条独立通道**——
   前者合成 profile 层与 `--patch` overlay、后者还要真的把包解析出来；官方卸载/安装契约与本机实测见
   [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八，carrier 错的归属见同节 Step 5 段。
@@ -128,6 +128,18 @@
   顺带把 **G59** 定案了：schema dump 仍 rc=1，但 5 条 carrier 错里**四个是宿主自带 preset**、第五个才是我们，
   且 headless/desktop 两个 profile 同样 rc=1 却 0 条 carrier ⇒ 属宿主 dumper 走 preset 子项的固有行为，
   **不是本包形状问题**。证据与对位表见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八。
+- 2026-10-13 **Step 6 · G79 + G80 修复（CHANGELOGS #82）**，并拿到这条链上第一个全绿预检：
+  `helperCheck` 在 `defaultDeviceSerial` 非空时给 PATH 与 venv 两条形态都追加 `--serial`（必填字段是刻意的，
+  可选就是这次漏传的成因）；`setupRulesInjection` 返回值改结构化结果并由 `autogamer_diagnose` 暴露原因。
+  真机对照：`defaultDeviceSerial=""` → `FAIL helper`（仍是那句 fleet 拒绝）；
+  `="127.0.0.1:16384"` → **`PASS helper` + 七项 `overall ok: true`**。
+  G80 的 live 证据：对本仓路径真跑注入，结果 = **`missing-file`**（可机读，不再是一个被丢掉的 `false`）。
+  插件全套 **32 files / 293 passed / 1 skipped**（+4 锁），变异 MA/MB/MC 分别红 1/1/2 条。
+  **附带发现立 G81**：改完顺手把 tests 纳入一次 `tsc`，实测 **144 条类型错误** ——
+  插件的 spec 从来没被类型检查过，这意味着我这条「必填」守卫只在 `src` 一侧生效。
+  helper 现在报的那句是 `Accessibility helper on 127.0.0.1:16384`，但**别把它读成「helper 已装好」**：
+  同一次真机动作面运行仍打印 `Accessibility helper unavailable ... serving from UIAutomator2`（§零 Step 1），
+  两者关系属未证。
 - 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
   （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
@@ -249,8 +261,7 @@
 | G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本 | **只有 provider 那半边要改**：`artemis/mcpBackend.ts:170-196`（`view_type` 与 `screenshotPath: text`）、`artemis/types.ts:22-30`、`tools/getDeviceState.ts:105` + 两个 spec（`artemisMcpBackend.spec.ts:60-87`、`getDeviceState.spec.ts:36-48,104-117`），约 60 LOC。**`{index}` 侧不重复做**——它早已优先吃 `parsed_bounds` 并有锁（`apply.spec.ts:62`、`dedup.spec.ts:17`），上一轮把这条写成待办是我没核现状（R25）。**先定 G72 走哪个面**，两面的形状本就不同 |
 | G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九），且 §十 补了一条更硬的约束：adb 文档里**只有 `emulator-5554` 的 console↔adb 端口配对有身份含义**，`127.0.0.1:*` 是裸 TCP 传输、端口可能随启动变化 ⇒ **钉 TCP serial 的白名单会静默丢设备**。三条诚实路线（钉 roster / py 增发身份 / 只明示计数单位）与代价在 §九；路线 ① 的改动面极小（`cordis.patch.yml` 加 `devices`，`devicePool.ts:166` 已实现「钉住就不枚举」），但要接受"多实例时操作者手工维护"。待裁定后按 R22 写方案再动码 |
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
-| G79 | 预检 `helper` 项不传设备序列号：多传输同机时被提供方直接拒绝。G77 修复后暴露的真红——实测 detail = `Several devices are ready; pass --serial, or --all to target every idle one: 127.0.0.1:16384, 127.0.0.1:5555, 127.0.0.1:7555, emulator-5554` ⇒ **G75 打到预检层** | `artemis helper status` 确实吃 `--serial`（`helper.py:39-42,71-77`），**但没有 `--all`**。要传的是 Config 的 `defaultDeviceSerial`（`index.ts:80`；**没有** 叫 `defaultDevice` 的字段，`defaultDeviceKey`（`:47`）是闸门键不是 serial），而 `.env` 的 `ADB_DEVICE_SERIAL` **只有 py 读**（`artemis/mcp/adb_server.py:123`）——插件侧兜底它是新代码不是现状。范围：`env/preflight.ts:274-294` + 加宽 `PreflightInput`（`:26-29`）+ `index.ts:187-191`，约 30 LOC、3 条旧 spec 要改 + 2 条新增。**方案已定（Step 5，不需裁定）**：`helperCheck` 的两条形态（PATH 与 venv）都在 `defaultDeviceSerial` **非空时**追加 `--serial <值>`，为空保持现行为；G75 的路线裁定只决定"默认设备从哪来"，不影响这条能不能修 |
-| G80 | **rules 注入在本分支静默 no-op**：`src/prompt/rulesInjector.ts:16` 读 `<artemisRepoPath>/mcp_server/rules.md`，本分支该路径不存在（`main` 上有），而失败策略是「缺文件 → warn 跳过、永不抛」⇒ 真环境里契约文本无声消失，Phase 5 的证据只在 `tests/fixtures/fake-repo/` 成立 | **方案已定（Step 5，选"可见告警"而非改提供方形状）**：`setupRulesInjection` 的返回值由 `boolean` 改为结构化结果（`injected` / `disabled` / `no-repo` / `missing-file` / `read-failed` / `empty`），`index.ts:464-471` 记下它，`autogamer_diagnose` 在结果非 `injected` 时往 `recommendations` 追加一条可见告警。**不新增第 8 项阻塞预检**——七项 id 集有锁，且缺 rules 不该阻断设备动作。范围：`prompt/rulesInjector.ts`、`index.ts`、`tools/diagnose.ts` 加 `rulesStatus` 依赖，约 40-60 LOC + 两侧各 2-3 条锁。与 G72 的关联只在"提供方仓库决定这文件在不在"；「rules 注入已落地」这句话在 live 侧**仍不能说** |
+| G81 | `tsconfig.json` 的 `include` 只含 `src` ⇒ 插件的 **32 个 spec 从未被类型检查**。把 tests 纳入一次 `tsc` 实测 **144 条错误**（`apply.spec.ts` 独占 45、`preflight.spec.ts` 21、`conformance/contracts.spec.ts` 15）；vitest 只转译不查类型，所以「必填字段」这类守卫在测试里不咬人 —— G79 正是靠必填才成立的守卫，它的守卫强度现在只在 `src` 一侧 | 先量后修：加一个 `check:tests` 脚本（临时配置需覆盖 `rootDir`，否则 TS6059 全量爆），144 条不可能一把改完 ⇒ 按文件分批收敛并同步 CI；**不要在 G79/G80 的收尾提交里顺手改** |
 | G78 | **`adb forward` 残留已实测证实**：`adb forward --list` → `127.0.0.1:16384 tcp:54254 tcp:18888`（18888 = helper 端口），而 MCP server 进程早已退出 ⇒ Done means 的「卸载无残留」**不是待验，是已被证伪**；建 forward 的一方是 py 动作面，插件 stop/dispose 管不到它 | 归属待定：插件侧兜底按 `host:port` 精确删（`--remove-all` 会误伤别处），还是 py 侧在自己生命周期内清（更接近 canonical 契约）。scrcpy 那一半仍缺二进制（留白 6/7） |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
