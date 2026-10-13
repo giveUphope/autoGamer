@@ -306,9 +306,12 @@
     引擎体量（agents/graph/llm ≈ 一百余文件）是「任务执行语义」的最小闭包——再缩只能重定义任务语义
     （如未来 TS agent 替代，属 D18 演进项，另立方案）。
   - **Done means**：
-    - [ ] 38 文件删除且四重验证全绿
-    - [ ] 边界声明落档本条
-    - [ ] 结果回写并提交
+    - [x] **37 文件**（showcase_ui 实数 12，原记 38 误）删除且四重验证全绿（`6ef32f5`，-3264 行）：
+          `import mcp_server.server` + `from artemis.sdk import Agent` rc 0、提供方工具面五名不变、
+          pytest **664 passed / 1 skipped**（685→664 的差 = 被删文件的边界守卫参数，符合预期）、
+          ruff check + format 全绿
+    - [x] 边界声明落档本条（见上）
+    - [x] 结果回写并提交（`9af4bbe` 方案 → `6ef32f5` 实现）
 - 2026-10-13 **Step 11 · `preset-autogamer` 增挂 `tool-cordis`（用户裁定「可以增加」，R22 方案先行）**：
   - **背景**：Step 10 调研证实 `cordis_inspect_query`/`cordis_inspect_list` 由 `@deepseek-ai/dsh-tool-cordis`
     提供、只有官方 `cordis` 预设挂它 ⇒ AutoGamer 会话无法自查工具面（R9 检查器不可用）。
