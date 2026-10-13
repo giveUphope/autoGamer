@@ -246,13 +246,13 @@ export function strictnessOf(options: RouterOptions): ValidatorStrictness {
  * internal outcomes never touch it. Lifetime matches gate/breaker (fresh per
  * plugin instance, i.e. restart clears — the old stop-all equivalent).
  *
- * The ledger also carries the CLOSED notice (changelogs #62, upstream
- * `last_closed_incident` in `artemis/graph/state.py:136-141`): an incident the
+ * The ledger also carries the CLOSED notice (changelogs #62; upstream
+ * google/artemis calls this `last_closed_incident`): an incident the
  * model was told about stays open until a later success closes it, and that
- * success hands back a one-turn notice to settle the original intent
- * (`operator/prompts.py:576-592`). Upstream keys it off step numbers; this
- * device has none (the host owns turn accounting), so the notice carries the
- * consecutive-failure count instead.
+ * success hands back a one-turn notice to settle the original intent.
+ * Upstream keys it off step numbers; this device has none (the host owns
+ * turn accounting), so the notice carries the consecutive-failure count
+ * instead.
  */
 export interface IncidentClosure {
   consecutive_failures: number;

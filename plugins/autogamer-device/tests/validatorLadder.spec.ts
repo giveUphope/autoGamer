@@ -349,8 +349,9 @@ describe("validator ladder: incident ledger", () => {
 
 describe("validator ladder: incident CLOSED notice (changelogs #62)", () => {
   // Upstream keeps an incident open until a LATER success closes it, then renders
-  // a one-turn notice to settle the original intent (`graph/state.py:136-141`,
-  // `validator/execution_loop.py:477-488`, `operator/prompts.py:576-592`).
+  // a one-turn notice to settle the original intent (changelogs #62; upstream
+  // google/artemis carries it as `last_closed_incident` across its graph state,
+  // validator execution loop, and operator prompt).
   async function announce(tool: ReturnType<typeof setup>): Promise<void> {
     for (let i = 0; i < 3; i += 1) {
       await expect(

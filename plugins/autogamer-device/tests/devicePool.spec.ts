@@ -189,9 +189,10 @@ describe("DevicePool (G3/G28)", () => {
   });
 
   describe("submission admission (P2 A 片)", () => {
-    // Ported from runtime/device_pool.py:366-385 (_explicit_serial_error), which is the first of
-    // py's two submission gates (apps/admin_console/routers/tasks.py:140 runs it before the
-    // readiness probe at :160). Lock-screen verdicts are G65 and deliberately absent here.
+    // Ported from runtime/device_pool.py (_explicit_serial_error), the first of py's two
+    // submission gates (the old FastAPI console that invoked it before the readiness probe was
+    // removed in P4; this TS pool now owns admission). Lock-screen verdicts are G65 and
+    // deliberately absent here.
     async function discovered(...devices: PoolDevice[]) {
       const gate = new DeviceGate();
       const pool = new DevicePool({

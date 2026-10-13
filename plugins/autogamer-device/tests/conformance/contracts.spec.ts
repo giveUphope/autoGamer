@@ -2,7 +2,6 @@
  * Conformance contracts (P0/G5). Each section names the runtime or source it
  * reads its truth from, and none of them is a hand-typed list any more:
  *   - py action tools : live MCP server (scripts/spike-mcp.mjs) / its fixture
- *   - legacy SSE names: extracted from the emitters and subscriptions in this repo
  *   - DSH generation  : the @deepseek-ai/* packages actually installed
  *   - session events  : KNOWN_SESSION_EVENT_TYPES exported by @deepseek-ai/dsh-session
  * The in-process real-runtime assertions live in runtimeBoot.spec.ts.
@@ -17,7 +16,6 @@ import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION } from "@deepseek-ai/
 import { Config } from "../../src/index.js";
 import { ACTION_TO_PY_TOOL, ACTIONS } from "../../src/tools/runDeviceAction.js";
 import { buildFixture, mappedPyTools } from "../../scripts/spike-mcp.mjs";
-import { extractLegacySseEvents, findUnreviewedEmitters, namesByEmitter } from "../../scripts/gen-sse-events.mjs";
 import { typescriptFiles } from "../support/srcFiles.js";
 
 /** Minimal view of a Schemastery object node (the package exports no type name). */
@@ -105,53 +103,6 @@ describe("conformance: py action server surface", () => {
       }
     },
   );
-});
-
-describe("conformance: legacy web-console SSE event names (G18 baseline)", () => {
-  const fixture = readFixture("sse-events.json");
-
-  it("matches the events the backend actually emits and the console actually subscribes to", () => {
-    const fresh = extractLegacySseEvents();
-    for (const key of [
-      "serverEventNames",
-      "frontendSubscribedEventNames",
-      "serverBroadcastButFrontendNeverSubscribed",
-      "frontendSubscribesButServerNeverEmits",
-    ] as const) {
-      expect(fixture[key], `${key} drifted from the sources; re-run gen-sse-events.mjs --write`).toEqual(fresh[key]);
-    }
-  });
-
-  it("keeps a floor and per-funnel coverage so the extractor cannot rot quietly", () => {
-    // The test above compares the fixture against the same generator, so a
-    // generator that lost an emitter would move both sides together. These are
-    // the independent bounds: enough names, and every reviewed funnel speaking.
-    const server = fixture.serverEventNames as string[];
-    expect(server.length, "server-side emissions should never shrink silently").toBeGreaterThanOrEqual(20);
-    const byFunnel = namesByEmitter();
-    expect(Object.keys(byFunnel).sort()).toEqual(["_broadcast_event", "_publish", "_record_llm_event"]);
-    for (const [funnel, names] of Object.entries(byFunnel)) {
-      expect(names.length, `${funnel} contributes no names - the extractor stopped seeing it`).toBeGreaterThan(0);
-      for (const name of names) expect(server, `${name} from ${funnel} is missing`).toContain(name);
-    }
-    // Nothing emitter-shaped may be left unreviewed, or the vocabulary is a subset.
-    expect(findUnreviewedEmitters(), "unreviewed emitter-shaped calls exist").toEqual([]);
-  });
-
-  it("keeps the events the DSH plugin must replace in view", () => {
-    const serverEvents = fixture.serverEventNames as string[];
-    for (const required of [
-      "session_started",
-      "session_ended",
-      "step_recorded",
-      "startup_progress",
-      "recording_ready",
-      "queue_held",
-      "server_shutdown",
-    ]) {
-      expect(serverEvents).toContain(required);
-    }
-  });
 });
 
 describe("conformance: DSH peer version pin", () => {

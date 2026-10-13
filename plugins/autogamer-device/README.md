@@ -28,7 +28,6 @@ src/dsh-types.ts                  宿主契约的本地结构别名（详见下�
 skills/autogamer-flash/           flash 执行策略 skill
 scripts/mock-action-server.mjs    离线 mock action server（take_screenshot 回真 PNG 头）
 scripts/spike-mcp.mjs             真 py 动作面取证 + fixture 生成（--write）
-scripts/gen-sse-events.mjs        从 py 发射漏斗与前端订阅抽取旧 SSE 契约（--write）
 scripts/conformance-live.mjs      live 取证：declared（dump-config）与 live（会话日志）两层
 spike/                            live overlay 与取证现场（多数已 gitignore，含 token 的别提交）
 tests/                            vitest：gate / breaker / classify / coord / devicePool / liveObservation /
@@ -70,17 +69,12 @@ dsh --profile web --patch <abs>/spike/web-live.patch.yml --dump-config
 - **fixture 是生成物，不是手抄本**（G5）。升级 DSH 后按这三条重取，别再照文档手写：
   ```bash
   ARTEMIS_MOCK_DRIVER=1 node scripts/spike-mcp.mjs --write      # py 动作面（期望面由 ACTION_TO_PY_TOOL 推出）
-  node scripts/gen-sse-events.mjs --write                       # 旧控制台 SSE：从发射漏斗/订阅抽取
   AUTOGAMER_CONFORMANCE_PY=live npm test                        # 带真 action server 的比对分支
   ```
   版本 pin 读**实际装好的** `@deepseek-ai/dsh-*` 版本（必须彼此一致且等于 peer pin），有桌面版时再与
   `$DSH_HOME/dsh-runtimes/*/runtime.json` 的 `desktopVersion` 交叉校验；`turn/end` 这类事件名改由
   `@deepseek-ai/dsh-session` 的 `KNOWN_SESSION_EVENT_TYPES` 判定。⚠️ 公开包的 `latest` 标签是陈旧的
   `0.0.1-rc.1`，正确代际在 `next`——devDeps 要写死精确版本。
-- **抽取器要「先解析再匹配」**：发射点是 `publish = getattr(engine,"_publish")` 这种别名 +
-  `CHECKER_EVENT` 常量时，只认字面量会把活事件算成死信道（changelogs **#28** 就栽在这儿）。
-  `gen-sse-events.mjs` 因此解析模块常量与 `getattr` 别名，并把「未被审核的发射形态」「每个漏斗
-  至少贡献 1 个名字」做成断言——生成物自己也会撒谎，得有能红的地方。
 - `Config` 必须是 **原生 Schemastery** schema；用 zod 会被宿主拒（`Config is not a native
   Schemastery schema`），而**缺 Config 声明会让该行被判 `config=absent`，preset 子挂载被静默
   跳过**——这就是 missing-tools 的根因。已锁死：`tests/conformance/contracts.spec.ts`。
