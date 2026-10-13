@@ -189,10 +189,33 @@
   （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
   等价内容经 `main` 取得，见本节 Step 4。
 
+- 2026-10-13 **Step 10 · 取证复测（用户指出上轮「没切模式」，R9 证据降级重取）**：
+  - **调研（上游一手）**：会话「模式」= preset 选择（内置 `standard`/`ptc`/`minimal`/`cordis`，
+    见 agent-preset-registry README.zh）。`cordis_inspect_query` 由 `@deepseek-ai/dsh-tool-cordis` 提供，
+    **只有 `cordis` 预设挂它**；`standard` 与本包 `preset-autogamer` 都没有 ⇒ 上轮 Step 9 的会话面
+    **本就不存在检查器**，模型是照自己上下文复述工具清单，不是 R9 取证 —— Step 9 的取证表述**作废**，
+    G71 结案依据改由本轮 wire 抓包承接（CHANGELOGS #83 的「官方检查器」字样以本轮实测为准修订）。
+  - **What**：不改任何插件代码（验的就是出货形态），用 S10 现成抓包装置
+    `scripts/dump-proxy.mjs`（1235→1234 日志代理）+ `spike/wire-tools.py`（数请求体 `tools`）。
+  - **How**：旧 proxy-dump.log 移作 .bak → 起 proxy → profile patch 的 `local` baseURL 临时
+    1234→1235 → 冷重启宿主（按监听 PID 清）→ AutoGamer 新会话真跑一轮 → `wire-tools.py` 解析
+    → 端点改回 1234、宿主恢复（防代理单点：不还原则每轮必死 ECONNREFUSED）。
+  - **Done means**：chat/completions 请求体的 `tools` 数组**恰含 7 个本包工具名**
+    （`run_device_action` / `report_task_status` / `autogamer_run_task` / `autogamer_manage_task` /
+    `autogamer_inspect_trace` / `autogamer_get_device_state` / `autogamer_diagnose`）；
+    抓包命令可复跑；结果回写本条并同步 #83 的取证表述。
+  - **结果（同日实测，Done means 达成）**：AutoGamer 预设新会话（qwen3.6-35b-a3b-mtp，6 秒无报错）经代理
+    落到 `scripts/proxy-dump.log` 的 chat/completions 请求体 **`tools=12`**：本包 **7 个全在 wire 上**
+    （`run_device_action` / `report_task_status` / `autogamer_run_task` / `autogamer_manage_task` /
+    `autogamer_inspect_trace` / `autogamer_get_device_state` / `autogamer_diagnose`），另 5 个为宿主行
+    （`job_kill`/`job_list`/`job_output`＝tool-jobs、`plugin_manager`、`skill`），与出货预设组成一致；
+    第二个请求 `tools=0` 为标题生成类，符合预期。G71 结案依据由 **wire 差分**承接（S5/G30 明文认可的
+    「插件侧 wire 差分」）。环境已还原：端点回 1234、代理已停、宿主已重启。
 - 2026-10-13 **Step 9 · 用户裁定落地，G71 结案（**#83**）**：待裁清单第 1、7 条已决——headless 死链
   **移除不重装**（rc 0，bundles 现为 `[dsh-base, dsh-headless]`；pnpm 11 又按 G49 机制留死 junction，
-  已按 reparse point 摘除）；web 走完取证，desktop 不动；取证路用了**免审批的 `cordis_inspect_query`**
-  （非代理抓包）。本机 dsh 现状复核：安装唯一（`where.exe dsh` 唯一命中 `D:\DeepSeek Harness`，
+  已按 reparse point 摘除）；web 走完取证，desktop 不动；~~取证路用了**免审批的 `cordis_inspect_query`**
+  （非代理抓包）~~（**此取证表述已被 Step 10 作废**：该会话面没有检查器，模型只是复述清单）。
+  本机 dsh 现状复核：安装唯一（`where.exe dsh` 唯一命中 `D:\DeepSeek Harness`，
   CLI 0.2.0-rc.2），4 profile 并存。
   取证前置修了两处环境：① web profile 的**模型端点**——活配置是每 profile 一份 `cordis.patch.yml`
   （宿主设置投影；`settings.yaml.imported` 只是旧快照），web 的 `local` provider 停在已死的 `8080`，
@@ -200,12 +223,12 @@
   `local` → `http://127.0.0.1:1234/v1` + `qwen3.6-35b-a3b-mtp`（`input: [text, image]` 声明随行，
   S5 负能力坑不踩），非模型条目不动。② rc.2 `patchReload` 无实现（D7）⇒ 冷重启生效；且杀 wrapper 后
   exe 子进程仍持 8090（`EADDRINUSE`），须按**监听 PID** 清理后再起。
-  取证结果：AutoGamer 预设新会话（qwen3.6-35b-a3b-mtp，18 秒往返、无报错）里 agent 调
-  `cordis_inspect_query` 列出的工具面**恰含全部 7 个**：`run_device_action` / `report_task_status` /
-  `autogamer_run_task` / `autogamer_manage_task` / `autogamer_inspect_trace` /
-  `autogamer_get_device_state` / `autogamer_diagnose` ⇒ G30 教训那条「注册成功 ≠ Agent 看得见」
-  的最后一证补齐，**G71 → CHANGELOGS #83**（正文与验收命令在彼；§四 的 G71 行与两个在办条目已按
-  结案协议移除）。8090 宿主重启后仍在运行，待裁清单第 8 条（留/关）仍留给用户。
+  ~~取证结果：AutoGamer 预设新会话（qwen3.6-35b-a3b-mtp，18 秒往返、无报错）里 agent 调
+  `cordis_inspect_query` 列出的工具面**恰含全部 7 个**~~（同上，复述不算取证；有效部分只剩：
+  AutoGamer 预设可被选为新会话预设、模型往返 18 秒无报错——挂载层与传输层证据仍成立）。
+  **G71 → CHANGELOGS #83**（正文与验收命令在彼；§四 的 G71 行与两个在办条目已按
+  结案协议移除；#83 的取证表述由 Step 10 的 wire 抓包承接）。8090 宿主重启后仍在运行，
+  待裁清单第 8 条（留/关）仍留给用户。
 
 - 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线

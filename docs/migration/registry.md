@@ -138,7 +138,7 @@
 | G73 | `artemis doctor` 收尾提示已删命令 `artemis run` | 文案改指 `artemis mcp --type adb`，旧锁同批改，新增吃已注册命令集的防腐烂锁；详见 CHANGELOGS **#80** |
 | G79 | 预检 `helper` 不传设备序列号，多传输同机被拒 | 必填 `defaultDeviceSerial`，两条形态都追加 `--serial`；详见 CHANGELOGS **#82** |
 | G80 | rules 注入缺文件时静默 no-op，返回值被丢弃 | 结构化结果 + 经 `autogamer_diagnose` 暴露；详见 CHANGELOGS **#82** |
-| G71 | web profile 组合包仍指旧名 `autogamer-device`（挂载失败） | CLI 重装（Step 5）+ headless 死链移除 + `cordis_inspect_query` 证 7 工具在 AutoGamer 预设新会话工具面；详见 CHANGELOGS **#83** |
+| G71 | web profile 组合包仍指旧名 `autogamer-device`（挂载失败） | CLI 重装（Step 5）+ headless 死链移除 + wire 抓包证 7 工具在 AutoGamer 预设新会话请求体；详见 CHANGELOGS **#83** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 
