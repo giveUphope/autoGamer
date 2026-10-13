@@ -27,6 +27,7 @@
 | D15 | 契约核实只用声明面；禁止解包 app.asar |
 | D16 | Host 提供共享服务，preset 贡献 scoped tools；provider 与消费方必须同 isolate realm；挂载 fail-fast |
 | D17 | 自举引入：preset 挂 tool-plugin-manager，让 agent 自己执行 install_bundle |
+| D18 | 长期技术栈以 TS 为主，py 仅在特定库成熟度高于 TS 库时保留；本次收缩不重写 py，只压到最小设备能力面作为后续 TS 迁移基线 |
 
 ## 二、S · 对接语义（现行有效）
 
