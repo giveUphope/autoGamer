@@ -234,8 +234,8 @@
 - [x] 物理删除清单全部落地，`contraction_verify` AST 闭包 0 智能 leak（`data_engine` 仅 storage/models），字符串面 `rg` 剩余命中均为合法（SQLite 路径 `get_data_engine_db_path`、unified_controller 录屏 `getattr(ctx,"data_engine",None)` 兜底、xml_search→storage、storage→models 与两处解释性注释）；无悬空入口（顶层 `artemis --help` 仅 doctor/mcp/helper，`mcp --help` 仅 --type/--transport/--host/--port，无 install/generate-config）。
 - [x] 插件 build/test 绿（tsc exit 0、vitest 191 passed / 1 skipped）、R6 `--dump-config` exit 0（2026-10-12 实测：`dsh --profile web --patch <abs cordis.patch.yml> --dump-config` 退出码 0、`unmatched` 命中 0，正常输出 skills/tool-plugin-manager 配置）；`runDeviceAction.ts` 及 devicePool/validatorLadder 两个 spec 中指向已删 py 智能栈/旧控制台的注释同步更新（去行号、改指 changelogs #62）。
 - [ ] pyproject/依赖/入口/testpaths 清理，`uv sync`/ruff/ratchet/文档门禁通过；README/AGENTS.md 失效描述更正。
-- [ ] 每块一个 Conventional Commit；最终 `artemis mcp --type adb` 与插件动作面的接线语义不变（工具名、入参、返回信封、坐标归一、闸门前置不变）。
-- [ ] 全程不推送；`pre-contraction` 分支保留不动。
+- [x] 每块一个 Conventional Commit（已落 3 笔：`2a65211` py 收缩、`75680fe` 插件清理、`caf93a7` 文档回写）；接线语义不变——mock spike 实测 15 工具名/返回信封（Success 文本 + PNG/层级）零 diff，坐标归一/index 解析由保留的 `tests/unit/mcp` 用例锁（551 全绿），TS 闸门前置未改动；`--type adb` 真机 live 属 P2 设备验证，不在本收缩范围。
+- [x] 全程未推送（3 笔仅在本地 `dsh-plugin-contraction`）；`pre-contraction` 分支保留 `3fab0ee` 一字未动。
 
 ### S10 ② 效果判定落 py 动作面（G39 裁定 = 路线 A，2026-10-11 用户确认）
 
