@@ -113,3 +113,63 @@
 ## 五、文档索引
 
 已清空，改读 [导航](migration/README.md)（导航唯一权威）。
+
+## 六、新方案：dsh-autogamer（用户方案，待核实后实施）
+
+背景：用户 2026-10-14 提供完整规格（原标题 DSH-ARTEMIS，实现名已更正为 dsh-autogamer）。
+定位：不是另起插件，而是对当前实现（`plugins/autogamer-device`）的矫正；规格内 `dsh-artemis`
+一律读作 `dsh-autogamer`（插件 id 是否由 `autogamer-device` 改名，Phase 0 定，改名牵连
+patch/preset/fixture/测试）。
+
+### What（做 / 不做）
+
+做：工具注册、配置投影、环境预检、任务生命周期管理、UI 卡片、设备画面、rules 注入。
+不做：重写 py 逻辑、改 ARTEMIS 源码、内嵌 ARTEMIS Web 控制台、复制 ARTEMIS 代码。
+形态：TS Host 半 + 浏览器半；ARTEMIS 作外部进程/服务调用，适配器统一 MCP 与 CLI 两后端，
+运行时按可用性选择；插件自身 Apache-2.0 并在 README 致谢 ARTEMIS。
+工具面（5 个）：`artemis_run_task`（500ms 内返回 task_id，不阻塞）、`artemis_manage_task`
+（`status`/`stop`/`inject_instruction`，`recent_actions` 默认 5 步）、`artemis_get_device_state`、
+`artemis_inspect_trace`（summary 默认首尾各 3 步加失败步）、`artemis_diagnose`。
+Config：仓库路径/uv 路径、默认 profile 与超时与设备、`injectRules`/`autoPreflight` 开关、
+scrcpy 三参数、`traceRetentionDays`；全部经设置区声明，不碰原生设置页代码。
+预检 `runPreflight`：uv、Python 3.12 以上、仓库路径、已安装、adb、设备、Helper 七项；
+失败不阻断加载，工具调用时返回带修复命令的结构化错误；结果缓存 60 秒。
+rules 注入：每次加载重读外部 `rules.md`，不缓存；主路径为系统提示贡献 API，
+降级为工具描述尾部摘要（前 2000 字符）。
+浏览器半：任务进度卡片（2 秒轮询、终态停）、设备画面（scrcpy H.264 加 WebCodecs，
+降级 PNG 流，触摸回传转 adb input）、设置卡片（含预检面板）。
+
+### How（顺序不可跳，R22）
+
+Phase 0 核实（先做，无代码）：规格 §12 十项对照官方一手资料逐项确认，输出每项
+「确认/降级/砍掉」结论回写本条；下述硬冲突未解不进 Phase 1。
+Phase 1 骨架与预检 → Phase 2 完整工具集与配置 → Phase 3 对话流 UI →
+Phase 4 设备实时画面 → Phase 5 rules 注入与打磨；每阶段独立验证通过再进下一阶段。
+已知硬冲突（Phase 0 必须裁决）：
+1. 浏览器半槽与 RPC/流通道（规格 §8 的对话卡片槽、设置槽、`taskStatus` 轮询、二进制通道）
+   与守则 R18 冲突——R18 只认 keyed toolview 槽，Web 不消费 Host 展示方法；
+   未经官方出处证实的槽一律不得实现，先证实或走降级。
+2. rules 注入 API 与 R16——证实不存在则按规格降级路径走。
+3. settings 区 API 与 R19——同上，先证实。
+4. `defineTool` 签名、description 国际化形态、`output.schema` 字段——以 G30 教训为准，
+   schema 必须是完整 JSON Schema，否则 wire 400；先对已安装产物核实。
+5. ARTEMIS 作外部依赖与本仓是其 fork 的现实冲突——规格 §1 的 5 个 MCP 工具面即已删的顶层
+   MCP 面；MCP/CLI 后端需要外部 ARTEMIS 提供方（路径配置），本分支 uv 破损，
+   CLI 路径的 JSON 输出格式一并在 Phase 0 核实。
+6. 插件 id 改名（`autogamer-device` → `dsh-autogamer`）是否执行，Phase 0 定；执行则 patch、
+   preset、fixture、测试同步改，R6 重跑。
+全程门禁：改 patch 跑 R6，新会话验跑 R7，判生效只认 R9；任何降级必须在 UI 或错误信息中明示，
+不静默失败。
+
+### Verify
+
+每阶段按规格 §10 对应条目验收；外加文档双门禁 exit 0；插件 tsc exit 0、vitest 全绿；
+R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；真机项（20fps、触摸延迟、
+长任务轮询）留 live 验收，需用户授权。
+
+### Done means
+
+- [ ] Phase 0：十项核实结论回写本条，六条硬冲突逐条裁决（确认/降级/砍掉）
+- [ ] 插件 id 改名定案（改或不改）并同步
+- [ ] Phase 1–5 按验收逐阶段落地
+- [ ] 卸载无残留进程（scrcpy、adb forward 清理）+ README 完整化
