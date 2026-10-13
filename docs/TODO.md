@@ -162,6 +162,33 @@
   另澄清一条排除项：本机**只有一个 dsh 安装**（`D:\DeepSeek Harness`，exe 构建于 Sep 29 18:34，
   CLI `0.2.0-rc.2`），`where.exe dsh` 与 npm/pnpm 全局 bin 均无第二个 dsh ⇒ 不存在"另装了一个 dsh"，
   差异全在 profile 层。
+- 2026-10-13 **Step 8 · 本轮收束（用户指示"先不动"，只落文档）**：
+
+  **进度快照**（细节在第四节与各 Step 段，此处只报位置与状态）：
+  - 本轮结案 4 条差距：`G77`（#79）、`G73`（#80）、`G79` + `G80`（#82）；外加修掉门禁自测的哑弹变异（#81）。
+  - 未关闭 7 条：`G71` / `G72` / `G74` / `G75` / `G76` / `G78` / `G81`。
+  - 已验证到 live 的：真机动作面 15 工具面（fixture 逐字一致）、坐标帧空间与 `toPixels` 往返、tap 命中、
+    `swipe` 生效、roster 一台报四台、`take_screenshot` 裸 base64、`helper --serial` 后七项预检全绿、
+    `web` profile 的挂载层与注册表层（2 组件 2 运行中 + 预设可选）。
+  - **仍未验证**的：本包工具是否真在 AutoGamer agent 的可调用面上（G30 教训：注册成功 ≠ Agent 看得见）；
+    `run_task` 那条链（缺提供方，G72）；scrcpy 三项（缺二进制）；键事件与锁屏分支的边角（留白 19/20）。
+  - **按"先不动"承诺保留的现场**：`desktop` 未装本包、`headless` 旧名死链未清、`web` profile 的安装未回滚、
+    我起的 web 宿主（PID 22060 / `127.0.0.1:8090`）仍在运行、wire/模型取证未开始。
+
+  **待用户裁定清单**（每条只留决策点 + 我的建议，正文都在对应行，不在此重述）：
+  1. 本包该装进哪个 profile（`desktop` 是日常用的那个；`headless` 那条旧名死链要不要一并清）→ 影响 **G71**。
+  2. 提供方走哪条路：外部 checkout / 本树动作面加映射 / **`main` 挂 worktree**（我推荐第三条）→ 影响 **G72**，并连带
+     **G74** 的正确形状与 **G80** 的实质。
+  3. `G75` 的路线（我建议 ①＋③：钉显式 roster ＋ 明示"计数单位是 adb 传输"）→ 连带 **G79** 的"默认设备从哪来"。
+  4. `G76` 与帧空间不一致时的行为：拒绝还是告警（我倾向告警并采用截图值）。
+  5. `G78` 的清理归属：py 侧（我推荐，`detach_all` 已存在）还是插件侧兜底。
+  6. `G81`（144 条 spec 类型错）现在收还是排队。
+  7. `G71` 最后一条证据用哪条路取证：代理抓 `tools` 请求体，或创造模式会话的 `cordis_inspect_query`（我倾向前者）。
+  8. 8090 的 web 宿主留着还是关掉。
+  已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
+  （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
+  等价内容经 `main` 取得，见本节 Step 4。
+
 - 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
   （`3fab0ee`，本地存档，不推送）—— **该 ref 现已不可解析**（`git rev-parse pre-contraction` = fatal），
@@ -289,6 +316,9 @@
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
 
+- **范围（2026-10-13 补，Step 7 范围更正之后）**：本条目当初只写 `web`，而本机四个 profile 相互独立。
+  现状：`web` 已按本条目落地；`headless` 仍挂旧名死链（同缺陷未清）；`desktop` 未装而它是用户日常环境。
+  **目标 profile 由待裁清单第 1 条决定**，定了之后本条的 What/How/Verify 三条原样适用于该 profile。
 - **What**：把本机 `~/.dsh/profiles/web` 的插件交付形态从「手改 `package.json` 的 `link:`」换成官方管理面装出来的形态；
   装的对象是 `dsh-autogamer`。不做：手改 profile 目录内任何文件、在 profile 目录跑 pnpm、改 `cordis.patch.yml`。
 - **How**（三条入口都合规，代价不同；**上一轮写的「CLI `remove` 单独用不够」已被源码否证**，见
