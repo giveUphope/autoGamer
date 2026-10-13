@@ -1,4 +1,4 @@
-# 上游插件形态与工具形态调研（2026-10-10）
+# 上游插件形态与工具形态调研（第一轮 2026-10-10 · 第二轮 2026-10-13）
 
 > 来源口径：`github.com/deepseek-ai/deepseek-harness` @ `master` 的公开文档与源码，符合 [TODO.md](../TODO.md) 的 D15（声明面 + 公开上游，不解包 app.asar）。每条标 **文档口径** / **源码口径**；本机尚未复验的写 **未实测**。
 > 取用方式：`gh api repos/deepseek-ai/deepseek-harness/...`（仓库确认为 public、default branch `master`，描述「DeepSeek Harness: Everything is a Plugin」）。原文副本落在 `plugins/dsh-autogamer/spike/sandbox/`（gitignored，只作取证现场，不作引用依据）。
@@ -63,3 +63,67 @@ S10 live 复验给出两个事实：AutoGamer 会话发给模型的请求里**�
 - shipped preset 模板：[presets/minimal.patch.yml](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/web-app/presets/minimal.patch.yml)、[presets/standard.patch.yml](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/bundle/web-app/presets/standard.patch.yml)
 - [docs/cordis-primer.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cordis-primer.zh.md)、[docs/cookbook/adding-a-package.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cookbook/adding-a-package.zh.md)
 - 搜索结果里出现但未读的第三方站：[Plugin Ecosystem - deepseekdocs.com](https://deepseekdocs.com/en/ecosystem)、[awesome-deepseek-harness-plugins](https://github.com/walkinglabs/awesome-deepseek-harness-plugins)、[dshplugin.store](https://www.dshplugin.store/)
+
+## 八、第二轮调研（2026-10-13）：插件管理面的安装 / 卸载契约
+
+> 触发：插件改名 `autogamer-device` → `dsh-autogamer`（提交 `70cc7af`）后，本机 web profile 的组合包选择仍指旧名，
+> `--dump-config-schema` 直接 rc=1。为定「按官方路径怎么卸载旧名插件」而查。
+> 版本：本机宿主 `dsh 0.2.0-rc.2`（`where.exe dsh` → `D:\DeepSeek Harness\resources\runtime\cli\bin\dsh.cmd`，动态解析、不写死盘符）；
+> 上游 `deepseek-ai/deepseek-harness` @ `master`，2026-10-13 经 `gh api repos/.../contents/...` 取。
+> 口径标注沿用本文头的约定；本节另有**本机实测**一类，按 R21 与「单测证明 / live 证明」分开记。
+
+1. **`dsh plugin` 只是 pnpm 转发，`remove` 清不掉组合包选择**（文档口径，`docs/cli-help.zh.md` 的 `dsh plugin` 段）：自述
+   「manage a profile's plugins by **forwarding the remaining arguments to pnpm** in the profile directory」，参数示例
+   `add <pkg>`, `remove <pkg>`, `why <pkg>`。`dsh.profile.bundles` 是 dsh 自己的字段，pnpm 不触碰它——所以 CLI 卸载只删依赖，
+   bundle 选择会留着，故障照旧。**CLI 侧不存在卸载命令。**
+2. **`remove_bundle` 才是把两步一起做掉的那个**（源码口径，`packages/boot/plugin-manager/src/index.ts:645-669`）：
+   `listBundles()` → 要求 `bundle.removable` → `if (bundle.enabled) await this.selectBundle(name, false)`（**这一步才清
+   `dsh.profile.bundles`**，`README.zh.md` 原文「组合包开关修改 `package.json` 的有序 `dsh.profile.bundles` 列表」）
+   → `runPnpm(['remove', name])` → `refreshPackages()`。pnpm 那步非 0 或超时即抛。
+3. **可移除性判据**（源码口径 `index.ts:315`）：`removable = owned || (enabled && !installed && !shipped)`，其中
+   `owned = installed && !shipped`；而 `installed` **只表示 profile 是否声明该依赖**（文档口径 `README.zh.md`）。清单读不到的包
+   （我们的死链正是）在 `index.ts:324-327` 仍会被列出并带 `error`，`removable` 照算；`README.zh.md` 另写明「插件页面显示错误并
+   **允许取消选择**」。
+4. **三个会挡住卸载的失败码**（源码口径 `index.ts:649-665`）：`not-removable`、`stop-profile`（`hmr` 未开且该包在
+   `startedBundles` 里——本 profile 写了 `patchReload: "live"`）、`bundle-in-use`。
+5. **入口只有两个**（文档口径 `README.zh.md`「使用本包」段）：Web 侧边栏**插件**页，或会话里的 `plugin_manager` 工具
+   （`src/tools.ts:23` 的 action 枚举：`list_plugins` / `list_bundles` / `set_plugin` / `set_bundle` / `install_bundle` /
+   `remove_bundle` / `list_version_exemptions` / `set_version_exemption`）。**每个动作都要求 `danger-full-access` 或该次调用的批准**，
+   批准不改变会话权限模式；改动影响该 profile 的全部会话。
+6. **`link:` 交付本身官方认可，违规的只是手改 profile 文件**（文档口径 `README.zh.md`：「开发目标保留普通 `link:` 依赖……
+   链接包使用该 checkout 的依赖与 peer；**代码改变后仍需重新构建并重启**」）。与本文**二.2**（`cordis-plugin-development/SKILL.md:8-10`
+   禁手写 profile `package.json` / 禁在 profile 目录跑 pnpm）合读：本机该走的是 `install_bundle` 带 `link:<绝对目录>`，
+   而不是当初手改 `package.json` 那条。
+
+**本机实测（2026-10-13，live 证据）**
+
+- `dsh --profile web --patch <插件绝对路径> --dump-config`：**rc 0**，输出含 6 处 `dsh-autogamer`，其中有
+  `# == D:\DEV\autoGamer\plugins\dsh-autogamer\cordis.patch.yml` 与 `- id: dsh-autogamer`。⇒ **`--patch` overlay 与组合包选择是两条
+  独立通道，旧名死链不阻塞 R6 自检**（这解释了为什么 R6 绿而 schema 红）。
+- `--dump-config-schema` 同参数：**rc 1**，错误原文
+  `dsh: error: Selected profile bundle "autogamer-device" could not be loaded; repair or remove its bundle selection.` 与
+  `dsh: error: [/183] Cannot find package 'dsh-autogamer' imported from C:\Users\78557\.dsh\profiles\web\cordis.yml`。
+- 死链现场：`~/.dsh/profiles/web/node_modules/autogamer-device -> /d/DEV/autoGamer/plugins/autogamer-device`；
+  `web/package.json` 的 `dsh.profile.bundles` 仍含 `"autogamer-device"`，`dependencies` 仍是
+  `link:D:/DEV/autoGamer/plugins/autogamer-device`，`pnpm-lock.yaml` 同一 specifier。
+- **断链时点**：改名提交 `70cc7af` 把 `package.json` 从旧目录移走，检出该分支时旧目录只剩 `dist/ node_modules/ scripts/ spike/`
+  （无 `package.json`）——link 在**切分支那刻**已解析失败，本会话删除残骸只是清了现场，不是致因。
+- 自检没有改写宿主配置：`web/package.json` mtime 仍是 `2026-10-12 02:10`；只有生成的 `web/cordis.yml`（内容 `[]`，
+  注释写明「Edit cordis.patch.yml, not this file」）在每次 `dsh` 调用时重写。
+
+**未证（别当已证）**
+
+- `G59` 记的是本机 `--dump-config-schema` **常驻**失败，那一定论在断链之前；本节只解释**当前这次** rc=1 的直接成因，
+  能不能回收 G59 的「常驻」二字**未复现**——要在一个 link 完好、bundles 指现存包名的 profile 上重跑才可判。
+- `remove_bundle` 对「带 `error` 的死链组合包」能否一路走完（`enabled → selectBundle(false) → pnpm remove`），只读过源码，
+  **本机未执行**。→ 在办工作记 `G71`。
+- 0.2.1-alpha.\* 相对 rc.2 在这个面上的变化：未读 CHANGELOG，未实测。
+
+**本节出处**（补入 §七 之外的增量）
+
+- [docs/cli-help.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/docs/cli-help.zh.md)（`dsh plugin` 段）
+- [packages/boot/plugin-manager/README.zh.md](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/README.zh.md)、
+  [src/index.ts](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/src/index.ts)、
+  [src/tools.ts](https://github.com/deepseek-ai/deepseek-harness/blob/master/packages/boot/plugin-manager/src/tools.ts)
+- 撤回一条来源：本轮曾对一个**非上游**的第三方代理 URL 取证，两次抓取返回互相矛盾的「官方口径」，已整条弃用；
+  本节全部结论只来自公开仓库 `gh api` 与本机实测。

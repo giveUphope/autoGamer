@@ -8,7 +8,13 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前无未关闭差距、无进行中里程碑。本节是状态唯一权威；编号范围只查 `migration/registry.md`，不另抄。
+- 当前 **1 项未关闭差距 `G71`**（本机 web profile 的插件交付形态，第四节），无进行中里程碑。本节是状态唯一权威；编号范围只查 `migration/registry.md`，不另抄。
+- 2026-10-13 仓库卫生与主线定位（正文见 CHANGELOGS **#78**）：`origin` 上三条死分支已删；本地安全网分支
+  `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
+  `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
+  vitest 32 files / 284 passed / 1 skipped、R6 `--dump-config` rc 0 且非空过）。
+- 一处状态更正（别当矛盾）：`--dump-config` 绿而 `--dump-config-schema` 红——`--patch` overlay 与组合包选择是两条独立
+  通道，旧名死链只挡后者；官方卸载/安装契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八。
 - 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
   已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
   （`3fab0ee`，本地存档，不推送）。
@@ -119,9 +125,30 @@
 - **PTC 让三期能力提前到一期可选**（守则 R14/R18 的 `mode: ptc`）：每个可见已注册工具都能 `await tools.<name>(args)` 直接调用并重入正常执行流水线，成功返回**策略处理后的规范 JSON 值**而非渲染文本，失败以 `ToolCallError` reject（只能读 `name` / `toolName` / `message`）→ validator 的确定性升级梯与 checker 的结构化复核都有现成载体；但呈现方式**按 agent 而非按工具**，同一 agent 内不能让一个工具只用 Native、另一个只用 PTC，且 PTC 中间值不落日志、无法回放
 - 业界对齐（dsh-verification §八）：单 agent + 外部确定性控制是收敛方向，反对反思式自检；DSH workflow/PTC = 三期确定性 burst 现成机制
 
-## 四、差距清单（2026-10-14 起暂无未关闭项）
+## 四、差距清单（2026-10-13 起 1 项未关闭）
 
-暂无未关闭差距。旧表 10 项的去向见 CHANGELOGS「已关闭差距史」（9 项放弃 + G36 行同步 UI 侧放弃），编号权威仍是 [registry](migration/registry.md)。
+| 编号 | 差距 | 阻塞点 / 下一步 |
+|---|---|---|
+| G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 须走官方 `plugin_manager` 的 `remove_bundle` → `install_bundle` 重做交付形态；**契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八**，此处不重述 |
+
+**G71 在办条目**（用户 2026-10-13 确认按该方案改）
+
+- **What**：把本机 `~/.dsh/profiles/web` 的插件交付形态从「手改 `package.json` 的 `link:`」换成官方管理面装出来的形态；
+  装的对象是 `dsh-autogamer`。不做：手改 profile 目录内任何文件、在 profile 目录跑 pnpm、改 `cordis.patch.yml`。
+- **How**：① 宿主 Web 侧边栏**插件**页对 `autogamer-device` 执行卸载（等价 `remove_bundle`，它会先 `selectBundle(false)`
+  清 `dsh.profile.bundles` 再 `pnpm remove`——`dsh plugin remove` 只删依赖，单独用不够）；② 对 `dsh-autogamer` 执行
+  `install_bundle`，开发形态按官方口径用 `link:<插件绝对目录>`；若走 tarball 则先 `npm pack` 出新名资产
+  （README 里那条旧名 Release 资产装上去会把包名退回旧口径）；③ 每次动作都要宿主审批，本仓库不代放宽权限模式（R19）。
+- **Verify**：`dsh --profile web --patch <绝对路径> --dump-config` 仍 rc 0 且 grep 不到 `unmatched`（R6）；
+  新会话里 `list_plugins` / `list_bundles` 的 `enabled`/`fiberPhase` 无 `error`（R7、R9——只认官方检查器，不认日志/进程）；
+  改过 TS 先 `pnpm run build` 再冷重启宿主。
+- **Done means**：
+  - [ ] `dsh.profile.bundles` 里不再出现 `autogamer-device`，且该清理由管理面完成而非手改
+  - [ ] `dsh-autogamer` 经 `install_bundle` 装成，`list_bundles` 无 `error`、`removable` 为真
+  - [ ] 新会话工具面出现本插件工具（R9 官方检查器取证）
+  - [ ] 结论与测量回写 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八，G59「常驻」二字是否可回收有明确判定
+
+旧表 10 项的去向见 CHANGELOGS「已关闭差距史」（9 项放弃 + G36 行同步 UI 侧放弃），编号权威仍是 [registry](migration/registry.md)。
 
 ## 五、文档索引
 

@@ -49,11 +49,13 @@
 
 ## 三、G · 差距清单
 
-**现行在册**（2026-10-14 起暂无：旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
+**现行在册**（2026-10-13 起 1 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
 
-暂无未关闭差距。
+| 编号 | 一句话 | 定义位置 |
+|---|---|---|
+| G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子已无 `package.json` → profile 级挂载与 `--dump-config-schema` 失败；须走官方 `remove_bundle` → `install_bundle` 重做交付形态 | `../TODO.md` 第四节 + [upstream-plugin-forms](upstream-plugin-forms.md) 八 |
 
-**已关闭**（定义来源：`../CHANGELOGS.md`「已关闭差距史」逐行表；`TODO.md` 第四节已清空，不再承载差距行）：
+**已关闭**（定义来源：`../CHANGELOGS.md`「已关闭差距史」逐行表；差距结案后从 `TODO.md` 第四节移除，正文进 CHANGELOGS）：
 
 | 编号 | 原短语 | 关闭方式 |
 |---|---|---|

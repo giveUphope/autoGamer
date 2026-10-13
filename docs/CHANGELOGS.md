@@ -11,7 +11,7 @@
 | 一 · 模型端点与配置 | #1, #2, #3, #4, #8 | 出厂端点不写死、provider 感知工厂、失败可观测性、零配置路径的移除。 |
 | 二 · 前端 Web 控制台 | #6 | Angular 22 → Vue 3 + Arco Design Vue 的整仓迁移与收尾。 |
 | 三 · 实机与测试环境 | #5, #7 | Windows 真机全量测试暴露的问题：控制台弹窗、FIFO 预约乱序、缓存强刷、测试隔离。 |
-| 四 · DSH 插件轨道（当前主线） | #9–#77 | `plugins/autogamer-device` 与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）。 |
+| 四 · DSH 插件轨道（当前主线） | #9–#78 | `plugins/dsh-autogamer`（原 `autogamer-device`）与 py 动作面的接线、契约与真机联调问题；#30/#31 是文档层自身的漂移与它的机械看守；#45 是同一条规则的第二次漂移，以及量它的那把尺子本身绑在 checkout 换行符上；#46/#47 把这条规则接进 CI 并让行尾成为仓库事实；#48 更正 #47 一处勾早了的验收；#49 是判据命令本身没牙（管道吞退出码）；#50 是离线 action 面少了第 14 个工具，#51 更正它发明的 `ratio`，#52 让 py 实现本身离线可跑（G62 结案），#53 更正「CI 用 spike-mcp 做比对」这条从未成立的假陈述，#54 把那条比对真的接进 CI（G63 结案）；#55 是设备池闸门（G3/G28 A 片，顺带修掉一处 G13 标记在 abort 时永久滞留）；#56 给 py 面加只读 `list_devices`，roster 从此有真来源（G64 结案）；#57 把 py 提交门禁的第一道门移植进插件；#59 补上锁屏三态（G65 结案，准入 fail-closed 半边齐）；#60 把 `{index}` 句柄从按数组位置重解改成按节点身份解析（G67 结案，更正 #40 一处安全语义）；#61 补回 README 漏掉的三个模块并给它一枚双向锁；#62 补上 incident 的 CLOSED 通知并锁死 `run_outcome` 双轴（G66 第③④项）；#63 收掉 #60/#62 复审轮的 5 条缺陷（G68 结案，含对 #60 一处半证声明的更正）；#64 收尾复审轮的台账卫生四项（README 锁改吃共享遍历并只看 Layout 块）；#65 收回工具描述里那句比代码强的「即使屏幕移动也跟随」；#66 抹掉我自己加错的提交署名尾注（只改 message，树内容以 diff 为空为证）；#67 记录推送后 run 立刻产出——G54「push 从不触发」被否证、#46 的 CI 留白关闭；#68 修掉那次 run 里唯一红的自建步骤（fixture 重导吃 `dist/`，python job 需先构建插件）；#69 修好那步之后 ratchet 头一回被执行——基线 754 已腐六周、且它声明的唯一本地执行点（pre-commit hook）从未安装；#70 拿到本 fork 第一次整体绿的 push run（38297953839），把 #46/#54/#68/#69 的四处「等真 run 复验」一次闭合；#71 清空旧待办（P4 阶段 A/B 归档、C/D 与 10 个未关闭差距放弃、门禁自测锚点维修）；#72 新方案 Phase 1 落地（骨架矫正、预检、只读设备状态工具）；#73 新方案 Phase 2 落地（完整工具集，后端真映射、适配器工厂、诊断合并预检）；#74 新方案 Phase 3 落地（浏览器半，toolview 卡片、手写 ModuleLoader 形态）；#75 新方案 Phase 4 落地（镜像 Host 半，scrcpy 启停、触摸降级，流与下载明确不做）；#76 新方案 Phase 5 落地（rules 注入与收尾，错误路径补齐、README 完整化）；#77 CI 修绿（删旧树 job/步、pyproject 手术、命名空间代换寻址器）；#78 仓库卫生与主线定位（清 `origin` 三条死分支、删已对偶证明的安全网分支、默认分支迁到 `dsh-plugin-contraction`、插件本机环境装好并复验）。 |
 | 已关闭差距史 | G* | `TODO.md` 差距清单里结案条目的去处 |
 
 ## 写入规则（如何新增一条变更历史）
@@ -3252,6 +3252,65 @@ glob、fixture 步调用的生成器，分别指向 P4 已删的控制台、lock
 `git add -A` 静默跳过、本地全绿掩盖了它，CI（Linux 大小写敏感）以
 `Cannot find module './env/preflight.js'` 全红构建步。修法：venv 类规则一律锚定
 到仓库根；同类全树排查仅此一处。教训：加文件后必须看 `git status` 确认新文件在列。
+
+### #78 仓库卫生与主线定位：清死分支、删安全网、默认分支迁到插件主线
+
+- **日期**: 2026-10-13
+- **状态**: ✅ 已关闭（本机可验部分已验；在办余项另立 **G71**）
+- **优先级**: 中（不阻塞功能，但决定「以哪条分支为基面」）
+- **分类**: 四 · DSH 插件轨道
+
+#### 问题描述
+
+1. `origin` 上挂着三条死分支。机械核对：`playground-submit` 相对 `origin/main` **ahead 0**
+   （`1d82d59`，9-11，已是 main 的祖先）；`dependabot/npm_and_yarn/apps/showcase_ui/…` 落后 296，
+   且它改的 `apps/showcase_ui/` 在 main 上**已不存在**（`git ls-tree main:apps` 只剩
+   `admin_console`、`showcase_ui_v2`）；`dependabot/uv/uv-2118ef368f` 落后 262，唯一未落地项是
+   `uv.lock` 的 pyjwt `2.13.0 → 2.15.0`（main 仍钉 `2.13.0`）。`gh pr list --state all` 返回空数组
+   —— 本 fork 历史上**没有任何 PR**，这三条是连 PR 都不存在的孤儿。
+2. 本地 `backup-trailer-fix`（`06a7f14`）是 **#66** 抹署名尾注时留的安全网，4 个提交从未 push。
+3. 主线定位错位：远端默认分支仍是 `main`，而 `main` 已被用户裁定**不再同步**，插件主线在
+   `dsh-plugin-contraction`（领先 26、落后 0）。
+4. 改名提交 `70cc7af` 后，工作树里 `plugins/autogamer-device/` 只剩 116M 未跟踪残骸
+   （`git ls-files` 计数 0），其内容除 `node_modules`/`dist` 外是约 40M gitignored spike 转储。
+
+#### 整改方案与实施
+
+1. **只动 `origin`**（本 fork）；`upstream` = `google/artemis` 是别人的仓库，一条没碰。
+   `git push origin --delete` 三条死分支。仓库内**没有** `.github/dependabot.yml`，
+   所以删掉也不会「再长回来」；那条例外信息（pyjwt 未落地）在本条留证即可，要补跑
+   `uv lock --upgrade-package pyjwt`，不必找回分支。
+2. `git branch -D backup-trailer-fix`：删前用 `git patch-id --stable` 逐条证伪「独有工作」——
+   4 个提交与 main 里的重写版一一对偶（`06a7f14→da28369`、`8a7d4f3→ed776e3`、
+   `3fc3b62→eedef8f`、`7d79864→8178eb1`，提交主题逐字相同）。
+3. `git checkout -b dsh-plugin-contraction --track origin/dsh-plugin-contraction`，
+   **main 不快进**（用户裁定）。
+4. 残骸目录走**带门禁的删除**：仅当 `git ls-files <旧目录> | wc -l` 为 0 才 `rm -rf`；
+   被跟踪的 spike 证据（`web-live.patch.yml`、`wire-tools.py` 等）在新目录里完好。
+5. 插件本机环境按 AGENTS.md 旗标组合装（本机 pnpm 10.12.1 = CI 同版本），见下方验收。
+6. 默认分支：`gh api repos/giveUphope/autoGamer -X PATCH -f default_branch=dsh-plugin-contraction`。
+   第一次误加 `--repo`，`gh api` 报 `unknown flag` 而**未生效**（远端仍 `main`，复验才发现）——
+   `gh api` 的仓库权威就是 endpoint 路径，**R26 要防的「打到上游别人的仓库」并未发生**。
+7. 调研结论按 **R28** 当轮回写 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八；
+   未关闭的那件事立 **G71**，本条不重述其正文。
+
+#### 验收标准
+
+- [x] `git ls-remote --symref origin HEAD` → `ref: refs/heads/dsh-plugin-contraction`
+- [x] `git branch -r` → `origin/` 只剩 `main` 与 `dsh-plugin-contraction`；`upstream/*` 未变
+- [x] `git status --porcelain` 为空（含 build/test 之后；`dist/`、`node_modules/` 均被 ignore 覆盖）
+- [x] `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`
+      成功且 `pnpm-lock.yaml` 零改动
+- [x] 插件 `pnpm run build` 通过（27 个 `dist/*.js`）；`pnpm run test` 真实 `$?`=0，
+      vitest **32 files / 284 passed / 1 skipped**
+- [x] R6：`dsh --profile web --patch <绝对路径> --dump-config` rc 0、`grep -ci unmatched` = 0，
+      且输出含 6 处 `dsh-autogamer`（证明非空过）
+- [ ] profile 组合包按官方管理面重做 —— 未完成，记 **G71**
+
+教训两条：① 管道末端 `tail` 的退出码不是被测命令的退出码，判红绿要取未进管道的 `$?`
+（与 **#49** 同源）；② 说「某文件被这次运行改了」要能指到 mtime——本条复核后更正了一处
+口头归因：`web/package.json` mtime 仍是 `2026-10-12 02:10`，被每次 `dsh` 调用重写的只是
+生成的 `cordis.yml`（内容 `[]` 模板）。
 
 ## 已关闭差距史（G*）
 
