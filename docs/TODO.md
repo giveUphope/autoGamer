@@ -116,7 +116,9 @@
 
 ## 六、新方案：dsh-autogamer（用户方案，待核实后实施）
 
-背景：用户 2026-10-14 提供完整规格（原标题 DSH-ARTEMIS，实现名已更正为 dsh-autogamer）。
+背景：用户 2026-10-14 提供完整规格（原标题 DSH-ARTEMIS，实现名已更正为 dsh-autogamer；
+2026-10-14 修订版同步工具名前缀 `artemis_*` → `autogamer_*`，与插件命名空间一致，
+description 注明底层由 Google ARTEMIS 驱动；此为用户定稿，推翻需明示）。
 定位：不是另起插件，而是对当前实现（`plugins/autogamer-device`）的矫正；规格内 `dsh-artemis`
 一律读作 `dsh-autogamer`（插件 id 是否由 `autogamer-device` 改名，Phase 0 定，改名牵连
 patch/preset/fixture/测试）。
@@ -127,9 +129,9 @@ patch/preset/fixture/测试）。
 不做：重写 py 逻辑、改 ARTEMIS 源码、内嵌 ARTEMIS Web 控制台、复制 ARTEMIS 代码。
 形态：TS Host 半 + 浏览器半；ARTEMIS 作外部进程/服务调用，适配器统一 MCP 与 CLI 两后端，
 运行时按可用性选择；插件自身 Apache-2.0 并在 README 致谢 ARTEMIS。
-工具面（5 个）：`artemis_run_task`（500ms 内返回 task_id，不阻塞）、`artemis_manage_task`
-（`status`/`stop`/`inject_instruction`，`recent_actions` 默认 5 步）、`artemis_get_device_state`、
-`artemis_inspect_trace`（summary 默认首尾各 3 步加失败步）、`artemis_diagnose`。
+工具面（5 个，前缀 `autogamer_*`）：`autogamer_run_task`（500ms 内返回 task_id，不阻塞）、`artemis_manage_task`
+（`status`/`stop`/`inject_instruction`，`recent_actions` 默认 5 步）、`autogamer_get_device_state`、
+`autogamer_inspect_trace`（summary 默认首尾各 3 步加失败步）、`autogamer_diagnose`。
 Config：仓库路径/uv 路径、默认 profile 与超时与设备、`injectRules`/`autoPreflight` 开关、
 scrcpy 三参数、`traceRetentionDays`；全部经设置区声明，不碰原生设置页代码。
 预检 `runPreflight`：uv、Python 3.12 以上、仓库路径、已安装、adb、设备、Helper 七项；
@@ -146,7 +148,7 @@ Phase 0 核实（先做，无代码）：规格 §12 十项对照官方一手资
 Phase 1 骨架与预检 → Phase 2 完整工具集与配置 → Phase 3 对话流 UI →
 Phase 4 设备实时画面 → Phase 5 rules 注入与打磨；每阶段独立验证通过再进下一阶段。
 已知硬冲突（Phase 0 必须裁决）：
-1. 浏览器半槽与 RPC/流通道（规格 §8 的对话卡片槽、设置槽、`taskStatus` 轮询、二进制通道）
+1. 浏览器半槽与 RPC/流通道（规格 §8 的对话卡片槽、设置槽、`autogamer.taskStatus` 轮询、二进制通道）
    与守则 R18 冲突——R18 只认 keyed toolview 槽，Web 不消费 Host 展示方法；
    未经官方出处证实的槽一律不得实现，先证实或走降级。
 2. rules 注入 API 与 R16——证实不存在则按规格降级路径走。
@@ -160,6 +162,39 @@ Phase 4 设备实时画面 → Phase 5 rules 注入与打磨；每阶段独立�
    preset、fixture、测试同步改，R6 重跑。
 全程门禁：改 patch 跑 R6，新会话验跑 R7，判生效只认 R9；任何降级必须在 UI 或错误信息中明示，
 不静默失败。
+
+### Phase 0 核实结论（分批回写，2026-10-14）
+
+浏览器半轨道（上游 master 一手：包产物、slots.md 全树、三个官方 skill、扩展 README）：
+- 包形态（规格 §12-6）：确认。`dsh.client`（platform/immediately/inject）加 `./client` export，
+  有模板与 ui-cordis 实证；bundle patch 本身无 client 行（manifest 驱动）；`dsh.bundle.patch`
+  字段存在。
+- 槽（规格 §8.1）：`conversation.card` 不存在（slots 全树、slot-catalog、ui-cordis 注册均无），
+  规格 §8.1/§8.2/§8.4 原样不可实现。可用：`tool.call.toolview`（按 wire 工具名 keyed，
+  与 R18 一致）加 `tool.call.images`、`conversation.chat.node`（经事件注册加 kind）、
+  `conversation.composer.dock`、`shell.overlay`、`sidebar.footer.action`。卡片落点 Phase 3 定。
+- 数据通道（规格 §8.2）：`ctx.rpc.*` 不存在；改走 Typert Remote（`ctx.remote` 命名空间加
+  @Remote 方法）或 `host.call`/`invoke`，或 `wire.view` 投影加事件订阅；2 秒轮询可用 remote
+  方法实现。
+- 画面通道（规格 §8.3）：H.264/二进制推送不存在（stream 与事件限 JSON）；可用 unary
+  Uint8Array（multipart）与 exact Fetch routes。DeviceMirror 降级为截图轮询卡；
+  触摸回传有 uplink stream（256KB 上限），Phase 3 定。
+- 设置槽（规格 §8.4）：`settings.plugin.item` 不存在；可用 `settings.section`、
+  `settings.general.item`、`settings.plugins.tab`、`plugins.item` 系。落点 Phase 2 定。
+- ClientContext 即 `@deepseek-ai/cordis` 的 Context（用处别名）。
+- 硬冲突 1 裁决：§8 原样砍掉，改用上述已证实通道（R18 保持）。
+
+ARTEMIS 侧（本仓 git 历史，一手）：
+- 后端启动（规格 §12-7）：`python -m mcp_server`，stdio 默认、SSE 8001 可选，FastMCP 标准协议；
+  5 工具名与规格一致；工具返回字符串化 JSON，插件侧需解析层；提供方须为外部 checkout
+ （本树已删对应智能栈）。
+- CLI 路径（规格 §12-8）：旧 `artemis run` 无 JSON 契约（`--json` 仅 doctor/helper 有），
+  「解析 CLI 的 JSON 输出」无契约可依 → CLI 后端按规格不可实现，砍掉（适配器只留 MCP 后端）。
+- scrcpy（规格 §12-9）：仓内无 server 获取链，版本约束未知 → 用用户 PATH 的 scrcpy 或官方
+  release 加 SHA 校验，Phase 4 定。
+- rules 路径纠正：fork 实证在 `mcp_server/rules.md`（非仓库根）；外部上游根有无待提供方确定后复核。
+
+待回写：`defineTool`/settings/systemPrompt/inject 服务表（另一路核实中）→ 硬冲突 2/3/4 待裁。
 
 ### Verify
 
