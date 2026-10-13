@@ -53,6 +53,18 @@ Instructions for agents working in this repository.
 - **文档门禁暂缺**：旧 fork 的门禁脚本是 Python（`scripts/check_doc_*.py`），不随迁；本分支暂无机械门禁，
   以人工核对为准并**记债**（见 `docs/TODO.md`）。TS 版门禁是待办项。
 
+## 远端与 PR 纪律
+
+- **只有一个 remote：`origin`**（本项目自己的仓库），且 `remote.pushDefault=origin` —— 裸 `git push` 只走它。
+  **不得**添加指向第三方上游（如 `google/artemis`）且带 push 地址的 remote；本项目产出只留在 `origin`。
+- **不要对任何第三方上游开 PR / 建分支 / 推内容**。若确实要读上游源码作设计参考，用只读形态：
+  添加后立刻 `git remote set-url --push <name> no-push`。
+- **判「有没有误开的 PR」不能用** `gh pr list --repo <本仓>` —— 它只列 **base 在本仓**的 PR，
+  **看不到「从本仓发到上游」的跨库 PR**。正确判据是按 **base 仓库**列：
+  `gh pr list --repo <上游仓库> --author <自己> --state all`。
+  （这条是血债：曾用错判据得出「无开放 PR」，并据此论证分支改名无连带影响 —— 见 R27：判据必须证明它会红。）
+- 一切 `gh` 的写操作必须**显式指定仓库**，不许依赖默认解析。（归档分支的 R26 是这条的通用形态。）
+
 ## 文档纪律
 
 - **一个派生事实只有一个权威**：编号范围与计数 → `docs/TODO.md`；进度与阻塞 → `docs/TODO.md` §零；

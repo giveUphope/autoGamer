@@ -22,8 +22,16 @@
 - **阶段：未开工**。本分支为新建立的空白分支；插件工程与全部 py 实现都不在此处（前者待搬迁，后者按 D19 归零）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、只留 LICENSE）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。
-- **待用户裁定（唯一剩项）**：`upstream` remote 去留。**注意 remote 是仓库级配置、不随分支走**，
-  故本分支与归档分支共享同一份 remote 表；未裁定前 `upstream`（`github.com/google/artemis`）仍在。
+- **remote 结构（2026-10-14 已裁定并执行）**：`upstream`（`github.com/google/artemis`）**已移除**；
+  仅保留 `origin`（`giveUphope/autoGamer`，既是 fetch 也是 push）；并设 `remote.pushDefault=origin`，
+  使裸 `git push` 只走 origin。**理由**：这两条是「误把东西交到上游」的结构性入口——`upstream` 在场时
+  `gh` 的仓库解析可能落到它，而这条隐患**已经真实发生过一次**（见下条）。若日后仍需读上游设计，
+  请按只读形态重新添加（`git remote add` 后立刻 `git remote set-url --push <name> no-push`）。
+- **待用户在 GitHub 上完成第二项**：关闭误开的跨库 PR **`google/artemis#182`**
+  （head `giveUphope:legacy-fork-v2-dsh-plugin` → base `google/artemis:main`，状态 OPEN）。
+  本机 token 对该仓库无写权限（`gh pr close` 返 403），须在 PR 页面点 Close。
+- **教训（写进 AGENTS）**：`gh pr list --repo <本仓>` **只列 base 在本仓的 PR**，看不到「从本仓发到上游」的 PR
+  ——曾据此得出「无开放 PR」的错误结论并用它论证改名无连带影响（R27：一个不能失灵的判据等于没判据）。
 
 ## 一、决议（现行）
 
