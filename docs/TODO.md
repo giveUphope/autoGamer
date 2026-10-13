@@ -8,7 +8,7 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前 **3 项未关闭差距 `G71` / `G72` / `G73`**（第四节），无进行中里程碑。本节是状态唯一权威；编号范围只查 `migration/registry.md`，不另抄。
+- 当前未关闭差距 **`G71` / `G72` / `G73` / `G74` / `G75` / `G76`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -25,7 +25,38 @@
     `uv run artemis --help` 的 Commands = `doctor` / `mcp` / `helper`；`artemis mcp --help` 给
     `--type adb`（默认）/ `mock` / `xml`、`--transport stdio`（默认）/ `sse`（`:8001`）。
     **`mcp_server/` 的 `.py` 计数为 0**（只剩 `__pycache__` 与空目录）⇒ 智能栈确实不在本树，据此立 **G72**。
-  - 仍未具备的触发条件：`scrcpy` 不在 PATH（Phase 4 的 20fps / 触摸回传 / 无残留三项继续 live 不可跑）。
+    - 仍未具备的触发条件：`scrcpy` 不在 PATH（Phase 4 的 20fps / 触摸回传 / 无残留三项继续 live 不可跑）。
+- 2026-10-13 **Step 1 动作面实测**（真 MuMu，`uv run artemis mcp --type adb`，`ARTEMIS_MOCK_DRIVER=0` 走真 driver；
+  现场用现成客户端 `plugins/dsh-autogamer/scripts/spike-mcp.mjs` + `dist/` 里的 `ActionClient`，未新增仓库内脚手架）：
+  - **工具面 15 个与已提交 fixture 逐字一致**（`spike` rc 0；没用 `--write`，fixture `git diff` 为空）——G63 那条
+    「fixture 必须在真面上重新比对」第一次是在**有设备的机器上**过的，此前只在 `--type mock` 上验过。
+  - **roster 把一台 MuMu 报成 4 台**：`list_devices()` 默认 → `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`
+    四条全 `state: device`、`is_emulator: true`、同 `model 24031PN0DC`，而 `settings get secure android_id` 四条全等
+    （`c0021066f3fbaf47`）、`ro.serialno` 四条全空 ⇒ **按 endpoint 分键的闸门/并发上限/熔断会 4 倍计数** → 立 **G75**。
+  - **锁屏三态**：`include_lock_state=true` 时四条都 `is_locked: false`；默认 false 时**不带该字段**。
+    `null`(unknown) 与 `true` 两个分支本轮**未触达**，别当已验。
+  - **device state 的真返回形状与 Phase 2 记录不一致**：`take_screenshot` 返回**裸 base64 JPEG**
+    （226856 字符，解出 170142 字节，`image/jpeg`），且 py 侧 docstring 自己就写着
+    “Returns the screenshot as a base64 encoded JPEG string”；`get_ui_hierarchy` 返回 JSON 数组字符串，
+    字段值全是字符串（`"index":"2"`、`clickable:"true"`、`bounds:"[x0,y1][x1,y1]"`）。
+    **`file://…` 那条属已删的 pre-contraction 5 工具面** → 映射层要按真面重锁，立 **G74**。
+  - **坐标空间陷阱（本轮最重要）**：当前帧空间是 **1600x900**（独立金标准 = `adb exec-out screencap -p` 的 PNG IHDR；
+    `dumpsys input` 主视口 `Orientation: Rotation90`），而 `wm size` 报 **Physical size: 900x1600**。
+    插件的 `coord.imageSizeFromBase64(真截图)` 得到 `{width:1600,height:900}`，**与金标准一致**（取源路径正确，
+    我先前怀疑的「解析器宽高互换」被这条独立测量否证）；`toPixels` 往返精确（归一 `(500,97)` → `(800,87)`）；
+    真点 Settings 搜索栏中心 `(800,87)` → driver 打 `input tap 800 87` → 焦点变
+    `com.android.settings.intelligence/.search.SearchActivity` 且 `compare_ui_frames` 报 `{"changed": true}`
+    ⇒ **tap 吃的就是这个帧空间的像素**；若按 `wm size` 归一，同一点会落到 `(450,827)`，偏 **350x / 362y** → 立 **G76**。
+  - `swipe` 生效（Success + `{"changed": true}`）。
+  - **「Success ≠ 生效」抓到实例**：`back` 返回 `Success` 而焦点未变、`compare_ui_frames` 报 `{"changed": false}`；
+    同一时刻 raw `adb input keyevent 4` **却生效**（焦点回到 `com.android.settings/.Settings`）。
+    而 HOME 方向相反：`input keyevent 3` / `KEYCODE_HOME` 当时**未**改变焦点，`am start -a MAIN -c HOME` 生效。
+    ⇒ 键事件投递在这台 MuMu 上**可靠性未定性**（每向 n=1~2，样本量不足以定红绿，按 R27 记为待测）。
+  - **真机环境级告警**（喂给 classify/熔断 vocabulary 的现场）：`set-wakelock` 不支持（`Unknown command`）、
+    USB stay-awake 启用失败（`setting=2`，退回 5 秒宿主心跳）、**accessibility helper 不应答**（device port 18888）
+    → 自动降级到 UIAutomator2 并 30 秒重试。`launch_app` 的 smart polling 会打印一大段 foreground-task 归属诊断
+    但仍返回 `Success`。
+  - 现场已复位：HOME intent → `app.lawnchair/app.lawnchair.LawnchairLauncher`。
 - 2026-10-13 仓库卫生与主线定位（正文见 CHANGELOGS **#78**）：`origin` 上三条死分支已删；本地安全网分支
   `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
   `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
@@ -143,13 +174,16 @@
 - **PTC 让三期能力提前到一期可选**（守则 R14/R18 的 `mode: ptc`）：每个可见已注册工具都能 `await tools.<name>(args)` 直接调用并重入正常执行流水线，成功返回**策略处理后的规范 JSON 值**而非渲染文本，失败以 `ToolCallError` reject（只能读 `name` / `toolName` / `message`）→ validator 的确定性升级梯与 checker 的结构化复核都有现成载体；但呈现方式**按 agent 而非按工具**，同一 agent 内不能让一个工具只用 Native、另一个只用 PTC，且 PTC 中间值不落日志、无法回放
 - 业界对齐（dsh-verification §八）：单 agent + 外部确定性控制是收敛方向，反对反思式自检；DSH workflow/PTC = 三期确定性 burst 现成机制
 
-## 四、差距清单（2026-10-13 起 1 项未关闭）
+## 四、差距清单
 
 | 编号 | 差距 | 阻塞点 / 下一步 |
 |---|---|---|
 | G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 须走官方 `plugin_manager` 的 `remove_bundle` → `install_bundle` 重做交付形态；**契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八**，此处不重述 |
 | G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 13 工具动作面 | 七工具 live（留白第 1、9 项）前须二选一：① `artemisRepoPath` 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面新增一层映射（`run_task`/`inspect_trace` 在动作面无对应工具，不能直接换命令）。2026-10-13 Step 0 实测 |
 | G73 | `artemis doctor` 结尾提示 `artemis run "…"`，而本分支 CLI Commands 只有 `doctor` / `mcp` / `helper`（`uv run artemis --help` 实测）——已删命令的残留文案 | 低优先；改文案即可，不动功能 |
+| G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组且**字段值全为字符串**（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
+| G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | 需要一条身份去重规则：py 面不发出机器身份，`is_emulator`+model 不足以区分多实例。先按 R20 查上游/官方有无现成口径，再决定「py 侧增发身份」还是「插件侧只信 `ADB_DEVICE_SERIAL` 白名单」——不自造指纹 |
+| G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
 
@@ -393,10 +427,18 @@ mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
 14. settings inject/section 活证明（触发：真会话挂载）。
 15. README release URL 旧名（历史资产，保持；下版本换新）。
 16. dsh.client 挂载实证（package.json；触发：真会话）。
-17. **roster 真枚举「一台算几台」**（Step 1 首要项）：MuMu 一个实例暴露 4 条 adb 传输、`ro.serialno` 四条全空，
-    按 serial 分键与 `defaultDeviceKey` 两条路都可能把一台设备当成多台或反之（G64/G65 当年无真机验）。
+17. ~~roster 真枚举「一台算几台」~~ **已测（Step 1）：一台 MuMu 报成 4 台**，后果与去重方案记 **G75**。
 18. **图像附件是否被降级成文本**：本机 loaded 模型 `qwen3.6-35b-a3b-mtp` 的 `capabilities` 只列 `tool_use`、
     无 vision 项，正对 S5 记过的「`models[].input` 显式省略 = 负能力」坑（触发：真会话 / 真端点跑一次带图动作）。
+19. **键事件投递可靠性未定性**（Step 1 抓到反例，样本太小不判红绿）：`back` 返回 `Success` 而
+    `compare_ui_frames` 报 `{"changed": false}`、焦点不动；同一时刻 raw `adb input keyevent 4` **却**让焦点回退。
+    HOME 方向相反：`keyevent 3` / `KEYCODE_HOME` 不动，`am start -a MAIN -c HOME` 生效。
+    每向 n=1~2（R27：样本量能把红绿读反）→ 触发：定向跑 `press_key`/`back` 各 ≥10 次并逐次取证。
+20. **锁屏三态只验到 `false`**：`include_lock_state=true` 四条设备都回 `is_locked: false`，
+    `null`(unknown) 与 `true` 两个分支本轮未触达（触发：把 MuMu 锁屏 / 或造一个 dumpsys 不可答的场景）。
+21. **层级面稀疏度差异极大**：桌面当时 5 个节点、Settings 主页 31 个 —— `{index}` 定位与 validator 的目标解析
+    直接依赖它（G42/G67 的锁都建立在节点可枚举上）。是 `get_ui_elements` 的设计过滤、UIAutomator2 在 MuMu 上的
+    抽取受限，还是 helper 缺位导致（Step 1 实测 helper 不应答 → 降级 UIAutomator2）？触发：装回 helper 后同屏对比。
 
 ### Phase 5 偏差与落地（2026-10-14）
 
