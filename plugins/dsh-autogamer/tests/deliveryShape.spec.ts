@@ -49,6 +49,7 @@ describe("delivery shape: shipped patch and live overlay agree", () => {
     expect(shipped).toContain("@deepseek-ai/dsh-persona");
     expect(shipped).toContain("dsh-autogamer");
     expect(shipped).toContain("@deepseek-ai/dsh-tool-jobs");
+    expect(shipped).toContain("@deepseek-ai/dsh-tool-cordis");
     expect(contributedNames(FILES.live)).toEqual(shipped);
   });
 

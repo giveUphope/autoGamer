@@ -98,6 +98,10 @@
           actionServerEnv:
             ADB_DEVICE_SERIAL: "emulator-5554"
       - name: "@deepseek-ai/dsh-tool-jobs"
+      # Same tool-cordis row as cordis.patch.yml (TODO §零 Step 11; tests/
+      # deliveryShape.spec.ts compares the two presets' contributed plugin names).
+      - id: tool-cordis
+        name: "@deepseek-ai/dsh-tool-cordis"
       # Same skill wiring as cordis.patch.yml (tests/deliveryShape.spec.ts compares
       # the two presets' contributed plugin names).
       - id: skill-filesystem

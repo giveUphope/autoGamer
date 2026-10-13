@@ -52,6 +52,14 @@
           - id: dsh-autogamer-inner
             name: dsh-autogamer
           - name: "@deepseek-ai/dsh-tool-jobs"
+          # Self-inspection (TODO §零 Step 11, user-approved): the official cordis
+          # preset mounts this same row (no config) to hand sessions
+          # cordis_inspect_list/query — the R9 inspector for "which tools does THIS
+          # agent actually see". Without it the AutoGamer face has no checker at
+          # all (Step 10: the model can only restate its context). Placement
+          # mirrors the shipped cordis preset: right before the skills rows.
+          - id: tool-cordis
+            name: "@deepseek-ai/dsh-tool-cordis"
           # Skills ship in this package's skills/ dir. Resolving the root at load
           # time is the official patch-level form (web-app/presets/cordis.patch.yml
           # does exactly this for dsh-agent-preset): createRequire(baseUrl) anchors
