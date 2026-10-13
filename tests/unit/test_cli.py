@@ -293,8 +293,11 @@ def test_cli_doctor_json_blocked_verdict_and_exit_code(monkeypatch):
     assert adb_check["status"] == "fail"
     assert adb_check["required"] is True
     assert adb_check["fix"] == [
-        {"type": "command", "label": "Install platform-tools",
-         "payload": "winget install Google.PlatformTools"},
+        {
+            "type": "command",
+            "label": "Install platform-tools",
+            "payload": "winget install Google.PlatformTools",
+        },
         {"type": "link", "label": "Docs", "payload": "https://developer.android.com/tools/adb"},
     ]
 
@@ -343,3 +346,86 @@ def test_cli_doctor_fix_skips_heal_when_keys_are_healthy(monkeypatch):
     fakes["heal"].assert_not_awaited()
     assert "nothing to repair" in result.output
     assert "No stale device locks" in result.output
+
+
+# ---------------------------------------------------------------------------
+# artemis helper smoke (end-to-end device observation smoke test)
+# ---------------------------------------------------------------------------
+
+
+def _patch_smoke(monkeypatch, verdict):
+    import artemis.interfaces.cli.commands.helper as helper_module
+    from artemis.core.diagnostics import device_smoke as smoke_module
+
+    async def fake_smoke(device_serial=None, timeout_seconds=20.0):
+        report = dict(verdict)
+        report["serial"] = device_serial
+        return report
+
+    monkeypatch.setattr(helper_module, "_resolve_serial", lambda _s: "emulator-5554")
+    monkeypatch.setattr(smoke_module, "smoke_test_device", fake_smoke)
+
+
+def test_cli_helper_smoke_ok_renders_verdict(monkeypatch):
+    """A passing observation exits 0 and shows the screenshot/element counts."""
+    _patch_smoke(
+        monkeypatch,
+        {
+            "ok": True,
+            "elapsed_seconds": 1.2,
+            "screenshot_bytes": 42000,
+            "element_count": 17,
+            "hierarchy_backend": "helper",
+            "error": None,
+            "fix": [],
+        },
+    )
+    result = runner.invoke(app, ["helper", "smoke"])
+    assert result.exit_code == 0, result.output
+    assert "SMOKE OK" in result.output
+    assert "42000" in result.output and "17" in result.output
+
+
+def test_cli_helper_smoke_failure_shows_guidance_and_exits_1(monkeypatch):
+    """A placeholder/hang verdict exits 1 and surfaces the error and repair steps."""
+    _patch_smoke(
+        monkeypatch,
+        {
+            "ok": False,
+            "elapsed_seconds": 20.0,
+            "screenshot_bytes": 67,
+            "element_count": 0,
+            "hierarchy_backend": None,
+            "error": "Screenshot capture failed (driver returned a 67-byte placeholder image)",
+            "fix": [
+                "Unlock the phone and keep the screen on.",
+                "Restart the on-device UIAutomator server.",
+            ],
+        },
+    )
+    result = runner.invoke(app, ["helper", "smoke"])
+    assert result.exit_code == 1, result.output
+    assert "SMOKE FAILED" in result.output
+    assert "placeholder" in result.output
+    assert "Unlock the phone" in result.output
+
+
+def test_cli_helper_smoke_json_emits_verdict(monkeypatch):
+    """--json prints the raw smoke verdict and keeps the exit code."""
+    _patch_smoke(
+        monkeypatch,
+        {
+            "ok": True,
+            "elapsed_seconds": 0.5,
+            "screenshot_bytes": 1000,
+            "element_count": 3,
+            "hierarchy_backend": "uiautomator",
+            "error": None,
+            "fix": [],
+        },
+    )
+    result = runner.invoke(app, ["helper", "smoke", "--json"])
+    assert result.exit_code == 0, result.output
+    doc = json.loads(result.output)
+    assert doc["ok"] is True and doc["serial"] == "emulator-5554"
+    assert doc["element_count"] == 3 and doc["hierarchy_backend"] == "uiautomator"

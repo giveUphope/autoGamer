@@ -223,4 +223,49 @@ def helper_parity(
     raise typer.Exit(code=0 if report["ok"] else 1)
 
 
+@helper_app.command("smoke")
+def helper_smoke(
+    serial: SerialOption = None,
+    timeout: Annotated[
+        float, typer.Option("--timeout", help="Seconds to wait for the observation.")
+    ] = 20.0,
+    as_json: Annotated[bool, typer.Option("--json", help="Print raw JSON.")] = False,
+) -> None:
+    """Capture one screenshot + hierarchy dump exactly like a task, to prove the device is
+    actually observable (not just that ``adb devices`` lists it).
+
+    UIAutomator hangs and placeholder screenshots otherwise only surface as a
+    failed task. This performs the same observation as the MCP tool and reports
+    a structured verdict with concrete repair steps. A device another Artemis
+    task is driving is reported as busy and skipped rather than disturbed.
+    """
+    import asyncio
+
+    from artemis.core.diagnostics.device_smoke import smoke_test_device
+
+    target = _resolve_serial(serial)
+    report = asyncio.run(smoke_test_device(device_serial=target, timeout_seconds=timeout))
+    if as_json:
+        typer.echo(json.dumps(report, indent=2, ensure_ascii=False))
+        raise typer.Exit(code=0 if report["ok"] else 1)
+
+    table = Table(title=f"Device smoke test on {report.get('serial') or target}")
+    table.add_column("Field", style="cyan")
+    table.add_column("Value")
+    table.add_row(
+        "Result", "[green]SMOKE OK[/green]" if report["ok"] else "[red]SMOKE FAILED[/red]"
+    )
+    table.add_row("Elapsed", f"{report['elapsed_seconds']:.1f} s")
+    table.add_row("Screenshot bytes", str(report["screenshot_bytes"]))
+    table.add_row("UI elements", str(report["element_count"]))
+    table.add_row("Hierarchy backend", str(report["hierarchy_backend"]))
+    Console().print(table)
+
+    if report.get("error"):
+        typer.secho(f"  ! {report['error']}", fg=typer.colors.RED)
+    for step in report.get("fix", []):
+        typer.secho(f"  - {step}", fg=typer.colors.YELLOW)
+    raise typer.Exit(code=0 if report["ok"] else 1)
+
+
 __all__ = ["helper_app"]
