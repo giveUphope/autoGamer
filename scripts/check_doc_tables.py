@@ -327,9 +327,7 @@ def selftest():
     # (it did - "D1-D17" survived the D18 registration and this selftest failed
     # loudly on a clean tree, which is the point of it, but the anchor must move
     # with the heading instead of pinning a stale number).
-    dhead = next(
-        (ln for ln in good.split("\n") if re.match(r"^## .*D1-D(\d+)", ln)), None
-    )
+    dhead = next((ln for ln in good.split("\n") if re.match(r"^## .*D1-D(\d+)", ln)), None)
     if dhead is None:
         raise SystemExit("FAIL: anchor for injection (e) not found - no D-range heading")
     claimed_max = int(re.search(r"D1-D(\d+)", dhead).group(1))

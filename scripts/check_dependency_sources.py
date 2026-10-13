@@ -18,7 +18,6 @@
 Uses only the Python 3.12+ standard library so CI can run it before uv sync.
 """
 
-import json
 import sys
 import tomllib
 from pathlib import Path
@@ -36,9 +35,12 @@ def main() -> int:
             errors.append(f"{label}: expected an HTTPS URL on {host}")
 
     lock = tomllib.loads((ROOT / "uv.lock").read_text(encoding="utf-8"))
+    # Only workspace member left is the root project itself: every other
+    # package must come from the public PyPI registry (P4 contraction deleted
+    # packages/artemis-client; the old console's package-lock.json went with
+    # apps/showcase_ui_v2, so the npm half of this check is gone with it).
     workspace_sources = {
         "artemis": {"editable": "."},
-        "artemis-client": {"editable": "packages/artemis-client"},
     }
     for package in lock["package"]:
         label = f"uv.lock: {package['name']}=={package['version']}"
@@ -52,17 +54,10 @@ def main() -> int:
         for artifact in artifacts:
             check_url(f"{label}: artifact", artifact.get("url", ""), "files.pythonhosted.org")
 
-    npm_lock = json.loads(
-        (ROOT / "apps/showcase_ui_v2/package-lock.json").read_text(encoding="utf-8")
-    )
-    for name, package in npm_lock["packages"].items():
-        if "resolved" in package:
-            check_url(f"package-lock.json: {name}", package["resolved"], "registry.npmjs.org")
-
     if errors:
         print("Dependency source check failed:\n" + "\n".join(errors), file=sys.stderr)
         return 1
-    print("Dependency sources use public PyPI and npm registries.")
+    print("Dependency sources use the public PyPI registry.")
     return 0
 
 

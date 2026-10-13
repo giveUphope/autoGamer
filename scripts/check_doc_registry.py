@@ -274,7 +274,9 @@ def selftest() -> None:
     if gap_row is None:
         gap_row = next((ln for ln in todo.split("\n") if re.match(r"^\| D\d+ \|", ln)), None)
     if gap_row is None:
-        raise SystemExit("FAIL: no gap or decision row to inject the range defect into - the tables moved")
+        raise SystemExit(
+            "FAIL: no gap or decision row to inject the range defect into - the tables moved"
+        )
     max_d = max(int(i[1:]) for i in registry_ids() if i.startswith("D"))
     copied = gap_row.rstrip().rstrip("|") + f" 完整口径见 D1-D{max_d} |\n"
     TODO.write_bytes(todo.replace(gap_row, copied, 1).encode("utf-8"))

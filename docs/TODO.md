@@ -9,8 +9,18 @@
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
 - 当前无未关闭差距、无进行中里程碑。本节是状态唯一权威；编号范围只查 `migration/registry.md`，不另抄。
-- 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction` 未推送，
-  `pre-contraction` 为收缩前基线（`3fab0ee`）。
+- 旧账去向：P4 A/B 归档与放弃清单见 CHANGELOGS **#71**；分支 `dsh-plugin-contraction`
+  已推送（`0adb7f5`，run `38371033938`，CI 行为见下）；`pre-contraction` 为收缩前基线
+  （`3fab0ee`，本地存档，不推送）。
+- CI 修绿（run `38371033938` 全红之后）：首个 push run 6/6 红，根因全是旧树残留——
+  前端/smoke-test 的 setup-node 缓存路径、依赖源门禁的文件 glob、fixture 步调的生成器，
+  皆指向 P4 已删之物。修法（CHANGELOGS **#77**）：删 frontend/package 两 job、去
+  gen-sse 步、门禁去 npm 半与 client 行、pyproject 去 client/workspace/admin/testpaths
+  并显式声明 `artemis*` + `third_party*` 命名空间包、pyright 范围同步、uv.lock 重锁。
+  另挖出一真因：P4 重写 `artemis/__init__.py` 时丢了 `_legacy_imports` 寻址器（含其模块），
+  安装后上下文 `import third_party` 全灭（`python -m`/pytest 因根在 path 上幸免）——
+  即 fixture 步在隔离环境红的原因，命名空间映射已代换该机制。
+  dispatch-only 那步仍指已删路径（G70 已放弃，不碰）。新 run 见推送。
 - 下一步：等新方案文本到达，按 R22 落条目。
 
 ## 一、最终形态

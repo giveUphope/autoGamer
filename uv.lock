@@ -9,12 +9,6 @@ resolution-markers = [
     "python_full_version < '3.13'",
 ]
 
-[manifest]
-members = [
-    "artemis",
-    "artemis-client",
-]
-
 [[package]]
 name = "adbutils"
 version = "2.12.0"
@@ -229,7 +223,6 @@ version = "1.0"
 source = { editable = "." }
 dependencies = [
     { name = "adbutils" },
-    { name = "artemis-client" },
     { name = "colorama" },
     { name = "fastapi" },
     { name = "google-genai" },
@@ -295,7 +288,6 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "adbutils", specifier = ">=2.12.0" },
-    { name = "artemis-client", editable = "packages/artemis-client" },
     { name = "colorama", specifier = ">=0.4.6" },
     { name = "fastapi", specifier = ">=0.111.0" },
     { name = "google-genai", specifier = ">=2.22.0" },
@@ -354,11 +346,6 @@ dev = [
     { name = "pytest-cov", specifier = ">=5.0.0" },
     { name = "ruff", specifier = ">=0.15.2" },
 ]
-
-[[package]]
-name = "artemis-client"
-version = "0.1.0"
-source = { editable = "packages/artemis-client" }
 
 [[package]]
 name = "asttokens"
@@ -2971,7 +2958,7 @@ name = "pexpect"
 version = "4.9.0"
 source = { registry = "https://pypi.org/simple" }
 dependencies = [
-    { name = "ptyprocess" },
+    { name = "ptyprocess", marker = "python_full_version < '3.13' or sys_platform != 'win32'" },
 ]
 sdist = { url = "https://files.pythonhosted.org/packages/42/92/cc564bf6381ff43ce1f4d06852fc19a2f11d180f23dc32d9588bee2f149d/pexpect-4.9.0.tar.gz", hash = "sha256:ee7d41123f3c9911050ea2c2dac107568dc43b2d3b0c7557a33212c398ead30f", size = 166450, upload-time = "2023-11-25T09:07:26.339Z" }
 wheels = [

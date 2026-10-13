@@ -24,8 +24,6 @@ authors = [
 requires-python = ">=3.12"
 
 dependencies = [
-    # Remote Python SDK (kept as a zero-dependency workspace package)
-    "artemis-client>=0.1.0",
     # Orchestration & Framework
     "langgraph>=1.0.2,<2.0.0",
     "langchain>=1.0.0",
@@ -89,7 +87,6 @@ dev = [
 
 [project.scripts]
 artemis = "artemis.interfaces.cli.main:cli"
-artemis-admin = "apps.admin_console.server:main"
 
 
 [build-system]
@@ -98,11 +95,23 @@ artemis-admin = "apps.admin_console.server:main"
 requires = ["setuptools>=61.0", "Cython"]
 build-backend = "setuptools.build_meta"
 
-[tool.uv.workspace]
-members = ["packages/artemis-client"]
-
-[tool.uv.sources]
-artemis-client = { workspace = true }
+# The contracted tree keeps exactly two importable top-level packages. Without
+# this, setuptools flat-layout discovery trips over leftover untracked dirs
+# (notably apps/, whose node_modules were never cleaned) and editable installs
+# fail with "Multiple top-level packages discovered".
+# `third_party` is a namespace package (no __init__.py): mapping it keeps
+# `third_party.mobile_use.*` imports working under installed console scripts
+# (`uv run artemis mcp …`). The old tree achieved the same through a lazy
+# meta-path finder installed by artemis/__init__.py (`_legacy_imports`,
+# dropped in the P4 rewrite along with its module); explicit namespace
+# mapping replaces that machinery. Without it, imports only resolve when the
+# repo root happens to sit on sys.path (`python -m`, pytest), and the CI
+# fixture step (`uv run artemis mcp --type mock`) dies with
+# "ModuleNotFoundError: No module named 'third_party'".
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["artemis*", "third_party*"]
+namespaces = true
 
 [tool.ruff]
 # Exclude a variety of commonly ignored directories.
@@ -183,19 +192,15 @@ skip-magic-trailing-comma = false
 line-ending = "auto"
 
 [tool.pytest.ini_options]
-# Add project root and apps to Python path for clean absolute imports
+# Add project root to Python path for clean absolute imports
 pythonpath = [
     ".",
-    "apps",
-    "apps/admin_console",
 ]
 
 
 # Specify test discovery patterns
 testpaths = [
     "tests/unit",
-    "tests/tools",
-    "packages/artemis-client/tests",
 ]
 python_files = [
     "*.test.py",
