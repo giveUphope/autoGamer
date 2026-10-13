@@ -12,8 +12,18 @@
   （正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字）。
   **进行中里程碑 = D19 TS 全栈迁移 + D20 溯源归零**（§七 流程，未开工）。
   `G77` → CHANGELOGS **#79**，`G73` → **#80**，`G79` + `G80` → **#82**，`G71` → **#83** 均已结案。
-- **待用户裁定（D20 相关，本轮唯一阻塞项）**：git 历史处置（保留 / 重写重建 / 新建仓库转源）与 `upstream`
-  remote 去留。未裁定前 D20 判据只覆盖工作树层，规格 §八 已如实这么写。
+- **2026-10-14 git 历史处置已裁定（用户）**：**新建空白（orphan）分支 `ts-fullstack`** —— 即规格 §八 待裁项 1
+  的选项 (c)：新分支**无历史**，故上游内容在**历史层也不再留存**；本分支 `dsh-plugin-contraction` 原地转为
+  **参考归档**（ref 与内容都不动）。随迁清单与不随迁清单见下条。**随之 D20 判据从新分支起覆盖全层（含历史）**，
+  归档分支保留完整调研台账（registry / CHANGELOGS / inventory / 守则全文）供查阅。
+- **随迁内容（新分支 `ts-fullstack`）**：`LICENSE`、`.gitattributes`、裁剪版 `AGENTS.md`、最小 `README.md`、
+  `docs/TODO.md`（骨架：D19/D20 决议 + 流程勾选 + 开放差距）、`docs/migration/ts-fullstack-spec.md`、
+  `docs/migration/plugin-contract-rules.md`（守则正文，py 判据已换占位）。
+  **不随迁**：全部 py 树（含 vendored `third_party` 及其自带 LICENSE/NOTICE）、上游派生文档（`inventory/*`、
+  `research/*`、`artemis/agents/*.md`）、py 文档门禁脚本（`scripts/check_doc_*.py`；**记债**：新分支暂无机械门禁，
+  见新分支 TODO 开放项）、本分支的 `CHANGELOGS.md` 与完整 `registry.md`（编号权威随之转到新分支的 `docs/TODO.md`）。
+- **仍未裁定（唯一剩项）**：`upstream` remote 去留。**注意它不随分支走**（remote 是仓库级配置），
+  所以新分支与归档分支共享同一份 remote 表；未裁定前 `upstream`（`github.com/google/artemis`）仍在。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
