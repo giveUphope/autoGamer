@@ -8,7 +8,7 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前未关闭差距 **`G71` / `G72` / `G73` / `G74` / `G75` / `G76`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
+- 当前未关闭差距 **`G71` / `G72` / `G73` / `G74` / `G75` / `G76` / `G77` / `G78`**（正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字），无进行中里程碑。本节是状态唯一权威。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -57,6 +57,30 @@
     → 自动降级到 UIAutomator2 并 30 秒重试。`launch_app` 的 smart polling 会打印一大段 foreground-task 归属诊断
     但仍返回 `Success`。
   - 现场已复位：HOME intent → `app.lawnchair/app.lawnchair.LawnchairLauncher`。
+- 2026-10-13 **Step 2 · 复审「可验的都验了吗」+ 补调研**（结论：不止没验完，还有两处我记错了）：
+  - **py 全套在有设备的机器上仍全绿**：`pytest tests/unit tests/integration -q` = **447 passed / 1 skipped**，rc 0。
+    **#77** 记的那次 447/1 是在**无设备**的机器上跑的，所以这条是新增证据：设备在场不改变离线面结果。
+  - **层级稀疏是设计行为，不是故障，也早有文档**：`get_ui_hierarchy` → `filter_ui_hierarchy`
+    默认 `semantic_pruning="hoist"`（`artemis/utils/ui_filter.py:425-433`），语义空节点被 `return filtered_node.get("children", [])`
+    丢弃，而 **UIAutomator2 的 XML 解析是扁平的、没有 `children` 键**（`third_party/mobile_use/clients/ui_automator_client.py:106-145`），
+    所以容器与无 text/content-desc/非可点的节点整条消失 → 桌面 5 个、Settings 36 个属预期。
+    helper 可用时走**同一个 filter**（`artemis/clients/screen_client_factory.py:221-228` 的降级分支只换来源不换过滤）
+    ⇒ **不是 helper 缺位造成的**；口径早已写在 `inventory/03-device-media-diagnostics.md:199`，本轮只是补上真机确认。
+  - **更正我自己 G74 的表述**：节点**并非「字段值全为字符串」**——除字符串 `bounds` 外还带
+    **`parsed_bounds`（`{left,top,right,bottom}` 整数对象），真机 36/36 全带**。解析层有现成数值可用，不必自解字符串。
+  - **键事件定论（n=10，单变量）**：raw `input keyevent KEYCODE_HOME` **0/10 生效**，raw `input keyevent 4`(BACK)
+    **10/10 生效**，`am start -a MAIN -c HOME` 每次都生效 ⇒ HOME 注入在这台 MuMu 上**确定性失效**，不是抖动。
+    且 `adb_driver.py:372-383` 的 `press_key` 是 `await device.shell(...)` 后**无条件 `return True`**
+    ⇒ **py 的按键面没有效果语义**，`Success` 只代表命令发出；按键类动作的效果判定只能走 `compare_ui_frames`（喂 S4/S11 的词汇边界）。
+  - **VLM 端点侧风险排除**：向 `1234/v1/chat/completions` 发带 `image_url` 的请求**被接受**
+    （`prompt_tokens: 27`，无 vision 拒绝；`finish_reason: length` 是我给的 `max_tokens=8` 太小所致）
+    ⇒ 留白 18 的「端点不收图」这一半**否证**；剩下的风险只在 **DSH provider 的 `models[].input` 声明**，仍被 G71 挡。
+  - **新立 G77**：预检第 4 项只认 `uv tool list`（`src/env/preflight.ts:186-202` 断言 stdout 含 `artemis`），
+    而本机实测 `uv tool list` = **`No tools installed`**，同一台机器上 `uv run artemis mcp --type adb` 却可用
+    ⇒ fork 以 **project venv / editable** 形态存在时被误报「未安装」，真机在场也照样红。
+  - **新立 G78**：`adb forward --list` 实测残留 **`127.0.0.1:16384 tcp:54254 tcp:18888`**（device 18888 = helper 端口，
+    由 py 侧建 forward），而 MCP server 进程已退出 ⇒ Done means 里那句「卸载无残留（adb forward 清理）」
+    **不是「等真机」而是已被证伪**，且残留产生方是 py 动作面，插件的 stop/dispose 管不到它。
 - 2026-10-13 仓库卫生与主线定位（正文见 CHANGELOGS **#78**）：`origin` 上三条死分支已删；本地安全网分支
   `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
   `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
@@ -181,9 +205,11 @@
 | G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 须走官方 `plugin_manager` 的 `remove_bundle` → `install_bundle` 重做交付形态；**契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八**，此处不重述 |
 | G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 13 工具动作面 | 七工具 live（留白第 1、9 项）前须二选一：① `artemisRepoPath` 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面新增一层映射（`run_task`/`inspect_trace` 在动作面无对应工具，不能直接换命令）。2026-10-13 Step 0 实测 |
 | G73 | `artemis doctor` 结尾提示 `artemis run "…"`，而本分支 CLI Commands 只有 `doctor` / `mcp` / `helper`（`uv run artemis --help` 实测）——已删命令的残留文案 | 低优先；改文案即可，不动功能 |
-| G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组且**字段值全为字符串**（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
+| G74 | **映射层按已删的 5 工具面锁形状**，与本树动作面真返回不符：`take_screenshot` 实测是裸 base64 JPEG（226856 字符 / 170142 字节 / `image/jpeg`，py docstring 亦写 “base64 encoded JPEG string”），Phase 2 却记成 `file://…` 纯文本；`get_ui_hierarchy` 是 JSON 数组，属性值是字符串（`clickable:"true"`、`bounds:"[x0,y0][x1,y1]"`）**但每个节点还带 `parsed_bounds` 整数对象（真机 36/36 全有）**，且节点数被 `filter_ui_hierarchy` 的语义裁剪大幅压低（设计行为，见 §零 Step 2） | 按 §零 Step 1 测量重锁 `getDeviceState` / 截图 / `{index}` 三条解析路径并同步 conformance。**先定 G72 走哪个面**——两面的形状本就不同，照旧记录改会对错面向 |
 | G75 | **一台 MuMu 被 roster 报成 4 台**：`list_devices()` 返回 `127.0.0.1:16384` / `:5555` / `:7555` / `emulator-5554`，四条 `android_id` 全等（`c0021066f3fbaf47`）、`ro.serialno` 全空 ⇒ 按 endpoint 分键的闸门、全局并发上限与熔断**4 倍计数** | **R20 已查证：两个上游都没有这个口径**（DSH 的 roster 指 preset 行；artemis 上游 `device_pool.py` 与本仓逐字相同、无 dedupe，详见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 九）。诚实路线只剩三条并已列在该节表格里，默认取 **①：交付钉显式 `Config.devices`，把自动枚举降级**（不碰 canonical 契约，且 `devicePool.ts:166` 已让「钉住就不枚举」）。待用户裁定后按 R22 写方案再动码 |
 | G76 | **坐标空间口径缺一道防护**：本机主视口 `Rotation90`，帧空间 **1600x900**（独立金标准 = `screencap` 的 PNG IHDR），而 `wm size` 报 **900x1600**；插件从截图取尺寸这条路已验正确（`imageSizeFromBase64` → `{1600,900}`，`toPixels` 往返精确，真点 `(800,87)` 命中搜索栏），但 Config 的 `screenSize` 手填项（`configuredScreenSize`）若按 `wm size` 填，同一点偏 **350x / 362y** | 二选一：删掉/显式标注该手填项「必须是帧空间尺寸」，或加一致性校验（与截图 IHDR 比对后拒绝或告警）。测量见 §零 Step 1 |
+| G77 | 预检「已安装」判据只认 `uv tool list`（`src/env/preflight.ts:186-202` 断言 stdout 含 `artemis`），实测本机 `uv tool list` = **`No tools installed`**，而同一台机器 `uv run artemis mcp --type adb` 可用 ⇒ fork 以 project venv / editable 形态存在时**误报未安装**，真机在场也照样红 | 判据要承认第二种安装形态（project venv：`uv run artemis --version` 或 `uv pip show artemis` 任一命中即过），并改该项的修复建议文案；改前先在有设备的机器上跑一次预检七项取证 |
+| G78 | **`adb forward` 残留已实测证实**：`adb forward --list` → `127.0.0.1:16384 tcp:54254 tcp:18888`（18888 = helper 端口），而 MCP server 进程早已退出 ⇒ Done means 的「卸载无残留」**不是待验，是已被证伪**；建 forward 的一方是 py 动作面，插件 stop/dispose 管不到它 | 归属待定：插件侧兜底按 `host:port` 精确删（`--remove-all` 会误伤别处），还是 py 侧在自己生命周期内清（更接近 canonical 契约）。scrcpy 那一半仍缺二进制（留白 6/7） |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
 
@@ -286,8 +312,6 @@ ARTEMIS 侧（本仓 git 历史，一手）：
 - scrcpy（规格 §12-9）：仓内无 server 获取链，版本约束未知 → 用用户 PATH 的 scrcpy 或官方
   release 加 SHA 校验，Phase 4 定。
 - rules 路径纠正：fork 实证在 `mcp_server/rules.md`（非仓库根）；外部上游根有无待提供方确定后复核。
-
-待回写：`defineTool`/settings/systemPrompt/inject 服务表（另一路核实中）→ 硬冲突 2/3/4 待裁。
 
 ### Phase 0 核实结论（续，2026-10-14：工具/设置/提示三路，已安装产物与上游一手）
 
@@ -428,17 +452,24 @@ mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
 15. README release URL 旧名（历史资产，保持；下版本换新）。
 16. dsh.client 挂载实证（package.json；触发：真会话）。
 17. ~~roster 真枚举「一台算几台」~~ **已测（Step 1）：一台 MuMu 报成 4 台**，后果与去重方案记 **G75**。
-18. **图像附件是否被降级成文本**：本机 loaded 模型 `qwen3.6-35b-a3b-mtp` 的 `capabilities` 只列 `tool_use`、
-    无 vision 项，正对 S5 记过的「`models[].input` 显式省略 = 负能力」坑（触发：真会话 / 真端点跑一次带图动作）。
-19. **键事件投递可靠性未定性**（Step 1 抓到反例，样本太小不判红绿）：`back` 返回 `Success` 而
-    `compare_ui_frames` 报 `{"changed": false}`、焦点不动；同一时刻 raw `adb input keyevent 4` **却**让焦点回退。
-    HOME 方向相反：`keyevent 3` / `KEYCODE_HOME` 不动，`am start -a MAIN -c HOME` 生效。
-    每向 n=1~2（R27：样本量能把红绿读反）→ 触发：定向跑 `press_key`/`back` 各 ≥10 次并逐次取证。
-20. **锁屏三态只验到 `false`**：`include_lock_state=true` 四条设备都回 `is_locked: false`，
-    `null`(unknown) 与 `true` 两个分支本轮未触达（触发：把 MuMu 锁屏 / 或造一个 dumpsys 不可答的场景）。
-21. **层级面稀疏度差异极大**：桌面当时 5 个节点、Settings 主页 31 个 —— `{index}` 定位与 validator 的目标解析
-    直接依赖它（G42/G67 的锁都建立在节点可枚举上）。是 `get_ui_elements` 的设计过滤、UIAutomator2 在 MuMu 上的
-    抽取受限，还是 helper 缺位导致（Step 1 实测 helper 不应答 → 降级 UIAutomator2）？触发：装回 helper 后同屏对比。
+18. ~~图像附件是否被降级成文本~~ **端点侧已排除（Step 2）**：真发一次带 `image_url` 的请求被接受（`prompt_tokens: 27`，
+    无 vision 拒绝），`capabilities` 不列 vision ≠ 不收图。**剩余风险只在 DSH provider 的 `models[].input` 声明**
+    （S5 的负能力坑），触发条件仍是真会话 → 被 **G71** 挡。
+19. ~~键事件投递可靠性未定性~~ **已定论（Step 2，n=10 单变量）**：raw `keyevent KEYCODE_HOME` **0/10**、
+    raw `keyevent 4`(BACK) **10/10**、HOME intent 每次都生效 ⇒ HOME 注入在这台 MuMu 上**确定性失效**，不是抖动。
+    根因不在设备也在契约：`adb_driver.py:372-383` 的 `press_key` 发完 shell **无条件 `return True`**
+    ⇒ py 按键面**没有效果语义**，按键类动作的判定只能靠 `compare_ui_frames`（S4/S11 词汇边界，已据此收窄）。
+20. **锁屏三态**（Step 2 定性）：真机只到 `is_locked:false`，但 `true`/`null` 两个**判定分支两边单测都锁死了**
+    （py `tests/unit/core/test_diagnostics.py:83-104`、`tests/unit/mcp/test_device_listing.py:127`；
+    插件 `tests/devicePool.spec.ts:267,272,282`）⇒ 诚实表述是「live 未触达、分支已锁」。
+    **真洞在 unknown 的成因**：dumpsys 超时 / `returncode!=0` / 异常 三条通往 `None` 的路径**两侧都无测**
+    （只有 monkeypatch 级的上层假数据）—— 触发：造一次 adb 不可答的同屏复测。
+21. ~~层级面稀疏度差异极大~~ **已答（Step 2，属设计行为）**：`filter_ui_hierarchy` 默认
+    `semantic_pruning="hoist"`（`artemis/utils/ui_filter.py:425-433`）丢语义空节点，而 UIAutomator2 的解析是
+    **扁平无 `children`**（`third_party/mobile_use/clients/ui_automator_client.py:106-145`）⇒ 容器整条消失；
+    helper 可用时**走同一个 filter**（`artemis/clients/screen_client_factory.py:221-228` 只换来源不换过滤），
+    所以稀疏**不是 helper 缺位造成**。口径早已在 `inventory/03-device-media-diagnostics.md:199`，本轮补真机确认
+    （桌面 5→36 随屏内容变化，Settings 36）。对 `{index}` 的后果转记 **G74**（改吃 `parsed_bounds`）。
 
 ### Phase 5 偏差与落地（2026-10-14）
 
@@ -465,4 +496,6 @@ R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；�
 - [x] Phase 0：十项核实结论回写本条，六条硬冲突逐条裁决（确认/降级/砍掉）
 - [x] 插件 id 改名定案并同步（`dsh-autogamer`，用户定稿）
 - [x] Phase 1–5 按验收逐阶段落地（离线面；live 见留白总账）
-- [ ] 卸载无残留进程（scrcpy、adb forward 清理）+ README 完整化
+- [ ] 卸载无残留进程：scrcpy 那一半仍缺二进制（留白 6/7）；**adb forward 那一半 Step 2 已实测证伪**
+      （server 退出后残留 `tcp:54254 → tcp:18888`）→ 转 **G78**
+- [ ] README 完整化（Phase 5 已加段落与 Layout 行，双向锁在 `#61/#64`；仍待随 G71 的交付形态更新安装流一节）

@@ -49,16 +49,18 @@
 
 ## 三、G · 差距清单
 
-**现行在册**（2026-10-13 起 6 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
+**现行在册**（2026-10-13 起 8 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
 
 | 编号 | 一句话 | 定义位置 |
 |---|---|---|
 | G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子已无 `package.json` → profile 级挂载与 `--dump-config-schema` 失败；须走官方 `remove_bundle` → `install_bundle` 重做交付形态 | `../TODO.md` 第四节 + [upstream-plugin-forms](upstream-plugin-forms.md) 八 |
 | G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand` 指向 pre-contraction 的 `mcp_server` 5 工具面，本分支 `mcp_server/` 已无 `.py`，只有 `artemis mcp --type adb` 的 13 工具动作面 | `../TODO.md` 第四节 |
 | G73 | `artemis doctor` 结尾提示已删命令 `artemis run`（本分支 Commands 只有 doctor / mcp / helper） | `../TODO.md` 第四节 |
-| G74 | 映射层按**已删的 5 工具面**锁形状：`take_screenshot` 实测返回裸 base64 JPEG 而非 `file://…` 文本，`get_ui_hierarchy` 字段值全为字符串 | `../TODO.md` 第四节（测量在 §零 Step 1） |
+| G74 | 映射层按**已删的 5 工具面**锁形状：`take_screenshot` 实测返回裸 base64 JPEG 而非 `file://…` 文本；层级节点属性值是字符串但带 `parsed_bounds` 整数对象，且节点数被语义裁剪压低 | `../TODO.md` 第四节（测量在 §零 Step 1、Step 2） |
 | G75 | **一台 MuMu 被 roster 报成 4 台**（4 条 adb 传输、`android_id` 全等、`ro.serialno` 全空）→ 闸门/并发上限/熔断 4 倍计数 | `../TODO.md` 第四节（测量在 §零 Step 1） |
 | G76 | 坐标空间缺防护：主视口 `Rotation90` 使帧空间 1600x900 而 `wm size` 报 900x1600；截图取源路径已验正确，Config 手填 `screenSize` 无一致性校验 | `../TODO.md` 第四节（测量在 §零 Step 1） |
+| G77 | 预检「已安装」只认 `uv tool list`，project venv / editable 形态下实测报 `No tools installed` 而 `uv run artemis mcp` 可用 → 误报未安装 | `../TODO.md` 第四节（测量在 §零 Step 2） |
+| G78 | `adb forward` 残留实测证实（server 退出后 `tcp:54254 → tcp:18888` 仍在），建 forward 的是 py 动作面 → Done means 的「无残留」被证伪而非待验 | `../TODO.md` 第四节（测量在 §零 Step 2） |
 
 **已关闭**（定义来源：`../CHANGELOGS.md`「已关闭差距史」逐行表；差距结案后从 `TODO.md` 第四节移除，正文进 CHANGELOGS）：
 
