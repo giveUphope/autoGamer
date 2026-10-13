@@ -29,6 +29,7 @@
 | D17 | 自举引入：preset 挂 tool-plugin-manager，让 agent 自己执行 install_bundle |
 | D18 | 长期技术栈以 TS 为主，py 仅在特定库成熟度高于 TS 库时保留；本次收缩不重写 py，只压到最小设备能力面作为后续 TS 迁移基线 |
 | D19 | **终态 = TS 全栈、py 归零**：仓库不再承载任何 py 实现，上游 ARTEMIS 能力逐步改由 TS 承载，外部 ARTEMIS 只保留为可选提供方（收紧 D18；规格见 [ts-fullstack-spec.md](ts-fullstack-spec.md)） |
+| D20 | **溯源终态 = 只留 LICENSE**：除 `LICENSE` 外不留存任何来自上游的信息（代码、prompt 文本、vendored 树、派生文档、copyright 头、指向上游的 git 元数据）；本项目仅从上游获取设计灵感后独立重实现 ⇒ TS 侧重写**只借鉴设计、不搬运文本**（规格见 [ts-fullstack-spec.md](ts-fullstack-spec.md) §八；git 历史与 remote 的处置待用户裁定） |
 
 ## 二、S · 对接语义（现行有效）
 
@@ -50,7 +51,7 @@
 
 ## 三、G · 差距清单
 
-**现行在册**（2026-10-14 起 10 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
+**现行在册**（2026-10-14 起 11 项；旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
 
 | 编号 | 一句话 | 定义位置 |
 |---|---|---|
@@ -64,6 +65,7 @@
 | G83 | 15 工具动作面仍是 py-only（adb / uiautomator2 客户端）→ 须 TS 原生实现并与现面逐条对照 | 同上 T2 |
 | G84 | 效果判定 `compare_ui_frames`、OCR、overlay 标注仍是 py-only → 须 TS 化 | 同上 T3 |
 | G85 | py 归零收尾：删 py 树 / 清 CI 与依赖 / 更新文档口径 | 同上 T4 |
+| G86 | **溯源清理未做**：仓库仍含上游派生内容——319 个文件的 `Google LLC` copyright 头、vendored `third_party/mobile_use`（自带其 LICENSE/NOTICE）、上游派生文档（`docs/research`、`inventory/*`、`agents/*.md`）、致谢文案，以及指向 `google/artemis` 的 `upstream` remote | `../TODO.md` §四 + [ts-fullstack-spec](ts-fullstack-spec.md) §八（git 历史处置待用户裁定） |
 
 **已关闭**（定义来源：`../CHANGELOGS.md`「已关闭差距史」逐行表；差距结案后从 `TODO.md` 第四节移除，正文进 CHANGELOGS）：
 

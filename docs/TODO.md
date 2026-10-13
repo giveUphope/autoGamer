@@ -6,11 +6,14 @@
 > 编号查 [registry](migration/registry.md)，词查 [glossary](migration/glossary.md)，
 > 导航查 [导航](migration/README.md)。
 
-## 零、当前状态（2026-10-14，进行中里程碑：TS 全栈迁移 D19）
+## 零、当前状态（2026-10-14，进行中里程碑：TS 全栈迁移 D19 + 溯源归零 D20）
 
-- 当前未关闭差距 **`G72` / `G74` / `G75` / `G76` / `G78` / `G81` / `G82` / `G83` / `G84` / `G85`**
-  （正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字）。**进行中里程碑 = D19 TS 全栈迁移**（§七 流程，未开工）。
+- 当前未关闭差距 **`G72` / `G74` / `G75` / `G76` / `G78` / `G81` / `G82` / `G83` / `G84` / `G85` / `G86`**
+  （正文在第四节；**计数只查 `migration/registry.md`**，此处不写数字）。
+  **进行中里程碑 = D19 TS 全栈迁移 + D20 溯源归零**（§七 流程，未开工）。
   `G77` → CHANGELOGS **#79**，`G73` → **#80**，`G79` + `G80` → **#82**，`G71` → **#83** 均已结案。
+- **待用户裁定（D20 相关，本轮唯一阻塞项）**：git 历史处置（保留 / 重写重建 / 新建仓库转源）与 `upstream`
+  remote 去留。未裁定前 D20 判据只覆盖工作树层，规格 §八 已如实这么写。
 - 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
   - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
     `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
@@ -380,9 +383,9 @@
 
 已清空，见「零、当前状态」。产品方向暂以第二节与第三节的冻结基线为准，新方案到达后改写本节。
 
-## 二、决策记录（冻结基线，D1-D19）
+## 二、决策记录（冻结基线，D1-D20）
 
-2026-10-14 冻结：清空时保留作基线，新方案到达后按 R22 修订。**D19（2026-10-14）为现行终态决议，收紧 D18。**
+2026-10-14 冻结：清空时保留作基线，新方案到达后按 R22 修订。**D19 / D20（2026-10-14）为现行终态决议**：D19 收紧 D18，D20 是独立于 D19 的另一根轴（内容来源）。
 
 | # | 决策点 | 结论 |
 |---|---|---|
@@ -405,6 +408,7 @@
 | D17 | 自举引入 | 给 `preset-autogamer` 挂 `@deepseek-ai/dsh-plugin-manager/tools`（官方 shipped preset 里该行的 disabled 写作 `!!js '!ctx.get('profileContext')'`，即 UI 会话中可用），让 AutoGamer agent 能对自己执行 `install_bundle`。这是上游「让 Agent 给自己造插件」的现成路径，也是把引入流从手工迁到自动的落点；执行细节与红线见 [守则 R2 / R9](migration/plugin-contract-rules.md)。**2026-10-12 已落地**：preset 的 plugins 加 `- id: tool-plugin-manager`，`disabled: !!js "!ctx.get('profileContext')"`（**先写成 `false` 是错的，见 CHANGELOGS #26**：服务行 `plugin-manager` 自己就是 `!ctx.get('profileContext')`，工具行无条件开会要求一个不存在的服务，而缺服务按 D16 拒挂整条 preset；官方 Creator preset 用的正是这个表达式）（**不是**原设想照抄 `!!js '!ctx.get("profileContext")'`——官方 README 给的启用形状就是 `disabled: false`，且写明「Preset-backed sessions use their preset's tool-plugin-manager entry」；shipped `standard`/`ptc` 都是 `disabled: true`。⚠️ 但「照抄 `false`」的写法已在 #26 修成跟随服务条件）。live 已证：R7 新会话工具面从 5 个变 7 个、多出 `plugin_manager` 与 `skill`。⚠️ 代价按官方原文记在案：「installed Host code executes in-process outside the workspace sandbox」，且 plugin_manager 的**每个**动作（含 list_plugins/list_bundles）都要 danger-full-access 或该次审批；本仓库不替用户放宽权限模式（R19）。 |
 | D18 | 长期技术栈方向 | **用户 2026-10-12 定：以 TS 为主，py 仅在「特定库成熟度高于 TS 同类库」时保留**（典型如 adb/uiautomator2 等设备库、视觉/CV 库）。新增与重构逻辑默认落 TS；py 是「库成熟度占优」的例外而非默认。本次 P4 收缩**不触发** py→TS 重写，只把保留 py 压缩到最小设备能力面（动作为主、零智能栈），作为未来 TS 迁移前的可验证基线。是 D8 之后的演进方向，不改变 D8 当下的动作面保留 |
 | D19 | 终态（现行） | **用户 2026-10-14 定：TS 全栈、py 归零**。仓库内不再承载任何 py 实现（`artemis/`、`mcp_server/`、`third_party/`、`pyproject.toml`、`uv.lock` 全删，CI 无 python job）；上游 ARTEMIS 的能力逐步改由 TS 承载；外部 ARTEMIS **只保留为可选提供方**（用户自行安装、经 adapter 显式接入），不内置、不 vendored、不开开发依赖。**收紧 D18**——其「库成熟度例外」经实测不成立（`langchain` 出现在 54 个 py 文件而 LLM 绑定由 DSH 宿主提供；OCR 是 HTTP 调用；`cv2`/`PIL` 有成熟 TS 同类；`uiautomator2` 是 on-device 协议客户端）。规格与四期路线见 [ts-fullstack-spec](migration/ts-fullstack-spec.md)，流程见 §七 |
+| D20 | 溯源终态（现行） | **用户 2026-10-14 定：除 LICENSE 外不留存任何上游信息，包括代码——本项目仅从上游获取设计灵感后独立重实现**。清理面 = py 代码、copyright 头（实测 319 个被跟踪文件带 `Google LLC`）、vendored `third_party/mobile_use`（自带其 **另一份** LICENSE 与 NOTICE，来自另一上游）、上游派生文档（`docs/research`、`inventory/*`、`agents/*.md` prompt 正文）、致谢文案、指向 `google/artemis` 的 `upstream` remote。**硬约束**：TS 重实现只借鉴设计、不搬运文本（逐字照抄 = 保留派生内容，与 D20 冲突），贯穿 T1–T3。**已定与未定分开记**：工作树层判据已定（见规格 §八）；**git 历史处置与 `upstream` remote 去留待用户裁定**——历史仍含上游全部内容，不裁定则「不留存」只在工作树层成立。规格 §八 |
 
 ## 三、对接语义（冻结基线，S1-S11）
 
@@ -484,6 +488,7 @@
 | G83 | **15 工具动作面 py-only**：实现在 `artemis/mcp/adb_server.py`（adb / uiautomator2 客户端）；插件 `ActionClient` 目前只是 MCP 转发 | 期 **T2**：TS 原生实现 + 与现面**同一输入同一输出**逐条对照（fixture 用现成 `tests/fixtures/py-action-tools.json`）。前置 = §四 的 wire 实测（层级 dump 形态、helper 协议） |
 | G84 | **效果判定 / OCR / 标注 py-only**：`compare_ui_frames` 委托 py 侧 `check_ui_change`；OCR 走 py `httpx` → Google Vision；overlay 用 py `PIL`/`cv2` | 期 **T3**：dHash 类差分 + `fetch` 直译 OCR + sharp 标注；算法与阈值从 py 读设计（属「无思路从上游取设计」）。对照表留档 |
 | G85 | **py 归零收尾未做**：`artemis/` `mcp_server/` `third_party/` `pyproject.toml` `uv.lock` 与 py 测试树仍在；CI 仍有 python job | 期 **T4**：分批删 + 每批后跑插件全套与 R6；文档口径同步（AGENTS 命令表、README 导览、§零/§六）。Done = `git ls-files '*.py'` 为空且 CI 无 python job |
+| G86 | **溯源清理未做（D20 线，独立于 G85）**：仓库仍含上游派生内容——实测 319 个被跟踪文件带 `Google LLC` copyright 头（`docs` 3 / `scripts` 1 / `tests` 30 / `Makefile`·`pyproject` 各 1）；vendored `third_party/mobile_use`（自带**另一份** LICENSE + NOTICE，来自另一上游）；上游派生文档（`docs/research/*`、`docs/migration/inventory/*`、`artemis/agents/*.md` prompt 正文）；致谢文案；`upstream` remote 指向 `github.com/google/artemis` | 期 **T4 同步**（[ts-fullstack-spec](migration/ts-fullstack-spec.md) §八）：按清理面逐项处置；**贯穿约束**「只借鉴设计、不搬运文本」在 T1–T3 就已生效。**git 历史处置与 remote 去留待用户裁定**（不裁定则判据只覆盖工作树层） |
 
 旧表 10 项的去向见 CHANGELOGS「已关闭差距史」（9 项放弃 + G36 行同步 UI 侧放弃），编号权威仍是 [registry](migration/registry.md)。
 
@@ -794,10 +799,20 @@ R6 exit 0 且无 `unmatched`；mock 后端支撑全部单测，无需真机；�
 - [ ] 对照表留档（同输入同输出，可复跑命令 + 实测输出）
 - [ ] **Done：效果判定与 OCR 无 py 依赖**
 
-### T4 · 收尾删 py（**G85**）
+### T4 · 收尾删 py（**G85**）+ 溯源清理（**G86**）
 
 - [ ] 分批删 py 树，每批后跑插件全套 + R6
 - [ ] 清 CI 的 python job 与 py 依赖安装步骤
 - [ ] 文档口径同步（`AGENTS.md` 命令表、`migration/README.md` 导览、本文件 §零 / §六）
 - [ ] `git ls-files '*.py'` 为空
-- [ ] **Done：规格 §一 四条全部成立**
+- [ ] **Done：规格 §一 五条全部成立**
+
+#### 溯源线（D20 / **G86**；约束贯穿 T1–T3，清理收尾于 T4）
+
+- [ ] **贯穿约束**：T1–T3 的实现只借鉴设计、不搬运上游文本（prompt / 注释 / 文档段落逐字照抄即违规）——每期收尾自检一次
+- [ ] copyright 头清零：`git grep -l 'Google LLC'` 为空或只剩 `LICENSE` 自身
+- [ ] `third_party/` 整树移除（含其自带的 LICENSE 与 NOTICE）
+- [ ] 上游派生文档处置（`docs/research/*`、`docs/migration/inventory/*`、`artemis/agents/*.md`）：删或标注为历史，且不得作为实现依据
+- [ ] 致谢 / 命名文案改写为「灵感来源」措辞（不写「基于」）
+- [ ] `upstream` remote 处置（**待用户裁定**）
+- [ ] git 历史处置（**待用户裁定**：保留 / 重写重建 / 新建仓库转源）——未裁定则记明「判据只覆盖工作树层」
