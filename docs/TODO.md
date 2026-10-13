@@ -8,7 +8,24 @@
 
 ## 零、当前状态（2026-10-14 清空，待新方案）
 
-- 当前 **1 项未关闭差距 `G71`**（本机 web profile 的插件交付形态，第四节），无进行中里程碑。本节是状态唯一权威；编号范围只查 `migration/registry.md`，不另抄。
+- 当前 **3 项未关闭差距 `G71` / `G72` / `G73`**（第四节），无进行中里程碑。本节是状态唯一权威；编号范围只查 `migration/registry.md`，不另抄。
+- 2026-10-13 **Step 0 现场核实**（用户起了 LM Studio 与 MuMu，本轮只核现场、不写实现）：
+  - 设备：`artemis doctor` 判 **Ready**（Python 3.12.13 ✔、设备 `24031PN0DC` / `900x1600` ✔、`scrcpy` 缺 = 可选缺项）。
+    `.env:23` 已钉 `ADB_DEVICE_SERIAL=127.0.0.1:16384`；前台 `app.lawnchair`（亮屏未锁）；Android 15。
+    **一个 MuMu 实例暴露 4 条 adb 传输**（`emulator-5554`、`127.0.0.1:16384`、`:5555`、`:7555`），
+    同机证据 = `settings get secure android_id` 四条全等（`c0021066f3fbaf47`）+ MemTotal/battery 一致；
+    `ro.serialno` 四条**都是空串**（MuMu 不设），所以按 serial 分键的闸门会把它们当不同 endpoint、又可能同时落进
+    `defaultDeviceKey`——roster 真枚举「一台算几台」列为 Step 1 首要待测（G64/G65 当年是在无真机的机器上验的）。
+  - 模型端点：`127.0.0.1:1234` 在听（PID 17476）。`/api/v0/models` 里 `qwen3.6-35b-a3b-mtp`
+    **`state: loaded`**、`type: vlm`、`quantization: IQ1_M`、`loaded_context_length: 262144`，
+    而 `capabilities` **只列 `[tool_use]`、无 vision 项** → 按 S5 记过的「显式省略 = 负能力」坑，
+    图像附件路径在这个端点上是否被降级为文本，属**待实测**，不许当已证。
+  - 提供方：入口是 console script（`pyproject.toml:89` → `artemis.interfaces.cli.main:cli`；
+    用 `python -m artemis` 会报 `No module named artemis.__main__`，那是调用姿势错，不是功能缺）。
+    `uv run artemis --help` 的 Commands = `doctor` / `mcp` / `helper`；`artemis mcp --help` 给
+    `--type adb`（默认）/ `mock` / `xml`、`--transport stdio`（默认）/ `sse`（`:8001`）。
+    **`mcp_server/` 的 `.py` 计数为 0**（只剩 `__pycache__` 与空目录）⇒ 智能栈确实不在本树，据此立 **G72**。
+  - 仍未具备的触发条件：`scrcpy` 不在 PATH（Phase 4 的 20fps / 触摸回传 / 无残留三项继续 live 不可跑）。
 - 2026-10-13 仓库卫生与主线定位（正文见 CHANGELOGS **#78**）：`origin` 上三条死分支已删；本地安全网分支
   `backup-trailer-fix` 已删（4 个提交按 patch-id 证明与 main 里的重写版对偶）；**远端默认分支已从 `main` 改为
   `dsh-plugin-contraction`**，`main` 按用户裁定不再同步；插件本机环境已装并复验（install 未改 lockfile、tsc 通过、
@@ -29,8 +46,9 @@
   即 fixture 步在隔离环境红的原因，命名空间映射已代换该机制。
   dispatch-only 那步仍指已删路径（G70 已放弃，不碰）。run `38376354428` 4/4 绿（双 OS），
   收缩后树第一次全绿。
-- 下一步：离线实现齐（Phase 0–5，#71–#77）；live 验证（外部提供方 + 真机 + 真会话）与
-  留白总账 16 项待条件具备（见 §六），或听用户下一步指令。
+- 下一步：离线实现齐（Phase 0–5，逐阶段条见 §六）；live 验证待条件具备——提供方形状记 **G72**、
+  scrcpy 与真机项都在 §六 留白总账里按触发条件登记（**条目数不抄在这里**，那是一份会腐烂的副本），
+  或听用户下一步指令。
 
 ## 一、最终形态
 
@@ -130,6 +148,8 @@
 | 编号 | 差距 | 阻塞点 / 下一步 |
 |---|---|---|
 | G71 | 本机 web profile 的组合包选择仍指旧名 `autogamer-device`，其 `link:` 靶子（改名提交 `70cc7af` 把 `package.json` 移走）已解析失败 → profile 级挂载与 `--dump-config-schema` rc=1 | 须走官方 `plugin_manager` 的 `remove_bundle` → `install_bundle` 重做交付形态；**契约与本机实测见 [upstream-plugin-forms](migration/upstream-plugin-forms.md) 八**，此处不重述 |
+| G72 | 本机提供方形状未定：插件默认 `artemisMcpCommand = ["python","-m","mcp_server"]`（`src/index.ts:76,179`，按 Phase 2 重核的 pre-contraction 5 工具面落的），而**本分支 `mcp_server/` 的 `.py` 计数为 0**，只有 `uv run artemis mcp --type adb` 的 13 工具动作面 | 七工具 live（留白第 1、9 项）前须二选一：① `artemisRepoPath` 指到仍含 `mcp_server` 的外部 checkout；② 给本树动作面新增一层映射（`run_task`/`inspect_trace` 在动作面无对应工具，不能直接换命令）。2026-10-13 Step 0 实测 |
+| G73 | `artemis doctor` 结尾提示 `artemis run "…"`，而本分支 CLI Commands 只有 `doctor` / `mcp` / `helper`（`uv run artemis --help` 实测）——已删命令的残留文案 | 低优先；改文案即可，不动功能 |
 
 **G71 在办条目**（用户 2026-10-13 确认按该方案改）
 
@@ -355,13 +375,15 @@ mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
 新 `it` 必须连同被挤的旧头一起重写）。
 
 留白总账（定位用，补白时直达；触发条件写明）：
-1. 外部提供方缺席 → 七工具真调用与 R7（触发：artemisRepoPath 指向可用 checkout）。
+1. 外部提供方缺席 → 七工具真调用与 R7（触发：artemisRepoPath 指向可用 checkout。**2026-10-13 Step 0：本树只剩
+   13 工具动作面（`uv run artemis mcp --type adb`），`mcp_server/` 的 `.py` 计数为 0 → 形状之争已立 G72**）。
 2. toolview 挂载实证：槽解析、key 生效、卡片渲染（client.js；触发：真会话 R7/R9）。
 3. 轮询/控制/设置卡片通道（触发：挂载实证 + remote 挂载路径证明）。
 4. H.264 转发：无通道，砍（重开条件：DSH 二进制通道出现）。
 5. scrcpy 下载脚本：不建（手动安装见插件 README；重开条件：已核实分发端点）。
-6. 无残留进程：stop 的 pkill 最佳努力（server.ts；触发：真机）。
-7. forward/握手竞态（server.ts start 注释；触发：真机）。
+6. 无残留进程：stop 的 pkill 最佳努力（server.ts；触发：真机 **且 scrcpy 装好**——2026-10-13 Step 0：MuMu 已就位，
+   但 `scrcpy` 不在 PATH，`artemis doctor` 报 `Missing: scrcpy`，此项与 7 仍不可跑）。
+7. forward/握手竞态（server.ts start 注释；触发：真机 + scrcpy）。
 8. 后端映射 refinements（P2 记录；触发：真提供方证据）。
 9. run_task 500ms 对真提供方（触发：真提供方）。
 10. `uv tool list` 解析假设（preflight.ts installedCheck；触发：真输出）。
@@ -371,6 +393,10 @@ mock 侧全覆盖，单测跑在无 adb 无 scrcpy 的机器上仍全绿。
 14. settings inject/section 活证明（触发：真会话挂载）。
 15. README release URL 旧名（历史资产，保持；下版本换新）。
 16. dsh.client 挂载实证（package.json；触发：真会话）。
+17. **roster 真枚举「一台算几台」**（Step 1 首要项）：MuMu 一个实例暴露 4 条 adb 传输、`ro.serialno` 四条全空，
+    按 serial 分键与 `defaultDeviceKey` 两条路都可能把一台设备当成多台或反之（G64/G65 当年无真机验）。
+18. **图像附件是否被降级成文本**：本机 loaded 模型 `qwen3.6-35b-a3b-mtp` 的 `capabilities` 只列 `tool_use`、
+    无 vision 项，正对 S5 记过的「`models[].input` 显式省略 = 负能力」坑（触发：真会话 / 真端点跑一次带图动作）。
 
 ### Phase 5 偏差与落地（2026-10-14）
 
