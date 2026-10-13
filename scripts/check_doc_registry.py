@@ -267,11 +267,16 @@ def selftest() -> None:
         raise SystemExit("FAIL: selftest did not restore TODO.md byte-for-byte")
     print("OK: TODO.md restored byte-for-byte after selftest")
     # copy a "the whole set" range into a doc body: only registry.md may say that.
-    # Anchor on whatever gap row exists - gap ids and rows move, a hardcoded one rots.
+    # Anchor on whatever gap row exists, else a decision row (TODO may carry no
+    # open gap rows at all after the 2026-10-14 clearing); the range literal is
+    # built from the registry's current D max so the anchor cannot rot again.
     gap_row = next((ln for ln in todo.split("\n") if re.match(r"^\| G\d+ \|", ln)), None)
     if gap_row is None:
-        raise SystemExit("FAIL: no gap row to inject the range defect into - the gap table moved")
-    copied = gap_row.rstrip().rstrip("|") + " 完整口径见 D1-D17 |\n"
+        gap_row = next((ln for ln in todo.split("\n") if re.match(r"^\| D\d+ \|", ln)), None)
+    if gap_row is None:
+        raise SystemExit("FAIL: no gap or decision row to inject the range defect into - the tables moved")
+    max_d = max(int(i[1:]) for i in registry_ids() if i.startswith("D"))
+    copied = gap_row.rstrip().rstrip("|") + f" 完整口径见 D1-D{max_d} |\n"
     TODO.write_bytes(todo.replace(gap_row, copied, 1).encode("utf-8"))
     try:
         problems = check()

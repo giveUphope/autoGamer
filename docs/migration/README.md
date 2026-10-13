@@ -14,7 +14,7 @@
 | 判断「我这次改动到底生效没有」 | `plugin-contract-rules.md` R9 + R7 | `TODO.md` 顶部「当前状态」 | 3 分钟 |
 | 想知道某个编号（`G30` / `R13` / `D7`）是什么 | `registry.md` | 定义所在文档 | 1 分钟 |
 | 看不懂某个词（realm、parking、PTC、熔断） | `glossary.md` | — | 1 分钟 |
-| 要动 py 侧（驱动、action server、诊断栈） | `TODO.md` D8/D9 + 第五节「一期改造登记」 | `inventory/02`、`inventory/03` 的相关段 | 按需 |
+| 要动 py 侧（驱动、action server、诊断栈） | `TODO.md` 第二节 D8/D9 + 第三节 S5 | `inventory/02`、`inventory/03` 的相关段 | 按需 |
 | 做 UI（toolview、卡片、录屏展示） | `plugin-contract-rules.md` R18 | `inventory/05` | 10 分钟 |
 | 怀疑某个能力要丢了 | `feature-inventory.md` | `inventory/0N` 明细 | 按需 |
 
@@ -28,10 +28,10 @@
 
 | 文档 | 体量（实测） | 定位 | 可信度口径 |
 |---|---|---|---|
-| `docs/TODO.md` | 524 行 / 124.0 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
-| `docs/CHANGELOGS.md` | 3095 行 / 260.5 KB | **已结案变更的历史**：`### #N` 三段条目 + 「已关闭差距史」表（结案 `G*` 的正文去处） | 现行权威；**编号一经发布不得改写**，写入规则见该文件顶部 |
-| `docs/migration/registry.md` | 186 行 / 20.1 KB | **编号唯一权威**：全部 D / S / G / R 编号 + 已关闭差距 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
-| `docs/migration/glossary.md` | 87 行 / 8.4 KB | 术语翻译表（含 `inject` 的两个意思） | 现行权威 |
+| `docs/TODO.md` | 115 行 / 18.8 KB | **方案本体与进度**（活文档，完成即删，历史查 git）；顶部第一节就是「当前状态」 | 现行权威 |
+| `docs/CHANGELOGS.md` | 3145 行 / 264.7 KB | **已结案变更的历史**：`### #N` 三段条目 + 「已关闭差距史」表（结案 `G*` 的正文去处） | 现行权威；**编号一经发布不得改写**，写入规则见该文件顶部 |
+| `docs/migration/registry.md` | 185 行 / 20.1 KB | **编号唯一权威**：全部 D / S / G / R 编号 + 已关闭差距 + 冲突登记 | 现行权威，`scripts/check_doc_registry.py` 守着 |
+| `docs/migration/glossary.md` | 87 行 / 8.5 KB | 术语翻译表（含 `inject` 的两个意思） | 现行权威 |
 | `docs/migration/plugin-contract-rules.md` | 304 行 / 35.9 KB | **守则全部条款**：每条带出处与判据 | 现行权威；与 todo 冲突时以守则为准并回改 todo |
 | `docs/migration/upstream-plugin-forms.md` | 65 行 / 11.7 KB | 上游插件形态第一轮调研（结论已提炼进守则） | 现行，含两处**已撤回**的归因（别引用它们） |
 | `docs/migration/dsh-verification.md` | 217 行 / 37.0 KB | rc.2 的 48 项假设核实报告 | **混合口径**：README / CLI 类证据可用；37 处包内代码行引用属 asar 旧口径，沿用前须按声明面重验（D15） |

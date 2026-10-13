@@ -77,7 +77,7 @@
 | 声明面 | 允许取证的范围：CLI `--help`、`--dump-config*`、随包 README、已安装包产物、`~/.dsh` 运行数据、上游公开仓库 | D15、R1 |
 | 活门禁 | 能自己报警的检查：测试、尺子、`--dump-config` 自检、官方检查器 | R9 |
 | 尺子 | 机械校验脚本的统称（表格几何、编号引用、质量棘轮） | `scripts/check_doc_tables.py`、`scripts/check_doc_registry.py` |
-| P0-P4 | 里程碑阶段，**不是**差距编号 | `TODO.md` 第五节 |
+| P0-P4 | 里程碑阶段，**不是**差距编号 | 旧 `TODO.md` 第五节（2026-10-14 已清空，见 `../CHANGELOGS.md` #71） |
 
 ## 四、写作约定（给文档，也给代码注释）
 

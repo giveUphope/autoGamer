@@ -300,12 +300,14 @@ def selftest():
         check(inject(good, "2026-10-10 用户裁定", "2026-10-10|裁定", "a"), "inject a", uniq),
         "bare pipe inside a cell",
     )
-    # Anchor on whatever gap row currently exists: gap rows get removed when a
-    # gap closes, so a hardcoded id rots (it did - `| G30 |` moved to
-    # CHANGELOGS and this selftest failed loudly, which is the point of it).
+    # Anchor on whatever gap row currently exists; when TODO carries no open gap
+    # rows at all (2026-10-14 clearing), fall back to a decision row - the probe
+    # is "a blank line splitting a table", which any table row serves.
     gap_row = next((ln for ln in good.split("\n") if re.match(r"^\| G\d+ \|", ln)), None)
     if gap_row is None:
-        raise SystemExit("FAIL: no gap row to inject into - the gap table moved")
+        gap_row = next((ln for ln in good.split("\n") if re.match(r"^\| D\d+ \|", ln)), None)
+    if gap_row is None:
+        raise SystemExit("FAIL: no gap or decision row to inject into - the tables moved")
     expect_caught(
         check(inject(good, gap_row, "\n" + gap_row, "b"), "inject b", uniq),
         "blank line splitting a table",
@@ -320,8 +322,20 @@ def selftest():
         check(inject(good, "| D15 |", "| D14 |", "d"), "inject d", uniq),
         "duplicate decision id",
     )
+    # Anchor on the decision-range heading itself: read the claimed max and
+    # under-claim it by 4. A hardcoded range rots the moment a decision is added
+    # (it did - "D1-D17" survived the D18 registration and this selftest failed
+    # loudly on a clean tree, which is the point of it, but the anchor must move
+    # with the heading instead of pinning a stale number).
+    dhead = next(
+        (ln for ln in good.split("\n") if re.match(r"^## .*D1-D(\d+)", ln)), None
+    )
+    if dhead is None:
+        raise SystemExit("FAIL: anchor for injection (e) not found - no D-range heading")
+    claimed_max = int(re.search(r"D1-D(\d+)", dhead).group(1))
+    under = dhead.replace(f"D1-D{claimed_max}", f"D1-D{claimed_max - 4}")
     expect_caught(
-        check(inject(good, "D1-D17", "D1-D14", "e"), "inject e", uniq),
+        check(inject(good, dhead, under, "e"), "inject e", uniq),
         "heading under-claiming the decision range",
     )
     # (f) a separator row must exist, so a header-only fragment is reported

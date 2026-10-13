@@ -49,22 +49,11 @@
 
 ## 三、G · 差距清单
 
-**现行在册**（定义与状态见 `docs/TODO.md` 第四节表格）：
+**现行在册**（2026-10-14 起暂无：旧表 10 项随 TODO 清空全部结清，去向见 `../CHANGELOGS.md` **#71**）：
 
-| 编号 | 一句话 |
-|---|---|
-| G59 | 本机 web profile 的 `--dump-config-schema` 常驻失败，live 复验前需重装 bundle |
-| G70 | CI 里 dispatch-only 的 py 测试步从未绿过：整仓 pytest 在 runner 上的失败面未知 |
-| G69 | `.pre-commit-config.yaml` 声明的 quality-ratchet 钩子在本检出从未安装（`.git/hooks/pre-commit` 不存在） |
-| G66 | G27 保真差集余下项（shifted/occupied、XML_BYPASSED、subagent 化、§2.6 记忆裁定；incident 关闭通知与 run_outcome 轴锁已由 #62 关掉） |
-| G17 | 共存鉴权：旧控制台只读，DSH 认证走插件轨道 |
-| G23 | 录像产物契约（manifest、命名、首帧锚定、`image://` 安全模型） |
-| G25 | 层级后端互斥：u2 UiAutomation 单例、降级窗、用后 stop |
-| G26 | PID-liveness 协议：仅用于 action server 进程管理 |
-| G27 | 智能栈暗规则：pro 保真清单（盘点 04） |
-| G36 | 截图媒体展示：模型侧已通（附件引用 + `[text, image]`），剩 UI 卡片侧归 P3 |
+暂无未关闭差距。
 
-**已关闭**（`TODO.md` 第四节把它们压进了 `| 已关闭 |` 一行，故从前无法按号查回）：
+**已关闭**（定义来源：`../CHANGELOGS.md`「已关闭差距史」逐行表；`TODO.md` 第四节已清空，不再承载差距行）：
 
 | 编号 | 原短语 | 关闭方式 |
 |---|---|---|
@@ -128,6 +117,16 @@
 | G65 | 锁屏判定进不了插件 | `list_devices(include_lock_state)` 出三态，复用双采样确认探针；详见 CHANGELOGS **#59** |
 | G67 | `{index}` 句柄按数组位置重解（违反 stale 句柄不可点的安全不变量） | 活观察快照 + 按节点身份解析；详见 CHANGELOGS **#60** |
 | G68 | #60/#62 复审轮余下缺陷（文案被信封截断、快照声明半证、句柄无界远跟、不可解析自读仍放行） | 五条各自修法与锁；含对 #60 一处声明与 #40 远跟半句的更正；详见 CHANGELOGS **#63** |
+| G17 | 共存鉴权 | 放弃，未实现；详见 CHANGELOGS **#71** |
+| G23 | 录像产物契约 | 放弃，未实现；详见 CHANGELOGS **#71** |
+| G25 | 层级后端互斥 | 放弃，未实现；详见 CHANGELOGS **#71** |
+| G26 | PID-liveness 协议 | 放弃，未实现；详见 CHANGELOGS **#71** |
+| G27 | 智能栈暗规则 | 放弃，不再作为验收口径；详见 CHANGELOGS **#71** |
+| G36 | 截图媒体展示 | 模型侧已通（#11）；UI 卡片侧放弃；详见 CHANGELOGS **#71** |
+| G59 | 本机 `--dump-config-schema` 常驻失败 | 放弃，未实现；详见 CHANGELOGS **#71** |
+| G66 | G27 保真差集余下项 | ③④已由 #62 关闭；余部放弃；详见 CHANGELOGS **#71** |
+| G69 | pre-commit 钩子从未安装 | 放弃，未实现；详见 CHANGELOGS **#71** |
+| G70 | dispatch-only py 测试步从未绿过 | 放弃，成因未定；详见 CHANGELOGS **#71** |
 
 > 逐条证据：`TODO.md` 已关闭行的原话是「随 R2' 与裁定消失，逐条证据见 git 历史与三份研究文档」。本表只登记编号与短语，**不重述证据**；要考证就查 git 与研究文档，别在这里二次抄写（抄一遍就多一处会腐烂的地方）。
 
@@ -182,5 +181,5 @@
 
 ## 五、还有一类编号：P 里程碑与 X 面
 
-- `P0`-`P4`：`TODO.md` 第五节 checklist 的里程碑，**不是差距编号**，与 `G*` 无对应关系。
+- `P0`-`P4`：旧 `TODO.md` 第五节 checklist 的里程碑（2026-10-14 随清空删除，见 CHANGELOGS **#71**），**不是差距编号**，与 `G*` 无对应关系。
 - 文档内引用「盘点 04」「`inventory/03`」等指 `docs/migration/inventory/0N-*.md`，按文件名引用。
