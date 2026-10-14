@@ -30,6 +30,20 @@ function pngBytes(level = 40): Buffer {
   return Buffer.from(frame(1080, 2400, level));
 }
 
+/**
+ * The same two rows the fake action server answers as JSON, in the device's own
+ * wire form: `uiautomator dump` XML, flattened by `src/device/hierarchy.ts`.
+ * Bounds are in frame space, and the `index` attribute repeats per container —
+ * which is exactly the field G42 says cannot address an element.
+ */
+const HIERARCHY_XML = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
+<hierarchy rotation="1">
+  <node index="0" text="" resource-id="" class="android.widget.FrameLayout" package="com.android.settings" content-desc="" checkable="false" checked="false" clickable="false" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[0,0][1600,900]" drawing-order="0" hint="">
+    <node index="0" text="亮度" resource-id="" class="android.widget.TextView" package="com.android.settings" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[40,400][200,460]" drawing-order="0" hint="" />
+    <node index="1" text="显示" resource-id="" class="android.widget.TextView" package="com.android.settings" content-desc="" checkable="false" checked="false" clickable="true" enabled="true" focusable="false" focused="false" scrollable="false" long-clickable="false" password="false" selected="false" bounds="[40,600][200,660]" drawing-order="1" hint="" />
+  </node>
+</hierarchy>`;
+
 const harness = vi.hoisted(() => ({
   calls: [] as { tool: string; args: Record<string, unknown> }[],
   clientOptions: [] as Record<string, unknown>[],
@@ -219,6 +233,11 @@ beforeEach(() => {
   // screen-size guard compares a configured value against. The probe reads only
   // the IHDR, so a header-only PNG keeps the suite fast.
   adbHealthyDevice();
+  // The device's own hierarchy read (T2-b): `uiautomator dump` answers 139 even
+  // on success and the router judges the file it reads back.
+  A.on(/shell uiautomator dump /, { code: 139, stdout: "UI hierchary dumped to: /sdcard/x.xml\n" });
+  A.on(/exec-out cat \/sdcard\/dsh-autogamer-hierarchy-/, { code: 0, stdout: HIERARCHY_XML });
+  A.on(/shell rm \/sdcard\/dsh-autogamer-hierarchy-/, { code: 0, stdout: "" });
 });
 
 describe("apply(): screen size sourcing wiring", () => {
@@ -417,7 +436,10 @@ describe("apply(): effect observation (S10 ②; local since T3/G84)", () => {
       unknown
     >;
     expect(value).not.toHaveProperty("effect");
-    expect(harness.calls.map((call) => call.tool)).toEqual(["get_ui_hierarchy"]);
+    // T2-b: a hierarchy read is a device read. It reaches the transport zero
+    // times, and it still captures no before/after frames.
+    expect(harness.calls.map((call) => call.tool)).toEqual([]);
+    expect(A.calls.filter((args) => /uiautomator dump/.test(args.join(" ")))).toHaveLength(1);
   });
 });
 
@@ -459,10 +481,21 @@ describe("apply(): element handles reach the device (G42)", () => {
     const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
     // G67: a handle is only meaningful against the list the model was shown.
     await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
-    await tool.execute({ action: "click", target: { index: 1 }, reason: "tap 显示" }, exec());
+    await tool.execute({ action: "click", target: { index: 2 }, reason: "tap 显示" }, exec());
     const tap = harness.calls.find((call) => call.tool === "tap");
-    // #1 is the 显示 row at bounds [40,600]-[200,660] on a 1600x900 screen.
+    // #2 is the 显示 row at bounds [40,600]-[200,660] on a 1600x900 screen
+    // (#0 is the container the real dump keeps in the tree).
     expect(tap?.args.coordinates).toEqual([120, 630]);
+  });
+
+  it("reads the hierarchy off the device instead of asking the action server (T2-b)", async () => {
+    A.on(screencapArgv, { code: 0, stdout: pngHeaderOnly(1600, 900) });
+    const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
+    await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
+    expect(harness.calls.map((call) => call.tool), "the server must not be asked for a hierarchy").not.toContain(
+      "get_ui_hierarchy",
+    );
+    expect(A.calls.filter((args) => /uiautomator dump/.test(args.join(" ")))).toHaveLength(1);
   });
 
   it("hands the model a numbered list rather than the raw per-container index", async () => {
@@ -471,10 +504,16 @@ describe("apply(): element handles reach the device (G42)", () => {
       string,
       unknown
     >;
-    expect(value.element_count).toBe(2);
+    /**
+     * A real dump is the whole tree, containers included — which the py server's
+     * simplified fixture left out. Numbering follows document order, so the
+     * FrameLayout is `#0` and the two labelled rows shift by one.
+     */
+    expect(value.element_count).toBe(3);
     const lines = String(value.hierarchy).split("\n");
     expect(lines[0]).toMatch(/^#0 /);
-    expect(lines[1]).toMatch(/^#1 .*显示$/);
+    expect(lines[1]).toMatch(/^#1 .*亮度$/);
+    expect(lines[2]).toMatch(/^#2 .*显示$/);
   });
 });
 

@@ -353,6 +353,13 @@ export interface RouterOptions {
    * key, never a silent positional tap).
    */
   agentIdOfCall?(): string | undefined;
+  /**
+   * T2-b: the hierarchy read directly off the device (`adb shell uiautomator
+   * dump` + read back), returning the raw XML. It is the ONLY hierarchy source:
+   * the action server's flattened JSON left the path with it, and the flattening
+   * is ours now. The `#N` handle and identity rules are unchanged (G42 / G67).
+   */
+  hierarchy(key: string, signal?: AbortSignal): Promise<string | undefined>;
   /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
   resolveScreenSize(key: string): Promise<ScreenSize | undefined>;
   /**
@@ -430,8 +437,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const attempts = isLadderOn(options.strictness) ? RESOLVE_ATTEMPTS : 1;
     let lastError = "";
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
-      const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}, signal));
-      const fresh = parseVisibleElements(xml);
+      const fresh = await fetchHierarchy(key, signal);
       if (fresh === undefined) {
         throw new Error("task: hierarchy unreadable (not a node list) — re-run get_ui_hierarchy");
       }
@@ -501,6 +507,26 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       refusal: `task: no element matching text "${target.text}" in the current hierarchy`,
       retryable: true,
     };
+  }
+
+  /**
+   * The current element list, read off the device. Undefined means the
+   * hierarchy could not be read, which every caller treats as an unusable
+   * observation rather than an empty screen (G68 ⑤).
+   */
+  async function fetchHierarchy(key: string, signal?: AbortSignal): Promise<VisibleElement[] | undefined> {
+    let xml: string | undefined;
+    try {
+      xml = await options.hierarchy(key, signal);
+    } catch (error) {
+      // G33 again, one layer down: a failed read is the device's or the host's,
+      // never the model's. An unprefixed throw here would classify internal and
+      // the breaker would stay shut while every read keeps dying.
+      throw new Error(
+        `environment: hierarchy read failed: ${error instanceof Error ? error.message : String(error)}`,
+      );
+    }
+    return parseVisibleElements(xml ?? "");
   }
 
   async function requireScreenSize(key: string): Promise<ScreenSize> {
@@ -749,10 +775,14 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     }
 
     let structured: unknown;
-    const observesEffect = EFFECT_OBSERVED_ACTIONS.has(action);
+    // A hierarchy read never reaches the transport at all (T2-b): the element
+    // list comes from the device, so there is no server answer to normalize and
+    // no effect to observe (a read changes nothing).
+    const nativeHierarchy = action === "get_ui_hierarchy";
+    const observesEffect = !nativeHierarchy && EFFECT_OBSERVED_ACTIONS.has(action);
     const before = observesEffect ? await captureFrameSafe() : undefined;
     try {
-      structured = await client.callTool(tool, payload, exec.signal);
+      structured = nativeHierarchy ? undefined : await client.callTool(tool, payload, exec.signal);
     } catch (error) {
       if (exec.signal.aborted) {
         return { ok: false, failure: "task", message: "action cancelled by the user" };
@@ -762,16 +792,18 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       return { ok: false, failure: "environment", message };
     }
 
-    const outcome = normalizeOutcome(structured);
+    const outcome = nativeHierarchy ? { ok: true, message: "" } : normalizeOutcome(structured);
     if (!outcome.ok) {
       return { ok: false, failure: classifyMessage(outcome.message), message: outcome.message };
     }
     if (action === "get_ui_hierarchy") {
-      // Hand the model OUR numbering: the server's own `index` field is a
+      // Hand the model OUR numbering: the node's own `index` field is a
       // per-container ordinal and cannot address an element (G42). Read the
       // untruncated text — normalizeOutcome clips at 4000 chars, which would
-      // cut a real hierarchy dump mid-JSON and make it unparseable.
-      const elements = parseVisibleElements(unwrapText(structured));
+      // cut a real hierarchy dump mid-tree and make it unparseable.
+      const elements = nativeHierarchy
+        ? await fetchHierarchy(key, exec.signal)
+        : parseVisibleElements(unwrapText(structured));
       if (elements === undefined) {
         // Same rule the resolution ladder already applies (G68 ⑤): an
         // unreadable observation is the bypass case, so it must not come back
@@ -890,8 +922,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       tgt.coordinate === undefined &&
       (typeof tgt.index === "number" || (typeof tgt.text === "string" && tgt.text.length > 0));
     if (!retryable) return { status: "nontarget" };
-    const xml = unwrapText(await callTransport(client, "get_ui_hierarchy", {}, signal));
-    const fresh = parseVisibleElements(xml);
+    const fresh = await fetchHierarchy(deviceKey, signal);
     if (fresh === undefined) return { status: "nontarget" };
     const hit = resolveTarget(tgt, fresh, deviceKey);
     if (!("center" in hit)) return { status: "missing" };

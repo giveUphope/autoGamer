@@ -19,36 +19,25 @@ import {
   defineRunDeviceAction,
   type ValidatorStrictness,
 } from "../src/tools/runDeviceAction.js";
+import { hierarchyXml, xmlNode } from "./support/hierarchyXml.js";
 
-function node(text: string, left: number, top: number, right: number, bottom: number) {
-  return {
-    index: "0",
-    text,
-    "content-desc": "",
-    "resource-id": "",
-    class: "android.widget.TextView",
-    package: "com.android.settings",
-    clickable: "true",
-    parsed_bounds: { left, top, right, bottom },
-  };
-}
-
-const WITH_TARGET = JSON.stringify([
-  node("亮度", 40, 400, 200, 460),
-  node("显示", 40, 600, 200, 660),
+/** Node sets in the device's own XML form (T2-b: the router reads the dump, not a JSON list). */
+const WITH_TARGET = hierarchyXml([
+  xmlNode("亮度", 40, 400, 200, 460),
+  xmlNode("显示", 40, 600, 200, 660),
 ]);
-const WITHOUT_TARGET = JSON.stringify([node("亮度", 40, 400, 200, 460)]);
+const WITHOUT_TARGET = hierarchyXml([xmlNode("亮度", 40, 400, 200, 460)]);
 // 显示 slid 80px down: inside the reach a text label may claim (MAX_HANDLE_SHIFT).
-const MOVED_TARGET = JSON.stringify([
-  node("亮度", 40, 400, 200, 460),
-  node("显示", 40, 680, 200, 740),
+const MOVED_TARGET = hierarchyXml([
+  xmlNode("亮度", 40, 400, 200, 460),
+  xmlNode("显示", 40, 680, 200, 740),
 ]);
 // Same label 411px away: no text label can claim that is the node it saw, so the
 // ladder reports it missing rather than chasing it (G68 ③, upstream
 // "prefer disappeared over shifted", precondition_xml.py:392-395).
-const MOVED_FAR = JSON.stringify([
-  node("亮度", 40, 400, 200, 460),
-  node("显示", 400, 800, 560, 860),
+const MOVED_FAR = hierarchyXml([
+  xmlNode("亮度", 40, 400, 200, 460),
+  xmlNode("显示", 400, 800, 560, 860),
 ]);
 
 const harness = {
@@ -69,16 +58,18 @@ function setup(strictness?: ValidatorStrictness) {
     client: {
       callTool: async (name: string, args: Record<string, unknown>) => {
         harness.calls.push({ tool: name, args });
-        if (name === "get_ui_hierarchy") {
-          const text = harness.hierarchies.length > 0 ? harness.hierarchies.shift()! : WITH_TARGET;
-          return { content: [{ type: "text", text }] };
-        }
         if (name === "take_screenshot") {
           throw new Error("no screenshots in ladder tests (frames come from captureFrame)");
         }
         return { content: [{ type: "text", text: harness.taps.length > 0 ? harness.taps.shift()! : "Success" }] };
       },
     } as never,
+    // T2-b: the observation comes from the device dump. It logs under the same
+    // name so `hierarchyCalls()` still counts what the router actually fetched.
+    hierarchy: async () => {
+      harness.calls.push({ tool: "get_ui_hierarchy", args: {} });
+      return harness.hierarchies.length > 0 ? harness.hierarchies.shift()! : WITH_TARGET;
+    },
     logger: { info: () => {}, warn: () => {} },
     defaultDeviceKey: "d0",
     strictness,
@@ -451,21 +442,24 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
     }
   });
 
-  it("classifies a transport death mid-ladder as environment", async () => {
+  /**
+   * T2-b moved the read off the transport, so this is the same rule (G33) on the
+   * other side of the seam: a hierarchy read that dies mid-ladder is the
+   * device's/host's failure, never the model's and never our own internal bug.
+   */
+  it("classifies a hierarchy read death mid-ladder as environment", async () => {
     let hierarchies = 0;
     const failing = defineRunDeviceAction({
       pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
       client: {
-        callTool: async (name: string) => {
-          if (name === "get_ui_hierarchy") {
-            hierarchies += 1;
-            if (hierarchies >= 2) throw new Error("Connection closed");
-            return { content: [{ type: "text", text: WITH_TARGET }] };
-          }
-          return { content: [{ type: "text", text: "Success" }] };
-        },
+        callTool: async () => ({ content: [{ type: "text", text: "Success" }] }),
       } as never,
+      hierarchy: async () => {
+        hierarchies += 1;
+        if (hierarchies >= 2) throw new Error("adb vanished");
+        return WITH_TARGET;
+      },
       logger: { info: () => {}, warn: () => {} },
       defaultDeviceKey: "d0",
       incidents: new ActionIncidents(),
@@ -477,7 +471,7 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
     await failing.execute({ action: "get_ui_hierarchy", reason: "t" }, exec() as never);
     await expect(
       failing.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
-    ).rejects.toThrow(/^environment: action transport failed/);
+    ).rejects.toThrow(/^environment: hierarchy read failed: adb vanished/);
   });
 
   it("classifies a screenshot-branch transport death as environment", async () => {
@@ -492,6 +486,7 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
       logger: { info: () => {}, warn: () => {} },
       defaultDeviceKey: "d0",
       incidents: new ActionIncidents(),
+      hierarchy: async () => WITH_TARGET,
       resolveScreenSize: async () => ({ width: 720, height: 1600 }),
     });
     await expect(

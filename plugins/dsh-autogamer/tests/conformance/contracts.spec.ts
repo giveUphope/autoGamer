@@ -70,16 +70,16 @@ describe("conformance: py action server surface", () => {
     // spelling.
     // `list_devices` left the list in T2-a: the roster is built from `adb devices -l`
     // (and folded by android_id), so the pool no longer asks the server who is attached.
+    // `get_ui_hierarchy` left it in T2-b: the device's own `uiautomator dump` is read
+    // back over adb and flattened here, so only the screenshot is still a server call
+    // (T2-c takes that one too).
     const direct = new Set<string>();
     for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
       const text = readFileSync(file, "utf8");
       for (const match of text.matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
       for (const match of text.matchAll(/callTransport\(\s*client\s*,\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
     }
-    expect([...direct].sort(), "src should still contain direct call sites").toEqual([
-      "get_ui_hierarchy",
-      "take_screenshot",
-    ]);
+    expect([...direct].sort(), "src should still contain direct call sites").toEqual(["take_screenshot"]);
     const unreachable = [...direct].filter((tool) => !realTools.includes(tool));
     expect(unreachable, "the plugin calls py tools the server does not expose").toEqual([]);
     expect(realTools.length, "the recorded surface should never shrink silently").toBeGreaterThanOrEqual(14);

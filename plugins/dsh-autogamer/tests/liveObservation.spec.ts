@@ -13,33 +13,26 @@ import { DeviceBreaker } from "../src/breaker.js";
 import { LiveObservations } from "../src/observations.js";
 import { harness } from "./support/pool.js";
 import { ActionIncidents, defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
+import { hierarchyXml, type XmlNodeSpec } from "./support/hierarchyXml.js";
 
-function node(label: string, cx: number, cy: number): Record<string, unknown> {
-  return {
-    index: "0",
-    text: label,
-    "content-desc": "",
-    "resource-id": "",
-    class: "android.widget.TextView",
-    package: "com.example",
-    clickable: "true",
-    parsed_bounds: { left: cx - 80, top: cy - 30, right: cx + 80, bottom: cy + 30 },
-  };
+/** The device prints bounds, so a labelled node is written by its box. */
+function node(label: string, cx: number, cy: number): XmlNodeSpec {
+  return { text: label, left: cx - 80, top: cy - 30, right: cx + 80, bottom: cy + 30 };
 }
 
-const OBSERVED = JSON.stringify([node("亮度", 120, 430), node("显示", 120, 630)]);
+const OBSERVED = hierarchyXml([node("亮度", 120, 430), node("显示", 120, 630)]);
 // The same two targets with three new rows inserted in front: every array
 // position below them moved, neither identity did.
-const INSERTED = JSON.stringify([
+const INSERTED = hierarchyXml([
   node("新1", 400, 40),
   node("新2", 400, 90),
   node("新3", 400, 140),
   node("亮度", 120, 430),
   node("显示", 120, 630),
 ]);
-const WITHOUT_DISPLAY = JSON.stringify([node("亮度", 120, 430)]);
+const WITHOUT_DISPLAY = hierarchyXml([node("亮度", 120, 430)]);
 // #0 changed personality (a new 丙 took the first row) while 显示 stayed put.
-const REPLACED_FIRST = JSON.stringify([node("丙", 999, 999), node("显示", 120, 630)]);
+const REPLACED_FIRST = hierarchyXml([node("丙", 999, 999), node("显示", 120, 630)]);
 
 const log: { tool: string; args: Record<string, unknown> }[] = [];
 let hierarchies: string[] = [];
@@ -58,12 +51,15 @@ function setup(options: { devices?: string[]; observations?: LiveObservations } 
     client: {
       callTool: async (name: string, args: Record<string, unknown>) => {
         log.push({ tool: name, args });
-        if (name === "get_ui_hierarchy") {
-          return { content: [{ type: "text", text: hierarchies.length > 0 ? hierarchies.shift()! : OBSERVED }] };
-        }
         return { content: [{ type: "text", text: "Success" }] };
       },
     } as never,
+    // T2-b: the observation is read off the device (logged under the action name
+    // so the counts below still say what the router fetched).
+    hierarchy: async () => {
+      log.push({ tool: "get_ui_hierarchy", args: {} });
+      return hierarchies.length > 0 ? hierarchies.shift()! : OBSERVED;
+    },
     logger: { info: () => {}, warn: () => {} },
     defaultDeviceKey: "default",
     incidents: new ActionIncidents(),

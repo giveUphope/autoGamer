@@ -10,6 +10,7 @@ import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
+import { TWO_ROWS_XML } from "./support/hierarchyXml.js";
 
 const calls: { tool: string; args: Record<string, unknown> }[] = [];
 
@@ -28,6 +29,7 @@ function setup(resolveScreenSize?: () => Promise<{ width: number; height: number
     logger: { info: () => {}, warn: () => {} },
     defaultDeviceKey: "d0",
     resolveScreenSize: resolveScreenSize ?? (async () => ({ width: 720, height: 1600 })),
+    hierarchy: async () => TWO_ROWS_XML,
   });
   return { tool, breaker };
 }
@@ -164,6 +166,7 @@ describe("router input validation (G34)", () => {
       logger: { info: () => {}, warn: () => {} },
       defaultDeviceKey: "d0",
       resolveScreenSize: async () => ({ width: 720, height: 1600 }),
+      hierarchy: async () => TWO_ROWS_XML,
     });
     const controller = new AbortController();
     const pending = tool.execute({ action: "back", reason: "t" }, {

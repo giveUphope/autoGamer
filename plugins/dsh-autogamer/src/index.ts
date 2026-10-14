@@ -27,6 +27,7 @@ import { createPreflight } from "./env/preflight.js";
 import { judgeEffectChanged } from "./effect/diff.js";
 import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
 import { createAdbProbe } from "./device/state.js";
+import { readHierarchyXml } from "./device/hierarchy.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -425,6 +426,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     incidents,
     observations,
     resolveScreenSize,
+    // T2-b: the hierarchy comes off the device itself (uiautomator dump + the
+    // file read back), so `get_ui_hierarchy` is no longer an action-server call.
+    hierarchy: (key, signal) => readHierarchyXml(serialOfKey(key), { signal }),
     onAction: () => ledger.markActed(agentIdOfCall()),
     agentIdOfCall,
     // Screenshots go to the host attachment store so the model gets a real

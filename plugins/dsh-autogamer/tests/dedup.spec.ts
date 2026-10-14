@@ -10,17 +10,13 @@ import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
+import { hierarchyXml, xmlNode } from "./support/hierarchyXml.js";
 
 function hierarchyWith(target: boolean): string {
-  return JSON.stringify(
+  return hierarchyXml(
     target
-      ? [
-          { index: "0", text: "亮度", "content-desc": "", "resource-id": "", class: "t", package: "p", clickable: "true", parsed_bounds: { left: 40, top: 400, right: 200, bottom: 460 } },
-          { index: "1", text: "显示", "content-desc": "", "resource-id": "", class: "t", package: "p", clickable: "true", parsed_bounds: { left: 40, top: 600, right: 200, bottom: 660 } },
-        ]
-      : [
-          { index: "0", text: "亮度", "content-desc": "", "resource-id": "", class: "t", package: "p", clickable: "true", parsed_bounds: { left: 40, top: 400, right: 200, bottom: 460 } },
-        ],
+      ? [xmlNode("亮度", 40, 400, 200, 460), xmlNode("显示", 40, 600, 200, 660)]
+      : [xmlNode("亮度", 40, 400, 200, 460)],
   );
 }
 
@@ -40,9 +36,6 @@ function setup() {
     client: {
       callTool: async (name: string, args: Record<string, unknown>) => {
         harness.calls.push({ tool: name, args });
-        if (name === "get_ui_hierarchy") {
-          return { content: [{ type: "text", text: hierarchyWith(true) }] };
-        }
         if (name === "tap") {
           return new Promise<unknown>((resolve) => {
             harness.tapResolvers.push(() =>
@@ -53,6 +46,12 @@ function setup() {
         return { content: [{ type: "text", text: "Success" }] };
       },
     } as never,
+    // T2-b: reads come off the device, and still log under the action name so
+    // the dedup assertions count what actually happened.
+    hierarchy: async () => {
+      harness.calls.push({ tool: "get_ui_hierarchy", args: {} });
+      return hierarchyWith(true);
+    },
     logger: { info: () => {}, warn: () => {} },
     defaultDeviceKey: "d0",
     agentIdOfCall: () => currentAgent,

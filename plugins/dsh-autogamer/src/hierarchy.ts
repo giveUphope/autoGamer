@@ -1,16 +1,19 @@
 /**
  * Element targeting for `run_device_action` (S11 step 1).
  *
- * The action server answers `get_ui_hierarchy` with a JSON list of uiautomator
- * nodes, and its own `index` field is a PER-CONTAINER ordinal (measured on the
- * live device: 21 nodes carried only 5 distinct values), so it cannot address an
+ * The device's own `get_ui_hierarchy` dump is a `<node>` tree, and the py action
+ * server answered with a JSON list of the same nodes plus a `parsed_bounds`
+ * object it invented (T2-b feeds both to this one list builder). Either way the
+ * node's own `index` field is a PER-CONTAINER ordinal (measured on the live
+ * device: 45 nodes carried far fewer distinct values), so it cannot address an
  * element. The list the model reads therefore numbers nodes by position in that
  * array (G42) — but a handle is RESOLVED by following the node's identity into
  * the next hierarchy, never by taking array position N again (G67: the screen
  * changes under a handle, and position resolution then taps whatever happens to
- * sit at N). An earlier version scanned the payload for `<node>` XML tags,
- * which never matched and made `{index}` fail on every call.
+ * sit at N).
  */
+
+import { parseHierarchyXml } from "./device/hierarchy.js";
 
 export interface VisibleElement {
   /** Our positional handle, 0-based, in array order. */
@@ -39,6 +42,11 @@ interface RawNode {
 
 /** Parse the action server's hierarchy payload; undefined when it is not JSON. */
 export function parseVisibleElements(payload: string): VisibleElement[] | undefined {
+  // Two producers, one list shape. The device's own dump (T2-b) is XML; the py
+  // action server's answer is a JSON array carrying `parsed_bounds` it invented
+  // by flattening that same XML. Both end up as the same positional handles, so
+  // the `#N` and identity rules below are shared, not duplicated.
+  if (payload.includes("<node ")) return elementsFromHierarchyXml(payload);
   let nodes: unknown;
   try {
     nodes = JSON.parse(payload);
@@ -201,6 +209,35 @@ export function findNodeCenterBySubstring(
     if (best.exact) break;
   }
   return best?.center;
+}
+
+/**
+ * The XML entry (T2-b): a device dump flattened in document order, with the
+ * bounds this file's own parser produced - there is no `parsed_bounds` to read,
+ * because the py side that invented it is no longer in the path.
+ */
+function elementsFromHierarchyXml(payload: string): VisibleElement[] | undefined {
+  const doc = parseHierarchyXml(payload);
+  if (doc === undefined) return undefined;
+  const out: VisibleElement[] = [];
+  for (const node of doc.nodes) {
+    const bounds = node.bounds;
+    if (bounds === undefined) continue;
+    const center = midpoint(bounds.left, bounds.top, bounds.right, bounds.bottom);
+    if (center === undefined) continue;
+    out.push({
+      index: out.length,
+      x: center.x,
+      y: center.y,
+      text: node.text || undefined,
+      desc: node.contentDesc || undefined,
+      resourceId: node.resourceId || undefined,
+      class: node.class || undefined,
+      package: node.package || undefined,
+      clickable: node.clickable,
+    });
+  }
+  return out;
 }
 
 function centerOf(node: RawNode): { x: number; y: number } | undefined {
