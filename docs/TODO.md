@@ -90,7 +90,10 @@
 - [ ] 前置-1 `adb shell uiautomator dump` 的真 wire 形态（设备侧输出与既往扁平列表的对应关系）— **本机阻塞，见下方「前置-1/2 阻塞」**
 - [ ] 前置-2 helper（accessibility 服务）协议：端口 / 握手 / 请求响应格式 / `adb forward` 生命周期（与 **G78** 同源）— **本机阻塞，同上**
 - [x] 前置-3 效果判定所依据的差分算法与阈值（**无思路时从旧实现读设计，不搬文本**）— 结论见下方「前置-3 实测结论」（2026-10-14 完成；**T3 移植范围已收口为 `check_ui_change` 单条路径**）
-- [ ] 前置-4 外部提供方接入边界：`artemisMcpCommand` / `artemisRepoPath` 在 T4 后只剩「可选外部 ARTEMIS」语义
+- [x] 前置-4 外部提供方接入边界 —— **已完成**（2026-10-14；结论见下方「前置-4 实测结论」）：
+      `artemisMcpCommand` 留但收窄语义；`artemisRepoPath` 的 **cwd / pyproject 探测 / uv project 三种 py 语义删**，
+      其 **rules 文本来源必须改指向自己**（D20 红线，同时归属 G85+G86）；`uvPath` 删；
+      preflight 七项在 T4 重画为「提供方未配置即跳过，设备面三项才是 gate」
 
 #### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）
 
@@ -244,6 +247,76 @@
 - [ ] preflight 七项在 T4 的重画建议（哪些属于设备面、哪些属于提供方体检）
 - [ ] 为 T4 留下锁的落点建议（哪些契约锁要跟着改）
 
+#### 前置-4 实测结论（2026-10-14，读声明面与本仓源码；本项未改代码）
+
+清点命令（可复核）：`grep -n "<配置项>" src`——`artemisMcpCommand` **3 处**、`uvPath` **9 处**、`artemisRepoPath` **27 处**。
+
+**一、消费图：一个名字，四种语义**
+
+`artemisRepoPath`（默认 `""`）不是「一个路径开关」，是**四件事**共用一个名字，这是本项最要紧的发现：
+
+| # | 读取点 | 它在干什么 | 性质 |
+|---|---|---|---|
+| 1 | `src/index.ts:183-184` | 作为 backend 的 **`cwd`**，即 py 进程的工作目录 | py spawn |
+| 2 | `src/env/preflight.ts:197-208` | 探测 `<repo>/pyproject.toml` 是否存在 | **py 工程探测** |
+| 3 | `src/env/preflight.ts:213`（`venvProbe`） | `uv run --project <repo> --no-sync artemis …`，`installedCheck`/`helperCheck` 各调一次 | **再 spawn py CLI** |
+| 4 | `src/prompt/rulesInjector.ts:44-45` | 读 `<repo>/mcp_server/rules.md` 并交给 `systemPrompt.section()` | **prompt 正文供应链** |
+| 5 | `src/tools/diagnose.ts:114-116` | 只用于拼提示文案 | 文案 |
+
+`artemisMcpCommand`（默认 `["python","-m","mcp_server"]`）只有一条真实消费链：`index.ts:181` → `createArtemisBackend`
+→ `mcpBackend.ts:52` 的 `StdioClientTransport`，即**spawn 一个 py 进程**当 MCP server（构造时 lazy，不 spawn）。
+
+`uvPath`（默认 `"uv"`）全部指向 py 工具链：`uv --version`、`uv tool list`、`venvProbe`。
+
+**二、终局判定（T4 / 规格 §一.3）**
+
+| 配置项 · 语义 | 终局 | 依据 |
+|---|---|---|
+| `artemisMcpCommand`（spawn MCP server） | **留，但收窄语义** | §一.3 允许「用户自行安装的外部 ARTEMIS」；命令可指**任何** MCP server 实现，不必是 py。保留项须在文档里写清「不内置、不 vendored、不为其开开发依赖」 |
+| `artemisRepoPath` ① cwd / ② pyproject 探测 / ③ uv project | **删** | 三者都是 py 专属探测。T4 后仓内无 py（`git ls-files '*.py'` 为空是终态判据），这些探测无对象可探，且它们会把「未配置提供方」变成**体检失败**而非「走 TS 原生」 |
+| `artemisRepoPath` ④ rules 文本 | **必须改指向自己**（红线） | 见下条 |
+| `uvPath` | **删** | 纯 py 工具链探针 |
+
+**三、prompt 供应链是红线，不是可选项（D20 × D19）**
+
+`rulesInjector.ts` 今天把**外部仓库里的 `mcp_server/rules.md` 原文**注入模型 system prompt；
+连**路径约定本身**（`<repo>/mcp_server/rules.md`）在 `rulesInjector.ts:16-17` 的注释里都写明来自「fork 的证据」。
+
+- 这同时踩 **D19**（仓内不承载 py）与 **D20**（只借鉴设计、不搬运文本；prompt 正文不得逐字照抄）。
+  因此它**同时归属 G85 与 G86**，不是二选一——这一条要写进 T4 的范围，否则会被当成「可选提供方的小事」放过去。
+- 规格 §二 该行的判据是「注入内容非空且可达模型」、落点是「**插件内固定文本或外部文件**」。现状两者都不是：
+  它既不是我们自己的文本，也不是我们自己的文件路径，而是一个**上游目录结构**。T4 必须在下列二选一中定案：
+  1. **插件内固定文本**（我们自己写，来源是我们自己的设计）；或
+  2. **我们自己拥有的外部文件**（新的配置项，与外部提供方无关，路径约定由我们定义）。
+  3. ⛔ 不能继续沿用 `<外部仓库>/mcp_server/rules.md` 这个约定。
+- 连带：测试夹具 `tests/fixtures/fake-repo/mcp_server/rules.md` 锁的就是这个上游路径约定，T4 改判据时它要一起改。
+
+**四、preflight 七项在 T4 的重画**
+
+现状七项：`uv` / `python` / `artemis-repo` / `artemis-installed` / `adb` / `adb-devices` / `helper`。
+其中 **前四项是「外部提供方的体检」，后两项是设备面，`helper` 是设备面但由提供方 CLI 代答**。
+
+- T4 后建议：**提供方未配置 ⇒ 这几项整体跳过而不是失败**（否则「不配置提供方」会被误报成环境坏了），
+  只保留设备面三项为真正的 gate。这正是 §一.3「未配置即走 TS 原生」的落地形态。
+- **三条失败语义不许混**（改配置面时必须逐条保持）：注入 **fail-open**（6 种 outcome、绝不抛、告警即止，
+  见 `rulesInjector.ts:53`）／体检 **gate**（`requireEnv` 先跑、失败即拒并附 fix）／backend **lazy spawn**
+  （构造不 spawn，首调才连，故 `apply()` 本身无副作用）。
+
+**五、给 T4 的锁落点建议**
+
+- 改 `rulesInjector` 时：把「注入内容来自我们自己拥有的来源」写成**契约锁**（当前 `rulesInjector.spec.ts`
+  只锁了 outcome 与 fail-open，**没锁文本来源**——这是漏的）。
+- 删 py 探测时：`preflight.spec.ts` 的七项断言要同步重画，别让旧断言把新行为锁回去。
+- 配置面收窄后：`tests/conformance/contracts.spec.ts` 的 `Config` 字段断言要跟着改，否则会锁住已删字段。
+
+**六、本项未验证的（不写成结论）**
+
+- 外部 ARTEMIS 是否真能以「非 py 的 MCP server」形态提供同一能力——**未测**，属 T4 的 live 项。
+- `helper` 在 T4 后由谁代答（本插件自己实现 vs 仍由提供方 CLI）——**未决**，留 T4 当时按 §一.3 取舍。
+
+**七、回归证明（本项未改代码）**
+
+`tsc` rc 0 ／ `vitest` 35 files · 330 passed · 1 skipped ／ `node scripts/check-env.mjs` exit 0。
 ### 搬迁-1 · 插件 TS 树从归档分支搬入（方案，2026-10-14 立项，R22）
 
 **What（范围）**
@@ -487,6 +560,14 @@
 
 ### T4 · 收尾与溯源清理（**G85** + **G86**）
 
+- [ ] **按前置-4 结论收窄配置面**（**G85+G86 交叉，不可当小事放过去**）：
+      删 `artemisRepoPath` 的 cwd / `pyproject.toml` 探测 / `uv project` 三种 py 语义与 `uvPath`；
+      `artemisMcpCommand` 保留但写明「不内置、不 vendored、不为其开开发依赖」；
+      **rules 注入必须改指向我们自己拥有的来源**（插件内固定文本，或我们自己定义的外部文件项）——
+      不得继续读 `<外部仓库>/mcp_server/rules.md`（D20：上游 prompt 正文不得进本项目模型面）
+- [ ] **preflight 七项重画**（前置-4 §四）：提供方未配置 ⇒ 那几项**跳过而非失败**，
+      只让设备面三项（adb / adb-devices / helper）当 gate；保持三条失败语义不混
+      （注入 fail-open / 体检 gate / backend lazy spawn）
 - [ ] py 树、CI 的 python job 与 py 依赖安装步骤全部清除
 - [ ] 文档口径同步（`AGENTS.md`、本文件、规格）
 - [ ] **Done：规格 §一 五条全部成立**
