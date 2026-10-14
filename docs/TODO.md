@@ -88,9 +88,39 @@
 - [ ] 前置-3 效果判定所依据的差分算法与阈值（**无思路时从旧实现读设计，不搬文本**）
 - [ ] 前置-4 外部提供方接入边界：`artemisMcpCommand` / `artemisRepoPath` 在 T4 后只剩「可选外部 ARTEMIS」语义
 
+### 搬迁-1 · 插件 TS 树从归档分支搬入（方案，2026-10-14 立项，R22）
+
+**What（范围）**
+- 从 `legacy-fork-v2-dsh-plugin` 搬入：
+  - 插件根配置：`.gitignore`、`.npmrc`、`package.json`、`pnpm-lock.yaml`、`tsconfig.json`、`vitest.config.ts`、`icon.svg`、`client.js`、`cordis.patch.yml`
+  - `locale/`、`skills/`
+  - `src/**`（27 文件）、`tests/**`（36 文件，含 fixtures 与 support）
+  - `scripts/`：`mock-action-server.mjs`、`spike-mcp.mjs`（测试直接依赖）、`dump-proxy.mjs`、`conformance-live.mjs`
+- 明确不搬：
+  - `spike/wire-tools.py`（Python，D19）
+  - `spike/` 其余 3 个（写死旧机 D:/DEV、D:\ 路径的环境耦合装置；T2 前按当前环境重建）
+  - 根 `tests/fixtures/action_surfaces/*`（py 侧契约 fixture，随 py 测试在 T4 归零）
+
+**How（做法与关键决策）**
+- 整块 checkout 归档文件 → 逐文件过 D20（已实测插件树零上游痕迹：`Google LLC` / `derived from` / `originally from` / `minitap` / `Copyright` 均为 0）
+- README 重写：去掉指向归档台账（registry / glossary / CHANGELOGS）的链接、写死盘符、归档债务表（G30–G34）；Layout 块须与 src 实际文件逐一对应（`readmeLayout.spec` 锁）
+- `conformance-live.mjs`：dsh 默认取 PATH（不再写死 D:/DeepSeek Harness）；`readSession` 从 `uv run python zstandard` 改为 Node 原生 `node:zlib` zstd 流（Node 22 原生支持，本机已验证有 `createZstdDecompress`）
+- 不引入任何新依赖
+
+**Verify（验收命令，在 `plugins/dsh-autogamer/` 内）**
+- `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`
+- `pnpm --config.verify-deps-before-run=false run build`（tsc）
+- `pnpm --config.verify-deps-before-run=false run test`（vitest，期望全绿）
+- `git ls-files '*.py'` 为空；`git grep -n -E 'D:/DEV|D:/DeepSeek' -- plugins` 为空
+
+**Done means**
+- [ ] 插件工程在 main 上可构建、测试全绿
+- [ ] 无 py 文件、无写死旧盘符路径
+- [ ] 本文件 §零「阶段：未开工」与下方「新分支特有」搬迁项同步更新
+
 ### 新分支特有（搬迁与基建）
 
-- [ ] 从归档分支搬迁插件工程 `plugins/dsh-autogamer/`，**逐文件做 D20 清理**（每个文件都要过一遍「这是我们的还是上游的」）
+- [ ] 从归档分支搬迁插件工程 `plugins/dsh-autogamer/`，**逐文件做 D20 清理**（方案见上方「搬迁-1」）
 - [ ] TS 版文档门禁，替代未随迁的 py 脚本（`check_doc_registry` / `check_doc_tables` 的机械职责）
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 
