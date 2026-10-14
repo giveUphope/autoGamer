@@ -55,6 +55,9 @@
   **前置-2** 取到 helper 协议形状（设备端口 18888、host 端口由 adb 分配即隧道身份、除 `/ping` 外要 session token、`transport_id` 变更即陈旧、**与 UiAutomation 互斥**）并验证了转发机制，
   但服务是 **enabled-but-unbound** ⇒ 请求/响应格式那一半**未验 🔶**（要设备侧重新绑定服务，属用户授权面，本轮未做）。
   **层级源定案：`uiautomator dump`，helper HTTP 不作主源** ⇒ G78 退出 T2 前置（口径：不采用该路线所以不需要设计，≠ 已解决）。
+- **用户授权（2026-10-15，目标级）**：「接下来**所有测试与实现均授权**，按仓库规则自行推进验证与交付；需要决策的由 agent 先给推荐、**不必提问**；目标结束前允许提交与推送；终态=插件所有功能可用且本文件无待办。」
+  据此本目标内**自行推进**：设备安装与挂载（`install_bundle` / 侧边栏面板）、真机与破坏性测试、依赖新增、以及被推迟项的反向结案（**OCR 改判为内置**——用户明确要求「无需额外安装配置」，故 G87 的推迟判定作废并反转，见 §七「T5 · OCR 内置」）。
+  **仍不越的两条**：① R19——会话内「批准工具调用 / 回答 agent 提问 / 放宽策略」永远由用户点，我不代批；② 推送只走 `origin` 白名单（`pre-push` 护栏照旧）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
@@ -99,7 +102,7 @@
 
 | 编号 | 一句话 | 归属 |
 |---|---|---|
-| G75 | 一台模拟器暴露多条 adb 传输被 roster 报成多台 → 闸门/并发上限/熔断计数翻倍 | 设备面，T2 期间处理 |
+| G75 | 一台模拟器暴露多条 adb 传输被 roster 报成多台 → 闸门/并发上限/熔断计数翻倍 | 设备面，T2-a 结案（**去重键已定为 `android_id`**，`ro.serialno` 实测为空串；取证见 §七「前置-7」） |
 | G76 | `config.screenSize` 由操作者手填时与截图 IHDR **无校验**（转屏态下 `wm size` 与帧空间差一次转置；插件内部三源实测一致） | 设备面，T2 期间落机械防护（取证见 §七「前置-1 · G76 的新证据」） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G82 | py 引擎仍被 `run_task` / `manage_task` / `inspect_trace` 消费 → 须由 S11 路由器替代 | **T1** |
@@ -129,7 +132,7 @@
       preflight 七项在 T4 重画为「提供方未配置即跳过，设备面三项才是 gate」
 - [x] 前置-6 画面标注 overlay 的消费者清点 + **推迟判定** —— **已完成**（2026-10-14；插件树零消费者 ⇒ **不实现**，新立 **G88**）
 - [x] 前置-5 OCR 与层级融合的设计事实 + **推迟判定** —— **已完成**（2026-10-14；本分支零消费者 ⇒ **不实现**，设计事实已取齐备用，新立 **G87**）
-- [ ] 前置-7 adb 命令面的真 wire 形态（`input tap/swipe/keyevent/text` 含**非 ASCII 文本**路线、`exec-out screencap -p`、`uiautomator dump` 耗时与失败形态、`am`/`monkey` 的成败字符串、失败与超时的 stderr/exit code、`adb devices -l` 的多传输形态）—— **T2 第 0 步，设备已在线可做**；结论落 §七「T2 · 方案」末尾
+- [x] 前置-7 adb 命令面的真 wire 形态 —— **已实测**（2026-10-15；12 面结论见 §七「前置-7 实测结论」。**三条改写设计的硬事实**：`uiautomator dump` 成功也退 139 且消息不可信 ⇒ 只能读回文件校验；`Success`/`Failed` 是旧实现自造的字符串 ⇒ 原生层继续自造；`input text` 直接吃非 ASCII ⇒ 剪贴板路线不预建。G75 去重键定为 `android_id`）
 
 #### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）——**2026-10-15 已解除**
 
@@ -848,11 +851,38 @@
 - 若某片动了 `cordis.patch.yml` ⇒ R6（`--dump-config` rc 0 且无 `unmatched`）；改动影响声明面 ⇒ R7 开新会话复验。
 
 **Done means**（T2 整体）
-- [ ] 前置-7 测完并落「实测结论」（含文本注入路线的定案）
+- [x] 前置-7 测完并落「实测结论」（含文本注入路线的定案：`input text` 直接承载非 ASCII，剪贴板路线不预建）
 - [ ] T2-a…T2-f 各自收口：`src/` 内**再无** `client.callTool` 指向动作面工具（`contracts.spec` 的直呼清单收敛为空/仅剩明确保留项）
 - [ ] G75 / G76 在设备面片内结案（各配一条会红的锁）
 - [ ] `run_device_action` 全链在 TS 侧跑通一次真机（🔶 挂载需用户放行，未放行前不勾）
 - [ ] **Done：`artemis mcp --type adb` 不再是任何路径的运行时依赖**；15 工具（含效果判定，已由 T3 原生）全在 TS 侧可跑
+
+#### 前置-7 实测结论（2026-10-15，Android 15 / SDK 35，`emulator-5554` aurora / 24031PN0DC）
+
+测量方式本身就是结论之一：**用 `spawnSync('adb', argv)`（无 shell）跑**，与插件将来原生层的调用形状一致。
+探针脚本在忽略区（`scratch/probe-adb*.mjs`），**判据已全部抄进下表**，不依赖脚本存在。
+
+| 面 | 实测事实 | 对原生实现的硬约束 |
+|---|---|---|
+| 成功**没有**输出 | `input tap/swipe/keyevent/text` 成功一律 **code=0 + stdout 空** | 夹具里 `Success` / `Failed` 那套字符串是**旧实现自造的**，不是 adb 的；我们自造并保持（分类器 `classify.ts` 依赖它） |
+| 退出码不可信（成功侧） | `uiautomator dump` **成功也返回 code=139**，且把成功消息打到 stdout | 层级读取**不得**以退出码判成败 |
+| 成功消息也不可信 | 给一个不存在的路径，它照样打印 `UI hierchary dumped to: /nope/x.xml`（仍 139） | 唯一可信判据是**把文件读回来并校验 XML**（`dump` → `exec-out cat` → 校验根 `<hierarchy`） |
+| 错误在 stdout 上且码为 0 | `input keyboard insert …` ⇒ stdout `Unknown command: insert`，**code=0** | 不能只看码；要看输出内容形状（原生层需统一「含 `Unknown command` / `Exception` 即失败」） |
+| 参数被**设备侧 shell 重切** | `monkey` 的失败输出把参数逐条回显为 `bash arg: -p` / `arg: "-p"` | `adb shell <cmd>` 会把参数交给设备 shell 再解析 ⇒ **模型可控文本 / URL / 包名必须自行转义或封装**，argv 数组不免疫（安全面） |
+| 失败码形状 | `input tap abc 450` → code=**255** + stderr `Exception occurred while executing 'tap'…`；`am start -n` 不存在的组件 → code=**1** + stderr `Error type 3` / `Error: Activity class … does not exist.`；坏 serial → code=1 + stderr `adb.exe: device 'nope-9999' not found` | 分类映射表（environment / nontarget / refused）按这些真实形状写，不猜 |
+| 幂等性 | `am force-stop <不存在的包>` → code=0 且无输出 | stop_app 天然幂等，不需要「先查在不在」 |
+| 启动目标解析 | `cmd package resolve-activity --brief -c android.intent.category.LAUNCHER <pkg>` → `pkg/activity`；`monkey -p <pkg> -c …LAUNCHER 1` → code=0，stdout 尾 `Events injected: 1` | launch_app 两条路线都有权威形状；`resolve-activity` 更适合做「解析即失败」的早退 |
+| 截图 | `exec-out screencap -p` → code=0，**632ms**，**1,281,058 bytes**，PNG depth 8 / colorType 6 | **必须抬高子进程缓冲**：默认 `maxBuffer`（1MB）会抛 `ENOBUFS`（本轮第一枪就栽在这）；帧空间与 `dumpsys window displays` 的 `cur=`/`app=` 同值 |
+| 文本注入 | 地址栏基线 `example.com` → `input text ZONEE` 后层级读到 `"ZONEE"` → 再 `input text 你好` 读到 `"ZONEE你好"` | **`input text` 直接承载非 ASCII**（本机 / Android 15）⇒ 上游「剪贴板注入」不是必需路线；剪贴板方案留作**未来设备失败时的备选**，不预建 |
+| roster 身份（G75） | 同机三传输 `emulator-5554` / `127.0.0.1:7555` / `127.0.0.1:16384`：`ro.serialno` 与 `ro.boot.serialno` **都是空串**，而 `settings get secure android_id` 三行同为 `c0021066f3fbaf47`；`disconnect` 后回到单条 | **G75 的去重键定为 `android_id`**（不是 serial）；`adb connect` 现场可稳定复现 ⇒ 去重锁写得出来 |
+| 层级耗时 | 普通 dump 2.5s、`--compressed` 4.1s（同一屏） | 缓存与 `settle` 节奏不变；`--compressed` **不比全量快**，不采用 |
+
+**本轮三条判据卫生自纠**（都不是设备行为，是我自己的错，按 R27/R28 记账）：
+① 第一枪把 `screencap` 的 `code=null` 当成 adb 的行为——真相是 `spawnSync` 默认 `maxBuffer` 撞限抛 `ENOBUFS`，抬高后同一条命令 632ms 正常。
+② 第一版文本探针传了 `tap undefined undefined`（我取 `target.x` 而值在 `target.c.x`），又拿 `dumpsys input_method` 的 `mText:` 回读——Android 15 已无该行；两错叠加得到「ASCII 与 CJK 一样」的**无效对照**，判为不作结论并重做。这正是 R27 判据 6：变异/测量本身要先被证明生效。
+③ 报告文件一度被我的 `cmd | tee f | head -30` 截断（head 退出致 EPIPE），看起来像「adb 卡住」——判据命令不许接管道（R27 判据 5）。
+
+**设备状态**：测完 `KEYCODE_ESCAPE` + `KEYCODE_HOME`，三条 TCP 传输已 `disconnect`（`adb devices` 回到单条 `emulator-5554`）。
 
 ### T2 · 动作面 TS 化（**G83**）
 
