@@ -30,11 +30,16 @@
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（build + typecheck + vitest 三段）。
   全部 py 实现均不在本分支（按 D19 归零）。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
-- **基建-2 立项（2026-10-14；方案已落，实现未开工）**：本轮读进度实测出 **6 处文档滞后**并已修正（提交 `258f7b7`）——
-  结清的编号还占着开放表、被推翻的旧句静默保留、自称完成而验收项一个没勾、整行重复、进度副本漂在权威之外、同一事实两个数，
-  **全是机器抓得住的形状**。本分支因 D19 不随迁旧 py 门禁，此前**没有任何机械文档门禁**。据此立项 `scripts/check-docs.mjs`
-  （六条检查 + 内置 `--selftest` 变异 + 只在文档暂存时触发的 `pre-commit`），方案与判据见 §七「基建-2」。
-  ⚠️ 实现落地前，`AGENTS.md` 的「**文档门禁暂缺**」一句**仍然成立**——别把它当已解决。
+- **基建-2 已落地（2026-10-14，提交 `f9434cf`）**：`scripts/check-docs.mjs` 六条检查（结清一致性 / 链接可解析 / 派生计数只认权威 / 编号范围自算 /
+  表格成形 / 自称完成不得留未勾验收项）+ 内置 `--selftest` 变异（7 例，含 C5 的合法 `\|` 反向例，全不盲）+
+  版本化 `.githooks/pre-commit`（**仅文档暂存时**触发；A/B 实测：带漂移提交被拒 `exit 1`，`--no-verify` 才通过）。
+  **手工变异**一次五处并行（C2–C6）→ 恰好 5 条 finding、各对应一条检查；C1 另单独变异一次（注入 G81 行 → 1 条、指向正确行）。
+  `AGENTS.md` 的「**文档门禁暂缺**」已改写为现状——门禁是**本地钩子 + 手跑**，本分支无 CI，**不许写成「由 CI 保证」**（R27）。
+  ⚠️ 已知盲区（本轮实测）：门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；要覆盖须新增一条检查，属后续项。
+  范围与取证见 §七「基建-2」。
+- **rules-1 立项（2026-10-14；方案已提交，实现未开工）**：先做了**形式调研**——随包文档的决定性原文是「**部署方编写的提示词文本只来自配置／组合……不存在终端用户提示词编辑 API**」；
+  而本 bundle 的 persona 行（常驻、agent 作用域）与 skill（按需）**已在正当位置承载同族纪律**，`artemisRepoPath → mcp_server/rules.md` 那条是重复的第三条链且踩 D20。
+  ⇒ 终局定案为**拆除**（非「改指向」）。范围与取证见 §七「rules-1」。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
@@ -462,6 +467,54 @@
 - **检查 5 的切分口径是本轮真金白银学到的**：两次探针各错一种——第一次按裸 `|` 切分，把一条写了合法 `\|` 的合规表行判成多一列；第二次用 BRE `'\\|'` 数转义串，把「有 1 个」读成「0 个」。最终 `grep -o -F '\|'` 才取到准数，确认文档没错、**错的是判据命令的口径**（R27 判据 6：判据本身要先被证明量的是对的东西）。
 - 变异样本**直接用本轮修掉的 6 处真实漂移**（即 `258f7b7` 的反向），不造伪样本。
 
+### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
+
+**背景**：前置-4 判定 `rulesInjector` 的 `artemisRepoPath → <repo>/mcp_server/rules.md` 这条供应链是 **D20 红线**（上游目录约定 + 上游 prompt 正文进模型面），归属 G85+G86，要求 T4 二选一定案。本轮先按用户要求做**形式调研**（「先调研这个适合在 DSH 中以何种形式使用」），结论把二选一改成了第三条路：**拆除**。
+
+**R20 第 1 步「查」：查了哪份、原文怎么说**
+
+| # | 出处（R1 允许面） | 原文（摘/转述） | 对本方案的作用 |
+|---|---|---|---|
+| 1 | 随包文档 `@deepseek-ai/dsh-system-prompt/README.zh.md` §配置提示词（**已安装 npm 包产物**） | 配置拥有「固定开场白、runtime 上下文、**部署 persona 前缀与后缀**与工具顺序」；`personaPrefix`（order 0）／`personaSuffix`（10200） | 部署方文本的官方位置是 persona，不是外部文件 |
+| 2 | 同上 §贡献提示词段 | `ctx.systemPrompt.section({name, order, text})`；「仓库自带贡献方通过 `getSectionOrder(name)` 解析集中分配的位置；**外部贡献可以使用任意有限的顺序值**」 | `section()` 形态合法，但它的定位是「**插件拥有的事实**」，不是转发外部仓库的文件 |
+| 3 | 同上 §已知限制（**决定性**） | 「**部署方编写的提示词文本只来自配置／组合**……其他段来自拥有相应事实的插件。**不存在终端用户提示词编辑 API**」 | ① 指向用户任意文件的「规则源」不是平台形态；② 部署文本走 composition；③ 没有终端用户直接编辑提示词的官方通道 |
+| 4 | 同上 §模型体验 / Token 与 KV Cache 影响 | 「Persona 前缀、后缀与插件文本**在每次请求中重复**，成本随渲染内容增长」；渲染不变则前缀稳定 | 常驻文本有每请求成本 ⇒ 过程性知识更适合**按需**形态；已有 skill 承载同族纪律是正确分工 |
+| 5 | 本仓 `plugins/dsh-autogamer/cordis.patch.yml`（persona 行） | persona 行（`@deepseek-ai/dsh-persona`）**已承载我们自撰的 6 条操作纪律**；行上注释记录 G45：「preset 不能自己挂 prompt 注册表，**这个 scope-only 行是 preset 改变模型所知的官方方式**」 | 规则文本早已在正当位置；外部文件那条是**重复的第三条链** |
+| 6 | 本仓 `plugins/dsh-autogamer/skills/autogamer-flash/SKILL.md` | 同族纪律的**按需**版本（one action per call / handle validity / no verbatim repeat / checker-style audit） | 三链内容高度重叠：persona（常驻）＋skill（按需）＋外部文件（红线） |
+| 7 | 本仓现状触点：`src/prompt/rulesInjector.ts`、`src/index.ts`（`injectRules` 声明＋调用点）、`src/tools/diagnose.ts`、`tests/rulesInjector.spec.ts`、`tests/fixtures/fake-repo/mcp_server/rules.md`、`tests/conformance/contracts.spec.ts`、`tests/apply.spec.ts` | 现行链：`injectRules`（默认 true）＋`artemisRepoPath` → 探 `<repo>/mcp_server/rules.md` → 读入 → `section()`；六种 outcome 全 fail-open；诊断文案让人「checkout 一个带 `mcp_server/rules.md` 的仓库」 | 拆除范围（8 处触点）一次列清 |
+
+**结论（形式定案）**：规则文本的正当载体是 ① composition/persona（常驻、**agent 作用域**）与 ② skill（按需、零常驻 token）；对外部文件的依赖是唯一非官方且踩 D20 的一条，且与 ① ② 重复。
+⇒ **终局 = 拆除 rulesInjector 链**，不做「改指向自己」的替代品——那会引入第三份重复文本，并把 agent 作用域的纪律放大成 profile **全局**的 `section()`。
+
+**What（范围）** —— 五处删除，不新增任何东西：
+1. 删 `src/prompt/rulesInjector.ts`（`rulesFilePath` / `RULES_SECTION_*` / 六 outcome 一并消失）。
+2. 删 `src/index.ts` 的 `injectRules` 配置项与 `setupRulesInjection(...)` 调用点（`rulesOutcome` 一并消失）。
+3. 删 `src/tools/diagnose.ts` 的 rules 项与其「checkout 一个带 `mcp_server/rules.md` 的仓库」文案。
+4. 删 `tests/rulesInjector.spec.ts` 与 `tests/fixtures/fake-repo/mcp_server/rules.md`（夹具目录若无他用则整体删）。
+5. 清 `tests/apply.spec.ts`、`tests/conformance/contracts.spec.ts` 的相关断言；README Layout 删对应行（`readmeLayout.spec` 会咬）；locale 若有 rules 文案一并清。
+
+**非目标**：不动 persona 文本、不动 skill、不动 `artemisRepoPath` 的其余三种语义（cwd / pyproject 探测 / uv project，属 T4）、不动 preflight 七项。
+
+**How（做法与关键决策）**
+- 先删模块与调用点，跑一次 `verify` 看哪些锁咬（预期：`rulesInjector.spec`、contracts 字段表、`readmeLayout`、`apply.spec` 的规则断言），逐条按「删除即正确」改，**不加替代实现**。
+- 配置删除要保持**缺席可观察**：contracts 字段表从「含 `injectRules`」改为「不含」——变异校验 = 把字段加回，该锁必须变红。
+- 台账同步：规格 §二「rules 注入」行改为**已砍**（载体= persona/skill），§六 与 §四 前置-4 行同步；本项把 G85/G86 中「rules 供应链」一条标记为**已处理**（≠ G85/G86 整体结清）。
+- 放弃记录：规格 §一.4 要求「判定不迁移的能力」留结案记录，落点是本分支 `docs/CHANGELOGS.md`（尚未新建）。**本项结案时一并新建 CHANGELOGS**，记入本项并补录既有的「录屏/视频分析已砍」。
+
+**Verify（验收命令）**
+- `git grep -n "rulesInjector\|injectRules\|rulesFilePath\|mcp_server/rules" -- plugins` → **零命中**（`docs/` 允许保留历史叙述）。
+- `grep -c "injectRules" plugins/dsh-autogamer/tests/conformance/contracts.spec.ts` → 0，且该 spec 的字段表断言仍绿。
+- **变异校验（R27）**：把 `injectRules` 塞回 Config schema ⇒ contracts 的字段断言变红；移除后复绿。
+- `pnpm --config.verify-deps-before-run=false run verify` 三段全绿；`node scripts/check-docs.mjs` exit 0；`node scripts/check-env.mjs` exit 0。
+- 预期**不改** `cordis.patch.yml`；若实现中确需改，必跑 **R6**（`--dump-config` rc 0 且 grep 不到 `unmatched`）。
+
+**Done means**
+- [ ] 五处删除完成；插件树内 `rulesInjector|mcp_server/rules` 零命中
+- [ ] 配置面不再有 `injectRules`；contracts 字段锁更新且变异校验通过
+- [ ] `verify` 三段 + `check-docs` + `check-env` 全绿
+- [ ] 规格 §二/§四/§六 与 TODO §零、前置-4、G85/G86 归属同步（只写指针）
+- [ ] `docs/CHANGELOGS.md` 新建并记入本项（含录屏/视频分析既有放弃记录的补录）
+
 ### 新分支特有（搬迁与基建）
 
 - [x] 从归档分支搬迁插件工程 `plugins/dsh-autogamer/`，**逐文件做 D20 清理**（方案见上方「搬迁-1」，2026-10-14 完成）
@@ -481,6 +534,7 @@
         **不放宽 `strict` 与 `noUncheckedIndexedAccess`**，也没加 `any`。
       - 顺带修掉两处由我造成的脚本事故（批量替换误伤 `exec()` 函数体、`fields..type`），均已修复并复验。
 - [x] **基建-2 · 文档门禁 TS 化**（2026-10-14 完成）：`scripts/check-docs.mjs` 六条检查 + `--selftest`（7 例变异，含 C5 双向）+ `.githooks/pre-commit`（文档范围触发，A/B 已实测）；`AGENTS.md` 已同步。范围与取证见 §七「基建-2」。
+- [ ] **rules-1 · rules 注入链拆除**（2026-10-14 立项，**方案已提交、实现待开工**）：删 `rulesInjector` 链（模块 / 配置 `injectRules` / 诊断项 / spec / 夹具 / 契约断言），规则文本由 persona（常驻）+ skill（按需）承载；见 §七「rules-1」。
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 
 ### T1 · 引擎去消费者（**G82**）· 方案（2026-10-14 立项，R22）
