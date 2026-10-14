@@ -24,8 +24,9 @@
   `derived from` / `originally from` / `minitap` / `Copyright` 均为 0；src 27 文件 4506 行、tests 35 文件 4896 行
   含 33 个语义锁 spec）。`legacy-fork-v1` 只作设计底本（596 个文件带上游版权头，fork 自研部分已按 D9/D10 废弃）。
   **搬迁顺序**：先整块搬 TS 树 → 再逐文件过 D20（预期零改动，仅插件 README 的「基于 ARTEMIS」措辞要改）。
+- **许可与 git 历史裁定（2026-10-14，用户裁定）**：① `LICENSE` **重写为本项目自撰 MIT 全文**（版权人 giveUphope，2026），保持开源、不再随迁上游 Apache-2.0 文本（含原 `Copyright 2026 Google LLC` 附录行）；② **git 历史保留**——历史中的上游内容仅作记录存在，不影响当前新方案设计与实现，D20 判据只覆盖工作树层。裁定展开见规格 §八。
 - **阶段：未开工**。本分支为新建立的空白分支；插件工程与全部 py 实现都不在此处（前者待搬迁，后者按 D19 归零）。
-- **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、只留 LICENSE）**。
+- **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。
 - **remote 结构（2026-10-14 已裁定并执行）**：`upstream`（`github.com/google/artemis`）**已移除**；
   仅保留 `origin`（`giveUphope/autoGamer`，既是 fetch 也是 push）；并设 `remote.pushDefault=origin`，
@@ -50,7 +51,7 @@
 | 编号 | 一句话 |
 |---|---|
 | D19 | **TS 全栈、py 归零**：仓库内不承载任何 py 实现；外部 ARTEMIS 只保留为可选提供方（规格 §一） |
-| D20 | **溯源终态 = 只留 LICENSE**；硬约束「只借鉴设计、不搬运文本」贯穿全部实现期（规格 §八） |
+| D20 | **溯源终态 = 不保留上游内容**（`LICENSE` 为本项目自撰 MIT，版权人 giveUphope，2026）；硬约束「只借鉴设计、不搬运文本」贯穿全部实现期（规格 §八） |
 | D7 | 引入形态三层：禁手写 profile 目录内文件 / `--patch` 为官方 overlay / 交付走 `install_bundle`；配置热重载、代码冷重启；声明只影响之后创建的 Agent |
 | D11 | 审批：常规动作 never；破坏性面集中在 `run_adb_command` 整工具 ask |
 | D16 | Host 插件提供共享服务，preset 只贡献 scoped tools；provider 与消费方须同处一个 isolate realm；挂载 fail-fast |
@@ -130,4 +131,4 @@
 - [ ] vendored 第三方整树不存在
 - [ ] 上游派生文档一律不作为实现依据（归档分支可查，本分支不留）
 - [ ] 致谢 / 命名文案用「灵感来源」措辞，不写「基于」
-- [ ] `upstream` remote 处置（**待用户裁定**）
+- [x] `upstream` remote 已移除（2026-10-14 裁定，仅保留 `origin`，并加 pre-push 护栏）

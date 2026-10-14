@@ -5,7 +5,7 @@ Instructions for agents working in this repository.
 ## What this is
 
 **ARTEMIS 的后继实现**：从 `google/artemis` 只取**设计灵感**、独立重实现的 **DSH（DeepSeek Harness）插件**。
-本仓库**不是**上游代码的延续——按 **D20**，除 `LICENSE` 外不保留任何上游内容。旧 fork 的两版尝试都在归档分支里：
+本仓库**不是**上游代码的延续——按 **D20**，不保留任何上游内容；`LICENSE` 为本项目自撰的 MIT 许可（版权人 giveUphope，2026）。旧 fork 的两版尝试都在归档分支里：
 **`legacy-fork-v2-dsh-plugin`**（第二次尝试：收缩为 DSH 插件形态，含全部历史实现与调研台账）与
 **`legacy-fork-v1`**（初版二开，未达效果）。本分支（**`main`**）从零重建。
 
@@ -16,7 +16,7 @@ Instructions for agents working in this repository.
 | 编号 | 内容 | 出处 |
 |---|---|---|
 | D19 | **TS 全栈、py 归零**：仓库内不承载任何 py 实现；外部 ARTEMIS 只保留为**可选提供方**，不内置、不 vendored | 规格 §一 |
-| D20 | **溯源终态 = 只留 LICENSE**；**硬约束：只借鉴设计、不搬运文本**（prompt 正文 / 注释 / 文档段落逐字照抄 = 保留派生内容，违规） | 规格 §八 |
+| D20 | **溯源终态 = 不保留上游内容**（`LICENSE` 为本项目自撰 MIT，版权人 giveUphope）；**硬约束：只借鉴设计、不搬运文本**（prompt 正文 / 注释 / 文档段落逐字照抄 = 保留派生内容，违规） | 规格 §八 |
 
 > 编号（D / S / G / R）在本分支的权威是 **`docs/TODO.md`**（归档分支的 `registry.md` 是历史）。
 

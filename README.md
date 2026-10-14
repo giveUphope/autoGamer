@@ -3,7 +3,7 @@
 一个 **DSH（DeepSeek Harness）插件**：让 agent 在真实 Android 设备上执行动作。
 
 本项目在设计上受 [`google/artemis`](https://github.com/google/artemis) 启发，但**独立重实现**——
-除 `LICENSE`（Apache-2.0）外不保留上游任何内容（代码、文本、文档）。见 `AGENTS.md` 的 D20。
+不保留上游任何内容（代码、文本、文档），`LICENSE` 为本项目自撰的 MIT 许可（版权人 giveUphope）。见 `AGENTS.md` 的 D20。
 
 ## 现状
 
@@ -18,4 +18,4 @@
 
 ## 许可
 
-Apache License 2.0，见 [`LICENSE`](LICENSE)。
+MIT License，版权归 giveUphope，见 [`LICENSE`](LICENSE)。
