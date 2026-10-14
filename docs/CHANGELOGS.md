@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）；以及两条**推迟判定**（OCR / G87、画面标注 overlay / G88）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
 
 ## 写入规则
 
@@ -130,3 +130,32 @@
 - `TODO.md` §四 有 **G88** 行（归属「待需求」）；§七「前置-6」三条 Done 全勾；§二 的 overlay 行状态为「推迟」；G84 行同步写明「OCR / overlay 判为推迟」。
 - `node scripts/check-docs.mjs` exit 0。
 - 附带记录一条判据卫生问题：本条立案时我先写过「`grep -rn compare_ui_frames src` 为空」当作 T3 Done 的判据——**那是错的**（src 里两处命中都是注释文字，裸 grep 会把无害散文判红）；正确判据是只匹配调用形状的 `contracts.spec` 直呼清单 + apply 的零调用锁。已改正并在 `TODO.md` §七 T3 条目里留下这段来处。
+
+### #89 T2-a 设备面本地化：roster / 设备态 / screenSize 校验改走 adb（G75、G76 结清；G89、G90 新立）
+
+> 编号提示：本条是 CHANGELOGS 的 **#89**，与 §四 新立的差距 **G89**（跨进程设备互斥）只是同号不同事，互不指代。
+
+#### 问题描述
+
+- 设备面三条都靠外部提供方回答：`list_devices` 问「谁在场」、`get_device_state` 问「连着吗 / 前台是谁 / 屏幕锁没锁 / helper 装没装」、坐标换算问「屏多大」。D19 的终态是这些都能在 TS 侧自己回答。
+- 取证（`TODO.md` §七「前置-7」「前置-8」两张表，2026-10-15 同一台 Android 15 模拟器）里三条改写设计的实测事实：
+  - **`dumpsys window displays` 一行 `screenState` 都没有**（258 行 0 命中），而无参数的 `dumpsys window`（671 行）恰有 1 行 ⇒ 问错参数不报错，只得到「unknown」，按 G65 一律拒 —— 每台设备都会被自己的探针判成不可用。argv 本身因此必须有锁。
+  - **`wm size` 与帧空间差一次转置**：`wm size`=900x1600 而同一时刻 `exec-out screencap -p` 的 IHDR=1600x900（`accelerometer_rotation=1`）⇒ 手填 `screenSize` 若照抄 `wm size`，每次点击都偏半屏，而**原先没有任何校验拦得住**（G76）。
+  - **一条模拟器三传输**（`emulator-5554` / `127.0.0.1:7555` / `127.0.0.1:16384`），而 `ro.serialno` 与 `ro.boot.serialno` 都是空串，`settings get secure android_id` 三行同值 ⇒ 去重键只能是 `android_id`（G75）。
+- 连带一条：已经走本地 adb 的只读工具仍被 `provider` 形状的预检（uv / python / repo / helper 七项）把关，会在「没装提供方」的机器上被拒 —— 那是预检在说谎。
+
+#### 整改方案与实施
+
+- 新增 `src/device/adb.ts`（全插件唯一 adb 出口：自实现超时、观测 `AbortSignal`、`exec-out` 走二进制安全通道、`adbArgs` 统一「命名 / 不命名设备」两种 argv）、`src/device/roster.ts`（`devices -l` 解析 + `android_id` 折叠 + `canonicalSerial` 优先 `emulator-*` + 锁态三值）、`src/device/state.ts`（六个本地探针与各自的 parse 纯函数）。
+- `src/index.ts`：`enumerateRoster` 由这三件拼出（`undefined` 仍表示「没问到」，不许塌成空舰队）；`resolveScreenSize` 改问帧 IHDR，手填值与帧不符 ⇒ `environment:` 拒并给出该填的值；`autogamer_get_device_state` 的 backend 依赖整条摘掉，截图改走宿主附件存储（render 仍按 `[text, image]` 出图块）。
+- `src/devicePool.ts`：`PoolDevice.aliases` + `canonicalKey` 把别名折回**同一把闸门锁** —— 只折 roster 不折键的话，计数翻倍照样发生。
+- `src/env/preflight.ts`：`run(input, scope)`，`device` 范围只查 adb + 在线设备，缓存按范围分键（否则 warm 过的 device 结果会冒充 provider）。
+- 测试面：`vitest.config.ts` 新增 `setupFiles: tests/support/adbMock.ts` 全局装 adb 双件套（`src/device/adb.ts` 是唯一出口，一处替换即可，而 adb 输出的解析仍跑真实文本），`tests/support/fakeAdb.ts` 提供规则式双件套与实测形状夹具；新增 `deviceRoster.spec` / `deviceState.spec`，重写 `getDeviceState.spec`，`apply.spec` 加「设备态来自帧」+ G76 拒绝 + roster 胶水，`contracts.spec` 直呼清单由 3 条收敛为 2 条（`list_devices` 出局）。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **37 文件 / 374 通过 / 1 跳过**（本片前为 35 / 332）。
+- 真机复跑 `node scratch/live-device.mjs`：本地探针全套 **455ms**，`get_device_state` 答出 `connected` / 前台组件 / 锁态 / 帧 `1600x900` / helper 已装；坏 serial ⇒ 三处都诚实回答「没答案」而不是 `false`。
+- 变异（R27，`node scratch/mutate-t2a.mjs`）：M1 去掉 G76 校验 ⇒ `apply.spec` 恰 1 红；M2 去掉别名折叠 ⇒ `devicePool.spec` 2 红；M3 dumpsys 参数改回 `window displays` ⇒ `deviceRoster.spec` 恰 1 红；M4 停止 `android_id` 折叠 ⇒ `deviceRoster.spec` 恰 1 红；M5「没答的 helper」报成 `false` ⇒ `getDeviceState.spec` 恰 1 红。五条全部跑到红，无一条假绿。
+- `node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` exit 0；`TODO.md` §四 的 G75 / G76 两行移除（结清不留开放行），新立 G89（跨进程互斥）与 G90（缓存不随转屏失效）。
+- 仍 🔶：形状只在**这一台** Android 15 模拟器上量过（其它 ROM 缺 `screenState` 时有回落，但未实测）；挂载后的真机 `get_device_state` 与完整任务未跑（用户授权面）。

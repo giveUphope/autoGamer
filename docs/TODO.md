@@ -59,12 +59,22 @@
   据此本目标内**自行推进**：设备安装与挂载（`install_bundle` / 侧边栏面板）、真机与破坏性测试、依赖新增、以及被推迟项的反向结案（**OCR 改判为内置**——用户明确要求「无需额外安装配置」，故 G87 的推迟判定作废并反转，见 §七「T5 · OCR 内置」）。
   **仍不越的两条**：① R19——会话内「批准工具调用 / 回答 agent 提问 / 放宽策略」永远由用户点，我不代批；② 推送只走 `origin` 白名单（`pre-push` 护栏照旧）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
+- **T2-a 设备面已落（2026-10-15）**：roster / 设备态 / 屏幕锁态 / `screenSize` 校验**全部改走本机 `adb`**，`list_devices` 不再是插件调用。
+  新增 `src/device/{adb,roster,state}.ts`；**G75 结案**（`android_id` 去重 + 传输别名折叠进同一把闸门锁），**G76 结案**（手填值与帧 IHDR 不符即拒，
+  残留的「缓存不随转屏失效」另立 **G90**）；顺带把预检拆成 `provider` / `device` 两个范围（否则本地工具会被「没装 uv」拒掉）。
+  `verify` **37 文件 / 374 通过 / 1 跳过**（上一绿态 35/332），五条新锁各自跑过变异（M1–M5，见 §七「T2-a 收口记录」）。
+- **顺带查出门禁自己盲了一条（2026-10-15，R28 当轮回写）**：`check-docs --selftest` 的 **M1-C1 在 HEAD 上就已 BLIND** —— 它的锚点是 §四 G78 那一行的**字面文字**，
+  而那行在 前置-2 改写后措辞变了，变异不再落地（其余六条当时仍绿，所以没人看见）。已把锚点改成**结构定位**（§四 表头分隔行后插行），`--selftest` 现 7 例全落地。
+  这条不是新问题而是**同类错误的复发**：变异用例的锚点用散文，散文一漂移判据就静默失效 —— 与 §五「测试用词不许当判据」是同一条纪律。
+  仍存的同类风险：M2/M3/M4/M7 的锚点也是字面文字，将来改措辞同样会盲；把「selftest 落地数」纳入 pre-commit 是 T4 的候选（本条只记录，不擅自动门禁范围）。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
   属用户授权动作、不代批）。**前置-3 已完成**（算法/阈值/分支/失败语义/坐标空间五条结论齐备，T3 移植范围收口为
   `check_ui_change` 单条路径；坐标空间疑点查证为「不是错位」，残留的帧空间问题改挂 **G76**）。
   **阻塞现状（2026-10-14 更新）**：T1 离线可证部分已完成，剩下两条**只有设备在场才能做**——切片 3 的宿主绑定核验（🔶 R9）与 R7 真机跑一条完整任务；
   **T2 全部**同样阻塞于本条。**下一个开工项待用户裁定**，候选与各自的前置见 §七（T3 的取证依据即前置-3 已齐，但 §三「顺序不可跳」是否算 T1 收口，属裁定而非现状）。
+  **⚠️ 本条已被 2026-10-15 的两项事实推翻（按 R28 就地标注，不静默保留）**：① `adb` 已在 PATH（winget 的 Platform Tools），`emulator-5554` 在线 ⇒
+  「前置阻塞在环境」与「T2 全部阻塞」两条同时失效；② 用户已给出目标级授权（见上条「用户授权」）⇒「待用户裁定」不再是现状。T2 据此已开工，进度见下条。
 - **remote 结构（2026-10-14 已裁定并执行）**：`upstream`（`github.com/google/artemis`）**已移除**；
   仅保留 `origin`（`giveUphope/autoGamer`，既是 fetch 也是 push）；并设 `remote.pushDefault=origin`，
   使裸 `git push` 只走 origin。**理由**：这两条是「误把东西交到上游」的结构性入口——`upstream` 在场时
@@ -102,8 +112,8 @@
 
 | 编号 | 一句话 | 归属 |
 |---|---|---|
-| G75 | 一台模拟器暴露多条 adb 传输被 roster 报成多台 → 闸门/并发上限/熔断计数翻倍 | 设备面，T2-a 结案（**去重键已定为 `android_id`**，`ro.serialno` 实测为空串；取证见 §七「前置-7」） |
-| G76 | `config.screenSize` 由操作者手填时与截图 IHDR **无校验**（转屏态下 `wm size` 与帧空间差一次转置；插件内部三源实测一致） | 设备面，T2 期间落机械防护（取证见 §七「前置-1 · G76 的新证据」） |
+| G89 | 跨进程设备互斥缺失：原生 roster 只能报 `isBusy:false`，py 的文件锁（多进程同抢一台）无替代 | **T2-a 新立**（不静默：`enumerateRoster` 的注释与本行互为指针；单进程内的闸门/熔断仍生效，跨进程才失守） |
+| G90 | 帧尺寸与锁态按 key 缓存且不过期 ⇒ 会话中途转屏后停在旧帧上（缓存早于本片存在，非本片引入） | **T2-a 新立**（G76 结案后剩下的那一半；判据需真机转屏，属挂载期动作 🔶） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G82 | py 引擎仍被 `run_task` / `manage_task` / `inspect_trace` 消费 → 须由 S11 路由器替代 | **T1** |
 | G83 | 15 工具动作面是 py-only → 须 TS 原生实现并与现面逐条对照 | **T2** |
@@ -716,6 +726,7 @@
         **不放宽 `strict` 与 `noUncheckedIndexedAccess`**，也没加 `any`。
       - 顺带修掉两处由我造成的脚本事故（批量替换误伤 `exec()` 函数体、`fields..type`），均已修复并复验。
 - [x] **基建-2 · 文档门禁 TS 化**（2026-10-14 完成）：`scripts/check-docs.mjs` 六条检查 + `--selftest`（7 例变异，含 C5 双向）+ `.githooks/pre-commit`（文档范围触发，A/B 已实测）；`AGENTS.md` 已同步。范围与取证见 §七「基建-2」。
+  **⚠️ 事后自纠（2026-10-15）**：当时写「7 例全绿」并不成立 —— M1-C1 的锚点后来被措辞漂移顶掉、在 HEAD 上报 BLIND（见 §零「顺带查出门禁自己盲了一条」）；锚点已改结构定位，现复跑 7 例全落地。
 - [x] **rules-1 · rules 注入链拆除**（2026-10-14 完成，提交 `01de3b2`）：`rulesInjector` 链已删（模块 / 配置 `injectRules` / 诊断项 / spec / 夹具 / 契约断言 / README Layout / `systemPrompt` 缝），规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录 **CHANGELOGS #84**。范围与取证见 §七「rules-1」。
 - [x] 本分支的 `CHANGELOGS`（2026-10-14 首次结案时新建：`docs/CHANGELOGS.md`，编号自 **#84** 续起并写明理由；规则：`### #N` 三段、编号永不复用）
 
@@ -874,7 +885,7 @@
 **What（范围与切片顺序）** —— 每片都要「先测后写」，一片一个收尾门禁（`verify` 全绿 + 涉及 patch 则 R6）：
 
 - **前置-7（第 0 步，纯测量）**：adb 命令面的真 wire 形态 —— `adb devices -l`（含**一台模拟器多条传输**的 G75 现场）、`shell input tap/swipe/keyevent/text`（**含非 ASCII 文本**：`input text` 在多数 Android 版本只吃 ASCII，上游因此走剪贴板注入 ⇒ 本分支必须实测定案）、`exec-out screencap -p`（尺寸/耗时）、`shell monkey/am/start` 的成败与输出、失败与超时时的 stderr/exit code、`uiautomator dump` 的耗时与在部分界面下的失败形态。结果写进本节末「前置-7 实测结论」。
-- **T2-a 设备面**：roster（`adb devices -l` 解析 + **G75 去重**：一条模拟器多传输只算一台）、`getDeviceState` 本地化（连接态 / 屏幕 / helper 状态改为本地探针）、**G76 的 `screenSize` 校验**。
+- **T2-a 设备面**（**已完成 2026-10-15**，收口与变异记录见 §七「T2-a 收口记录」）：roster（`adb devices -l` 解析 + **G75 去重**：一条模拟器多传输只算一台）、`getDeviceState` 本地化（连接态 / 屏幕 / helper 状态改为本地探针）、**G76 的 `screenSize` 校验**。
 - **T2-b 层级**：`hierarchyXml.ts`（XML → 节点列表，自产 `parsed_bounds`），`parseVisibleElements` 增加 XML 入口并保持现有 `#N` / 身份解析语义不变（G42 / G67 的锁不动）。
 - **T2-c 截图**：`exec-out screencap -p` 直接产帧，喂给已有的 `saveScreenshot` / `parseImageSize` / 效果差分（T3 已原生，零改动复用）。
 - **T2-d 手势与输入**：tap / long_press / swipe / keyevent / back / 文本（**按前置-7 的实测结论选 `input text` 或剪贴板路线**）/ erase_one_char，逐条对上现有字符串契约与分类。
@@ -900,7 +911,7 @@
 **Done means**（T2 整体）
 - [x] 前置-7 测完并落「实测结论」（含文本注入路线的定案：`input text` 直接承载非 ASCII，剪贴板路线不预建）
 - [ ] T2-a…T2-f 各自收口：`src/` 内**再无** `client.callTool` 指向动作面工具（`contracts.spec` 的直呼清单收敛为空/仅剩明确保留项）
-- [ ] G75 / G76 在设备面片内结案（各配一条会红的锁）
+- [x] G75 / G76 在设备面片内结案（各配一条会红的锁）—— **T2-a 达成**：G75 的锁在 `deviceRoster.spec` + `devicePool.spec` + `apply.spec`（变异 M2 / M4 跑红），G76 的锁在 `apply.spec`（变异 M1 跑红）；残留一半另立 G90
 - [ ] `run_device_action` 全链在 TS 侧跑通一次真机（🔶 挂载需用户放行，未放行前不勾）
 - [ ] **Done：`artemis mcp --type adb` 不再是任何路径的运行时依赖**；15 工具（含效果判定，已由 T3 原生）全在 TS 侧可跑
 
@@ -930,6 +941,38 @@
 ③ 报告文件一度被我的 `cmd | tee f | head -30` 截断（head 退出致 EPIPE），看起来像「adb 卡住」——判据命令不许接管道（R27 判据 5）。
 
 **设备状态**：测完 `KEYCODE_ESCAPE` + `KEYCODE_HOME`，三条 TCP 传输已 `disconnect`（`adb devices` 回到单条 `emulator-5554`）。
+
+#### 前置-8 实测结论 · 设备态探针（2026-10-15，同一台 `emulator-5554`，T2-a 写码前测）
+
+复跑脚本：`node scratch/probe-device-state.mjs`、`node scratch/probe-screenstate.mjs`、`node scratch/live-device.mjs`（都在忽略区；判据抄在下面，不依赖脚本存在）。
+
+| 面 | 实测事实 | 落进实现的约束 |
+|---|---|---|
+| 连接态 | `get-state` ⇒ `device` + code=0；未知 serial ⇒ **code=1** + stderr `error: device 'nope-9' not found` | 只认 `device` / `offline` / `unauthorized` 三个词，其它一律当「没答案」（不许读成 offline） |
+| 没命名设备时问的是谁 | `get-serialno` ⇒ code=0 `emulator-5554`；坏 serial ⇒ **code=1 且 stdout 空** | 单设备配置不必让操作者填 serial；`device_serial` 缺省 = 不传 `-s`，多设备时 adb 自己报错 ⇒ 诚实回答「说不清」 |
+| **屏幕态与前台同源于一次 dump** | `dumpsys window`（671 行）里 `screenState=SCREEN_STATE_ON` 恰 1 行、`mCurrentFocus=` / `mFocusedApp=` 各 1 行；**`dumpsys window displays`（258 行）里 screenState 0 行**；`dumpsys display`（616 行）两者都没有，且 `mRotation` 取不到 | 锁态与前台用**无参数的 `dumpsys window`**；问错参数不会报错，只会得到「unknown」⇒ 准入按 G65 拒。argv 本身有锁（`deviceRoster.spec` / `deviceState.spec`），变异 M3 跑过 |
+| 唤醒态 | `dumpsys power` ⇒ `mWakefulness=Awake` | **未采用**（与 screenState 同源但多一次子进程；留作 screenState 在别的 ROM 上缺席时的备选） |
+| helper 是否装了 | `pm list packages -3` ⇒ 8 个包，**含 `com.artemis.helper`** | helper 态 = 包名在不在；本机 APK 已在场（前置-2 缺的是 token/授权那一步，不是 APK） |
+| 帧空间 vs `wm size` | `wm size` 900x1600、`wm density` Physical 240 / Override 204、`accelerometer_rotation=1`，而 `exec-out screencap -p` 的 IHDR = **1600x900**（code=0，116,674 bytes） | **G76 的转置失配当场可复现** ⇒ 校验基准必须是**帧 IHDR**，不是 `wm size`；`wm size` 从此不再被任何路径读取 |
+| 整套本地探针的代价 | serial + get-state + dumpsys + pm + screencap + IHDR + roster + 锁态 全跑一遍 = **455ms** | 只读的设备态工具可以每次问全套，不需要为省时间而少报字段（`get_device_state` 因此总附帧尺寸） |
+
+#### T2-a 收口记录（2026-10-15）
+
+- **落了什么**：`src/device/adb.ts`（唯一 adb 出口：自实现超时 + 观测 `signal` + 二进制安全 `exec-out`）、`src/device/roster.ts`（`devices -l` 解析、`android_id` 去重、锁态三值）、`src/device/state.ts`（连接 / 前台 / 屏幕 / 帧 / helper / capture 探针）。
+  `enumerateRoster` 改由这三件拼出；`resolveScreenSize` 改问帧 IHDR；`autogamer_get_device_state` 的 backend 依赖**整条摘掉**；
+  `contracts.spec` 的直呼清单从 `get_ui_hierarchy / list_devices / take_screenshot` 收敛为 `get_ui_hierarchy / take_screenshot`。
+- **两条差距结清**：**G75 已结清**（`android_id` 去重把三传输折成一台，`PoolDevice.aliases` + `canonicalKey` 再把别名折回**同一把闸门锁**——只折 roster 不折键，翻倍计数照样发生）；
+  **G76 已结清**（手填 `screenSize` 与帧 IHDR 不符 ⇒ `environment:` 拒并给出该填的值；基准是帧，不是 `wm size`）。两者各配会红的锁，见下「变异」。
+  结清后不留 §四 行（§四 只放开放差距），残留的一半另立 **G90**。
+- **顺带做的一件（超出切片清单，理由写在实现注释里）**：预检拆成 `provider` / `device` 两个范围，缓存按范围分键。
+  不拆的话「已经走本地 adb 的只读工具」会因「没装 uv」被拒 —— 那是预检在说谎。T4 的 preflight 重画以此为起点。
+- **provider 侧的连带后果（不许被当成死代码清掉）**：`McpArtemisBackend.getDeviceState` 仍在接口与 `clientHalf.spec` 的 wire 锁里，
+  但**已无工具消费者**。「provider 还剩哪些消费者」的清点属 **T2-f / T4**，本片只记录不裁决。
+- **五条新锁的变异（R27）**：`node scratch/mutate-t2a.mjs` —— M1 去掉 G76 校验 ⇒ `apply.spec` 恰 1 红；M2 去掉别名折叠 ⇒ `devicePool.spec` 2 红；
+  M3 把 dumpsys 参数改回 `window displays` ⇒ `deviceRoster.spec` 恰 1 红；M4 停止按 `android_id` 折叠 ⇒ `deviceRoster.spec` 恰 1 红；
+  M5 把「没答的 helper 探针」报成 `false` ⇒ `getDeviceState.spec` 恰 1 红。五条全部**跑到红**，无一条假绿。
+- **仍标 🔶 的**：这些 adb 形状只在**这一台** Android 15 模拟器上量过（其它 ROM 的 `screenState` 缺席路径已有回落，但未实测）；
+  挂载后的真机 `get_device_state` / 完整任务仍未跑（§六 前置，属用户授权面）。
 
 ### T2 · 动作面 TS 化（**G83**）
 

@@ -363,11 +363,19 @@ const MUTATIONS = [
     expect: 'red',
     check: 'C1',
     note: 'G81 row back in the open-gap table',
-    apply: (text) =>
-      text.replace(
-        '| G78 | `adb forward` 残留：生命周期归属未定 | T2（与前置-2 同源） |',
-        '| G78 | `adb forward` 残留：生命周期归属未定 | T2（与前置-2 同源） |\n| G81 | 插件 spec 从未被类型检查（`tsc` 的 `include` 只含 `src`，实测 144 条错误） | TS 侧独立债 |',
-      ),
+    // Anchored on the table's STRUCTURE, not on a row's prose: the earlier
+    // version spliced after a literal G78 row, that row's wording was later
+    // reworded by a measurement, and the mutation silently stopped landing
+    // (selftest reported BLIND) while every other case stayed green.
+    apply: (text) => {
+      const at = text.indexOf('## 四、开放差距');
+      if (at < 0) return text;
+      const sep = text.indexOf('|---|', at);
+      if (sep < 0) return text;
+      const after = text.indexOf('\n', sep);
+      if (after < 0) return text;
+      return `${text.slice(0, after + 1)}| G81 | 插件 spec 从未被类型检查（实测 144 条错误） | TS 侧独立债 |\n${text.slice(after + 1)}`;
+    },
     file: TODO,
   },
   {
