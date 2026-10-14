@@ -77,6 +77,11 @@
   消费点：`{text}` 且**层级答不出**才问帧（`{index}` / `{coordinate}` 永不走），命中取**实际匹配那串词**的框中心（行框会横跨整排图标）；歧义与低置信一律不猜；结果带 `target_source`。诊断项 `ocr_ready` **只报不门**。
   `verify` **42 文件 / 470 通过 / 1 跳过**（上一绿态 39/425）；**14 条变异 M1–M14 各红一次**（其中 M7 第一次是绿的——相对断言在脏机器上失明，改成绝对+相对才咬住）。
   ⚠️ **一条实测否证了「可用」的强口径**：真机桌面页 24 个带文字节点，OCR 与层级同时答得出的只有 **2 个**，小字浅色 CJK 直接没认出字形 ⇒ 安全面已锁、**召回面另立 G92**。数字与逐条查因见 §七「T5 收口记录」。
+- **挂载面清点（2026-10-15 实测，把「挂载待办」变成一条有依据的阻塞）**：`dsh` 的 CLI 垫片在 PATH（`dsh.cmd`，版本 **0.2.0-rc.2**），且 **`web` profile 里本插件早已安装**——`dsh plugin list --profile web` 读出 `dsh-autogamer@link:D:/DEV/autoGamer/plugins/dsh-autogamer`（开发期 link，不是 bundle 交付）。
+  **R6 声明面自检过**：`dsh --profile web --patch <abs>/cordis.patch.yml --dump-config` ⇒ exit 0、输出 grep 不到 `unmatched`，且合出的树里 `dsh-autogamer` 与 `preset-autogamer`（persona + inner + skill dirs）齐备（读数存 `scratch/dump-config-t5.txt`，忽略区）。
+  **但宿主内的 live 会话在本机跑不起来，且原因不在插件**：`dsh headless "…"` 一启动就返回 `'D:\DeepSeek' 不是内部或外部命令`（GBK 乱码原文），即宿主为 profile **spawn 子进程时路径含空格未加引号**（安装在 `D:\DeepSeek Harness\`）；同 profile 的 `--dump-config` / `--dump-config-schema` 都不 spawn，全部正常 ⇒ 故障定位在「启动子进程」这一步，不是配置合成。
+  再往下查要解包 `app.asar` ⇒ **R1 禁止**，所以本分支**不继续**。`headless` / `desktop` 两个 profile 都**没有**本插件行（`--dump-config | grep -c autogamer` = 0），只有 `web` 有。
+  ⇒ **结论：宿主内 R7/R9/R24 的 live 证明阻塞在宿主缺陷**（升级/换安装路径/由用户从 GUI 侧挂载均可解），插件侧能给的证明已给到：真实 cordis 运行时挂载 + 真注册表解析（`tests/conformance/runtimeBoot.spec.ts`，G5 Tier 1）+ R6 声明面自检。这条**记为阻塞、不记为完成**。
 - **顺带查出门禁自己盲了一条（2026-10-15，R28 当轮回写）**：`check-docs --selftest` 的 **M1-C1 在 HEAD 上就已 BLIND** —— 它的锚点是 §四 G78 那一行的**字面文字**，
   而那行在 前置-2 改写后措辞变了，变异不再落地（其余六条当时仍绿，所以没人看见）。已把锚点改成**结构定位**（§四 表头分隔行后插行），`--selftest` 现 7 例全落地。
   这条不是新问题而是**同类错误的复发**：变异用例的锚点用散文，散文一漂移判据就静默失效 —— 与 §五「测试用词不许当判据」是同一条纪律。
@@ -126,8 +131,9 @@
 
 | 编号 | 一句话 | 归属 |
 |---|---|---|
-| G89 | 跨进程设备互斥缺失：原生 roster 只能报 `isBusy:false`，py 的文件锁（多进程同抢一台）无替代 | **T2-a 新立**（不静默：`enumerateRoster` 的注释与本行互为指针；单进程内的闸门/熔断仍生效，跨进程才失守） |
-| G90 | 帧尺寸与锁态按 key 缓存且不过期 ⇒ 会话中途转屏后停在旧帧上（缓存早于本片存在，非本片引入） | **T2-a 新立**（G76 结案后剩下的那一半；判据需真机转屏，属挂载期动作 🔶） |
+| G89 | 跨进程设备互斥缺失：原生 roster 只能报 `isBusy:false`，py 的文件锁（多进程同抢一台）无替代 | **T2-a 新立**（不静默：`enumerateRoster` 的注释与本行互为指针；单进程内的闸门/熔断仍生效，跨进程才失守）⇒ **T4-d 裁定结案为已知边界**（执行模型是一进程一插件实例，该并发场景随 py 栈在 D19 下不存在；解锁条件见 §七「T4」） |
+| G90 | 帧尺寸与锁态按 key 缓存且不过期 ⇒ 会话中途转屏后停在旧帧上（缓存早于本片存在，非本片引入） | **T2-a 新立**（G76 结案后剩下的那一半；判据需真机转屏，属挂载期动作 🔶）⇒ **T4-d 收**：短 TTL 让缓存会过期，判据改为「时钟推进过 TTL 必须重新问」（离线可证，不必等转屏） |
+| G93 | 镜像链（`src/scrcpy/*` + 5 个 `scrcpy*` 字段）在 `apply()` 里**只构造与销毁、零工具驱动**，且 `scrcpyServerPath` 默认空 ⇒ 要操作者自备 server 二进制；全 docs 零提及（搬迁-1 带过来后从未被裁决） | **T4 清点新立**（与「零配置」「每个配置字段都有消费者」两条同时冲突；裁决＝删，将来若做镜像属宿主 UI slot / R18 的新能力，另立编号，见 §七「T4」T4-c） |
 | G91 | `long_press` 的**长按语义未在真机上证实**：零距离 swipe 与 `motionevent DOWN/UP` 都 code=0 无报错，但对照组（普通 tap）与它们反应完全一致 ⇒ 那次实验**不成立**，不是阴性结果 | **T2-c/d/e 新立**（实现取「零距离 swipe + duration」这一标准形态；判据需一个有长按菜单且对照组可区分的目标，属挂载期复测 🔶） |
 | G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 2 个；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜；候选解法见 §七「T5 收口记录」末段，未选任一方案） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
@@ -1138,25 +1144,50 @@
       ⚠️ 这条 Done 成立**不等于**上面那条对照表完成——Done 说的是「无 py 依赖」。**可复跑判据是锁不是 grep**：`tests/conformance/contracts.spec.ts` 的直呼清单（只匹配 `client.callTool("…")` / `callTransport(client, "…")` 两种调用形状，已不含 `compare_ui_frames`）+ `apply.spec` 的「不再问动作服务器」锁。
       （这里原本我写成「`grep -rn compare_ui_frames src` 为空」——**那条判据是错的**：src 里现有 2 处命中全是注释与说明文字，裸 grep 会把无害散文判红。判据必须只认调用形状，已按此改正。）
 
-### T4 · 收尾与溯源清理（**G85** + **G86**）
+### T4 · 收尾与溯源清理（**G85** + **G86**；方案 2026-10-15 展开为四片，R22）
 
-- [ ] **按前置-4 结论收窄配置面**（**G85+G86 交叉，不可当小事放过去**）：
-      删 `artemisRepoPath` 的 cwd / `pyproject.toml` 探测 / `uv project` 三种 py 语义与 `uvPath`；
-      `artemisMcpCommand` 保留但写明「不内置、不 vendored、不为其开开发依赖」；
-      ~~rules 注入必须改指向我们自己拥有的来源（插件内固定文本，或我们自己定义的外部文件项）~~ —— **已提前完成（rules-1，CHANGELOGS #84）**：
-      整链拆除，规则文本由 persona + skill 承载，不再读 `<外部仓库>/mcp_server/rules.md`（D20：上游 prompt 正文不得进本项目模型面）
-- [ ] **preflight 七项重画**（前置-4 §四）：提供方未配置 ⇒ 那几项**跳过而非失败**，
-      只让设备面三项（adb / adb-devices / helper）当 gate；保持三条失败语义不混
-      （注入 fail-open / 体检 gate / backend lazy spawn）
-- [ ] py 树、CI 的 python job 与 py 依赖安装步骤全部清除
-- [ ] 文档口径同步（`AGENTS.md`、本文件、规格）
-- [ ] **Done：规格 §一 五条全部成立**
+> 本片是**终态收敛片**：把「TS 全栈」说了但没做完的部分收掉，并把每条被删/被留的东西给出**可复跑判据**。
+> 权威口径是规格 §一 的五条（尤其 **§一.3**：外部 ARTEMIS「**仅保留 adapter**，能显式指向用户自行安装的那一份」——所以**删的是 py 语义，不是 adapter**）。
 
-#### 溯源线（D20 / **G86**；约束贯穿 T1–T3，清理收尾于 T4）
+**清点实测（2026-10-15，`grep` 全树）**
 
-- [ ] **贯穿约束**：T1–T3 的实现只借鉴设计、不搬运文本——每期收尾自检一次
-- [ ] copyright 头清零（含旧 fork 的 `Google LLC` 字样）
-- [ ] vendored 第三方整树不存在
-- [ ] 上游派生文档一律不作为实现依据（归档分支可查，本分支不留）
-- [ ] 致谢 / 命名文案用「灵感来源」措辞，不写「基于」
-- [x] `upstream` remote 已移除（2026-10-14 裁定，仅保留 `origin`，并加 pre-push 护栏）
+| 面 | 实测 | 结论 |
+|---|---|---|
+| `src/artemis/{adapter,mcpBackend,types}.ts`（362 行） | `src/` 内**零 import**（只有两条注释提到）；spec 侧 `adapterEnvGate` / `artemisMcpBackend` / `clientHalf` 共 273 行测的是它自己 | 按 §一.3 **保留**，但必须给它一个**真消费者**，否则 `artemisMcpCommand` 是「有字段无行为」 |
+| `src/actionClient.ts`（87 行） | 消费者只剩 `scripts/spike-mcp.mjs`（要活 py 服务才能跑） | **删**（T2-c/d/e 已把路由的 `client` 依赖拆干净，直呼清单锁现为空集禁令） |
+| preflight 七项 | `provider` 范围**只剩** `apply()` 里一次 fire-and-forget 热身（`void checkEnv()`），**没有任何工具门走它**；五个工具门全走 `device` | 重画为**两项**（adb / adb-devices），`PreflightScope` 与 `PreflightInput` 随之消失 |
+| `ACTION_TO_PY_TOOL` | 路由器**不用它**（每条 action 在 switch 里直接给原生调用名）；只有 contracts 的「键集 == ACTIONS」与 spike-mcp 用它 | **名不副实的第二权威** ⇒ 删映射，覆盖面改由原生动作表自证 |
+| `src/scrcpy/{server,input}.ts`（333 行）+ 5 个 `scrcpy*` 配置字段 | `apply()` 里**构造 + dispose，零工具驱动**；`scrcpyServerPath` 默认 `""` ⇒ 要操作者自备 server 二进制；**全 docs 零提及**（无编号、无归属 ⇒ 搬迁-1 带过来后从未被裁决） | 与「零配置」「每个字段都有消费者」两条都冲突 ⇒ **新立 G93 后删除**（镜像若将来要做，属宿主 UI slot / R18 的新能力，不是复活死代码） |
+| `scripts/{spike-mcp,mock-action-server,dump-proxy}.mjs` + `tests/mockServer.spec.ts` + `tests/fixtures/py-action-tools.json` | 前两者要**活的 py 动作服务**（本分支按 D19 不存在）；夹具是唯一一份「py 面 15 工具名单」的历史记录 | 夹具**留**（改成「原生覆盖面」的历史权威），需要活服务的脚本与 spec **删** |
+
+**What（范围，四片）**
+1. **T4-a 配置面与 preflight 重画**：删 `uvPath` / `artemisRepoPath` 与 uv / python / repo / installed / helper 五项检查；`PreflightRunner.run()` 去参数、去 scope；`PreflightResult.checks` 只剩 `adb` / `adb-devices`；三条失败语义仍不混（注入 fail-open / 体检 gate / 提供方 lazy connect）。
+2. **T4-b 提供方链收口**：`artemisMcpCommand` 保留并写明「不内置、不 vendored、不为其开开发依赖」；给 adapter **一个真消费者** —— `autogamer_diagnose` 增 `provider:{configured, command, reachable, tool_count}`，**未配置即 `configured:false` 且完全不连接**（零配置默认态），配置了才 lazy connect 一次列工具，失败只写一行建议（与 OCR 的诊断项同构）。删 `src/actionClient.ts`、`ACTION_TO_PY_TOOL`、`scripts/spike-mcp.mjs`、`scripts/mock-action-server.mjs`、`scripts/dump-proxy.mjs`、`tests/mockServer.spec.ts`、`tests/clientHalf.spec.ts`、`tests/actionClient.spec.ts`。
+3. **T4-c 镜像链裁决（G93）**：删 `src/scrcpy/*` + 5 字段 + `tests/scrcpy.spec.ts`；README Layout 与 spec §九 同步；`scrcpyEnabled` 的「关掉就不构造」语义随模块消失。
+4. **T4-d 覆盖面锁 + 溯源/D19 自检 + 文档口径**：`py-action-tools.json` 改为**原生覆盖面**的历史权威（每个 py 工具名 → 我们的原生落点，缺一个即红）；D19/D20 五条自检跑一遍并记录读数；`AGENTS.md` / README / 规格 / 本文件口径同步。
+
+**顺带收掉的两条差距（同片内）**
+- **G90**（帧/锁态缓存不过期）⇒ 给 `DeviceStateProbe` 的 per-key 结果加 **TTL**（默认 5s，实测一次 `screencap` ≈ 200ms、一次 `dumpsys window` ≈ 150ms，所以短 TTL 既省重复又不粘住转屏）；判据 = 时钟推进过 TTL 后必须重新问。
+- **G89**（跨进程设备互斥）⇒ **裁定为已知边界并结案**：本分支的执行模型是「一个宿主进程内的一个插件实例」，per-device FIFO + breaker 在进程内生效；py 侧的文件锁服务的是「多个 python 入口抢同一台」那个场景，该场景随 py 栈在 D19 下不存在。**不做**（不为不存在的并发引入锁生命周期问题），解锁条件 = 真出现两个同时驱动同一设备的宿主进程。
+
+**非目标**：不实现新的提供方客户端；不做镜像/UI slot（G93 的将来若要做，另立编号）；不动 OCR 的召回缺口（**G92** 单独一片）；不动 G88（overlay 维持「零消费者 ⇒ 待需求」）。
+
+**How（关键决策）**
+- **删代码的判据是「消费者为零」而不是「看起来旧」**：每条删除上面表里给 grep 实测；删完 `git grep` 被删符号必须零命中。
+- **§一.3 的读法**：保留的是「能显式指向外部那一份」的**能力**，不是「一堆没人调的类」。所以 adapter 留下并接上诊断项 —— 否则终态第 3 条只是文字上成立。
+- **preflight 不再替提供方说话**：提供方未配置**不是**环境问题（TS 原生路径不需要它），所以那几项从「失败」变成「不存在」，比「跳过」更诚实（跳过仍会让 `ok` 语义含混）。
+- **覆盖面锁不许再依赖活服务**：夹具是历史事实，锁的是「我们的原生实现覆盖了当年那张名单」，可离线复跑。
+
+**Verify（验收命令）**
+- `pnpm --config.verify-deps-before-run=false run verify` 三段全绿（基线：T5 后 42 文件 / 470 通过 / 1 跳过）。
+- `dsh --profile web --patch <abs>/cordis.patch.yml --dump-config` ⇒ exit 0 且 grep 不到 `unmatched`（R6；本片不动 patch，跑它是为了证明配置字段变化没把 preset 行打断）。
+- `node scripts/check-env.mjs` exit 0；`node scripts/check-docs.mjs`（含 `--selftest`）exit 0。
+- 删除面：`git grep -n -E 'ActionClient|actionClient|ScrcpyManager|scrcpy|ACTION_TO_PY_TOOL|uvPath|artemisRepoPath' -- plugins` **零命中**。
+- 变异（R27，逐条证明会红后才当验收）：① preflight 少一项 / 多一项 ⇒ 项数锁红；② `provider.configured` 为真时不连接 ⇒ 诊断提供方锁红；③ 覆盖面锁删掉一个 py 名 ⇒ 红；④ TTL 归零（永不过期）⇒ G90 的锁红；⑤ 把 scrcpy 或 actionClient 的 import 塞回 `src/index.ts` ⇒ 删除面锁红。
+
+**Done means**
+- [ ] T4-a：preflight 两项、配置面收窄、`contracts` 字段锁同步、变异 ① 红过
+- [ ] T4-b：actionClient 链消失、adapter 有真消费者、变异 ② 红过
+- [ ] T4-c：G93 结案（删除 + 记录），变异 ⑤ 红过
+- [ ] T4-d：覆盖面锁离线可跑（变异 ③ 红过）、G90 结案（变异 ④ 红过）、G89 结案为已知边界、D19/D20 五条自检读数入账、文档口径同步
+- [ ] **规格 §一 五条全部成立**（§一.3 的读法见上），CHANGELOGS 新条目记 T4 与这条读法
