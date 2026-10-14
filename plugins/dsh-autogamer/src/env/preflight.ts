@@ -3,6 +3,8 @@
  *
  * Seven checks, straight from the scheme (§6): uv, Python ≥ 3.12, the provider
  * repo path, the provider install, adb, an attached device, and the Helper.
+ * Since T2-a the runner takes a scope: `device` keeps only adb plus an attached
+ * device, for the tools that answer over adb and no longer call the provider.
  * Deliberate deviations from the scheme text:
  * - The provider may be installed two ways (G77): `uv tool install`, which puts
  *   `artemis` on PATH, or a project venv / editable checkout, which does not.
@@ -144,12 +146,21 @@ function firstArtemisLine(text: string): string {
 }
 
 export interface PreflightRunner {
-  run(input: PreflightInput): Promise<PreflightResult>;
+  run(input: PreflightInput, scope?: PreflightScope): Promise<PreflightResult>;
 }
+
+/**
+ * Which half of the environment a tool is allowed to depend on. `provider` is
+ * the whole external stack; `device` is what the native adb path needs, and
+ * exists because a tool that no longer calls the provider must not be refused
+ * for want of it (T2-a). Caching is per scope, so a warm device check never
+ * answers for the provider one.
+ */
+export type PreflightScope = "provider" | "device";
 
 export function createPreflight(deps?: Partial<PreflightDeps>): PreflightRunner {
   const d: PreflightDeps = { ...defaultDeps, ...deps };
-  let cached: { at: number; result: PreflightResult } | undefined;
+  const cache = new Map<PreflightScope, { at: number; result: PreflightResult }>();
 
   async function uvCheck(input: PreflightInput): Promise<PreflightCheck> {
     const result = await d.run([input.uvPath, "--version"]);
@@ -305,24 +316,28 @@ export function createPreflight(deps?: Partial<PreflightDeps>): PreflightRunner 
   }
 
   return {
-    async run(input: PreflightInput): Promise<PreflightResult> {
+    async run(input: PreflightInput, scope: PreflightScope = "provider"): Promise<PreflightResult> {
       const at = d.now();
-      if (cached && at - cached.at < PREFLIGHT_CACHE_MS) return cached.result;
-      const checks = [
-        await uvCheck(input),
-        await pythonCheck(),
-        await repoCheck(input),
-        await installedCheck(input),
-        await adbCheck(),
-        await devicesCheck(),
-        await helperCheck(input),
-      ];
+      const hit = cache.get(scope);
+      if (hit && at - hit.at < PREFLIGHT_CACHE_MS) return hit.result;
+      const checks =
+        scope === "device"
+          ? [await adbCheck(), await devicesCheck()]
+          : [
+              await uvCheck(input),
+              await pythonCheck(),
+              await repoCheck(input),
+              await installedCheck(input),
+              await adbCheck(),
+              await devicesCheck(),
+              await helperCheck(input),
+            ];
       const result: PreflightResult = {
         ok: checks.every((check) => check.ok),
         checks,
         finishedAt: new Date(at).toISOString(),
       };
-      cached = { at, result };
+      cache.set(scope, { at, result });
       return result;
     },
   };

@@ -28,7 +28,10 @@ src/scrcpy/server.ts              镜像服务生命周期（resolve/start/stop�
 src/scrcpy/input.ts               触摸转 adb input 纯函数（降级控制路线）
 src/effect/png.ts                 最小 PNG 解码（depth 8 / colorType 2·6 / 非隔行）
 src/effect/diff.ts                效果差分：遮罩 / 双管线 / ROI 回落（T3/G84）
-src/env/preflight.ts              环境预检（7 项，60 秒缓存）
+src/env/preflight.ts              环境预检（7 项，60 秒缓存，可按 provider / device 范围取）
+src/device/adb.ts                 唯一的 adb 出口（自实现超时 + 取消信号 + 二进制安全）
+src/device/roster.ts              设备清单：adb devices 解析 + android_id 去重（G75/G65）
+src/device/state.ts               设备态本地探针（连接 / 前台 / 屏幕 / 帧 / helper）
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
 src/devicePool.ts                 闸门之上的调度：parking / 全局并发 / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）

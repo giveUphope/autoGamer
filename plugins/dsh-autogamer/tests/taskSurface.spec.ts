@@ -43,7 +43,9 @@ describe("G82: no task tool can reach an external engine", () => {
   it("the other tools keep the optional provider - the ban is scoped, not global", () => {
     // If this ever fails, the scope of this lock was widened by accident: the
     // external provider is removed in T4, not by editing this spec.
-    expect(codeOf("getDeviceState.ts")).toMatch(/backend/);
+    // getDeviceState left the provider in T2-a and answers over adb instead, so
+    // the remaining provider consumer among the non-task tools is diagnose.
+    expect(codeOf("getDeviceState.ts")).not.toMatch(/backend/);
     expect(codeOf("diagnose.ts")).toMatch(/backend/);
   });
 

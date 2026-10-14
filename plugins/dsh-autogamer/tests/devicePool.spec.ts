@@ -279,6 +279,39 @@ describe("DevicePool (G3/G28)", () => {
       expect(notAsked.admissibleExplicit("A")).toBeUndefined();
     });
 
+    /**
+     * G75: one emulator answers on three transports. The roster carries it once,
+     * under the canonical serial, and every other transport is an ALIAS: naming
+     * one must neither be refused as "not connected" nor take a second gate key
+     * on the same phone.
+     */
+    it("admits and keys an alias of a folded device as the device itself", async () => {
+      const pool = await discovered({
+        serial: "emulator-5554",
+        state: "device",
+        isLocked: false,
+        aliases: ["127.0.0.1:7555", "127.0.0.1:16384"],
+      });
+      expect(pool.admissibleExplicit("127.0.0.1:7555")).toBeUndefined();
+      expect(pool.canonicalKey("127.0.0.1:16384")).toBe("emulator-5554");
+      expect(pool.canonicalKey("emulator-5554")).toBe("emulator-5554");
+      expect(pool.canonicalKey("not-a-transport")).toBe("not-a-transport");
+
+      const lease = await pool.acquire({ action: "tap", device_serial: "127.0.0.1:7555" });
+      expect(lease.key, "the alias must not become a second lock key (G75)").toBe("emulator-5554");
+      lease.release();
+    });
+
+    it("reports a locked device by the name its alias resolves to", async () => {
+      const pool = await discovered({
+        serial: "emulator-5554",
+        state: "device",
+        isLocked: true,
+        aliases: ["127.0.0.1:7555"],
+      });
+      expect(pool.admissibleExplicit("127.0.0.1:7555")).toBe("device emulator-5554 is locked");
+    });
+
     it("auto skips locked and unknown devices (adb_probe.py:427-446 switches instead of dispatching)", async () => {
       const pool = await discovered(
         { serial: "locked-one", state: "device", isLocked: true },

@@ -11,6 +11,7 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { parseImageSize } from "../src/coord.js";
 import { frame } from "./support/pngEncode.js";
+import { adbHealthyDevice, adbRuntime, devicesArgv, identityArgv, pngHeaderOnly, screencapArgv, windowArgv, windowDump } from "./support/fakeAdb.js";
 import {
   PIXEL_GUIDANCE,
   SELF_CHECK_PROMPT,
@@ -104,6 +105,14 @@ vi.mock("../src/env/preflight.js", () => ({
   }),
   preflightErrorText: () => "environment: mocked preflight failure",
 }));
+
+/**
+ * The adb double (T2-a, installed globally by tests/support/adbMock.ts). The
+ * screen-size probe and the device roster now spawn adb instead of asking the
+ * action server, so a suite that reached the machine's real adb would pass or
+ * fail depending on what is plugged into this laptop.
+ */
+const A = adbRuntime;
 
 const { apply } = await import("../src/index.js");
 const { configOf: Config } = await import("./support/config.js");
@@ -206,27 +215,43 @@ beforeEach(() => {
   harness.garbage = false;
   harness.disposed = 0;
   preflightProbe.runs = 0;
+  // One healthy device: unlocked, focused, and a 720x1600 frame - the size the
+  // screen-size guard compares a configured value against. The probe reads only
+  // the IHDR, so a header-only PNG keeps the suite fast.
+  adbHealthyDevice();
 });
 
 describe("apply(): screen size sourcing wiring", () => {
-  it("probes the screenshot when no screenSize is configured", async () => {
+  it("resolves the screen size from the device frame over adb, not from the action server", async () => {
     const tool = await registerToolWith(Config());
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "probe path" }, exec());
 
-    expect(harness.calls.map((call) => call.tool)).toContain("take_screenshot");
+    // One screencap for the size probe. The captures the fake action server
+    // counts are the effect-observation pair, which is a separate concern.
+    expect(A.calls.filter((args) => screencapArgv.test(args.join(" ")))).toHaveLength(1);
     const tap = harness.calls.find((call) => call.tool === "tap");
-    expect(tap?.args.coordinates).toEqual([540, 1200]);
+    expect(tap?.args.coordinates).toEqual([360, 800]);
   });
 
-  it("honours an explicit screenSize without probing", async () => {
+  it("honours an explicit screenSize that matches the frame", async () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "configured" }, exec());
 
-    // Effect observation captures a before-frame and an after-frame, so "no
-    // probe" means exactly two captures around the tap, not three.
-    expect(harness.calls.filter((call) => call.tool === "take_screenshot")).toHaveLength(2);
     const tap = harness.calls.find((call) => call.tool === "tap");
     expect(tap?.args.coordinates).toEqual([360, 800]);
+  });
+
+  /**
+   * G76, measured on the live emulator: `wm size` says 900x1600 while the frame
+   * of the same device says 1600x900, so an operator who copied the wm numbers
+   * would put every tap half a screen off — and nothing used to check.
+   */
+  it("refuses a configured screenSize that contradicts the device frame (G76)", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [900, 1600] }));
+    await expect(
+      tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "transposed config" }, exec()),
+    ).rejects.toThrow(/environment: configured screenSize 900x1600 contradicts the device frame 720x1600/);
+    expect(harness.calls.map((call) => call.tool), "nothing may reach the device").not.toContain("tap");
   });
 
   it("never leaks the schema's empty tuple into pixel math", async () => {
@@ -428,6 +453,9 @@ describe("apply(): turn conclusion on the reported outcome (G41)", () => {
 
 describe("apply(): element handles reach the device (G42)", () => {
   it("resolves a #N handle to that element's pixel center", async () => {
+    // A 1600x900 screen space: the adb frame the guard compares against has to
+    // say the same thing as the config here, or G76 refuses before the tap.
+    A.on(screencapArgv, { code: 0, stdout: pngHeaderOnly(1600, 900) });
     const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
     // G67: a handle is only meaningful against the list the model was shown.
     await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
@@ -672,5 +700,50 @@ describe("apply(): external ARTEMIS wiring (dsh-autogamer Phase 1)", () => {
     const second: ToolDefinition[] = [];
     await apply(fakeContext(second).context as never, Config({ autoPreflight: false }) as never);
     expect(preflightProbe.runs).toBe(0);
+  });
+});
+
+/**
+ * The roster glue (T2-a). `enumerateTransports` / `buildRoster` / `screenIsLocked`
+ * are locked in deviceRoster.spec.ts and the pool's own folding rules in
+ * devicePool.spec.ts; what is only reachable through apply() is that the pool is
+ * handed an adb-built roster at all - which transport it asks, that one device
+ * with three transports is one entry, and that the lock verdict reaches admission.
+ */
+describe("apply(): native device roster (G75 / G65)", () => {
+  const ONE_EMULATOR_THREE_TRANSPORTS = `List of devices attached
+emulator-5554          device product:aurora model:24031PN0DC device:aurora transport_id:1
+127.0.0.1:7555         device product:aurora model:24031PN0DC device:aurora transport_id:2
+127.0.0.1:16384        device product:aurora model:24031PN0DC device:aurora transport_id:3
+`;
+
+  async function guardAfterDiscovery(screenState: string) {
+    A.on(devicesArgv, { code: 0, stdout: ONE_EMULATOR_THREE_TRANSPORTS });
+    A.on(identityArgv, { code: 0, stdout: "1ca26c4e90b0b571\n" });
+    A.on(windowArgv, { code: 0, stdout: windowDump({ screenState, focus: "com.example/.Main" }) });
+    const tools = await registeredTools(Config({ discoverDevices: true, screenSize: [720, 1600] }));
+    await tools.runDeviceAction.execute(
+      { action: "back", device_serial: "emulator-5554", reason: "refresh the roster" },
+      exec(),
+    );
+    return { tools, guard: tools.guards()[0]! };
+  }
+
+  it("asks adb once and folds the transports into the one device it admits", async () => {
+    const { tools, guard } = await guardAfterDiscovery("ON");
+    expect(A.calls.filter((args) => devicesArgv.test(args.join(" ")))).toHaveLength(1);
+    expect(A.calls.filter((args) => identityArgv.test(args.join(" ")))).toHaveLength(3);
+
+    expect(guard({ name: "run_device_action", arguments: { device_serial: "127.0.0.1:7555", action: "back" } })).toBeUndefined();
+    expect(
+      guard({ name: "run_device_action", arguments: { device_serial: "nope-1", action: "back" } }),
+      "a serial the roster does not carry is not a device",
+    ).toContain("is not connected");
+  });
+
+  it("refuses the folded device while its screen is off, under any of its names", async () => {
+    const { guard } = await guardAfterDiscovery("OFF");
+    expect(guard({ name: "run_device_action", arguments: { device_serial: "emulator-5554", action: "back" } })).toContain("is locked");
+    expect(guard({ name: "run_device_action", arguments: { device_serial: "127.0.0.1:16384", action: "back" } })).toContain("is locked");
   });
 });

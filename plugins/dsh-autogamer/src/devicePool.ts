@@ -59,6 +59,14 @@ export interface PoolDevice {
    * py's "Lock State Unknown" (adb_probe.py:452 -> tasks.py:174); `true` = locked.
    */
   readonly isLocked?: boolean | null;
+  /**
+   * G75: the other transports folded into this device. One emulator answers on
+   * `emulator-5554`, `127.0.0.1:7555` and `127.0.0.1:16384` at the same time; the
+   * roster reports it once, under the canonical serial, and every alias names the
+   * same device — so an alias must neither become a second device nor be refused
+   * as "not connected".
+   */
+  readonly aliases?: readonly string[];
 }
 
 interface Ticket {
@@ -119,6 +127,19 @@ export class DevicePool {
   }
 
   /**
+   * G75: fold a transport alias onto the device it belongs to, so one emulator
+   * never holds two gate keys. Unknown serials pass through unchanged — with
+   * discovery off the pool has no opinion about what a name means.
+   */
+  canonicalKey(serial: string): string {
+    for (const device of this.entries()) {
+      if (device.serial === serial) return serial;
+      if (device.aliases?.includes(serial)) return device.serial;
+    }
+    return serial;
+  }
+
+  /**
    * Entries with state when we have it: a pinned config roster carries names only, and the
    * readiness probe's answer (with state) wins when discovery is on.
    */
@@ -141,6 +162,8 @@ export class DevicePool {
     if (!this.enumerated) return undefined;
     const roster = this.entries();
     if (roster.length === 0) return undefined;
+    // G75: an alias of a folded device is that device, not a stranger.
+    serial = this.canonicalKey(serial);
     const found = roster.find((device) => device.serial === serial);
     if (found === undefined) return `device ${serial} is not connected`;
     if (found.state !== undefined && found.state !== "device") {
@@ -315,7 +338,9 @@ export class DevicePool {
   private explicitSerial(args: Record<string, unknown>): string | undefined {
     const serial = (args as { device_serial?: unknown } | null)?.device_serial;
     if (typeof serial !== "string" || serial.length === 0) return undefined;
-    return deviceKeyOf(args, this.defaultDeviceKey);
+    // The gate and the breaker key on the device, so an alias must not open a
+    // second lock on the same phone (G75).
+    return this.canonicalKey(deviceKeyOf(args, this.defaultDeviceKey));
   }
 
   private drop(ticket: Ticket): void {

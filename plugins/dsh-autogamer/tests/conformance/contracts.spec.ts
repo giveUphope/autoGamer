@@ -68,8 +68,8 @@ describe("conformance: py action server surface", () => {
     // go through the `callTransport` wrapper (G33: a dead server must classify
     // environment, never task/internal), which the extractor reads with the same
     // spelling.
-    // `list_devices` (G64) joins for the same reason: the pool asks the server who is attached,
-    // and that call is not a device action, so no action mapping would ever cover it.
+    // `list_devices` left the list in T2-a: the roster is built from `adb devices -l`
+    // (and folded by android_id), so the pool no longer asks the server who is attached.
     const direct = new Set<string>();
     for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
       const text = readFileSync(file, "utf8");
@@ -78,7 +78,6 @@ describe("conformance: py action server surface", () => {
     }
     expect([...direct].sort(), "src should still contain direct call sites").toEqual([
       "get_ui_hierarchy",
-      "list_devices",
       "take_screenshot",
     ]);
     const unreachable = [...direct].filter((tool) => !realTools.includes(tool));

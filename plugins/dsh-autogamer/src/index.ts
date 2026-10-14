@@ -9,9 +9,9 @@ import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
 import { DevicePool, type PoolDevice } from "./devicePool.js";
-import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
+import { configuredScreenSize, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
-import { messageId, type DshAgent, type DshContext, type DshUserMessage } from "./dsh-types.js";
+import { messageId, type DshAgent, type DshContext, type DshImageAttachment, type DshUserMessage } from "./dsh-types.js";
 import { TaskCache } from "./task/cache.js";
 import { registerTaskProjection } from "./task/projection.js";
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
@@ -25,6 +25,8 @@ import { defineDiagnose } from "./tools/diagnose.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
 import { judgeEffectChanged } from "./effect/diff.js";
+import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
+import { createAdbProbe } from "./device/state.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -183,16 +185,21 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     callTimeoutMs: config.actionCallTimeoutMs,
   });
   const preflight = createPreflight();
-  const checkEnv = () =>
-    preflight.run({
-      uvPath: config.uvPath ?? "uv",
-      artemisRepoPath: config.artemisRepoPath ?? "",
-      defaultDeviceSerial: config.defaultDeviceSerial ?? "",
-    });
+  const preflightInput = {
+    uvPath: config.uvPath ?? "uv",
+    artemisRepoPath: config.artemisRepoPath ?? "",
+    defaultDeviceSerial: config.defaultDeviceSerial ?? "",
+  };
+  const checkEnv = () => preflight.run(preflightInput);
+  // T2-a: the adb-backed tools gate on the device half only. Refusing a native
+  // read because uv is not installed would be the preflight lying about what
+  // the tool actually touches.
+  const checkDeviceEnv = () => preflight.run(preflightInput, "device");
   if (config.autoPreflight !== false) {
     // No ctx.on('ready') exists in the typings (Phase 0): warm the cache
     // without blocking the mount instead.
     void checkEnv().catch(() => undefined);
+    void checkDeviceEnv().catch(() => undefined);
   }
   // G67: which #N handles exist is per (agent, device) and per plugin instance - the
   // list the model was last shown, nothing more.
@@ -205,83 +212,113 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
 
   const screenSizeCache = new Map<string, ScreenSize>();
   /**
-   * G64 roster source: ask the action surface which devices exist (read-only `list_devices`).
-   * Returns `undefined` when the question itself could not be answered -- the py server keeps
-   * "could not ask adb" separate from "adb answered: no devices" exactly so a transient blip does
-   * not look like an empty fleet, and this side must honour that by reporting "don't know".
+   * G64 roster, native since T2-a: `adb devices -l`, folded by `android_id` so one
+   * emulator reachable over several transports stays ONE device (G75 - counted
+   * twice it would double every gate, concurrency ceiling and breaker).
+   *
+   * `undefined` still means "could not ask", kept distinct from "asked, nothing
+   * attached" for the reason the action-server path recorded: a transient adb
+   * failure must not look like an empty fleet.
+   *
+   * `isBusy` is reported false because the python pool's cross-process file mutex
+   * has no replacement yet - a known gap, tracked as G89, not a silent one.
    */
   async function enumerateRoster(): Promise<PoolDevice[] | undefined> {
-    let answer: string;
-    try {
-      // Discovery exists to feed admission, so it asks for Keyguard too: one RPC for the whole
-      // fleet. Per-serial probing would need a second throttle layer right here.
-      answer = unwrapText(await client.callTool("list_devices", { include_lock_state: true }));
-    } catch (error) {
-      logger.warn(`[pool] list_devices transport failed: ${(error as Error)?.message ?? error}`);
+    const transports = await enumerateTransports();
+    if (transports === undefined) {
+      logger.warn("[pool] adb could not answer the device list; keeping the previous roster");
       return undefined;
     }
-    if (answer.startsWith("Error:")) {
-      logger.warn(`[pool] list_devices refused: ${answer.slice(0, 120)}`);
-      return undefined;
+    const devices: PoolDevice[] = [];
+    for (const entry of await buildRoster(transports)) {
+      const aliases = entry.transports.filter((serial) => serial !== entry.serial);
+      devices.push({
+        serial: entry.serial,
+        state: entry.state,
+        isBusy: false,
+        ...(aliases.length > 0 ? { aliases } : {}),
+        // Only an attached device can be asked; offline / unauthorized answers "cannot
+        // tell", which admission rejects (G65's distinction, not a collapse).
+        isLocked: entry.state === "device" ? await screenIsLocked(entry.serial) : null,
+      });
     }
-    let parsed: { enumerated?: unknown; devices?: unknown };
-    try {
-      parsed = JSON.parse(answer) as typeof parsed;
-    } catch (error) {
-      logger.warn(`[pool] list_devices returned non-JSON: ${String(error)}`);
-      return undefined;
-    }
-    if (parsed.enumerated !== true || !Array.isArray(parsed.devices)) return undefined;
-    return parsed.devices.flatMap((device) => {
-      const entry = device as {
-        serial?: unknown;
-        state?: unknown;
-        is_busy?: unknown;
-        is_locked?: unknown;
-      };
-      if (typeof entry.serial !== "string" || entry.serial.length === 0) return [];
-      return [
-        {
-          serial: entry.serial,
-          state: typeof entry.state === "string" ? entry.state : undefined,
-          isBusy: entry.is_busy === true,
-          // A missing key means "not asked"; an explicit JSON null means "asked, cannot tell".
-          // The two must not collapse: one must not reject, the other must (G65).
-          isLocked:
-            entry.is_locked === true ||
-            entry.is_locked === false ||
-            entry.is_locked === null
-              ? (entry.is_locked as boolean | null)
-              : undefined,
-        } satisfies PoolDevice,
-      ];
-    });
+    return devices;
   }
 
+  const probe = createAdbProbe();
+
+  /**
+   * Which adb serial a device key addresses. Once a roster exists the pool hands
+   * out real serials; without one the key is the `defaultDeviceKey` label, which
+   * is not a serial - so the probe names no device and adb answers for the single
+   * attached one. undefined serial means "do not name one", never "guess".
+   */
+  function serialOfKey(key: string): string | undefined {
+    if (key.length > 0 && key !== config.defaultDeviceKey) return key;
+    const configured = config.defaultDeviceSerial;
+    return typeof configured === "string" && configured.length > 0 ? configured : undefined;
+  }
+
+  /**
+   * G76: the size 0-1000 coordinates are converted against, taken from the
+   * device frame itself (the IHDR of `exec-out screencap -p`, measured as the
+   * same space the action server's own screenshots and the hierarchy bounds use).
+   *
+   * A hand-filled `screenSize` is trusted only after it agrees with that frame:
+   * `wm size` reports 900x1600 while the frame of the same rotated emulator is
+   * 1600x900, so an operator who copied the wm number would silently put every
+   * tap half a screen off. The refusal is `environment:` so the breaker stops
+   * hammering the device until the config is fixed.
+   *
+   * The probed size is cached per key (it was cached before too), which means a
+   * rotation mid-session keeps the old space until the plugin restarts - the
+   * remaining half of G76, recorded in the ledger rather than fixed silently.
+   */
   async function resolveScreenSize(key: string): Promise<ScreenSize | undefined> {
     const configured = configuredScreenSize(config.screenSize);
-    if (configured) return configured;
-    const cached = screenSizeCache.get(key);
-    if (cached) return cached;
-    // A dead server here is a transport failure, not a plugin defect (D3):
-    // report the probe as missed and let requireScreenSize classify it as
-    // environment, so the breaker opens instead of staying closed on internal.
-    let base64: string;
-    try {
-      base64 = unwrapText(await client.callTool("take_screenshot", {}));
-    } catch {
-      return undefined;
+    let probed = screenSizeCache.get(key);
+    if (probed === undefined) {
+      probed = await probe.frame(serialOfKey(key));
+      if (probed) screenSizeCache.set(key, probed);
     }
-    if (base64.startsWith("Error:")) return undefined;
-    const size = imageSizeFromBase64(base64);
-    if (size) screenSizeCache.set(key, size);
-    return size;
+    if (configured) {
+      if (probed && (probed.width !== configured.width || probed.height !== configured.height)) {
+        throw new Error(
+          `environment: configured screenSize ${configured.width}x${configured.height} contradicts ` +
+            `the device frame ${probed.width}x${probed.height} — coordinates would land in the wrong place. ` +
+            `Fix: set screenSize to ${probed.width}x${probed.height}, or leave it empty to follow the frame.`,
+        );
+      }
+      return configured;
+    }
+    return probed;
   }
 
   const logger = {
     info: (message: string) => ctx.logger.info(message),
     warn: (message: string) => ctx.logger.warn(message),
   };
+
+  /**
+   * Screenshots go to the host attachment store so the model gets a real image
+   * block and the log keeps only the content-addressed reference. Shared by the
+   * action router and the device-state read: one media path, one failure rule.
+   */
+  async function saveDeviceScreenshot(
+    bytes: Uint8Array,
+    mediaType: DshImageAttachment["mediaType"],
+  ): Promise<DshImageAttachment | undefined> {
+    try {
+      const [ref] = await ctx.attachments.saveImages([{ data: bytes, mediaType, name: "device-screenshot" }]);
+      return ref;
+    } catch (error) {
+      // Admission can refuse one image (byte / pixel / dimension caps, or a
+      // header that fails to decode). A screenshot must still report its
+      // dimensions rather than fail the action.
+      logger.warn(`[media] attachment admission failed: ${(error as Error)?.message ?? error}`);
+      return undefined;
+    }
+  }
 
   // Raw ctx.tools.register() expects parameters to ALREADY be a full JSON
   // Schema (the official MCP path passes server schemas verbatim); a named
@@ -361,8 +398,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.tools.guard((execution) => {
     if (execution.name !== "run_device_action") return undefined;
     const args = (execution.arguments as Record<string, unknown> | null) ?? {};
-    const serial = args.device_serial;
-    if (typeof serial === "string" && serial.length > 0) {
+    const named = args.device_serial;
+    const serial = typeof named === "string" && named.length > 0 ? pool.canonicalKey(named) : undefined;
+    if (serial !== undefined) {
       // Two independent py submission gates, in py's order (tasks.py:140 then :160): readiness
       // first, then cooldown. Neither reads a device here -- the guard is synchronous (R13), so it
       // consumes the roster snapshot `refreshRoster` last refreshed.
@@ -411,20 +449,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       }
       return verdict;
     },
-    saveScreenshot: async (bytes, mediaType) => {
-      try {
-        const [ref] = await ctx.attachments.saveImages([
-          { data: bytes, mediaType, name: "device-screenshot" },
-        ]);
-        return ref;
-      } catch (error) {
-        // Admission can refuse one image (byte / pixel / dimension caps, or a
-        // header that fails to decode). A screenshot must still report its
-        // dimensions rather than fail the action.
-        logger.warn(`[media] attachment admission failed: ${(error as Error)?.message ?? error}`);
-        return undefined;
-      }
-    },
+    saveScreenshot: saveDeviceScreenshot,
   })));
   ctx.tools.register(
     defineTool<any, any>(defineReportTaskStatus(() => ledger.markReported(agentIdOfCall()))),
@@ -432,9 +457,10 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.tools.register(
     defineTool<any, any>(
       defineGetDeviceState({
-        backend: artemisBackend,
-        checkEnv,
+        probe,
+        checkEnv: checkDeviceEnv,
         defaultDeviceSerial: config.defaultDeviceSerial ?? "",
+        saveScreenshot: saveDeviceScreenshot,
       }),
     ),
   );
