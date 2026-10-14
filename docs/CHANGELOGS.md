@@ -11,6 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
+| 二 · 能力迁移（T1–T4） | #86 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）。 |
 
 ## 写入规则
 
@@ -64,3 +65,28 @@
 #### 验收标准
 
 - 规格 §二「录屏 / 视频分析」行的状态列含 **已砍（CHANGELOGS #85）**；`node scripts/check-docs.mjs` exit 0。
+
+## 二 · 能力迁移（T1–T4）
+
+### #86 效果判定改为 TS 原生差分（D19；主题项 T3 第一片 / G84）
+
+#### 问题描述
+
+- `run_device_action` 的 `effect` 三态由 `compareFrames` 决定，而它当时把两帧**转发**给外部动作面的 `compare_ui_frames`——判定因此仍依赖 py 动作面（py 侧实际执行 `check_ui_change`），这是 G84 的 py-only 面之一，也是路由里唯一的判定来源。
+- 前置-3（TODO §七）已读归档 blob 把设计事实取齐：遮罩比例、两条管线及其阈值、分支表、ROI 几何、失败方向、坐标空间，并把移植范围收口为这一条路径。
+
+#### 整改方案与实施
+
+- 新增 `src/effect/png.ts`：**最小 PNG 解码**（零新依赖，`node:zlib`）——支持 depth 8 的 colorType 2/6、非隔行；形状由**实测帧**界定（1600×900 RGBA）；其余抛错。
+- 新增 `src/effect/diff.ts`：灰度化 → 全局管线（裁顶 10%/底 5%、5×5 高斯 σ=1.1、阈值 25、门限 1e-4）与 ROI 管线（**未裁剪**图取景、半径 `max(15,int(50×scale))`、3×3 高斯 σ=0.8、阈值 20、门限 0.05、**未过门限回落全局**）；动作分支表（`swipe` 直走全局；`tap` 族且有像素二元组先 ROI）。每个常量带出处（函数+常量名）。
+- `src/index.ts` 的 `compareFrames` 改调本地实现；失败方向 = 返回 `undefined`（既有 fail-open；不发明 `true`）。
+- 锁：新增 `tests/effectDiff.spec.ts`（判别用例 7 + 失败方向 + 解码器，含合成帧编码器 `tests/support/pngEncode.ts`）；`apply.spec` 的 route-A 转发锁改成「不再问动作服务器 + 仍取两帧」；`contracts.spec` 的直呼清单去 `compare_ui_frames`；README Layout 补两行。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` 三段全绿（35 files / 332 passed / 1 skipped）；`check-docs`、`check-env` exit 0。
+- **三处变异各红一次**：删「ROI 落空回落」⇒ 补的回落用例红；遮罩改成 1px ⇒ 用例 4 红；fail-open 改抛错 ⇒ 失败方向用例红。
+  偏差如实记：删回落的红点是**本片补的第 6 条用例**——前置-3 的用例 5 区分不了「回落」与「直接返回 ROI 判定」，两者都给 `false`。
+- 真帧冒烟（离线）：`node scratch/smoke-effect.mjs` → 解码 1600×900 成功；**同帧自比全 `false`**；跨帧给出判定。
+- 🔶 **未做**：与 py 的同输入同输出对照表（仓内无 py、本机无解释器与旧 venv、provider 未配置）——列延迟项，见 `TODO.md` §七。
+- 提交：方案 `6d03b6f` → 实现 `00106f8`。

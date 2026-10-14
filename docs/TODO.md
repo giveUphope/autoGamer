@@ -41,8 +41,9 @@
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
   规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录见 **CHANGELOGS #84**。
-- **T3 第一片立项（2026-10-14；方案已提交，实现未开工）**：`compareFrames`（效果判定）改为 **TS 原生差分**——零新依赖手写 PNG 解码（形状由实测帧界定：depth 8 / type 2或6 / 无隔行）+ 前置-3 的四条管线常量；
-  与 py 的**同输入同输出对照在本机做不了**（仓内无 py、无解释器，provider 未配置）⇒ 替代证据 = 常量出处 + 5 条判别用例 + 语义锁，对照表列**延迟项**（🔶 不勾）。见 §七「T3 · 效果差分 TS 化」。
+- **T3 第一片已落地（2026-10-14，提交 `00106f8`）**：`compareFrames` 改为 **TS 原生差分** —— `src/effect/png.ts`（最小解码：depth 8 / colorType 2·6 / 非隔行，其余抛错）+ `src/effect/diff.ts`（双管线 + 遮罩 + ROI 回落 + 分支表，常量各带前置-3 出处）。
+  验证：判别用例 7 条（前置-3 的 5 条 + 我补的 2 条判别性用例）+ 失败方向 + 解码器，**三处变异各红一次**；真实帧冒烟（1600×900 RGBA，`scratch/smoke-effect.mjs`）**同帧自比全 false**、跨帧检出。
+  ⚠️ **与 py 的同输入同输出对照在本机做不了**（仓内无 py、无解释器，provider 未配置）⇒ 列**延迟项**（🔶 不勾）。见 §七「T3 · 效果差分 TS 化」。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
@@ -92,7 +93,7 @@
 | G78 | `adb forward` 残留：生命周期归属未定 | T2（与前置-2 同源） |
 | G82 | py 引擎仍被 `run_task` / `manage_task` / `inspect_trace` 消费 → 须由 S11 路由器替代 | **T1** |
 | G83 | 15 工具动作面是 py-only → 须 TS 原生实现并与现面逐条对照 | **T2** |
-| G84 | 效果判定 `compare_ui_frames` / OCR / overlay 是 py-only → 须 TS 化 | **T3** |
+| G84 | 效果判定 `compare_ui_frames` / OCR / overlay 是 py-only → 须 TS 化 | **T3**（差分已 TS 化，见 §七；OCR/overlay 未开工） |
 | G85 | py 归零收尾：删 py 树、清 CI 与依赖、更新文档口径 | **T4** |
 | G86 | 溯源清理：copyright 头、vendored 第三方、派生文档、致谢文案、git 元数据 | **T4**（约束贯穿 T1–T3） |
 
@@ -724,16 +725,16 @@
 替代证据是三件：① 每个常量带出处（函数+常量名）；② 5 条判别用例锁行为；③ 失败方向与坐标空间语义锁。**对照表列入延期待办**（与 provider 环境一并解，标 🔶 不勾）。
 
 **Done means**
-- [ ] `compareFrames` 走本地实现；插件树内不再调用 `compare_ui_frames`（grep + 锁双证）
-- [ ] 5 条判别用例 + 失败方向 + 遮罩/ROI 边界全绿，且上面三处变异各红一次
-- [ ] 解码器覆盖实测帧形状；不支持形状走 fail-open（`undefined`）
-- [ ] README Layout 与 `readmeLayout.spec` 同步
+- [x] `compareFrames` 走本地实现；插件树内不再调用 `compare_ui_frames`（grep + 锁双证：contracts 直呼清单已去该名、apply.spec 的「零 py 调用」锁在）
+- [x] 5 条判别用例 + 失败方向 + 遮罩/ROI 边界全绿，且三处变异各红一次（**偏差如实记**：删「回落」的红点是**我补的第 6 条用例**，前置-3 的用例 5 区分不了回落与直接返回——两者都给 false）
+- [x] 解码器覆盖实测帧形状；不支持形状走 fail-open（`undefined`）；真实帧冒烟同帧自比全 false
+- [x] README Layout 与 `readmeLayout.spec` 同步
 - [ ] 🔶 与 py/provider 的同输入同输出对照表 —— **阻塞于 py 运行时/provider 环境，本项不勾**
-- [ ] 台账同步：G84 行标「部分（差分已 TS 化）」，规格 §二 该行状态更新（只写指针）
+- [x] 台账同步：G84 行标「部分（差分已 TS 化）」，规格 §二 该行状态更新（只写指针）
 
 ### T3 · 图像与 OCR TS 化（**G84**）
 
-- [ ] 效果差分落 TS（算法与阈值从旧实现读设计）—— **方案已立项**（见上方「T3 · 效果差分 TS 化」；实现待开工）
+- [x] 效果差分落 TS（算法与阈值从旧实现读设计）—— **已落地**（提交 `00106f8`；判别用例 + 三处变异 + 真帧冒烟，见上方「T3 · 效果差分 TS 化」的 Done；对照表 🔶 延迟）
 - [ ] OCR 改 HTTP 直译
 - [ ] overlay 标注改 TS 图像库
 - [ ] 对照表留档（同输入同输出）

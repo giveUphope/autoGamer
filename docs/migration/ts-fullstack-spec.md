@@ -35,7 +35,7 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 | 截图 | py 动作面 | `adb exec-out screencap -p` | 同设备同帧的 PNG IHDR 尺寸等于帧空间（已验 1600x900） | 已具备（`coord.ts` 取源路径已验） |
 | UI 层级 dump | py `uiautomator2` 客户端 | `adb shell uiautomator dump` + 自解析 | 节点集与 py 面一致、`parsed_bounds` 齐备、扁平语义保留 | 部分（`hierarchy.ts` 有骨架，契约未测） |
 | 动作执行闸门 / 熔断 / 分类 | 插件 TS | — | 现有 spec 锁 | 已具备 |
-| 效果判定 `compare_ui_frames` | py 委托上游 `check_ui_change` | TS 差分（dHash 类） | 同一 before/after 对判 red/green 与 py 一致 | 未开工 |
+| 效果判定 `compare_ui_frames` | py 委托上游 `check_ui_change` | `src/effect/{png,diff}.ts`：按其设计移植（遮罩 / 双管线 / ROI 回落 / 分支表；常量带出处） | 判别用例集（5+2 条）+ 三处变异 + 真帧冒烟；**与 py 的同输入同输出对照 🔶 延迟**（本机无 py 运行时、provider 未配置） | 部分（差分已落地，对照表未做） |
 | OCR | py `httpx` → Google Vision | TS `fetch` | 同图同密钥返回同一文本集与坐标 | 未开工 |
 | 画面标注 overlay | py `PIL` / `cv2` | sharp（libvips） | 标注元素集与 py 一致 | 未开工 |
 | 任务编排 `run_task` / `manage_task` / `inspect_trace` | py 引擎（langgraph 图） | TS 单层路由（S11）+ DSH agent loop | 三条工具不再调 `mobile_*`；任务由 TS 侧循环驱动 `run_device_action` | 部分（T1 切片 1–3 代码已落：三条工具改读会话投影，引擎方法已从类型面与实现面删除；live 绑定核验待设备 🔶） |
