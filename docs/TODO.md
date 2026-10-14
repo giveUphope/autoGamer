@@ -41,6 +41,8 @@
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
   规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录见 **CHANGELOGS #84**。
+- **T3 第一片立项（2026-10-14；方案已提交，实现未开工）**：`compareFrames`（效果判定）改为 **TS 原生差分**——零新依赖手写 PNG 解码（形状由实测帧界定：depth 8 / type 2或6 / 无隔行）+ 前置-3 的四条管线常量；
+  与 py 的**同输入同输出对照在本机做不了**（仓内无 py、无解释器，provider 未配置）⇒ 替代证据 = 常量出处 + 5 条判别用例 + 语义锁，对照表列**延迟项**（🔶 不勾）。见 §七「T3 · 效果差分 TS 化」。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
@@ -681,9 +683,57 @@
 - [ ] 坐标 / 层级 / 截图三条金标准复测
 - [ ] **Done：不再依赖任何 py 动作面**
 
+### T3 · 效果差分 TS 化（**G84** 第一片）· 方案（2026-10-14 立项，R22）
+
+**背景**：`compareFrames` 现在把两帧转发给外部动作面的 `compare_ui_frames`（G39 route A），效果判定因此仍依赖 py 动作面 —— 这是 G84 的 py-only 面之一，且是 `runDeviceAction` 路由里**唯一**的判定来源。前置-3 已把移植范围收口为 `check_ui_change` 单条路径（算法/阈值/分支/fail-open/坐标空间五条结论 + 5 条判别用例蓝本齐备）。本片只做**差分**；OCR 与 overlay 留作 G84 后续片。
+
+**R20/R22 第 1 步「查」：查了哪份、事实是什么**（全部转述，不搬文本 —— D20）
+
+| 出处 | 事实 | 对本方案的作用 |
+|---|---|---|
+| 本文件 §七「前置-3 实测结论」（读归档 blob 得到的**设计事实**：遮罩、模糊、阈值、分支表、ROI 几何、失败方向、坐标空间） | 全局管线：裁顶 10%/底 5% → 绝对差 → 5×5 高斯（σ≈1.1）→ 阈值 25 → 占比 vs `1e-4`；ROI 管线：从**未裁剪**图取景、半径 `max(15, int(50×scale))`（scale=当前帧对角线/1080×2400 对角线）、3×3 高斯（σ≈0.8）、阈值 20 → 占比 vs `0.05`，**未过门限回落全局**；分支：`swipe` 只看全局，`tap`/`long_press_on`/`focus_and_input_text`/`focus_and_clear_text` 且坐标为二元组 ⇒ 先 ROI | 实现蓝本：每个常量都能指回函数+常量名 |
+| 本文件 §七 前置-3「H. 判别用例集」 | 5 条用例（同帧不变 / swipe 变 / 中心方块 ROI 触发（该分辨率下 `roi_size≈26`）/ 顶部 50 行被遮罩 / 1080×2400 中心 10×10 + 门限抬到 1e-3 ⇒ 不变——它把「ROI 落空回落全局」钉死） | spec 蓝本，用例 5 最该先落 |
+| 现状 TS 触点：`src/index.ts` 的 `compareFrames`（转发 `compare_ui_frames`）、`src/tools/runDeviceAction.ts:831` 传 `payload.coordinates`、`:914-926` 的 `compareFramesSafe`、`:833-836` 的消费（`changed !== false` 放行；`undefined` → effect `unknown`，不进阶梯） | 接口签名与失败语义已经定好，替换只动 `compareFrames` 的**实现** | 契约面不动：签名/消费/回归面保持 |
+| 实测（本机 scratch 真帧的 IHDR） | 帧形状 = **1600×900 / depth 8 / colorType 6（RGBA）/ 无隔行** | 解码器范围由实测界定：支持 depth 8 的 type 2/6 即可，其余形状 fail-open |
+| 实测（`buildCall` 的 payload 构造，`:937/:942/:964/:954`） | 传给 `compareFrames` 的 `coordinates` 是**像素**（`resolvePixelTarget`→`toPixels`；swipe 是四个像素值） | ROI 取景直接用帧内像素，无需再换算（前置-3「不是错位」的结论在边界处成立） |
+| 现有锁：`tests/apply.spec.ts:34/50/371`（route A 转发锁）、`tests/conformance/contracts.spec.ts:65-79`（直呼工具清单含 `compare_ui_frames`）、`tests/mockServer.spec.ts`（mock 面自身形状） | 转发这件事**有锁**，替换后要改成「零 py 调用」锁 | 变异校验的落点 |
+| 依赖面：`package.json` 无任何图像库；`node:zlib` 内置（PNG 的 IDAT 就是 zlib 流） | 零新依赖手写解码是可行的 | 依赖决策 |
+
+**What（范围）**
+1. 新增 `src/effect/png.ts`：**最小 PNG 解码器**（零新依赖）——IHDR 解析、IDAT 拼接 + `node:zlib` inflate、5 种行滤波反演；支持 depth 8 的 colorType 2/6；其余形状**抛错**（由上层 fail-open 承接）。
+2. 新增 `src/effect/diff.ts`：灰度化（cv2 权重 `0.299/0.587/0.114`）→ 全局管线与 ROI 管线（按上表常量）→ 动作分支表 → 返回 `boolean | undefined`。同步纯函数，输入 `Uint8Array`（base64 在边界解）。
+3. `src/index.ts` 的 `compareFrames` 改调本地实现；**失败方向**：解码失败/不支持形状 ⇒ 返回 `undefined`（走既有 fail-open；**不发明 `true`**——前置-3 B 已记录「TS 侧的等价语义是 `undefined`」）。
+4. 新增 `tests/effectDiff.spec.ts`（5 条判别用例 + 遮罩/ROI 回落/失败方向）；`tests/apply.spec.ts` 的 route A 转发锁改为**零 py 调用**锁；`contracts.spec` 的直呼清单去 `compare_ui_frames`；README Layout 补两个模块行（`readmeLayout.spec` 会咬）。
+
+**非目标**：OCR（G84 另一片）、overlay、`settle` 与重试阶梯（已有）、动作面本身（T2）、把 `compare_ui_frames` 从 provider 面删除（provider 保留该工具，只是**插件不再调用**）。
+
+**How（做法与关键决策）**
+- **零新依赖手写解码**，替代方案「引入 `pngjs`/`sharp`」被否：为一个已知窄形状（depth 8、type 2/6、无隔行）引入依赖不划算；`screencap` 免解码的原始 RGBA 路线属 T2 传输面，不在本片。
+- 高斯核**按 k 推导**（`σ = 0.3×((k−1)×0.5−1)+0.8` ⇒ k=5 得 1.1、k=3 得 0.8），与 cv2 口径对齐；浮点实现，并在 spec 里用**合成帧逐像素**钉住判定边界。
+- 灰度化与通道序：PNG 存储序是 RGB(A)，权重按 `0.299R+0.587G+0.114B`（cv2 的 BGR2GRAY 换算后同值）。
+- 大小写与命名：模块放 `src/effect/`，名字用 `judgeEffectChanged` / `decodePng`，README Layout 同步。
+
+**Verify（验收命令）**
+- `tests/effectDiff.spec.ts` 全绿：5 条判别用例（含用例 5 的 ROI 落空回落）+ 失败方向（坏字节/不支持形状 ⇒ `undefined`）+ 遮罩边界（顶部 50 行不算变化）。
+- **三处变异各红一次**（R27）：① 删「ROI 落空回落全局」⇒ 用例 5 红；② 遮罩顶从 10% 改 1px ⇒ 用例 4 红；③ 把失败方向改成抛错 ⇒ 失败方向用例红。
+- **零 py 调用锁**：apply.spec 里断言 `compare_ui_frames` **未被调用**（变异：把转发塞回 ⇒ 该条红）。
+- 真实帧冒烟（离线）：用 `scratch/` 的 1600×900 真帧做**同帧自比** ⇒ 必须判「不变」；跨帧 ⇒ 必须给出判定（仅作解码正确性冒烟，**不作 parity 证据**）。
+- `pnpm --config.verify-deps-before-run=false run verify` 三段全绿；`node scripts/check-docs.mjs`、`node scripts/check-env.mjs` exit 0。
+
+**诚实边界（🔶，不许写成已完成）**：规格 §三 的 T3 验收写着「TS 与 py 判定一致（对照表留档）」，但本分支 **D19 下仓内无 py、本机也没有解释器与旧 venv**，provider（外部 ARTEMIS）同样未配置 ⇒ **同输入同输出对照在本机 structurally 做不了**。
+替代证据是三件：① 每个常量带出处（函数+常量名）；② 5 条判别用例锁行为；③ 失败方向与坐标空间语义锁。**对照表列入延期待办**（与 provider 环境一并解，标 🔶 不勾）。
+
+**Done means**
+- [ ] `compareFrames` 走本地实现；插件树内不再调用 `compare_ui_frames`（grep + 锁双证）
+- [ ] 5 条判别用例 + 失败方向 + 遮罩/ROI 边界全绿，且上面三处变异各红一次
+- [ ] 解码器覆盖实测帧形状；不支持形状走 fail-open（`undefined`）
+- [ ] README Layout 与 `readmeLayout.spec` 同步
+- [ ] 🔶 与 py/provider 的同输入同输出对照表 —— **阻塞于 py 运行时/provider 环境，本项不勾**
+- [ ] 台账同步：G84 行标「部分（差分已 TS 化）」，规格 §二 该行状态更新（只写指针）
+
 ### T3 · 图像与 OCR TS 化（**G84**）
 
-- [ ] 效果差分落 TS（算法与阈值从旧实现读设计）
+- [ ] 效果差分落 TS（算法与阈值从旧实现读设计）—— **方案已立项**（见上方「T3 · 效果差分 TS 化」；实现待开工）
 - [ ] OCR 改 HTTP 直译
 - [ ] overlay 标注改 TS 图像库
 - [ ] 对照表留档（同输入同输出）
