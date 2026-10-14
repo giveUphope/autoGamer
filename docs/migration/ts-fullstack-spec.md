@@ -2,8 +2,9 @@
 
 > 本文件是决策 **D19**（TS 全栈、py 归零）与 **D20**（溯源归零、不保留上游内容；`LICENSE` 为本项目自撰 MIT）的展开规格。
 > 本分支的编号与开放项看 [`../TODO.md`](../TODO.md)；归档分支 `legacy-fork-v2-dsh-plugin` 持有旧 fork 的全部实现与调研台账（`registry` / `CHANGELOGS` / `inventory`），本分支不携带。
-> 状态：**2026-10-14 立项（方案，未开工）**。每期开工前按守则 **R22** 先在 `../TODO.md` §七 落自足条目，方案提交早于实现提交。
-> 本文件不写体量与行数（体量属派生事实，一律由脚本生成，不手抄）。
+> 本文件不写体量与行数（体量属派生事实，一律由脚本生成，不手抄）。每期开工前按守则 **R22** 先在 `../TODO.md` §七 落自足条目，方案提交早于实现提交。
+> 状态（2026-10-14 更新，进度权威是 [`../TODO.md`](../TODO.md) §零）：**插件 TS 树已搬入**（`plugins/dsh-autogamer/`，tsc + vitest 293 passed）；
+> LICENSE 已重写为本项目自撰 MIT；工作树环境残留护栏已落地（`scripts/check-env.mjs`）。**下一步 T1（G82），尚未开工。**
 
 ## 一、终态定义（Done 的判据）
 
@@ -22,8 +23,8 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 上游 ARTEMIS 的能力按「现载体 → TS 落点 → 判据」逐行列清。状态列只写三态：**已具备**（TS 侧已在跑）／**部分**（TS 有骨架但契约未对齐）／**未开工**。
 
-> **读表前提（重要）**：本表的「TS 落点」与状态列描述的是**归档分支 `legacy-fork-v2-dsh-plugin` 里已有的资产**——
-> 它们**尚未搬到本分支**（搬迁是 §流程 的开放项）。所以「已具备／部分」说的是**归档里有**，不是「本分支里能 import」。
+> **读表前提**：本表「TS 落点」描述的代码已随插件 TS 树搬入本分支（`plugins/dsh-autogamer/`）。状态列按 **T1–T4 的契约对齐进度**标注——
+> 「已具备」= TS 侧代码在跑；「部分」= 有骨架但契约未对齐；「未开工」= 待 T1–T4 实现。
 
 | 能力（上游面） | 现载体 | TS 落点 | 判据 | 状态 |
 |---|---|---|---|---|
@@ -97,6 +98,7 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 ## 七、判据与门禁
 
 - 每期收尾：插件 `tsc` + `vitest` 全绿；改过 patch 跑 **R6**（`--dump-config` rc 0 且无 `unmatched`）；**R7** 开新会话验证；判「生效」只认 **R9** 的官方检查器。
+- **D19 环境面机械判据**：`node scripts/check-env.mjs`（零依赖）。H1 = 被跟踪 `.py`（即 `git ls-files '*.py'` 为空）；H2 = 工作树 py 栈残留；切分支/拉取后由 `.githooks/post-checkout`/`post-merge` 自动提示，被跟踪 py 会被 `pre-push` 硬拦。
 - T2/T3 的对照判据是**同一输入同一输出**，不是「都能跑」：对照结果必须留档（可复跑命令 + 实测输出）。
 - T4 的终态判据按 §一 **五条**逐条勾，且每条都要给出可复跑命令，不许用「CI 会保证」代替。
 
@@ -146,10 +148,10 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 | 资产 | 规模（实测） | D20 判定 | 处置 |
 |---|---|---|---|
-| `plugins/dsh-autogamer/src/**` | 27 文件 / 4506 行 | **零上游痕迹**：`Google LLC` / `derived from` / `originally from` / `minitap` / `Copyright` 在整棵插件树里**均为 0** | **直接搬** |
-| `plugins/dsh-autogamer/tests/**` | 35 文件 / 4896 行（内含 **33 个 spec**） | 同一目录树，同上 | **直接搬** |
-| `plugins/dsh-autogamer/scripts/**` + `spike/**` | 6 文件 / 555 行 | 同上 | 搬（spike 装置按需保留） |
-| `tests/fixtures/py-action-tools.json` | 动作面契约夹具 | 我方观测产物 | 搬 —— T2「同一输入同一输出」的判据 |
+| `plugins/dsh-autogamer/src/**` | 27 文件 / 4506 行 | **零上游痕迹**：`Google LLC` / `derived from` / `originally from` / `minitap` / `Copyright` 在整棵插件树里**均为 0** | **已搬入**（2026-10-14） |
+| `plugins/dsh-autogamer/tests/**` | 35 文件 / 4896 行（内含 **33 个 spec**） | 同一目录树，同上 | **已搬入**（2026-10-14） |
+| `plugins/dsh-autogamer/scripts/**` + `spike/**` | 6 文件 / 555 行 | 同上 | `scripts/` 4 个 `.mjs` **已搬入**；`spike/` **未搬**（含 py `wire-tools.py` 与写死旧机盘符的 overlay，T2 前按当前环境重建） |
+| `tests/fixtures/py-action-tools.json` | 动作面契约夹具 | 我方观测产物 | **已搬入**插件 `tests/fixtures/` —— T2「同一输入同一输出」的判据 |
 | `docs/migration/*` 调研台账 | — | 我方记录 | **只读作设计参考**，正文不进新实现 |
 | py 全树（281 文件 ≈70k 行）+ vendored `third_party` | — | 318 个文件带上游版权头 | **不搬**；T2/T3 期间**只读设计** |
 
@@ -171,5 +173,6 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 ### 由此确定的两条动作
 
-1. **搬迁顺序**：先整块搬 TS 树，再**逐文件过 D20**（按实测预期零改动；仅插件 README 措辞要从「基于 ARTEMIS」改成「灵感来源」）。
-2. **本分支现状**：TS 资产**一个都还没搬**（`plugins/` 尚不存在）——这是 §流程「新分支特有」的第一条开放项。
+1. **搬迁顺序（已完成 2026-10-14）**：整块搬 TS 树 → 逐文件过 D20（实测插件树零上游痕迹）；插件 README 措辞已改「灵感来源」。
+   **已搬入**：src 27 / tests 36（含 fixtures、support）/ scripts 4 个 `.mjs` / locale / skill；**未搬**：`spike/`（py + 写死旧机盘符的 overlay，留待 T2 前按当前环境重建）。
+2. **本分支现状**：插件工程在 `plugins/dsh-autogamer/`，`tsc` 构建 + `vitest` 全绿（293 passed / 1 skipped）；下一步 **T1**（G82）。
