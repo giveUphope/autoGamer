@@ -87,7 +87,7 @@
 - `pnpm --config.verify-deps-before-run=false run verify` 三段全绿（35 files / 332 passed / 1 skipped）；`check-docs`、`check-env` exit 0。
 - **三处变异各红一次**：删「ROI 落空回落」⇒ 补的回落用例红；遮罩改成 1px ⇒ 用例 4 红；fail-open 改抛错 ⇒ 失败方向用例红。
   偏差如实记：删回落的红点是**本片补的第 6 条用例**——前置-3 的用例 5 区分不了「回落」与「直接返回 ROI 判定」，两者都给 `false`。
-- 真帧冒烟（离线）：`node scratch/smoke-effect.mjs` → 解码 1600×900 成功；**同帧自比全 `false`**；跨帧给出判定。
+- 真帧冒烟（**本机一次性，未入库**）：对 `scratch/` 里的 1600×900 RGBA 真截图跑 `judgeEffectChanged` → 解码成功；**同帧自比全 `false`**；跨帧给出判定。`scratch/` 与真帧都不在仓库里，所以这条**不是可复跑判据**——入库的证据是上面那 7 条用例与三处变异。
 - 🔶 **未做**：与 py 的同输入同输出对照表（仓内无 py、本机无解释器与旧 venv、provider 未配置）——列延迟项，见 `TODO.md` §七。
 - 提交：方案 `6d03b6f` → 实现 `00106f8`。
 
