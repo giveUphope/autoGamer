@@ -2,12 +2,13 @@
  * G33 locks on the real registry: the cooling-down refusal lives in a
  * monotonic `ctx.tools.guard`, not in the tool body.
  *
- * Assembly: real service graph + our plugin with an unspawnable action-server
- * command, so the first call fails at the transport (environment failure,
- * opens the breaker with the default allowedFails: 1). The next same-key call
- * must be denied by the guard — proving refusal without any device round-trip
- * — while a different key still goes through to the transport. Agent-less
- * execution is enough: a plain-context guard applies globally.
+ * Assembly: real service graph + our plugin with nothing scripted on the adb
+ * double, so the first call fails as an environment failure (the device layer
+ * answers "device not found") and opens the breaker with the default
+ * allowedFails: 1. The next same-key call must be denied by the guard — proving
+ * refusal without any device round-trip — while a different key still reaches
+ * the device. Agent-less execution is enough: a plain-context guard applies
+ * globally.
  */
 import { afterEach, describe, expect, it } from "vitest";
 
@@ -27,8 +28,6 @@ const SERVICE_PACKAGES = [
   "@deepseek-ai/dsh-session",
 ] as const;
 
-const BAD_ACTION_SERVER = ["g33-no-such-binary-xyz"];
-
 let seq = 0;
 
 async function boot(withScreenSize = true): Promise<Context> {
@@ -45,7 +44,6 @@ async function boot(withScreenSize = true): Promise<Context> {
       apply: pluginModule.apply,
     } as never,
     {
-      actionServerCommand: BAD_ACTION_SERVER,
       ...(withScreenSize ? { screenSize: [1080, 2400] } : {}),
       defaultDeviceKey: "g33d",
       actionCallTimeoutMs: 5_000,
@@ -75,7 +73,7 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
     const root = await boot();
     const first = await call(root, "run_device_action", { action: "back", reason: "open the breaker" });
     expect(first.isError).toBe(true);
-    expect(JSON.stringify(first)).toContain("environment: action transport failed");
+    expect(JSON.stringify(first)).toContain("environment:");
 
     const second = await call(root, "run_device_action", {
       action: "take_screenshot",
@@ -96,7 +94,7 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
     });
     expect(other.isError).toBe(true);
     const text = JSON.stringify(other);
-    expect(text).toContain("environment: action transport failed");
+    expect(text).toContain("environment:");
     expect(text).not.toContain("cooling down");
   });
 
@@ -138,7 +136,7 @@ describe("conformance: breaker refusal through the registry guard (G33)", () => 
       reason: "open via empty serial",
     });
     expect(first.isError).toBe(true);
-    expect(JSON.stringify(first)).toContain("environment: action transport failed");
+    expect(JSON.stringify(first)).toContain("environment:");
     // …then the omitted-serial (default-key) call must see the same hold.
     // Before deviceKeyOf, execute keyed "" while the guard keyed "default".
     const second = await call(root, "run_device_action", {

@@ -31,8 +31,15 @@ export interface AdbReply {
   timedOut?: boolean;
 }
 
-export interface FakeAdbRuntime {
-  readonly calls: string[][];
+/**
+ * The answer when a spec asked nothing: the shape adb really produces for a
+ * serial it cannot find (measured: exit 1 + `error: device 'x' not found` on
+ * stderr). An empty stderr with a non-zero code is not a real shape, and it
+ * would let the classifier read a dead device as a model mistake.
+ */
+const UNANSWERED: AdbReply = { code: 1, stderr: "error: device not found" };
+
+export interface FakeAdbRuntime {  readonly calls: string[][];
   readonly rules: { readonly match: RegExp; readonly reply: () => AdbReply }[];
   on(match: RegExp, reply: AdbReply | (() => AdbReply)): void;
   reset(): void;
@@ -66,7 +73,7 @@ export function createFakeAdbRuntime(): FakeAdbRuntime {
           break;
         }
       }
-      const reply = hit ? hit.reply() : {};
+      const reply = hit ? hit.reply() : UNANSWERED;
       // An already-aborted call answers the way the real spawn does: the child
       // was killed, so there is no exit code and nothing to read.
       const aborted = options?.signal?.aborted === true;
@@ -122,6 +129,30 @@ export const screencapArgv = /exec-out screencap -p$/;
 export const getStateArgv = /get-state$/;
 export const getSerialnoArgv = /^get-serialno$/;
 export const packagesArgv = /shell pm list packages/;
+export const dumpArgv = /shell uiautomator dump /;
+export const catArgv = /exec-out cat \/sdcard\/dsh-autogamer-hierarchy-/;
+export const rmArgv = /shell rm \/sdcard\/dsh-autogamer-hierarchy-/;
+export const tapArgv = /shell input tap /;
+export const swipeArgv = /shell input swipe /;
+export const keyeventArgv = /shell input keyevent/;
+export const textArgv = /shell input text /;
+export const amArgv = /shell (am|monkey|cmd package)/;
+/** Any of the mutating device commands an action can turn into. */
+export const actionArgv = /shell (input|am|monkey|cmd package)/;
+
+/** The `input tap x y` calls adb was asked to run, as coordinate pairs. */
+export function tapsOf(calls: readonly string[][]): [number, number][] {
+  return calls
+    .filter((args) => tapArgv.test(args.join(" ")))
+    .map((args) => [Number(args[args.length - 2]), Number(args[args.length - 1])]) as [number, number][];
+}
+
+/** The text an `input text <value>` carried, with the device-shell quotes off. */
+export function textArgsOf(calls: readonly string[][]): string[] {
+  return calls
+    .filter((args) => textArgv.test(args.join(" ")))
+    .map((args) => String(args[args.length - 1]).replace(/^'|'$/g, "").replace(/'\\''/g, "'"));
+}
 
 /** A `dumpsys window` body carrying the two lines the probes read. */
 export function windowDump(input: { screenState?: string; focus?: string; keyguard?: string }): string {

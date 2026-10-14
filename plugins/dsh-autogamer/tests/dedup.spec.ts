@@ -11,6 +11,7 @@ import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
 import { hierarchyXml, xmlNode } from "./support/hierarchyXml.js";
+import { pngHeaderOnly } from "./support/fakeAdb.js";
 
 function hierarchyWith(target: boolean): string {
   return hierarchyXml(
@@ -33,19 +34,19 @@ function setup() {
   const tool = defineRunDeviceAction({
     pool: defaultPool(),
     breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
-    client: {
-      callTool: async (name: string, args: Record<string, unknown>) => {
-        harness.calls.push({ tool: name, args });
-        if (name === "tap") {
-          return new Promise<unknown>((resolve) => {
-            harness.tapResolvers.push(() =>
-              resolve({ content: [{ type: "text", text: "Success" }] }),
-            );
-          });
-        }
-        return { content: [{ type: "text", text: "Success" }] };
-      },
-    } as never,
+    // T2-c/d/e: the device seam. The log keeps the legacy `{tool, args}` shape;
+    // a `tap` stays pending until the test releases it, which is exactly the
+    // "while one is still running" half of G13.
+    execute: async (call) => {
+      harness.calls.push({ tool: call.tool, args: call.payload });
+      if (call.tool === "tap") {
+        return new Promise<string>((resolve) => {
+          harness.tapResolvers.push(() => resolve("Success"));
+        });
+      }
+      return "Success";
+    },
+    capturePng: async () => pngHeaderOnly(720, 1600),
     // T2-b: reads come off the device, and still log under the action name so
     // the dedup assertions count what actually happened.
     hierarchy: async () => {

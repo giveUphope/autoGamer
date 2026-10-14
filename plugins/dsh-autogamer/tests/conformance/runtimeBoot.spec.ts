@@ -134,7 +134,7 @@ describe("conformance: real DSH runtime tool registry (G5 Tier 1)", () => {
     // Only proven by calling Config() ourselves today; here the loader is the
     // one that must refuse, because that is what a profile row actually does.
     await expect(
-      (ctx.plugin as unknown as (definition: unknown, config?: unknown) => Promise<never>)(plugin, { actionServerCommand: "not-an-array" }),
+      (ctx.plugin as unknown as (definition: unknown, config?: unknown) => Promise<never>)(plugin, { screenSize: "720x1600" }),
     ).rejects.toThrow();
   });
 });

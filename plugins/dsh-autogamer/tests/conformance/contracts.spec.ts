@@ -68,18 +68,23 @@ describe("conformance: py action server surface", () => {
     // go through the `callTransport` wrapper (G33: a dead server must classify
     // environment, never task/internal), which the extractor reads with the same
     // spelling.
-    // `list_devices` left the list in T2-a: the roster is built from `adb devices -l`
-    // (and folded by android_id), so the pool no longer asks the server who is attached.
-    // `get_ui_hierarchy` left it in T2-b: the device's own `uiautomator dump` is read
-    // back over adb and flattened here, so only the screenshot is still a server call
-    // (T2-c takes that one too).
+    // `list_devices` left in T2-a (the roster is `adb devices -l` folded by
+    // android_id), `get_ui_hierarchy` in T2-b (the device dump is read back and
+    // flattened here), `take_screenshot` in T2-c (`exec-out screencap -p`). Build
+    // -phase transport calls used to go through the `callTransport` wrapper (G33:
+    // a dead server must classify environment, never task/internal) — that rule
+    // now lives on the adb seam, where a vanished device still says so.
     const direct = new Set<string>();
     for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
       const text = readFileSync(file, "utf8");
       for (const match of text.matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
       for (const match of text.matchAll(/callTransport\(\s*client\s*,\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
     }
-    expect([...direct].sort(), "src should still contain direct call sites").toEqual(["take_screenshot"]);
+    // T2-c/d/e closes this list: nothing in `src/` calls an action-server tool
+    // any more. Gestures, text, apps, the screenshot and the hierarchy all run
+    // over adb (`src/device/`), and the effect verdict has been local since T3.
+    // The lock is a BAN now: reintroducing any direct call turns it red.
+    expect([...direct].sort(), "src must contain no direct action-server call sites").toEqual([]);
     const unreachable = [...direct].filter((tool) => !realTools.includes(tool));
     expect(unreachable, "the plugin calls py tools the server does not expose").toEqual([]);
     expect(realTools.length, "the recorded surface should never shrink silently").toBeGreaterThanOrEqual(14);
@@ -198,8 +203,6 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     expect(Object.keys(fields).sort()).toEqual(
       [
         "actionCallTimeoutMs",
-        "actionServerCommand",
-        "actionServerEnv",
         "allowedFails",
         "artemisMcpCommand",
         "artemisRepoPath",
@@ -226,8 +229,10 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     for (const [name, sub] of Object.entries(fields)) {
       expect(sub instanceof Schema, `${name} must be a native Schemastery schema`).toBe(true);
     }
-    expect(fields.actionServerCommand?.type).toBe("array");
-    expect(fields.actionServerEnv?.type).toBe("dict");
+    // T2-c/d/e: the action-server command/env fields are GONE - the plugin no
+    // longer starts or configures an action server, so a lock that kept them in
+    // the declared surface would be locking a capability the plugin does not
+    // have. `actionCallTimeoutMs` stays: it belongs to the optional provider.
     expect(fields.screenSize?.type).toBe("tuple");
     // G3/G28: the roster is an array of serials and the ceiling a plain number.
     expect(fields.devices?.type).toBe("array");
@@ -237,15 +242,6 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
 
   it("applies declared defaults and leaves the un-defaulted tuple null-filled", () => {
     const resolved = configOf();
-    expect(resolved.actionServerCommand).toEqual([
-      "python",
-      "-m",
-      "artemis.interfaces.cli.main",
-      "mcp",
-      "--type",
-      "adb",
-    ]);
-    expect(resolved.actionServerEnv).toEqual({});
     expect(resolved.defaultDeviceKey).toBe("default");
     expect(resolved.allowedFails).toBe(1);
     expect(resolved.breakerCooldownMs).toBe(30_000);
@@ -277,6 +273,7 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
   });
 
   it("rejects a malformed value rather than coercing it silently", () => {
-    expect(() => configOf({ actionServerCommand: "not-an-array" })).toThrow();
+    expect(() => configOf({ allowedFails: "many" })).toThrow();
+    expect(() => configOf({ screenSize: "720x1600" })).toThrow();
   });
 });

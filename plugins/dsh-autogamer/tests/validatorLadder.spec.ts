@@ -20,6 +20,7 @@ import {
   type ValidatorStrictness,
 } from "../src/tools/runDeviceAction.js";
 import { hierarchyXml, xmlNode } from "./support/hierarchyXml.js";
+import { pngHeaderOnly } from "./support/fakeAdb.js";
 
 /** Node sets in the device's own XML form (T2-b: the router reads the dump, not a JSON list). */
 const WITH_TARGET = hierarchyXml([
@@ -55,15 +56,13 @@ function setup(strictness?: ValidatorStrictness) {
   const tool = defineRunDeviceAction({
     pool: defaultPool(),
     breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
-    client: {
-      callTool: async (name: string, args: Record<string, unknown>) => {
-        harness.calls.push({ tool: name, args });
-        if (name === "take_screenshot") {
-          throw new Error("no screenshots in ladder tests (frames come from captureFrame)");
-        }
-        return { content: [{ type: "text", text: harness.taps.length > 0 ? harness.taps.shift()! : "Success" }] };
-      },
-    } as never,
+    // T2-c/d/e: the device answers with the legacy strings directly (the tap
+    // queue below feeds `Success` / `Failed` / `Error: …`).
+    execute: async (call) => {
+      harness.calls.push({ tool: call.tool, args: call.payload });
+      return harness.taps.length > 0 ? harness.taps.shift()! : "Success";
+    },
+    capturePng: async () => pngHeaderOnly(720, 1600),
     // T2-b: the observation comes from the device dump. It logs under the same
     // name so `hierarchyCalls()` still counts what the router actually fetched.
     hierarchy: async () => {
@@ -452,9 +451,8 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
     const failing = defineRunDeviceAction({
       pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
-      client: {
-        callTool: async () => ({ content: [{ type: "text", text: "Success" }] }),
-      } as never,
+      execute: async () => "Success",
+      capturePng: async () => pngHeaderOnly(720, 1600),
       hierarchy: async () => {
         hierarchies += 1;
         if (hierarchies >= 2) throw new Error("adb vanished");
@@ -474,15 +472,16 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
     ).rejects.toThrow(/^environment: hierarchy read failed: adb vanished/);
   });
 
-  it("classifies a screenshot-branch transport death as environment", async () => {
+  /**
+   * The screenshot branch's failure class (T2-c): `exec-out screencap -p` gives
+   * back nothing, which is the device's problem, not the model's.
+   */
+  it("classifies a frameless screencap as environment", async () => {
     const failing = defineRunDeviceAction({
       pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
-      client: {
-        callTool: async () => {
-          throw new Error("Connection closed");
-        },
-      } as never,
+      execute: async () => "Success",
+      capturePng: async () => undefined,
       logger: { info: () => {}, warn: () => {} },
       defaultDeviceKey: "d0",
       incidents: new ActionIncidents(),
@@ -491,6 +490,6 @@ describe("validator ladder: unchanged streaks and mid-ladder transport death", (
     });
     await expect(
       failing.execute({ action: "take_screenshot", reason: "t" }, exec() as never),
-    ).rejects.toThrow(/^environment: action transport failed/);
+    ).rejects.toThrow(/^environment: screencap returned no frame/);
   });
 });

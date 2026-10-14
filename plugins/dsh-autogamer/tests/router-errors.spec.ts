@@ -11,6 +11,7 @@ import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
 import { TWO_ROWS_XML } from "./support/hierarchyXml.js";
+import { pngHeaderOnly } from "./support/fakeAdb.js";
 
 const calls: { tool: string; args: Record<string, unknown> }[] = [];
 
@@ -20,12 +21,13 @@ function setup(resolveScreenSize?: () => Promise<{ width: number; height: number
   const tool = defineRunDeviceAction({
     pool: defaultPool(),
     breaker,
-    client: {
-      callTool: async (name: string, args: Record<string, unknown>) => {
-        calls.push({ tool: name, args });
-        return "Success";
-      },
-    } as never,
+    // T2-c/d/e: the device seam is two functions now, and the log keeps the
+    // legacy `{tool, args}` shape because that is what these locks read.
+    execute: async (call) => {
+      calls.push({ tool: call.tool, args: call.payload });
+      return "Success";
+    },
+    capturePng: async () => pngHeaderOnly(720, 1600),
     logger: { info: () => {}, warn: () => {} },
     defaultDeviceKey: "d0",
     resolveScreenSize: resolveScreenSize ?? (async () => ({ width: 720, height: 1600 })),
@@ -155,14 +157,13 @@ describe("router input validation (G34)", () => {
     const tool = defineRunDeviceAction({
       pool: defaultPool(),
       breaker: new DeviceBreaker({ allowedFails: 1, cooldownMs: 30_000 }),
-      client: {
-        callTool: (_name: string, _args: Record<string, unknown>, signal?: AbortSignal) =>
-          new Promise<unknown>((_, reject) => {
-            signal?.addEventListener("abort", () => reject(new Error("stub transport aborted")), {
-              once: true,
-            });
-          }),
-      } as never,
+      execute: (_call, _key, signal) =>
+        new Promise<string>((_, reject) => {
+          signal?.addEventListener("abort", () => reject(new Error("stub device aborted")), {
+            once: true,
+          });
+        }),
+      capturePng: async () => pngHeaderOnly(720, 1600),
       logger: { info: () => {}, warn: () => {} },
       defaultDeviceKey: "d0",
       resolveScreenSize: async () => ({ width: 720, height: 1600 }),

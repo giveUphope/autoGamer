@@ -11,12 +11,11 @@
  *   stop_app / open_link / focus_and_input_text / focus_and_clear_text /
  *   erase_one_char / press_key / take_screenshot / get_ui_hierarchy
  */
-import type { ActionClient } from "../actionClient.js";
 import type { DeviceBreaker } from "../breaker.js";
 import type { DevicePool, PoolLease } from "../devicePool.js";
+import type { NativeCall } from "../device/act.js";
 import { classifyMessage } from "../classify.js";
 import {
-  decodeImageBase64,
   imageMediaTypeOf,
   parseImageSize,
   toPixels,
@@ -205,25 +204,6 @@ function assertPositiveDuration(value: unknown, field: string): void {
   }
 }
 
-/**
- * Transport calls made while BUILDING the device call (hierarchy fetch,
- * screenshot for its dimensions). A dead action server here is environment by
- * definition (classifyTransportError) — rethrow prefixed so the dispatch
- * classifier cannot mistake it for a task failure or a plugin-internal defect.
- */
-async function callTransport(
-  client: { callTool(name: string, args: Record<string, unknown>, signal?: AbortSignal): Promise<unknown> },
-  tool: string,
-  payload: Record<string, unknown>,
-  signal?: AbortSignal,
-): Promise<unknown> {
-  try {
-    return await client.callTool(tool, payload, signal);
-  } catch (error) {
-    throw new Error(`environment: action transport failed: ${error instanceof Error ? error.message : String(error)}`);
-  }
-}
-
 export type ValidatorStrictness = "off" | "final" | "checkpoints" | "strict";
 
 /** Upstream pre-execution retry budget (max_pre_attempts = 3, total attempts). */
@@ -325,7 +305,15 @@ export interface RouterOptions {
   /** S3/G3 scheduling: per-device chains plus the auto pool and the global ceiling. */
   pool: DevicePool;
   breaker: DeviceBreaker;
-  client: ActionClient;
+  /**
+   * T2-c/d/e: one action executed on the device over adb, answered in the
+   * legacy string shape (`Success` / `Failed` / `Error: …`) so the classifier and
+   * every existing lock keep working. Failures of the *transport* kind (adb
+   * vanished, the call was cancelled) throw prefixed `environment:`.
+   */
+  execute(call: NativeCall, key: string, signal?: AbortSignal): Promise<string>;
+  /** T2-c: a PNG frame straight off the device, for the screenshot action. */
+  capturePng(key: string, signal?: AbortSignal): Promise<Buffer | undefined>;
   logger: RouterLogger;
   defaultDeviceKey: string;
   /**
@@ -379,7 +367,7 @@ export interface RouterOptions {
    */
   /** Records that this agent acted in the current turn (G44 ledger). */
   onAction?(): void;
-  captureFrame?(): Promise<string | undefined>;
+  captureFrame?(key: string): Promise<string | undefined>;
   compareFrames?(
     beforeB64: string,
     afterB64: string,
@@ -395,7 +383,7 @@ interface TargetInput {
 }
 
 export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInput {
-  const { pool, breaker, client, logger } = options;
+  const { pool, breaker, logger } = options;
   const incidents = options.incidents ?? new ActionIncidents();
   const observations = options.observations ?? new LiveObservations();
   const agentOfCall = (): string => options.agentIdOfCall?.() ?? "anonymous";
@@ -775,24 +763,39 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     }
 
     let structured: unknown;
-    // A hierarchy read never reaches the transport at all (T2-b): the element
-    // list comes from the device, so there is no server answer to normalize and
-    // no effect to observe (a read changes nothing).
+    // A hierarchy read (T2-b) never reaches the device executor: its answer is
+    // built below from the dump. A screenshot answered inside buildCall (T2-c)
+    // is likewise already in `value` - and used to be captured twice.
     const nativeHierarchy = action === "get_ui_hierarchy";
+    const precomputed = nativeHierarchy || value !== undefined;
     const observesEffect = !nativeHierarchy && EFFECT_OBSERVED_ACTIONS.has(action);
-    const before = observesEffect ? await captureFrameSafe() : undefined;
+    const before = observesEffect ? await captureFrameSafe(key) : undefined;
     try {
-      structured = nativeHierarchy ? undefined : await client.callTool(tool, payload, exec.signal);
+      structured = precomputed ? undefined : await options.execute({ tool, payload }, key, exec.signal);
     } catch (error) {
       if (exec.signal.aborted) {
         return { ok: false, failure: "task", message: "action cancelled by the user" };
       }
-      const message = `action transport failed: ${String(error)}`;
-      logger.warn(`[route] ${message}`);
-      return { ok: false, failure: "environment", message };
+      const message = error instanceof Error ? error.message : String(error);
+      // G33's rule one layer down: a prefixed answer carries its class, and an
+      // unprefixed throw is our defect - it must not be charged to the device
+      // (which would open the breaker on a plugin bug) or to the model.
+      if (message.startsWith("environment:")) {
+        logger.warn(`[route] device call failed (${action}): ${message}`);
+        return { ok: false, failure: "environment", message: message.replace(/^environment:\s*/, "") };
+      }
+      if (message.startsWith("task:")) {
+        return { ok: false, failure: "task", message: message.replace(/^task:\s*/, "") };
+      }
+      logger.warn(`[route] unclassified device failure (${action}): ${message}`);
+      return { ok: false, failure: "internal", message };
     }
 
-    const outcome = nativeHierarchy ? { ok: true, message: "" } : normalizeOutcome(structured);
+    const outcome = nativeHierarchy
+      ? { ok: true, message: "" }
+      : value !== undefined
+        ? { ok: true, message: "", value }
+        : normalizeOutcome(structured);
     if (!outcome.ok) {
       return { ok: false, failure: classifyMessage(outcome.message), message: outcome.message };
     }
@@ -859,7 +862,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     // S11 step 3: the router observes the screen itself instead of trusting the
     // model's reading of it.
     await settle(EFFECT_SETTLE_MS);
-    const after = await captureFrameSafe();
+    const after = await captureFrameSafe(key);
     const coordinates = Array.isArray(payload.coordinates) ? payload.coordinates : undefined;
     const changed =
       before && after ? await compareFramesSafe(before, after, tool, coordinates) : undefined;
@@ -933,9 +936,9 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     return { status: "found", normalized: [nx, ny] };
   }
 
-  async function captureFrameSafe(): Promise<string | undefined> {
+  async function captureFrameSafe(key: string): Promise<string | undefined> {
     try {
-      return await options.captureFrame?.();
+      return await options.captureFrame?.(key);
     } catch (error) {
       logger.warn(`[route] effect frame failed: ${(error as Error)?.message ?? error}`);
       return undefined;
@@ -1029,11 +1032,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         assertNonEmptyString(args.url, "url");
         return { tool: "open_link", payload: { url: String(args.url ?? "") } };
       case "take_screenshot": {
-        const base64 = unwrapText(await callTransport(client, "take_screenshot", {}, signal));
-        if (/^errorb/i.test(base64)) {
-          throw new Error(`environment: ${base64.replace(/^errorb:?s*/i, "").trim()}`);
+        // T2-c: `exec-out screencap -p` answers with the PNG itself. No base64
+        // round trip through a server, and no second capture afterwards.
+        const bytes = await options.capturePng(key, signal);
+        if (bytes === undefined) {
+          throw new Error("environment: screencap returned no frame — check the device connection (`adb devices`)");
         }
-        const bytes = decodeImageBase64(base64);
         const size = parseImageSize(bytes);
         const mediaType = imageMediaTypeOf(bytes);
         const image = mediaType ? await options.saveScreenshot?.(bytes, mediaType) : undefined;

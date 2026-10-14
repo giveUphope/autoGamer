@@ -11,7 +11,25 @@ import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { parseImageSize } from "../src/coord.js";
 import { frame } from "./support/pngEncode.js";
-import { adbHealthyDevice, adbRuntime, devicesArgv, identityArgv, pngHeaderOnly, screencapArgv, windowArgv, windowDump } from "./support/fakeAdb.js";
+import {
+  adbRuntime,
+  actionArgv,
+  catArgv,
+  devicesArgv,
+  dumpArgv,
+  getStateArgv,
+  getSerialnoArgv,
+  identityArgv,
+  packagesArgv,
+  pngHeaderOnly,
+  rmArgv,
+  screencapArgv,
+  swipeArgv,
+  tapArgv,
+  tapsOf,
+  windowArgv,
+  windowDump,
+} from "./support/fakeAdb.js";
 import {
   PIXEL_GUIDANCE,
   SELF_CHECK_PROMPT,
@@ -21,13 +39,13 @@ import {
 import type { DshImageAttachment } from "../src/dsh-types.js";
 
 /**
- * A real 1080x2400 PNG. The effect verdict is computed locally from the frames
- * since T3, so a header-only stub is no longer enough: the judge has to decode
- * what the fake action server hands back. `parseImageSize` still reads the IHDR
- * dimensions at bytes 16/20, so both consumers see the shape they expect.
+ * A real PNG in the device's frame space. The effect verdict is computed locally
+ * from the frames since T3, so a header-only stub is not enough: the judge has
+ * to decode what `exec-out screencap -p` hands back. `parseImageSize` still reads
+ * the IHDR at bytes 16/20, so both consumers see the shape they expect.
  */
-function pngBytes(level = 40): Buffer {
-  return Buffer.from(frame(1080, 2400, level));
+function pngFrame(level = 40): Buffer {
+  return Buffer.from(frame(720, 1600, level));
 }
 
 /**
@@ -44,54 +62,40 @@ const HIERARCHY_XML = `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?>
   </node>
 </hierarchy>`;
 
+/**
+ * What the frames the router sees look like. Since T2-c every capture is an
+ * `exec-out screencap -p`, so these flags drive the adb double's answer rather
+ * than a fake action server: `captures` counts them, `drift` makes the second
+ * frame of each pair differ, `garbage` hands back bytes that are not a PNG.
+ */
 const harness = vi.hoisted(() => ({
-  calls: [] as { tool: string; args: Record<string, unknown> }[],
-  clientOptions: [] as Record<string, unknown>[],
-  /** Number of screenshot captures; pairs are (before, after). */
   captures: 0,
-  /** When true, the second frame of each pair differs from the first. */
   drift: false,
-  /** When true, screenshots come back as non-PNG bytes. */
   garbage: false,
-  disposed: 0,
 }));
 
-vi.mock("../src/actionClient.js", () => ({
-  ActionClient: class {
-    constructor(options: Record<string, unknown>) {
-      harness.clientOptions.push(options);
-    }
-
-    async callTool(tool: string, args: Record<string, unknown>) {
-      harness.calls.push({ tool, args });
-      if (tool === "take_screenshot") {
-        harness.captures += 1;
-        if (harness.garbage) return { content: [{ type: "text", text: "not-a-png" }] };
-        const level = harness.drift && harness.captures % 2 === 0 ? 200 : 40;
-        return { content: [{ type: "text", text: pngBytes(level).toString("base64") }] };
-      }
-      if (tool === "get_ui_hierarchy") {
-        // Live shape: a JSON node list whose own `index` is per-container.
-        return {
-          content: [
-            {
-              type: "text",
-              text: JSON.stringify([
-                { index: "0", text: "亮度", "content-desc": "", "resource-id": "", class: "android.widget.TextView", package: "com.android.settings", clickable: "true", parsed_bounds: { left: 40, top: 400, right: 200, bottom: 460 } },
-                { index: "1", text: "显示", "content-desc": "", "resource-id": "", class: "android.widget.TextView", package: "com.android.settings", clickable: "true", parsed_bounds: { left: 40, top: 600, right: 200, bottom: 660 } },
-              ]),
-            },
-          ],
-        };
-      }
-      return { content: [{ type: "text", text: "Success" }] };
-    }
-
-    async dispose() {
-      harness.disposed += 1;
-    }
-  },
-}));
+function adbFramesAndGestures(): void {
+  // One healthy device in the 720x1600 frame space, answering every question the
+  // plugin asks over adb. `captures`/`drift`/`garbage` steer the screencap rule,
+  // because the size probe and the effect-observation pair share that one seam.
+  adbRuntime.on(getSerialnoArgv, { code: 0, stdout: "emulator-5554\n" });
+  adbRuntime.on(getStateArgv, { code: 0, stdout: "device\n" });
+  adbRuntime.on(windowArgv, {
+    code: 0,
+    stdout: windowDump({ screenState: "ON", focus: "com.example/.Main" }),
+  });
+  adbRuntime.on(packagesArgv, { code: 0, stdout: "" });
+  adbRuntime.on(screencapArgv, () => {
+    harness.captures += 1;
+    if (harness.garbage) return { code: 0, stdout: Buffer.from("not-a-png") };
+    const level = harness.drift && harness.captures % 2 === 0 ? 200 : 40;
+    return { code: 0, stdout: pngFrame(level) };
+  });
+  adbRuntime.on(actionArgv, { code: 0, stdout: "" });
+  adbRuntime.on(dumpArgv, { code: 139, stdout: "UI hierchary dumped to: /sdcard/x.xml\n" });
+  adbRuntime.on(catArgv, { code: 0, stdout: HIERARCHY_XML });
+  adbRuntime.on(rmArgv, { code: 0, stdout: "" });
+}
 
 type ToolDefinition = {
   name: string;
@@ -193,7 +197,6 @@ async function registeredTools(
   attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
 ) {
   const definitions: ToolDefinition[] = [];
-  harness.calls.length = 0;
   const double = fakeContext(definitions, attachments);
   await apply(double.context as never, config as never);
   const find = (name: string) => {
@@ -209,7 +212,6 @@ async function registerToolWith(
   attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
 ): Promise<ToolDefinition> {
   const definitions: ToolDefinition[] = [];
-  harness.calls.length = 0;
   const { context } = fakeContext(definitions, attachments);
   await apply(context as never, config as never);
   const tool = definitions.find((definition) => definition.name === "run_device_action");
@@ -222,22 +224,12 @@ function exec(): ToolRunContext {
 }
 
 beforeEach(() => {
-  harness.calls.length = 0;
-  harness.clientOptions.length = 0;
   harness.captures = 0;
   harness.drift = false;
   harness.garbage = false;
-  harness.disposed = 0;
   preflightProbe.runs = 0;
-  // One healthy device: unlocked, focused, and a 720x1600 frame - the size the
-  // screen-size guard compares a configured value against. The probe reads only
-  // the IHDR, so a header-only PNG keeps the suite fast.
-  adbHealthyDevice();
-  // The device's own hierarchy read (T2-b): `uiautomator dump` answers 139 even
-  // on success and the router judges the file it reads back.
-  A.on(/shell uiautomator dump /, { code: 139, stdout: "UI hierchary dumped to: /sdcard/x.xml\n" });
-  A.on(/exec-out cat \/sdcard\/dsh-autogamer-hierarchy-/, { code: 0, stdout: HIERARCHY_XML });
-  A.on(/shell rm \/sdcard\/dsh-autogamer-hierarchy-/, { code: 0, stdout: "" });
+  // One healthy device in the 720x1600 frame space; see adbFramesAndGestures().
+  adbFramesAndGestures();
 });
 
 describe("apply(): screen size sourcing wiring", () => {
@@ -245,19 +237,17 @@ describe("apply(): screen size sourcing wiring", () => {
     const tool = await registerToolWith(Config());
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "probe path" }, exec());
 
-    // One screencap for the size probe. The captures the fake action server
-    // counts are the effect-observation pair, which is a separate concern.
-    expect(A.calls.filter((args) => screencapArgv.test(args.join(" ")))).toHaveLength(1);
-    const tap = harness.calls.find((call) => call.tool === "tap");
-    expect(tap?.args.coordinates).toEqual([360, 800]);
+    // Three captures: the size probe, then the effect-observation pair. All of
+    // them are `exec-out screencap -p`; there is no other frame source left.
+    expect(A.calls.filter((args) => screencapArgv.test(args.join(" ")))).toHaveLength(3);
+    expect(tapsOf(A.calls)).toEqual([[360, 800]]);
   });
 
   it("honours an explicit screenSize that matches the frame", async () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "configured" }, exec());
 
-    const tap = harness.calls.find((call) => call.tool === "tap");
-    expect(tap?.args.coordinates).toEqual([360, 800]);
+    expect(tapsOf(A.calls)).toEqual([[360, 800]]);
   });
 
   /**
@@ -270,7 +260,7 @@ describe("apply(): screen size sourcing wiring", () => {
     await expect(
       tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "transposed config" }, exec()),
     ).rejects.toThrow(/environment: configured screenSize 900x1600 contradicts the device frame 720x1600/);
-    expect(harness.calls.map((call) => call.tool), "nothing may reach the device").not.toContain("tap");
+    expect(tapsOf(A.calls), "nothing may reach the device").toEqual([]);
   });
 
   it("never leaks the schema's empty tuple into pixel math", async () => {
@@ -279,30 +269,31 @@ describe("apply(): screen size sourcing wiring", () => {
       { action: "click", target: { coordinate: [500, 500] }, reason: "NaN guard" },
       exec(),
     );
-    const tap = harness.calls.find((call) => call.tool === "tap");
-    expect(tap, "the action must not be dispatched with unresolved dimensions").toBeDefined();
-    expect(JSON.stringify((tap?.args as { coordinates: number[] }).coordinates)).not.toContain("null");
+    const taps = tapsOf(A.calls);
+    expect(taps.length, "the action must not be dispatched with unresolved dimensions").toBeGreaterThan(0);
+    expect(JSON.stringify(taps)).not.toMatch(/null|NaN/);
     expect(result).toBeDefined();
   });
 
-  it("passes the resolved action-server settings through to the client", async () => {
-    await registerToolWith(Config());
-    expect(harness.clientOptions).toHaveLength(1);
-    expect(harness.clientOptions[0]?.command).toEqual([
-      "python",
-      "-m",
-      "artemis.interfaces.cli.main",
-      "mcp",
-      "--type",
-      "adb",
-    ]);
+  /**
+   * T2-c/d/e: the plugin does not start, configure or talk to an action server
+   * any more. There is no client to hand settings to, so the lock is that the
+   * whole surface goes out through adb - and the gesture really lands.
+   */
+  it("reaches the device over adb with no action server anywhere", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    await tool.execute({ action: "swipe", target: { coordinate: [100, 200] }, end_coordinate: [900, 800], duration_ms: 300, reason: "swipe" }, exec());
+
+    expect(A.calls.some((args) => swipeArgv.test(args.join(" ")))).toBe(true);
+    const swipe = A.calls.find((args) => swipeArgv.test(args.join(" ")))!;
+    expect(swipe.slice(-5)).toEqual(["72", "320", "648", "1280", "300"]);
+    expect(A.calls.some((args) => /python|artemis|mcp/.test(args.join(" ")))).toBe(false);
   });
 });
 
 describe("apply(): registration lifetime (G30 regression)", () => {
   it("returns teardown from effect() instead of running it during apply()", async () => {
     const definitions: ToolDefinition[] = [];
-    harness.calls.length = 0;
     const { context, cleanups } = fakeContext(definitions);
     await apply(context as never, Config() as never);
 
@@ -322,18 +313,20 @@ describe("apply(): registration lifetime (G30 regression)", () => {
     ]);
     expect(cleanups).toHaveLength(1);
     expect(typeof cleanups[0]).toBe("function");
-    // apply() itself must not have disposed anything synchronously.
-    expect(harness.disposed).toBe(0);
+    // apply() itself must not have disposed anything synchronously, and mounting
+    // must not have reached the device either (T2-c/d/e: no server to connect).
+    expect(A.calls).toEqual([]);
   });
 
-  it("tears down the action client only when the effect disposer runs", async () => {
+  it("tears down quietly: the disposer spawns nothing and touches no device", async () => {
     const definitions: ToolDefinition[] = [];
     const { context, cleanups } = fakeContext(definitions);
     await apply(context as never, Config() as never);
+    A.reset();
 
     const cleanup = cleanups[0] as () => void;
-    cleanup();
-    expect(harness.disposed).toBe(1);
+    expect(() => cleanup()).not.toThrow();
+    expect(A.calls).toEqual([]);
   });
 });
 
@@ -361,13 +354,13 @@ describe("apply(): screenshot media path (G36)", () => {
     >;
     expect(saved).toHaveLength(1);
     expect(saved[0]?.mediaType).toBe("image/png");
-    expect(parseImageSize(saved[0]?.data ?? new Uint8Array())).toEqual({ width: 1080, height: 2400 });
+    expect(parseImageSize(saved[0]?.data ?? new Uint8Array())).toEqual({ width: 720, height: 1600 });
     expect(value.image).toEqual(ref);
-    expect(value.screenshot).toBe("captured 1080x2400");
+    expect(value.screenshot).toBe("captured 720x1600");
 
     const blocks = tool.output!.render({}, value);
     expect(blocks.map((block) => block.type)).toEqual(["text", "image"]);
-    expect(blocks[0]?.text).toBe("screenshot=captured 1080x2400");
+    expect(blocks[0]?.text).toBe("screenshot=captured 720x1600");
     expect(blocks[1]?.attachment).toBe(ref);
   });
 
@@ -375,7 +368,7 @@ describe("apply(): screenshot media path (G36)", () => {
     const tool = await registerToolWith(Config(), { saveImages: async () => [ref] });
     const value = await tool.execute({ action: "take_screenshot", reason: "look" }, exec());
     // The session log records the result value; only the reference may appear.
-    expect(JSON.stringify(value)).not.toContain(pngBytes().toString("base64"));
+    expect(JSON.stringify(value)).not.toContain(pngFrame().toString("base64"));
   });
 
   it("still reports dimensions when the store refuses the image", async () => {
@@ -388,8 +381,8 @@ describe("apply(): screenshot media path (G36)", () => {
       string,
       unknown
     >;
-    expect(value).toEqual({ screenshot: "captured 1080x2400" });
-    expect(tool.output!.render({}, value)).toEqual([{ type: "text", text: "screenshot=captured 1080x2400" }]);
+    expect(value).toEqual({ screenshot: "captured 720x1600" });
+    expect(tool.output!.render({}, value)).toEqual([{ type: "text", text: "screenshot=captured 720x1600" }]);
   });
 });
 
@@ -413,13 +406,18 @@ describe("apply(): effect observation (S10 ②; local since T3/G84)", () => {
     expect(value.effect).toBe("changed");
   });
 
-  it("never asks the action server for the verdict any more", async () => {
+  it("computes the verdict from the two frames it captured, asking nothing else", async () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "observe" }, exec());
-    // The verdict is computed from the frames themselves; a restored forwarding
-    // call is exactly the regression this lock exists to catch.
-    expect(harness.calls.some((call) => call.tool === "compare_ui_frames")).toBe(false);
-    expect(harness.captures).toBe(2);
+    // The verdict is computed from the frames themselves (T3), and since T2-c
+    // those frames come off the device. A restored server round-trip - or any
+    // adb vocabulary beyond the gesture and the captures - is what this catches.
+    expect(harness.captures).toBe(3);
+    const strays = A.calls.filter((args) => {
+      const line = args.join(" ");
+      return ![screencapArgv, tapArgv, dumpArgv, catArgv, rmArgv].some((re) => re.test(line));
+    });
+    expect(strays.map((args) => args.join(" "))).toEqual([]);
   });
 
   it("reports unknown rather than guessing when the frames are not decodable", async () => {
@@ -436,9 +434,10 @@ describe("apply(): effect observation (S10 ②; local since T3/G84)", () => {
       unknown
     >;
     expect(value).not.toHaveProperty("effect");
-    // T2-b: a hierarchy read is a device read. It reaches the transport zero
-    // times, and it still captures no before/after frames.
-    expect(harness.calls.map((call) => call.tool)).toEqual([]);
+    // T2-b: a hierarchy read is a device read. It dispatches no gesture and
+    // still captures no before/after frames.
+    expect(tapsOf(A.calls)).toEqual([]);
+    expect(harness.captures).toBe(0);
     expect(A.calls.filter((args) => /uiautomator dump/.test(args.join(" ")))).toHaveLength(1);
   });
 });
@@ -482,20 +481,18 @@ describe("apply(): element handles reach the device (G42)", () => {
     // G67: a handle is only meaningful against the list the model was shown.
     await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
     await tool.execute({ action: "click", target: { index: 2 }, reason: "tap 显示" }, exec());
-    const tap = harness.calls.find((call) => call.tool === "tap");
+    const taps = tapsOf(A.calls);
     // #2 is the 显示 row at bounds [40,600]-[200,660] on a 1600x900 screen
     // (#0 is the container the real dump keeps in the tree).
-    expect(tap?.args.coordinates).toEqual([120, 630]);
+    expect(taps).toEqual([[120, 630]]);
   });
 
-  it("reads the hierarchy off the device instead of asking the action server (T2-b)", async () => {
+  it("reads the hierarchy off the device instead of asking a server (T2-b)", async () => {
     A.on(screencapArgv, { code: 0, stdout: pngHeaderOnly(1600, 900) });
     const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
     await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
-    expect(harness.calls.map((call) => call.tool), "the server must not be asked for a hierarchy").not.toContain(
-      "get_ui_hierarchy",
-    );
     expect(A.calls.filter((args) => /uiautomator dump/.test(args.join(" ")))).toHaveLength(1);
+    expect(A.calls.filter((args) => screencapArgv.test(args.join(" ")))).toHaveLength(0);
   });
 
   it("hands the model a numbered list rather than the raw per-container index", async () => {

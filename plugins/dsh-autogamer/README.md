@@ -33,6 +33,7 @@ src/device/adb.ts                 唯一的 adb 出口（自实现超时 + 取�
 src/device/roster.ts              设备清单：adb devices 解析 + android_id 去重（G75/G65）
 src/device/state.ts               设备态本地探针（连接 / 前台 / 屏幕 / 帧 / helper）
 src/device/hierarchy.ts           uiautomator dump 读回 + XML 扁平化（T2-b）
+src/device/act.ts                 动作执行：input / am / monkey 的原生路线与字符串契约（T2-c/d/e）
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
 src/devicePool.ts                 闸门之上的调度：parking / 全局并发 / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）

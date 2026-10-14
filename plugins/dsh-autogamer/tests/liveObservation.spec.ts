@@ -14,6 +14,7 @@ import { LiveObservations } from "../src/observations.js";
 import { harness } from "./support/pool.js";
 import { ActionIncidents, defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
 import { hierarchyXml, type XmlNodeSpec } from "./support/hierarchyXml.js";
+import { pngHeaderOnly } from "./support/fakeAdb.js";
 
 /** The device prints bounds, so a labelled node is written by its box. */
 function node(label: string, cx: number, cy: number): XmlNodeSpec {
@@ -48,12 +49,12 @@ function setup(options: { devices?: string[]; observations?: LiveObservations } 
   const tool = defineRunDeviceAction({
     pool,
     breaker: new DeviceBreaker({ allowedFails: 99, cooldownMs: 0 }),
-    client: {
-      callTool: async (name: string, args: Record<string, unknown>) => {
-        log.push({ tool: name, args });
-        return { content: [{ type: "text", text: "Success" }] };
-      },
-    } as never,
+    // T2-c/d/e: the device seam (logged in the legacy `{tool, args}` shape).
+    execute: async (call) => {
+      log.push({ tool: call.tool, args: call.payload });
+      return "Success";
+    },
+    capturePng: async () => pngHeaderOnly(720, 1600),
     // T2-b: the observation is read off the device (logged under the action name
     // so the counts below still say what the router fetched).
     hierarchy: async () => {

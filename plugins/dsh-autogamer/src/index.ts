@@ -5,12 +5,10 @@
  * cordis plugin module exports {name, inject, Config?, apply}; Config must be
  * a native Schemastery schema; tools register through ctx.tools.register.
  */
-import { ActionClient } from "./actionClient.js";
 import { DeviceBreaker } from "./breaker.js";
 import { DeviceGate } from "./gate.js";
 import { DevicePool, type PoolDevice } from "./devicePool.js";
 import { configuredScreenSize, type ScreenSize } from "./coord.js";
-import { unwrapText } from "./mcpText.js";
 import { messageId, type DshAgent, type DshContext, type DshImageAttachment, type DshUserMessage } from "./dsh-types.js";
 import { TaskCache } from "./task/cache.js";
 import { registerTaskProjection } from "./task/projection.js";
@@ -27,6 +25,7 @@ import { createPreflight } from "./env/preflight.js";
 import { judgeEffectChanged } from "./effect/diff.js";
 import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
 import { createAdbProbe } from "./device/state.js";
+import { runNativeAction } from "./device/act.js";
 import { readHierarchyXml } from "./device/hierarchy.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
 import { LiveObservations } from "./observations.js";
@@ -45,10 +44,6 @@ export const name = "dsh-autogamer";
  * because schemastery exports no nameable Schema type from this package.
  */
 export const Config: object = z.object({
-  actionServerCommand: z
-    .array(z.string())
-    .default(["python", "-m", "artemis.interfaces.cli.main", "mcp", "--type", "adb"]),
-  actionServerEnv: z.dict(z.string()).default({}),
   defaultDeviceKey: z.string().default("default"),
   allowedFails: z.number().default(1),
   breakerCooldownMs: z.number().default(30_000),
@@ -112,8 +107,6 @@ export const inject = ["tools", "attachments", "agents"];
 let nudgeSequence = 0;
 
 export type PluginConfig = {
-  actionServerCommand: string[];
-  actionServerEnv: Record<string, string>;
   defaultDeviceKey: string;
   allowedFails: number;
   breakerCooldownMs: number;
@@ -205,11 +198,10 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // G67: which #N handles exist is per (agent, device) and per plugin instance - the
   // list the model was last shown, nothing more.
   const observations = new LiveObservations();
-  const client = new ActionClient({
-    command: config.actionServerCommand,
-    env: config.actionServerEnv,
-    callTimeoutMs: config.actionCallTimeoutMs,
-  });
+  // T2-c/d/e: the action surface runs over adb (`src/device/`), so no action
+  // server is started and none is configured. `ActionClient` remains in the tree
+  // as the transport implementation until T4 decides on the provider.
+  const probe = createAdbProbe();
 
   const screenSizeCache = new Map<string, ScreenSize>();
   /**
@@ -245,8 +237,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     }
     return devices;
   }
-
-  const probe = createAdbProbe();
 
   /**
    * Which adb serial a device key addresses. Once a roster exists the pool hands
@@ -419,7 +409,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.tools.register(defineTool<any, any>(defineRunDeviceAction({
     pool,
     breaker,
-    client,
     logger,
     defaultDeviceKey: config.defaultDeviceKey,
     strictness: config.strictness,
@@ -428,6 +417,8 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     resolveScreenSize,
     // T2-b: the hierarchy comes off the device itself (uiautomator dump + the
     // file read back), so `get_ui_hierarchy` is no longer an action-server call.
+    execute: (call, key, signal) => runNativeAction(call, serialOfKey(key), { signal }),
+    capturePng: (key, signal) => probe.capture(serialOfKey(key), { signal }),
     hierarchy: (key, signal) => readHierarchyXml(serialOfKey(key), { signal }),
     onAction: () => ledger.markActed(agentIdOfCall()),
     agentIdOfCall,
@@ -437,9 +428,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     // itself rather than trusting the model's account of what happened. Since
     // T3 the verdict is computed here from the frames themselves (G84), so the
     // action server is no longer consulted for it.
-    captureFrame: async () => {
-      const base64 = unwrapText(await client.callTool("take_screenshot", {}));
-      return base64.startsWith("Error:") ? undefined : base64;
+    captureFrame: async (key) => {
+      const png = await probe.capture(serialOfKey(key));
+      return png?.toString("base64");
     },
     compareFrames: async (before, after, action, coordinates) => {
       const verdict = judgeEffectChanged(
@@ -544,7 +535,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // disposer; passing teardown as the callback disposed our own tools during
   // apply() (changelogs #10, the G30 root cause).
   ctx.effect?.(() => () => {
-    void client.dispose();
     void artemisBackend.dispose();
     void scrcpy?.dispose();
   });
