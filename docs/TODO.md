@@ -335,8 +335,11 @@
    `ctx.tools.guard()`（同步单调拒绝，R13）挡住该任务后续的设备动作——不新造拒绝机制。
 7. **失败方向 fail-open**：`stateOf`/缓存读不到、或投影未注册 ⇒ 任务工具返回 `state: "unknown"` 而非报错，
    与 G84 记录的 `compare_ui_frames` fail-open 方向一致。
-8. **新增依赖 `zod`**：`stateSchema` 是 `ZodType`（出处 4）。「不引入任何新依赖」是**搬迁-1** 的约束，
-   不延续到 T1；此处显式决策引入，并记进 Done 的验收（装完必须 `tsc` + 全量测试绿）。
+8. **依赖 `zod`**：`stateSchema` 是 `ZodType`（出处 4）。
+   ⚠️ **2026-10-14 更正**：原写「新增依赖 zod」是**错的**——实测 `plugins/dsh-autogamer/package.json`
+   的 `dependencies` **已含 `zod ^4.6.5`**（`node_modules/zod` 在位），切片 3 **不需要新增依赖**。
+   另实测：`zod` 目前**全仓零引用**（src / tests / scripts 全无 import），属已声明未使用的依赖，
+   是否清理由 T4 收尾时一并裁定，本轮不动。
 9. **可选注册**：`ctx.inject(['sessionProjections'], …)`，注册表缺席时插件照常挂载（出处 6）。
 
 **Verify（验收命令）**
@@ -393,6 +396,32 @@
   切片 2 补上后这条链才闭合。另外 🔶：`ToolExec` 镜像只有 `signal`/`concludeTurn`
   （`src/dsh-types.ts:168`），工具执行期能否直接拿到 `Session` 实例**未在宿主上核过**——
   方案 How-4 已用 `onChanged` 绕开该依赖，但绑定仍需 live 核验。
+
+**G81 量化（2026-10-14 实测）与顺序更正**
+
+- **基线**：把 `tests/` 纳入类型检查（临时 config：`noEmit` + `rootDir: .`）⇒ **124 条存量错误**。
+  本切片新 spec 曾贡献 18 条，**已用自己的取值收敛助手修掉**（`0f951cd`），不降低严格度。
+- **分布**：`apply.spec.ts` 45（36%）、`conformance/contracts.spec.ts` 15、`getDeviceState` 8、`dedup` 7、
+  `diagnose` 7、`scopeVisibility` 6、`followup` 5、`runtimeBoot` 4、`liveObservation` 4、其余零星。
+  错误码以 `TS2345`(37) / `TS2532`(36) / `TS2349`(29) 为主，多为 `noUncheckedIndexedAccess` 与
+  测试假件的签名宽松所致。
+- **顺序更正（原建议「先 G81 再切片 2」是浪费）**：其中 **13 条落在 `runTask` / `manageTask` / `inspectTrace`
+  三个 spec**，而这三个 spec 正是**切片 2 要重写的对象**——先修等于修两遍。
+  ⇒ **改为：切片 2 → 再做 G81 全量扫**（G81 顺带要落一条 `typecheck` 脚本把 `tests/` 纳入常设门禁）。
+
+**挂载自证（2026-10-14，用户放行「只做挂载自证、不建 profile」）**
+
+- ✅ **R6 组合面通过**：`dsh --profile web --patch <abs>/plugins/dsh-autogamer/cordis.patch.yml --dump-config`
+  ⇒ **rc=0**、输出 **0 处 `unmatched`**、`preset-autogamer` 行存在且 `config.plugins` **7 行非空**
+  （`persona` / `dsh-autogamer-inner` / `tool-jobs` / `tool-cordis` / `skill-filesystem` / `tool-skill` /
+  `tool-plugin-manager`），根行 `dsh-autogamer` 在位。**R3 判据（preset 行存在 + plugins 非空）满足。**
+- ❌ **不证明生效**（R9）：`enabled` / `fiberPhase` / `Config.listConfigs` / `Tool` 列表 / `leakedServices`
+  都是**真实挂载后**的运行时事实，本轮拿不到——**结构性不可得**，不是没查：
+  `dsh-autogamer` 包**未安装**进 `web` profile（`node_modules` 无该包），而 R2/D17 规定交付必须走
+  `install_bundle` 或侧边栏「插件」面板，两者都要 agent 会话。`dsh plugin` 只是 pnpm 垫片，R2 明禁在
+  profile 目录跑包管理。⇒ 五项仍为 🔶。
+- ⚠️ **更正上一轮的一处高估**：我当时把 `enabled`/`fiberPhase` 等列进「只放行挂载自证」也能拿到，
+  那是错的——`--dump-config` 只给组合面。已按实测口径改写。
 
 ### T2 · 动作面 TS 化（**G83**）
 
