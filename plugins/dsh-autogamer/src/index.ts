@@ -24,6 +24,7 @@ import { defineInspectTrace } from "./tools/inspectTrace.js";
 import { defineDiagnose } from "./tools/diagnose.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
+import { judgeEffectChanged } from "./effect/diff.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
@@ -391,22 +392,24 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     // Screenshots go to the host attachment store so the model gets a real
     // image block and the log keeps only the content-addressed reference.
     // Effect observation runs entirely in-tool: the router looks at the screen
-    // itself rather than trusting the model's account of what happened. The
-    // verdict itself is the action server's (G39 route A).
+    // itself rather than trusting the model's account of what happened. Since
+    // T3 the verdict is computed here from the frames themselves (G84), so the
+    // action server is no longer consulted for it.
     captureFrame: async () => {
       const base64 = unwrapText(await client.callTool("take_screenshot", {}));
       return base64.startsWith("Error:") ? undefined : base64;
     },
     compareFrames: async (before, after, action, coordinates) => {
-      const args: Record<string, unknown> = { before_b64: before, after_b64: after, action };
-      if (coordinates) args.coordinates = coordinates;
-      const answer = unwrapText(await client.callTool("compare_ui_frames", args));
-      if (answer.startsWith("Error:")) {
-        logger.warn(`[route] effect comparison refused: ${answer}`);
-        return undefined;
+      const verdict = judgeEffectChanged(
+        Buffer.from(before, "base64"),
+        Buffer.from(after, "base64"),
+        action,
+        coordinates,
+      );
+      if (verdict === undefined) {
+        logger.warn(`[route] effect comparison inconclusive: frames are not decodable screenshots (action=${action})`);
       }
-      const parsed = JSON.parse(answer) as { changed?: unknown };
-      return typeof parsed.changed === "boolean" ? parsed.changed : undefined;
+      return verdict;
     },
     saveScreenshot: async (bytes, mediaType) => {
       try {

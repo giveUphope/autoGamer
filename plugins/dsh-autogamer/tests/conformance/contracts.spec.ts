@@ -62,11 +62,12 @@ describe("conformance: py action server surface", () => {
   });
 
   it("covers every py tool this plugin calls, including the ones outside the mapping", () => {
-    // `compare_ui_frames` (G39 route A) is called directly from index.ts, so a
-    // mapping-only check would not notice the server renaming it. Build-phase
-    // transport calls go through the `callTransport` wrapper (G33: a dead
-    // server must classify environment, never task/internal), which the
-    // extractor reads with the same spelling.
+    // The effect verdict stopped being a server call in T3 (G84): it is computed
+    // from the frames locally, so `compare_ui_frames` is deliberately absent
+    // here while the provider may still expose it. Build-phase transport calls
+    // go through the `callTransport` wrapper (G33: a dead server must classify
+    // environment, never task/internal), which the extractor reads with the same
+    // spelling.
     // `list_devices` (G64) joins for the same reason: the pool asks the server who is attached,
     // and that call is not a device action, so no action mapping would ever cover it.
     const direct = new Set<string>();
@@ -76,7 +77,6 @@ describe("conformance: py action server surface", () => {
       for (const match of text.matchAll(/callTransport\(\s*client\s*,\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
     }
     expect([...direct].sort(), "src should still contain direct call sites").toEqual([
-      "compare_ui_frames",
       "get_ui_hierarchy",
       "list_devices",
       "take_screenshot",

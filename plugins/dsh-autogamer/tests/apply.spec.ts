@@ -4,11 +4,13 @@
  * the Schemastery-resolved tuple (`[undefined, undefined]`) read as
  * "operator configured it" and fed undefined dimensions into the 0-1000 →
  * pixel conversion. These tests drive the registered tool through apply() and
- * assert the coordinates the py action server actually receives.
+ * assert the coordinates the action tools receive, and that the effect verdict
+ * is computed here rather than fetched from the action server.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { parseImageSize } from "../src/coord.js";
+import { frame } from "./support/pngEncode.js";
 import {
   PIXEL_GUIDANCE,
   SELF_CHECK_PROMPT,
@@ -17,22 +19,25 @@ import {
 } from "../src/tools/runDeviceAction.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
 
-/** A 1080x2400 PNG: signature + IHDR carrying the dimensions at byte 16/20. */
-function pngBytes(): Buffer {
-  const bytes = Buffer.alloc(33);
-  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
-  bytes.writeUInt32BE(13, 8);
-  bytes.write("IHDR", 12, "ascii");
-  bytes.writeUInt32BE(1080, 16);
-  bytes.writeUInt32BE(2400, 20);
-  return bytes;
+/**
+ * A real 1080x2400 PNG. The effect verdict is computed locally from the frames
+ * since T3, so a header-only stub is no longer enough: the judge has to decode
+ * what the fake action server hands back. `parseImageSize` still reads the IHDR
+ * dimensions at bytes 16/20, so both consumers see the shape they expect.
+ */
+function pngBytes(level = 40): Buffer {
+  return Buffer.from(frame(1080, 2400, level));
 }
 
 const harness = vi.hoisted(() => ({
   calls: [] as { tool: string; args: Record<string, unknown> }[],
   clientOptions: [] as Record<string, unknown>[],
-  /** What compare_ui_frames should answer; undefined means "no verdict". */
-  changed: true as boolean | undefined,
+  /** Number of screenshot captures; pairs are (before, after). */
+  captures: 0,
+  /** When true, the second frame of each pair differs from the first. */
+  drift: false,
+  /** When true, screenshots come back as non-PNG bytes. */
+  garbage: false,
   disposed: 0,
 }));
 
@@ -45,12 +50,10 @@ vi.mock("../src/actionClient.js", () => ({
     async callTool(tool: string, args: Record<string, unknown>) {
       harness.calls.push({ tool, args });
       if (tool === "take_screenshot") {
-        return { content: [{ type: "text", text: pngBytes().toString("base64") }] };
-      }
-      if (tool === "compare_ui_frames") {
-        return {
-          content: [{ type: "text", text: JSON.stringify({ changed: harness.changed }) }],
-        };
+        harness.captures += 1;
+        if (harness.garbage) return { content: [{ type: "text", text: "not-a-png" }] };
+        const level = harness.drift && harness.captures % 2 === 0 ? 200 : 40;
+        return { content: [{ type: "text", text: pngBytes(level).toString("base64") }] };
       }
       if (tool === "get_ui_hierarchy") {
         // Live shape: a JSON node list whose own `index` is per-container.
@@ -198,7 +201,9 @@ function exec(): ToolRunContext {
 beforeEach(() => {
   harness.calls.length = 0;
   harness.clientOptions.length = 0;
-  harness.changed = true;
+  harness.captures = 0;
+  harness.drift = false;
+  harness.garbage = false;
   harness.disposed = 0;
   preflightProbe.runs = 0;
 });
@@ -344,9 +349,8 @@ describe("apply(): screenshot media path (G36)", () => {
   });
 });
 
-describe("apply(): effect observation (S10 ② / G39 route A)", () => {
-  it("reports unchanged when the action server sees no screen change", async () => {
-    harness.changed = false;
+describe("apply(): effect observation (S10 ②; local since T3/G84)", () => {
+  it("reports unchanged when the two frames match", async () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     const value = (await tool.execute(
       { action: "click", target: { coordinate: [500, 500] }, reason: "observe" },
@@ -355,8 +359,8 @@ describe("apply(): effect observation (S10 ② / G39 route A)", () => {
     expect(value.effect).toBe("unchanged");
   });
 
-  it("reports changed when the action server sees the screen move", async () => {
-    harness.changed = true;
+  it("reports changed when the screen moves between the two frames", async () => {
+    harness.drift = true;
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     const value = (await tool.execute(
       { action: "back", reason: "observe" },
@@ -365,16 +369,17 @@ describe("apply(): effect observation (S10 ② / G39 route A)", () => {
     expect(value.effect).toBe("changed");
   });
 
-  it("hands the tap coordinates to the verdict so the ROI rule can apply", async () => {
+  it("never asks the action server for the verdict any more", async () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "observe" }, exec());
-    const compare = harness.calls.find((call) => call.tool === "compare_ui_frames");
-    expect(compare?.args.action).toBe("tap");
-    expect(compare?.args.coordinates).toEqual([360, 800]);
+    // The verdict is computed from the frames themselves; a restored forwarding
+    // call is exactly the regression this lock exists to catch.
+    expect(harness.calls.some((call) => call.tool === "compare_ui_frames")).toBe(false);
+    expect(harness.captures).toBe(2);
   });
 
-  it("reports unknown rather than guessing when no verdict comes back", async () => {
-    harness.changed = undefined;
+  it("reports unknown rather than guessing when the frames are not decodable", async () => {
+    harness.garbage = true;
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     const value = (await tool.execute({ action: "back", reason: "observe" }, exec())) as Record<string, unknown>;
     expect(value.effect).toBe("unknown");
