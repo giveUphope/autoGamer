@@ -118,9 +118,52 @@
 - [x] 无 py 文件、无写死旧盘符路径
 - [x] 本文件 §零「阶段」与下方「新分支特有」搬迁项同步更新
 
+### 基建-1 · 工作树环境残留检测（D19 环境护栏，方案，2026-10-14 立项，R22）
+
+**背景**：本机从旧 fork 工作区切到 orphan `main` 后，`git ls-files '*.py'` 已为 0（仓库干净），但磁盘仍留
+约 1 GB 旧栈——切分支时 git **只删被跟踪源码，不删被 `.gitignore` 忽略的文件**（`.venv` 856 MB、旧
+`apps/node_modules`、各目录 `__pycache__/*.pyc`、`traces`、`scratch`、`.env` 等）。`git status` 干净，
+靠肉眼无从发现。需要一个**机械检测**在新环境拉取/切分支时把它变成红/绿。
+
+**What（范围）**
+- 新增零依赖 Node 脚本 `scripts/check-env.mjs`（Node 是 TS 栈前置，不依赖插件 `node_modules`；D19 下检测脚本本身不得是 py）。
+- 检测分两级：
+  - **H1 跟踪层（硬失败）**：`git ls-files '*.py'` 非空 → FAIL（py 被纳入版本控制）。
+  - **H2 工作树残留（失败）**：扫描工作树（排除白名单）发现 py 栈特征：
+    `*.py`/`*.pyc`/`*.pyo`/`*.pyd`、`__pycache__/`、`.venv/`/`venv/`/`env/`、
+    `.pytest_cache/`/`.ruff_cache/`/`.mypy_cache/`/`.tox/`/`.nox/`、`*.egg-info/`、
+    `pyproject.toml`/`uv.lock`/`setup.py`/`setup.cfg`/`requirements*.txt`/`Pipfile*`。
+  - **NOTE（不失败，仅列出）**：运行数据/临时区 `traces/`、`scratch/`、`data_engine.db*`、`.artemis_*`。
+- **白名单（不得误报）**：`.git/`、所有 `node_modules/`、所有 `dist/`（TS 栈依赖与构建产物）。
+- 脚本只**检测+报告**，不删除任何东西；报告里给出清理命令（`git clean -fdX` 或精确路径）。
+- 自动触发（版本化于 `.githooks/`）：
+  - 新增 `post-checkout` + `post-merge`：切分支/拉取后运行检测，**只警告不阻断**（exit 0，避免妨碍正常切换）。
+  - 现有 `pre-push` 追加 **H1 硬检查**：被跟踪 py 非空则拒绝推送（D19 红线）。
+- 文档：`AGENTS.md` 增加「新环境拉取」步骤（clone 后 `git config core.hooksPath .githooks` + `node scripts/check-env.mjs`）。
+
+**How（做法与关键决策）**
+- 纯 Node 内置模块（`node:fs`/`node:path`/`node:child_process`）；Windows 路径用 `path.sep` 归一化，git 输出正斜杠统一转换。
+- 判据用「py 栈特征文件/目录」而非「目录名」：因此新建的根 `scripts/`（放检测脚本本身）不会被误判。
+- `post-checkout` 只警告：残留是历史遗留，不影响当前分支工作；阻断切换会误伤。
+- 检测脚本与 hooks 都被 git 跟踪，随 clone 获得（hook 仍需一次性 `git config core.hooksPath .githooks` 激活，同现有 pre-push 护栏）。
+
+**Verify（验收命令，可复跑）**
+- 干净：`node scripts/check-env.mjs` → exit 0；且 `plugins/dsh-autogamer/node_modules`、`dist` 存在时仍 exit 0（白名单）。
+- 变异（R27，证明会红）：仓库根放 `var_x.py` → exit 1 且报告该文件；放 `__pycache__/x.pyc` 与 `.venv/` → exit 1；删除后回到 exit 0。
+- H1：`git ls-files` 层构造被跟踪 py 会被 pre-push 拒绝（用一次性本地裸仓 A/B，参照现有 pre-push 护栏的实测法）。
+- hook：`git config core.hooksPath .githooks` 后，切一次分支观察 post-checkout 打印警告但不阻断。
+
+**Done means**
+- [ ] 干净 checkout 下脚本 exit 0，白名单不误报
+- [ ] 变异校验（py / pyc / .venv）逐一证明会红、清理后变绿
+- [ ] pre-push H1 与 post-checkout/post-merge 经 A/B 实测
+- [ ] `AGENTS.md` 新环境拉取步骤写明
+- [ ] 本文件 §零 与下方「新分支特有」同步
+
 ### 新分支特有（搬迁与基建）
 
 - [x] 从归档分支搬迁插件工程 `plugins/dsh-autogamer/`，**逐文件做 D20 清理**（方案见上方「搬迁-1」，2026-10-14 完成）
+- [ ] 工作树环境残留检测（D19 环境护栏）：`scripts/check-env.mjs` + `post-checkout`/`post-merge`/`pre-push` 钩子（方案见上方「基建-1」）
 - [ ] TS 版文档门禁，替代未随迁的 py 脚本（`check_doc_registry` / `check_doc_tables` 的机械职责）
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 
