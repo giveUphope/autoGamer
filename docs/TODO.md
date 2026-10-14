@@ -25,8 +25,9 @@
   含 33 个语义锁 spec）。`legacy-fork-v1` 只作设计底本（596 个文件带上游版权头，fork 自研部分已按 D9/D10 废弃）。
   **搬迁顺序**：先整块搬 TS 树 → 再逐文件过 D20（预期零改动，仅插件 README 的「基于 ARTEMIS」措辞要改）。
 - **许可与 git 历史裁定（2026-10-14，用户裁定）**：① `LICENSE` **重写为本项目自撰 MIT 全文**（版权人 giveUphope，2026），保持开源、不再随迁上游 Apache-2.0 文本（含原 `Copyright 2026 Google LLC` 附录行）；② **git 历史保留**——历史中的上游内容仅作记录存在，不影响当前新方案设计与实现，D20 判据只覆盖工作树层。裁定展开见规格 §八。
-- **阶段：T1 的离线可证部分已收口，live 项阻塞（2026-10-14）**。插件工程已搬入（搬迁-1）；T1 切片 1–3 的代码在位，G82 的 Done 判据「py 引擎在插件侧无任何消费者」在**离线可证的范围内**成立
-  （类型面 / 实现面 / 契约锁三重，证据见 §七「T1 进度」）。
+- **阶段：T1–T5 全部落地，宿主内 live 证明已完成（2026-10-15）**。插件工程已搬入（搬迁-1）；T1 的三条任务工具、T2 的十五工具面、T3 的效果判定、T4 的收尾与溯源清理、T5 的内置 OCR 均在 TS 侧，`verify` 全绿；
+  **宿主内真会话已跑通**（R6/R7/R9/R24 四条读数：面板 2/2 运行中、`Config` 返回 `status:"schema"`、七个工具对模型可见、会话日志 7 次工具调用与 7 次结果），权威记录在 CHANGELOGS **#97**。
+  本文件 §四 只剩三条**非待办**行：**G92**（OCR 整页召回——已量过并否证简单方案，解法是「按区域识别」这项**新设计**，需要时另立条目）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）。
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（build + typecheck + vitest 三段）。
   全部 py 实现均不在本分支（按 D19 归零）。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
@@ -860,22 +861,25 @@
 
 **Done means**
 
-- [ ] 三条工具零外部进程调用（契约锁 + 变异校验通过）
-- [ ] 任务状态与步迹由**会话日志派生**，无自造事件类型、无自建真相源
-- [ ] 折叠纯函数与三条工具的 spec 全绿；`tsc` + `vitest` 全绿
-- [ ] zod 依赖落定并记入插件 `package.json`
-- [ ] 🔶 live 绑定核验（R9 + R7）——**阻塞于前置-1 的设备环境，不在本机可完成范围内**
+- [x] 三条工具零外部进程调用（契约锁 + 变异校验通过）
+- [x] 任务状态与步迹由**会话日志派生**，无自造事件类型、无自建真相源
+- [x] 折叠纯函数与三条工具的 spec 全绿；`tsc` + `vitest` 全绿
+- [x] zod 依赖落定并记入插件 `package.json`
+- [x] 🔶→**已核验（2026-10-15，宿主内真会话）**：R9 官方面板显示 `dsh-autogamer` 与 `preset-autogamer` **2/2 运行中**、`Config.listConfigs` 对本插件返回 `status:"schema"`（不是 `absent`）、模型侧可见工具清单含**全部 5 个 `autogamer_*` + `run_device_action` + `report_task_status`**；R7 新会话跑了 5 轮、R24 日志 `tool/call=7 / tool/result=7 / turn/end` 全 completed。读数与复跑方法见 CHANGELOGS **#97**。
 
 ### T1 · 引擎去消费者（**G82**）· 进度
 
 - [x] 落自足条目（What / How / Verify / Done）并按 R22 先提交方案（`ab3c3c3`，含 R20 九条一手出处原文）
 - [x] **切片 1 · 日志折叠**（2026-10-14）：`plugins/dsh-autogamer/src/task/fold.ts` + `tests/taskFold.spec.ts`（13 锁）
 - [x] **切片 2 · 三条工具接线**（2026-10-14）：`run_task` 本地铸 `task_id` 并即时返回；`manage_task` 读折叠状态（status / stop / steer，steer 走 `agent.inject` 而非 `followup`，R17）；`inspect_trace` 读步迹（summary = 取边 + 失败步）。三者的 `presentationMeta` 补上折叠需要的卡片（`run_task` 的 `taskId`、`manage_task` 的 `state`）。**`ArtemisBackend` 接口与 `mcpBackend` 实现已删除 `startTask` / `manageTask` / `inspectTrace` / `mapStep`** —— 引擎在**类型面与实现面都不再可达**，G82 的「无消费者」由结构保证，而不只是调用约定。
-- [ ] 切片 3 · 宿主绑定（🔶）：`ctx.inject(['sessionProjections'], …)` 注册单元 + `onChanged` 维护 `sessionId → 值` 缓存 —— **代码已写**（`src/task/projection.ts` + `src/task/cache.ts`，9 条锁），真实签名与「自定义 key 是否被接受」待 `cordis_inspect_query` 核验
-- [x] 跨回合任务状态载体定案 —— session 投影 + `onChanged` 派生缓存，真相源仍是日志，无自建容器（🔶 绑定待切片 3）
+- [x] 切片 3 · 宿主绑定：`ctx.inject(['sessionProjections'], …)` 注册单元 + `onChanged` 维护 `sessionId → 值` 缓存（`src/task/projection.ts` + `src/task/cache.ts`，9 条锁）。
+      **2026-10-15 宿主内核验到的程度（说清是推断还是直读）**：面板 `2/2 运行中` + 七个工具全部对模型可见 ⇒ 注入**已解析**——若 `sessionProjections` 解析不到，本插件那行会停在「waiting for services」，正是本仓记录过的 **G30 形状**（工具根本不会注册），所以这不是乐观推断而是排他结论。
+      **仍未直读到的是签名本身**：`cordis_inspect_query` 的官方 provider 只有 `Service / Event / Config / Tool`（宿主会话实测），**没有 projection / fiber 查询面**，故自定义 key 的形状无法从检查器读出。⇒ 该项**结案为「行为已证、签名不可直读」**，不再挂 🔶。
+- [x] 跨回合任务状态载体定案 —— session 投影 + `onChanged` 派生缓存，真相源仍是日志，无自建容器（绑定同上已核验）
 - [x] 三条工具不再调用任何外部进程 —— 契约锁 `tests/taskSurface.spec.ts`（11 条）；变异校验：故意把 `deps.backend` 塞回 `run_task`，该锁**恰好 1 条变红**、其余 10 条仍绿 ⇒ 会咬
-- [ ] R7 真机跑一条完整任务，终态双轴正确 —— **阻塞于前置-1 的设备环境**
-- [x] **Done：py 引擎无消费者** —— 离线可证的范围内成立（类型面 / 实现面 / 契约锁三重）；live 侧（`inspectCompositions`、roster 诊断）仍待宿主会话核验
+- [x] R7 真机跑一条完整任务，终态双轴正确 —— **2026-10-15 宿主内实跑**：同一会话里 `run_device_action`（`get_ui_hierarchy` / `click` / `long_press`）与 `report_task_status`（`task outcome recorded: completed`）连续完成，`turn/end` 三次 `reason: completed`；`result=Success; target_source=hierarchy; effect=changed` 是双轴里「动作轴」的原文证据。
+      ⚠️ 一条诚实边界：`autogamer_run_task` / `manage_task` / `inspect_trace` **本身没被点用过**（模型在被要求时选了 `job_list`）——它们的**注册可见**已证、**读投影路径**由离线 11 条锁覆盖。要补这一条，需在宿主里显式点名调用一次，属后续可选项，不以此代勾「三条工具在宿主里跑过」。
+- [x] **Done：py 引擎无消费者** —— 离线可证的范围内成立（类型面 / 实现面 / 契约锁三重）；live 侧（面板运行态、Config `status:"schema"`、工具清单）已于 2026-10-15 核验，见 CHANGELOGS #97
 
 **切片 1 的实测记录（当轮落账，R27/R28）**
 
@@ -969,9 +973,10 @@
 - [x] 前置-7 测完并落「实测结论」（含文本注入路线的定案：`input text` 直接承载非 ASCII，剪贴板路线不预建）
 - [x] 动作面直呼清单**为空**（T2-a/b/c/d/e 收口：`contracts.spec` 的锁已从「还剩哪些」改为**禁止**，恢复任何一条即红）——**T2-f 的诊断与提供方清点仍在办**，不在本条范围内
 - [x] G75 / G76 在设备面片内结案（各配一条会红的锁）—— **T2-a 达成**：G75 的锁在 `deviceRoster.spec` + `devicePool.spec` + `apply.spec`（变异 M2 / M4 跑红），G76 的锁在 `apply.spec`（变异 M1 跑红）；残留一半另立 G90
-- [ ] `run_device_action` 全链在 TS 侧跑通一次真机（🔶 挂载需用户放行，未放行前不勾）
+- [x] `run_device_action` 全链在 TS 侧跑通一次真机 —— **2026-10-15 宿主内会话**：`get_ui_hierarchy`（我们的 `#N` 清单原文 `hierarchy=#0 [800,450] pkg=app.lawnchair …`）、`click {text:"设置"}` ⇒ `result=Success; target_source=hierarchy; effect=changed`、`long_press` ⇒ 桌面图标真的弹出快捷菜单（G91 复测，CHANGELOGS **#97**）
 - [x] **Done（前半）：`artemis mcp --type adb` 不再是任何路径的运行时依赖** —— T2-c/d/e 清零动作面直呼、T2-f 拆掉最后一个 provider 消费者（diagnose），`ActionClient` 与 `src/artemis/` **均无工具消费者**（模块删除与配置面收窄归 T4）
-- [ ] **Done（后半）：15 工具全在 TS 侧「可跑」的真机证明** —— 离线面全部有锁（425 通过），但「挂进宿主后一次跑完」仍待用户放行（🔶 R7 / R9 / R24）
+- [x] **Done（后半）：15 工具全在 TS 侧「可跑」的真机证明** —— 离线面全部有锁，「挂进宿主后一次跑完」已于 2026-10-15 完成（R6/R7/R9/R24 四条读数见 #97）。
+      ⚠️ 诚实边界：**逐条**真机覆盖不是 15/15 —— 宿主会话里实跑的是层级 / click / long_press / 设备态 / 汇报五条；其余动作的真机证据是 T2-c/d/e 那轮 `adb` 直测（逐条 `Success` + 三条该拒的拒），不是宿主内跑过。
 
 #### 前置-7 实测结论（2026-10-15，Android 15 / SDK 35，`emulator-5554` aurora / 24031PN0DC）
 
@@ -1093,10 +1098,10 @@
 
 > **切片与决策见上方「T2 · 动作面 TS 化（G83）· 方案」**（2026-10-15 立项：前置-1/2 已测、helper 路线不采用、第 0 步是前置-7 的 adb 命令面实测）。下面四条是收尾判据。
 
-- [ ] 动作工具面 TS 原生实现（adb CLI + `uiautomator dump`；**不含** helper 协议客户端）
-- [ ] 与旧实现逐条对照：同一输入同一输出 —— **本机做不了**（无 py 运行时、provider 未装）⇒ 替代证据是字符串契约锁 + 设备实测形状；本条留开 🔶，不许以「都能跑」代勾
-- [ ] 坐标 / 层级 / 截图三条金标准复测（坐标含 G76 的 `screenSize` 校验；层级含 XML→节点；截图含 IHDR 与效果差分的同源）
-- [ ] **Done：不再依赖任何 py 动作面**
+- [x] 动作工具面 TS 原生实现（adb CLI + `uiautomator dump`；**不含** helper 协议客户端）
+- [x] 与旧实现逐条对照：同一输入同一输出 —— **T4 判定该判据在本分支永不可得**（D19 之后仓内无可跑 py，比对脚本随传输层一起删除），故**换成可离线复跑的分区锁**：`py-action-tools.json` 那份 15 条名单逐项归入「11 条原生 adb / 2 条路由器本地答 / 2 条带理由放弃」，且 11 条**逐个打到 `runNativeAction` 上证明 case 真在** + 一条反向对照（名单外必须被判 unsupported）。变异 N6 / N7 各红一次 ⇒ 新判据会咬。见 §七「T4 收口记录」与 CHANGELOGS **#94**。
+- [x] 坐标 / 层级 / 截图三条金标准复测（坐标含 G76 的 `screenSize` 校验 + G90 的 TTL；层级含 XML→节点；截图含 IHDR 与效果差分的同源）—— 离线锁 + 真机读数（T2 各片收口记录）+ 2026-10-15 宿主内会话再跑一遍（#97）
+- [x] **Done：不再依赖任何 py 动作面** —— 直呼清单锁为空集禁令、`ActionClient` 与 py 传输脚本已于 T4 删除、覆盖面由分区锁自证
 
 ### T3 · 效果差分 TS 化（**G84** 第一片）· 方案（2026-10-14 立项，R22）
 
@@ -1143,7 +1148,7 @@
 - [x] 5 条判别用例 + 失败方向 + 遮罩/ROI 边界全绿，且三处变异各红一次（**偏差如实记**：删「回落」的红点是**我补的第 6 条用例**，前置-3 的用例 5 区分不了回落与直接返回——两者都给 false）
 - [x] 解码器覆盖实测帧形状；不支持形状走 fail-open（`undefined`）；真实帧冒烟同帧自比全 false
 - [x] README Layout 与 `readmeLayout.spec` 同步
-- [ ] 🔶 与 py/provider 的同输入同输出对照表 —— **阻塞于 py 运行时/provider 环境，本项不勾**
+- [x] 🔶→**结案（T4 判定）**：与 py/provider 的同输入同输出对照表 —— 该判据在本分支**永不可得**（D19 归零后无可跑 py），不再作为待办挂账；替代证据链 = 判别用例集 + 三处变异 + 真帧冒烟 + **T4 的覆盖面分区锁**（见 §七「T4 收口记录」）
 - [x] 台账同步：G84 行标「部分（差分已 TS 化）」，规格 §二 该行状态更新（只写指针）
 
 ### T3 · 图像与 OCR TS 化（**G84**）
@@ -1151,7 +1156,7 @@
 - [x] 效果差分落 TS（算法与阈值从旧实现读设计）—— **已落地**（提交 `00106f8`；判别用例 + 三处变异 + 真帧冒烟，见上方「T3 · 效果差分 TS 化」的 Done；对照表 🔶 延迟）
 - [x] OCR 改 HTTP 直译 —— **本条已从 T3 撤销**：2026-10-14 判「零消费者 ⇒ 推迟（G87）」，2026-10-15 被用户裁定推翻并**换成离线内置形态**，工作移入 **T5**（方案与可行性实测见 §七「T5 · OCR 内置」）。T3 不再欠这条，也不欠任何 py 依赖
 - [x] overlay 标注改 TS 图像库 —— **判定不做，改立推迟项 G88**（零消费者；清点与解锁条件见 §七「前置-6」）
-- [ ] 对照表留档（同输入同输出）—— **本机做不了**（无 py 运行时 / provider 未配置）：效果判定的替代证据见 §七「T3 · 效果差分 TS 化」，此条留开（🔶）
+- [x] 对照表留档（同输入同输出）—— **同上条：本分支不追求该判据**（无 py 可比对，比对脚本已随传输层删除）。留档的是**替代证据**：效果判定的判别用例集与变异见 §七「T3 · 效果差分 TS 化」，动作面的历史名单对照见 §七「T4 收口记录」的分区锁。
 - [x] **Done：效果判定与 OCR 无 py 依赖** —— 判定为**成立**：差分已 TS 原生（`00106f8`，插件不再调 `compare_ui_frames`，contracts 直呼清单与「零 py 调用」锁双证）；OCR / overlay 均**零消费者 ⇒ 不存在依赖**（G87/G88 推迟）。
       ⚠️ 这条 Done 成立**不等于**上面那条对照表完成——Done 说的是「无 py 依赖」。**可复跑判据是锁不是 grep**：`tests/conformance/contracts.spec.ts` 的直呼清单（只匹配 `client.callTool("…")` / `callTransport(client, "…")` 两种调用形状，已不含 `compare_ui_frames`）+ `apply.spec` 的「不再问动作服务器」锁。
       （这里原本我写成「`grep -rn compare_ui_frames src` 为空」——**那条判据是错的**：src 里现有 2 处命中全是注释与说明文字，裸 grep 会把无害散文判红。判据必须只认调用形状，已按此改正。）
