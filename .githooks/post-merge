@@ -1,0 +1,20 @@
+#!/bin/sh
+# post-merge guard — D19 environment residue check, warn-only.
+#
+# Runs after a pull/merge, for the same reason as post-checkout: ignored files
+# from a previous stack can be left on disk. It NEVER blocks the merge.
+#
+# See scripts/check-env.mjs and AGENTS.md ("新环境拉取").
+
+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+command -v node >/dev/null 2>&1 || exit 0
+
+out=$(node "$top/scripts/check-env.mjs" 2>&1)
+rc=$?
+if [ $rc -ne 0 ]; then
+  echo "$out" >&2
+  echo "" >&2
+  echo "post-merge: D19 environment residue detected (not blocking)." >&2
+  echo "Run 'node scripts/check-env.mjs' for details, or 'git clean -ndX' to preview." >&2
+fi
+exit 0

@@ -42,9 +42,25 @@ Instructions for agents working in this repository.
 - **R27** 判据必须经**变异校验**证明它会红，否则不许当验收
 - **R28** 实测 / 调研结论**当轮回写台账**；被推翻的旧表述不许静默保留
 
+## 新环境拉取（fresh clone / 切分支）
+
+- **拉取或切分支后先跑环境检测**：`node scripts/check-env.mjs`（零依赖，只用 Node 内置模块，可在装插件依赖之前跑）。
+  它机械检测 D19 环境面：
+  - **H1（硬失败）**：被 git 跟踪的 `.py`（`git ls-files '*.py'`）；
+  - **H2（失败）**：工作树里的 py 栈残留（`.venv/`、`__pycache__/`、`*.pyc`/`*.pyo`、`.pytest_cache`/`.ruff_cache`、
+    `*.egg-info`、`pyproject.toml`/`uv.lock`/`setup.py`/`requirements*.txt` 等）；
+  - **NOTE（仅提示）**：运行数据/临时区（`traces/`、`scratch/`、`data_engine.db`、`.artemis_*`）。
+  `node_modules/`、`dist/`、`.git/` 是白名单，绝不误报。退出码：0 干净（或仅 NOTE），1 有 H1/H2。
+- **为什么需要**：切到 orphan `main` 时 git 只删被跟踪源码，被 `.gitignore` 忽略的旧栈（`.venv`、`__pycache__`、
+  旧 `node_modules`、`traces`）会留在磁盘且 `git status` 完全干净；本脚本把这种隐性残留变成红/绿。
+  脚本只报告、不删除；清理可用其输出给出的 `git clean -ndX`（预览）/`git clean -fdX`（执行，注意会删 `.env`）。
+- **钩子（版本化于 `.githooks/`，每台机器激活一次 `git config core.hooksPath .githooks`）**：
+  `post-checkout` / `post-merge` 在切分支/拉取后自动跑检测，**只警告不阻断**；`pre-push` 在远端白名单之外再
+  硬拦 H1（被跟踪 py 拒绝推送）。
+
 ## 命令（TS 侧）
 
-- 插件工程在 `plugins/dsh-autogamer/`（**尚未从归档分支搬迁**，见 `docs/TODO.md` 开放项）
+- 插件工程在 `plugins/dsh-autogamer/`（已从归档分支搬迁，2026-10-14；`node scripts/check-env.mjs` 是仓库级检测，与插件无关）
 - 本机装依赖与跑脚本**要带旗标**（不带时 pnpm 会隐式 install 并重写 lockfile——那是环境产物，别提交）：
   `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`、
   `pnpm --config.verify-deps-before-run=false run build|test`
@@ -64,6 +80,9 @@ Instructions for agents working in this repository.
   **已知边界（别当它万能）**：git 在**连上远端并列出 ref 之后**才跑 `pre-push`（要更新的 ref 走 stdin），
   所以它挡的是「推送」而非「连接」；对**不可达**目标的推送会在连接阶段就失败，因此看不到钩子的消息。
   **PR 的创建本身不在任何本地钩子的覆盖范围内** —— 它只能靠上面的规则与正确判据把关。
+  该 hook 现含**两道检查**：①远端白名单（非白名单拒推）；② **H1 / D19**：白名单通过后，若 `git ls-files '*.py'`
+  非空（py 被跟踪）仍拒推。A/B 已实测（一次性本地裸仓，URL 含白名单字符串）：track 一个 py 时被 H1 拦 exit 1、
+  bare 未收到；移除该 py 后推送成功 exit 0、bare 收到 main。
   逃生口 `git push --no-verify <url> <refspec>` 存在，但属**故意行为**，必须在台账里写明理由。
 - **不要对任何第三方上游开 PR / 建分支 / 推内容**。若确实要读上游源码作设计参考，用只读形态：
   添加后立刻 `git remote set-url --push <name> no-push`。

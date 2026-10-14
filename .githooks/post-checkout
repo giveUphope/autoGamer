@@ -1,0 +1,23 @@
+#!/bin/sh
+# post-checkout guard — D19 environment residue check, warn-only.
+#
+# A branch switch (or the switch to the orphan `main`) makes git delete only
+# tracked sources; ignored files (.venv, __pycache__, node_modules, traces,
+# old stack dirs) are left on disk. This runs the residue detector after a
+# checkout and prints a warning. It NEVER blocks: leftover residue is local
+# history and must not prevent a branch switch.
+#
+# See scripts/check-env.mjs and AGENTS.md ("新环境拉取").
+
+top=$(git rev-parse --show-toplevel 2>/dev/null) || exit 0
+command -v node >/dev/null 2>&1 || exit 0
+
+out=$(node "$top/scripts/check-env.mjs" 2>&1)
+rc=$?
+if [ $rc -ne 0 ]; then
+  echo "$out" >&2
+  echo "" >&2
+  echo "post-checkout: D19 environment residue detected (not blocking)." >&2
+  echo "Run 'node scripts/check-env.mjs' for details, or 'git clean -ndX' to preview." >&2
+fi
+exit 0

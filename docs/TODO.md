@@ -26,6 +26,7 @@
   **搬迁顺序**：先整块搬 TS 树 → 再逐文件过 D20（预期零改动，仅插件 README 的「基于 ARTEMIS」措辞要改）。
 - **许可与 git 历史裁定（2026-10-14，用户裁定）**：① `LICENSE` **重写为本项目自撰 MIT 全文**（版权人 giveUphope，2026），保持开源、不再随迁上游 Apache-2.0 文本（含原 `Copyright 2026 Google LLC` 附录行）；② **git 历史保留**——历史中的上游内容仅作记录存在，不影响当前新方案设计与实现，D20 判据只覆盖工作树层。裁定展开见规格 §八。
 - **阶段：插件工程已搬入（2026-10-14，搬迁-1）**。`plugins/dsh-autogamer/` 已从归档分支搬入并通过 `tsc` 构建 + `vitest` 全绿（293 passed / 1 skipped）；下一步为 T1（引擎去消费者）。全部 py 实现均不在本分支（按 D19 归零）。
+- **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。
 - **remote 结构（2026-10-14 已裁定并执行）**：`upstream`（`github.com/google/artemis`）**已移除**；
@@ -154,16 +155,16 @@
 - hook：`git config core.hooksPath .githooks` 后，切一次分支观察 post-checkout 打印警告但不阻断。
 
 **Done means**
-- [ ] 干净 checkout 下脚本 exit 0，白名单不误报
-- [ ] 变异校验（py / pyc / .venv）逐一证明会红、清理后变绿
-- [ ] pre-push H1 与 post-checkout/post-merge 经 A/B 实测
-- [ ] `AGENTS.md` 新环境拉取步骤写明
-- [ ] 本文件 §零 与下方「新分支特有」同步
+- [x] 干净 checkout 下脚本 exit 0，白名单不误报（plugins 的 `node_modules`/`dist` 存在时仍绿）
+- [x] 变异校验（py / pyc / .venv / 根级 env）逐一证明会红、清理后变绿；深层 `src/env/` 不误报；仅 NOTE 时 exit 0
+- [x] pre-push H1 与 post-checkout/post-merge 经 A/B 实测（H1 裸仓 A/B：track py 被拦 exit 1、移除后 exit 0；post-checkout 警告不阻断）
+- [x] `AGENTS.md` 新环境拉取步骤写明
+- [x] 本文件 §零 与下方「新分支特有」同步
 
 ### 新分支特有（搬迁与基建）
 
 - [x] 从归档分支搬迁插件工程 `plugins/dsh-autogamer/`，**逐文件做 D20 清理**（方案见上方「搬迁-1」，2026-10-14 完成）
-- [ ] 工作树环境残留检测（D19 环境护栏）：`scripts/check-env.mjs` + `post-checkout`/`post-merge`/`pre-push` 钩子（方案见上方「基建-1」）
+- [x] 工作树环境残留检测（D19 环境护栏）：`scripts/check-env.mjs` + `post-checkout`/`post-merge`/`pre-push` 钩子（方案见上方「基建-1」，2026-10-14 完成）
 - [ ] TS 版文档门禁，替代未随迁的 py 脚本（`check_doc_registry` / `check_doc_tables` 的机械职责）
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 

@@ -15,16 +15,20 @@
 #
 # Escape hatch (use deliberately, and record why in the change log):
 #   git push --no-verify <url> <refspec>
+#
+# Second guard (H1, D19): after the remote allowlist passes, refuse the push if
+# any python file is tracked (`git ls-files '*.py'`). This repo is TS-only.
+# Working-tree residue that is merely ignored (e.g. a stale .venv) is not a
+# tracked file and is reported separately by scripts/check-env.mjs, not here.
 
 ALLOW="giveUphope/autoGamer"
 remote="${1:-}"
 url="${2:-}"
 
 case "$url" in
-  *"$ALLOW"*) exit 0 ;;
-esac
-
-cat >&2 <<EOF
+  *"$ALLOW"*) ;;
+  *)
+    cat >&2 <<EOF
 pre-push BLOCKED: refusing to push to remote '$remote'
   url: $url
 
@@ -34,4 +38,16 @@ No refs were updated.
 If the target really is legitimate, push explicitly and say why:
   git push --no-verify <url> <refspec>
 EOF
-exit 1
+    exit 1
+    ;;
+esac
+
+# H1 — D19 (TS-only, zero python): tracked python must never be pushed.
+tracked_py=$(git ls-files '*.py')
+if [ -n "$tracked_py" ]; then
+  echo "pre-push BLOCKED: D19 violated — tracked python file(s) present:" >&2
+  echo "$tracked_py" | head -20 | sed 's/^/  /' >&2
+  echo "Remove them from the tree and the index before pushing (D19 = TS-only)." >&2
+  exit 1
+fi
+exit 0
