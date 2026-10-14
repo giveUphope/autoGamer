@@ -41,8 +41,8 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 | 任务编排 `run_task` / `manage_task` / `inspect_trace` | py 引擎（langgraph 图） | TS 单层路由（S11）+ DSH agent loop | 三条工具不再调 `mobile_*`；任务由 TS 侧循环驱动 `run_device_action` | 部分（T1 切片 1–3 代码已落：三条工具改读会话投影，引擎方法已从类型面与实现面删除；live 绑定核验待设备 🔶） |
 | 诊断 `diagnose` | py `core.diagnostics` | TS 探针 | 就绪七项同判 | 部分（`preflight.ts` 已有七项骨架） |
 | 轨迹 / 步骤持久化 | py `data_engine`（SQLite） | DSH session log（首选）或 better-sqlite3 | 回放同一步集 | 部分（已选 session log 一侧：步迹由 `tool/result` 折叠进投影，SQLite 路线未采用；「回放同一步集」待 live 🔶） |
-| rules 注入 | `<repo>/mcp_server/rules.md` | 插件内固定文本或外部文件 | 注入内容非空且可达模型 | 部分（`rulesInjector.ts` 已在，供应链随 T4 改） |
-| 录屏 / 视频分析 | py ffmpeg 系 | 不迁移（D12：一期无录像） | 放弃记录进本分支 CHANGELOGS（待新建） | 已砍 |
+| rules 注入 | ~~`<repo>/mcp_server/rules.md`~~ **链已拆除** | **不迁移**：由 `persona` 行（常驻、agent 作用域）+ skill（按需）承载 | 组合内 persona 行与 skill 在位的 R3/R6 面；模型面交付须新会话（R7）核 | 已砍（rules-1 · CHANGELOGS #84） |
+| 录屏 / 视频分析 | py ffmpeg 系 | 不迁移（D12：一期无录像） | 放弃记录进本分支 CHANGELOGS | 已砍（放弃记录：CHANGELOGS #85） |
 | notes / plan 语法 | py `utils` | TS 状态机（checker 用） | 计划与检查项语义等价 | 未开工 |
 
 ## 三、分期（顺序不可跳）
@@ -79,6 +79,7 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 2. **helper（accessibility APK）服务协议**：端口、握手、请求/响应格式、`adb forward` 生命周期（与 **G78** 的残留问题同源）。
 3. **`compare_ui_frames` 的算法与阈值**：py 委托的 `check_ui_change` 判据是什么，阈值取多少。
 4. **外部提供方接入的边界**：`artemisMcpCommand` / `artemisRepoPath` 在 T1–T3 期间仍可用，T4 后它的语义只剩「可选外部 ARTEMIS」。
+   **已完成的部分**：`artemisRepoPath` 的 rules 文本消费者已随 **rules-1** 拆除（CHANGELOGS #84），余下三种 py 语义（cwd / pyproject 探测 / uv project）待 T4。
 
 ## 五、风险与不做项
 

@@ -9,8 +9,9 @@
 // Checks (each derived from one of those drifts):
 //   C1 closed-vs-open   : an id the ledger calls closed must not hold an
 //                         open-gap table row.              (drift: G81)
-//   C2 links resolve    : relative markdown link targets must exist.
-//                         Declared-future paths are exempt with a reason.
+//   C2 links resolve    : relative markdown link targets must exist. There is
+//                         no pending-path exemption any more - the one entry it
+//                         held (docs/CHANGELOGS.md) now exists.
 //   C3 count copies     : progress counts belong to their authority only.
 //   C4 range self-check : "R1–R28" style ranges must equal the derived range.
 //   C5 table shape      : pipe blocks need a separator row, equal cell counts
@@ -32,7 +33,7 @@
 
 import { execFileSync } from 'node:child_process';
 import { existsSync, readFileSync } from 'node:fs';
-import { dirname, join, relative, resolve, sep } from 'node:path';
+import { dirname, join, resolve } from 'node:path';
 
 const TODO = 'docs/TODO.md';
 const RULES = 'docs/migration/plugin-contract-rules.md';
@@ -48,7 +49,6 @@ function repoRoot() {
 }
 
 const root = repoRoot();
-const toRepo = (abs) => relative(root, abs).split(sep).join('/');
 
 function trackedDocs() {
   const out = execFileSync('git', ['ls-files', '*.md'], { cwd: root, encoding: 'utf8' });
@@ -60,17 +60,6 @@ function readDoc(rel) {
   // this checkout stores line endings (R27: state the metric's subject).
   return readFileSync(join(root, rel), 'utf8').replace(/\r\n/g, '\n');
 }
-
-// --- exemptions: explicit, reasoned, never inferred ---------------------
-// Each entry names the decision that admitted it. A path listed here may be
-// referenced while absent from the tree.
-const PENDING_PATHS = new Map([
-  ['docs/CHANGELOGS.md', 'spec §一.4: created when this branch first closes an entry'],
-]);
-
-// A range whose family authority lives on the archive branch cannot be checked
-// here; the exemption is per family and documented, not silent.
-const ARCHIVE_RANGE_FAMILIES = new Set(['D', 'S', 'G']);
 
 // --- shared helpers ------------------------------------------------------
 const isPipeLine = (line) => line.startsWith('|');
@@ -199,8 +188,6 @@ function checkLinksResolve(files) {
         if (pathPart.length === 0) continue;
         const candidates = [resolve(root, dirname(rel), pathPart), resolve(root, pathPart)];
         if (candidates.some((abs) => existsSync(abs))) continue;
-        const asRepoPath = toRepo(candidates[0]);
-        if (PENDING_PATHS.has(asRepoPath) || PENDING_PATHS.has(pathPart)) continue;
         out.push(finding(rel, idx + 1, `link target does not resolve: ${target}`));
       }
     });
@@ -237,6 +224,10 @@ function checkCountCopies(files) {
 }
 
 // --- C4: whole-set ranges must equal the derived range -------------------
+// A range whose family authority lives on the archive branch cannot be checked
+// here; the exemption is per family and documented, not silent.
+const ARCHIVE_RANGE_FAMILIES = new Set(['D', 'S', 'G']);
+
 function checkRangeSelfCheck(files) {
   const rules = files.get(RULES);
   if (rules === undefined) return [finding(RULES, 0, 'anchor missing: rules file not in the index')];

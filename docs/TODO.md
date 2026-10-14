@@ -37,9 +37,10 @@
   `AGENTS.md` 的「**文档门禁暂缺**」已改写为现状——门禁是**本地钩子 + 手跑**，本分支无 CI，**不许写成「由 CI 保证」**（R27）。
   ⚠️ 已知盲区（本轮实测）：门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；要覆盖须新增一条检查，属后续项。
   范围与取证见 §七「基建-2」。
-- **rules-1 立项（2026-10-14；方案已提交，实现未开工）**：先做了**形式调研**——随包文档的决定性原文是「**部署方编写的提示词文本只来自配置／组合……不存在终端用户提示词编辑 API**」；
-  而本 bundle 的 persona 行（常驻、agent 作用域）与 skill（按需）**已在正当位置承载同族纪律**，`artemisRepoPath → mcp_server/rules.md` 那条是重复的第三条链且踩 D20。
-  ⇒ 终局定案为**拆除**（非「改指向」）。范围与取证见 §七「rules-1」。
+- **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
+  `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
+  插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
+  规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录见 **CHANGELOGS #84**。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
@@ -108,7 +109,7 @@
 - [x] 前置-3 效果判定所依据的差分算法与阈值（**无思路时从旧实现读设计，不搬文本**）— 结论见下方「前置-3 实测结论」（2026-10-14 完成；**T3 移植范围已收口为 `check_ui_change` 单条路径**）
 - [x] 前置-4 外部提供方接入边界 —— **已完成**（2026-10-14；结论见下方「前置-4 实测结论」）：
       `artemisMcpCommand` 留但收窄语义；`artemisRepoPath` 的 **cwd / pyproject 探测 / uv project 三种 py 语义删**，
-      其 **rules 文本来源必须改指向自己**（D20 红线，同时归属 G85+G86）；`uvPath` 删；
+      其 **rules 文本来源必须改指向自己**（D20 红线，同时归属 G85+G86）——**已提前执行：规则链整条拆除（rules-1，CHANGELOGS #84），不以「改指向」实现**；`uvPath` 删；
       preflight 七项在 T4 重画为「提供方未配置即跳过，设备面三项才是 gate」
 
 #### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）
@@ -291,7 +292,7 @@
 |---|---|---|
 | `artemisMcpCommand`（spawn MCP server） | **留，但收窄语义** | §一.3 允许「用户自行安装的外部 ARTEMIS」；命令可指**任何** MCP server 实现，不必是 py。保留项须在文档里写清「不内置、不 vendored、不为其开开发依赖」 |
 | `artemisRepoPath` ① cwd / ② pyproject 探测 / ③ uv project | **删** | 三者都是 py 专属探测。T4 后仓内无 py（`git ls-files '*.py'` 为空是终态判据），这些探测无对象可探，且它们会把「未配置提供方」变成**体检失败**而非「走 TS 原生」 |
-| `artemisRepoPath` ④ rules 文本 | **必须改指向自己**（红线） | 见下条 |
+| `artemisRepoPath` ④ rules 文本 | **已拆（rules-1）** | 整链删除，规则文本改由 persona + skill 承载（CHANGELOGS #84） |
 | `uvPath` | **删** | 纯 py 工具链探针 |
 
 **三、prompt 供应链是红线，不是可选项（D20 × D19）**
@@ -509,11 +510,11 @@
 - 预期**不改** `cordis.patch.yml`；若实现中确需改，必跑 **R6**（`--dump-config` rc 0 且 grep 不到 `unmatched`）。
 
 **Done means**
-- [ ] 五处删除完成；插件树内 `rulesInjector|mcp_server/rules` 零命中
-- [ ] 配置面不再有 `injectRules`；contracts 字段锁更新且变异校验通过
-- [ ] `verify` 三段 + `check-docs` + `check-env` 全绿
-- [ ] 规格 §二/§四/§六 与 TODO §零、前置-4、G85/G86 归属同步（只写指针）
-- [ ] `docs/CHANGELOGS.md` 新建并记入本项（含录屏/视频分析既有放弃记录的补录）
+- [x] 五处删除完成；插件树内 `rulesInjector|mcp_server/rules` 零命中（含 `dist/`；陈旧构建产物已清）
+- [x] 配置面不再有 `injectRules`；contracts 字段锁更新且变异校验通过（塞回字段 ⇒ 恰好该条红，撤回复绿）
+- [x] `verify` 三段 + `check-docs` + `check-env` 全绿（34 files / 320 passed / 1 skipped）
+- [x] 规格 §二/§四/§六 与 TODO §零、前置-4、G85/G86 归属同步（只写指针）
+- [x] `docs/CHANGELOGS.md` 新建并记入本项（含录屏/视频分析既有放弃记录的补录）
 
 ### 新分支特有（搬迁与基建）
 
@@ -534,8 +535,8 @@
         **不放宽 `strict` 与 `noUncheckedIndexedAccess`**，也没加 `any`。
       - 顺带修掉两处由我造成的脚本事故（批量替换误伤 `exec()` 函数体、`fields..type`），均已修复并复验。
 - [x] **基建-2 · 文档门禁 TS 化**（2026-10-14 完成）：`scripts/check-docs.mjs` 六条检查 + `--selftest`（7 例变异，含 C5 双向）+ `.githooks/pre-commit`（文档范围触发，A/B 已实测）；`AGENTS.md` 已同步。范围与取证见 §七「基建-2」。
-- [ ] **rules-1 · rules 注入链拆除**（2026-10-14 立项，**方案已提交、实现待开工**）：删 `rulesInjector` 链（模块 / 配置 `injectRules` / 诊断项 / spec / 夹具 / 契约断言），规则文本由 persona（常驻）+ skill（按需）承载；见 §七「rules-1」。
-- [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
+- [x] **rules-1 · rules 注入链拆除**（2026-10-14 完成，提交 `01de3b2`）：`rulesInjector` 链已删（模块 / 配置 `injectRules` / 诊断项 / spec / 夹具 / 契约断言 / README Layout / `systemPrompt` 缝），规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录 **CHANGELOGS #84**。范围与取证见 §七「rules-1」。
+- [x] 本分支的 `CHANGELOGS`（2026-10-14 首次结案时新建：`docs/CHANGELOGS.md`，编号自 **#84** 续起并写明理由；规则：`### #N` 三段、编号永不复用）
 
 ### T1 · 引擎去消费者（**G82**）· 方案（2026-10-14 立项，R22）
 
@@ -693,8 +694,8 @@
 - [ ] **按前置-4 结论收窄配置面**（**G85+G86 交叉，不可当小事放过去**）：
       删 `artemisRepoPath` 的 cwd / `pyproject.toml` 探测 / `uv project` 三种 py 语义与 `uvPath`；
       `artemisMcpCommand` 保留但写明「不内置、不 vendored、不为其开开发依赖」；
-      **rules 注入必须改指向我们自己拥有的来源**（插件内固定文本，或我们自己定义的外部文件项）——
-      不得继续读 `<外部仓库>/mcp_server/rules.md`（D20：上游 prompt 正文不得进本项目模型面）
+      ~~rules 注入必须改指向我们自己拥有的来源（插件内固定文本，或我们自己定义的外部文件项）~~ —— **已提前完成（rules-1，CHANGELOGS #84）**：
+      整链拆除，规则文本由 persona + skill 承载，不再读 `<外部仓库>/mcp_server/rules.md`（D20：上游 prompt 正文不得进本项目模型面）
 - [ ] **preflight 七项重画**（前置-4 §四）：提供方未配置 ⇒ 那几项**跳过而非失败**，
       只让设备面三项（adb / adb-devices / helper）当 gate；保持三条失败语义不混
       （注入 fail-open / 体检 gate / backend lazy spawn）
