@@ -6,6 +6,7 @@
  * double-taps, volume steps, and before/after screenshots are unaffected.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
@@ -25,7 +26,7 @@ function hierarchyWith(target: boolean): string {
 
 const harness = {
   calls: [] as { tool: string; args: Record<string, unknown> }[],
-  tapResolvers: [] as Array<(value: unknown) => void>,
+  tapResolvers: [] as Array<(value?: unknown) => void>,
 };
 
 let currentAgent = "agent-1";
@@ -62,8 +63,8 @@ function setup() {
   return tool;
 }
 
-function exec(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal };
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
 }
 
 function taps(): { tool: string; args: Record<string, unknown> }[] {

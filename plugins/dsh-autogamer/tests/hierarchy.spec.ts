@@ -49,7 +49,7 @@ describe("hierarchy: positional numbering (G42)", () => {
   it("drops nodes without a real area before numbering them", () => {
     const elements = parseVisibleElements(PAYLOAD)!;
     expect(elements).toHaveLength(5);
-    expect(elements[4].resourceId).toBe("com.android.settings:id/dark");
+    expect(elements[4]?.resourceId).toBe("com.android.settings:id/dark");
   });
 
   it("resolves a handle against the list the model was shown, not thin air", () => {

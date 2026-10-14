@@ -96,7 +96,7 @@ describe("mock action server handshake (G56)", () => {
       devices: Record<string, unknown>[];
     };
     expect(plain.enumerated).toBe(true);
-    expect(Object.keys(plain.devices[0]).sort()).toEqual(
+    expect(Object.keys(plain.devices[0] ?? {}).sort()).toEqual(
       [
         "serial",
         "state",
@@ -111,12 +111,12 @@ describe("mock action server handshake (G56)", () => {
       ].sort(),
     );
     // "not asked" must not be representable as null: admission treats unknown as fail-closed (G65).
-    expect("is_locked" in plain.devices[0]).toBe(false);
+    expect(plain.devices[0] !== undefined && "is_locked" in plain.devices[0]).toBe(false);
 
     const asked = JSON.parse(
       unwrapText(await mockClient().callTool("list_devices", { include_lock_state: true })),
     ) as { devices: { is_locked?: boolean | null }[] };
-    expect(asked.devices[0].is_locked).toBe(false);
+    expect(asked.devices[0]?.is_locked).toBe(false);
   });
 
   it("forwards host cancellation into the request instead of waiting it out", async () => {

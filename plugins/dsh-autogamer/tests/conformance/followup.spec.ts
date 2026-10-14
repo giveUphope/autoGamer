@@ -25,6 +25,11 @@
  * (CHANGELOGS #15).
  */
 import { afterEach, describe, expect, it } from "vitest";
+
+/** cordis's `plugin()` carries a signature this plugin never uses; the specs only
+ * ever hand it one definition, so the seam is narrowed once, here. */
+const mount = (root: { plugin: unknown }, mod: { default?: unknown }): unknown =>
+  (root.plugin as (input: unknown) => unknown)(mod.default);
 import { Context } from "@deepseek-ai/cordis";
 import { createScope } from "@deepseek-ai/dsh-scope";
 import * as pluginModule from "../../src/index.js";
@@ -53,7 +58,7 @@ async function bootRealTurnPath() {
   const root = new Context();
   for (const specifier of SERVICE_PACKAGES) {
     const mod = (await import(specifier)) as { default: unknown };
-    await root.plugin(mod.default as never);
+    await mount(root, mod);
   }
 
   const followups: unknown[] = [];
@@ -64,18 +69,18 @@ async function bootRealTurnPath() {
   // the preset realm that owns our listener. Dispatch travels UP the scope chain
   // and never down, so a listener tagged to the other realm is excluded unless it
   // bypasses the filter.
-  const agentRealm = createScope(root, Symbol("g52-agent-realm"));
-  const presetRealm = createScope(root, Symbol("g52-preset-realm"));
+  const agentRealm = createScope(root, Symbol("g52-agent-realm") as unknown as object);
+  const presetRealm = createScope(root, Symbol("g52-preset-realm") as unknown as object);
   cleanups.push(() => presetRealm.dispose(), () => agentRealm.dispose());
-  presetRealm.ctx.on(
-    "session/event",
-    (session: SessionLike, event: { type: string }) => globalControl.push(`${session?.id}/${event?.type}`),
-    { global: true },
-  );
-  presetRealm.ctx.on(
-    "session/event",
-    (session: SessionLike, event: { type: string }) => plainControl.push(`${session?.id}/${event?.type}`),
-  );
+  // cordis types `on()` against its own Scoped<Session> generics; these are plain
+  // doubles, so the seam is narrowed once rather than at every call site.
+  const on = presetRealm.ctx.on as unknown as (
+    type: string,
+    handler: (session: SessionLike, event: { type: string }) => unknown,
+    options?: unknown,
+  ) => unknown;
+  on("session/event", (session, event) => globalControl.push(`${session?.id}/${event?.type}`), { global: true });
+  on("session/event", (session, event) => plainControl.push(`${session?.id}/${event?.type}`));
 
   const session = await new Promise<SessionLike>((resolve) => {
     agentRealm.ctx.inject(["sessions"], (ctx: any) => resolve(ctx.sessions.create("g52-session")));

@@ -5,6 +5,7 @@
  * conformance suite (runtimeBoot asserts every tool's object root).
  */
 import { describe, expect, it } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { ArtemisBackend, DeviceState } from "../src/artemis/types.js";
 import type { PreflightResult } from "../src/env/preflight.js";
 import { defineGetDeviceState } from "../src/tools/getDeviceState.js";
@@ -23,6 +24,7 @@ function backendReturning(state: DeviceState): {
         calls.push(args);
         return state;
       },
+      diagnose: async () => ({ recentCrashes: [], recommendations: [] }),
       dispose: async () => undefined,
     },
   };
@@ -82,22 +84,22 @@ describe("get_device_state: execute", () => {
         finishedAt: "t",
       },
     });
-    await expect(tool.execute({}, { signal: new AbortController().signal })).rejects.toThrow(
+    await expect(tool.execute({}, exec())).rejects.toThrow(
       /environment: preflight failed at adb-devices.*plug it in/,
     );
   });
 
   it("prefers the call arg, then the configured default, then omits", async () => {
     const first = defineWith({ defaultDeviceSerial: "em-default" });
-    await first.tool.execute({ device_serial: "em-arg" }, { signal: new AbortController().signal });
+    await first.tool.execute({ device_serial: "em-arg" }, exec());
     expect(first.calls).toEqual([{ deviceSerial: "em-arg", includeScreenshot: false }]);
 
     const second = defineWith({ defaultDeviceSerial: "em-default" });
-    await second.tool.execute({}, { signal: new AbortController().signal });
+    await second.tool.execute({}, exec());
     expect(second.calls).toEqual([{ deviceSerial: "em-default", includeScreenshot: false }]);
 
     const third = defineWith({ defaultDeviceSerial: "" });
-    await third.tool.execute({ device_serial: "" }, { signal: new AbortController().signal });
+    await third.tool.execute({ device_serial: "" }, exec());
     expect(third.calls).toEqual([{ deviceSerial: undefined, includeScreenshot: false }]);
   });
 
@@ -105,7 +107,7 @@ describe("get_device_state: execute", () => {
     const { tool } = defineWith();
     const value = (await tool.execute(
       { include_screenshot: true },
-      { signal: new AbortController().signal },
+      exec(),
     )) as Record<string, unknown>;
     expect(value).toMatchObject({
       device_serial: "em-1",
@@ -132,11 +134,18 @@ describe("get_device_state: execute", () => {
       getDeviceState: async () => {
         throw new Error("environment: provider is down");
       },
+      diagnose: async () => ({ recentCrashes: [], recommendations: [] }),
       dispose: async () => undefined,
     };
     const { tool } = defineWith({ backend: failing });
     await expect(
-      tool.execute({}, { signal: new AbortController().signal }),
+      tool.execute({}, exec()),
     ).rejects.toThrow(/^environment: provider is down/);
   });
 });
+
+/** The host's run context carries more than a signal; a tool body must not
+ * depend on any of it, so the double is the minimum and is typed at the seam. */
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
+}

@@ -14,6 +14,11 @@
  * request-rejected bug (changelogs #10) lived exactly in that gap.
  */
 import { describe, expect, it } from "vitest";
+
+/** cordis's `plugin()` carries a signature this plugin never uses; the specs only
+ * ever hand it one definition, so the seam is narrowed once, here. */
+const mount = (root: { plugin: unknown }, mod: { default?: unknown }): unknown =>
+  (root.plugin as (input: unknown) => unknown)(mod.default);
 import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import { Context } from "@deepseek-ai/cordis";
@@ -47,14 +52,14 @@ async function bootServices(): Promise<Context> {
   for (const specifier of SERVICE_PACKAGES) {
     const mod = (await import(specifier)) as { default: unknown };
     // Each package's default export is a cordis plugin (class or function).
-    await ctx.plugin(mod.default as never);
+    await (ctx.plugin as unknown as (definition: unknown) => unknown)(mod.default);
   }
   return ctx;
 }
 
 async function bootWithPlugin(): Promise<Context> {
   const ctx = await bootServices();
-  await ctx.plugin(plugin as never);
+  await (ctx.plugin as unknown as (definition: unknown, config?: unknown) => unknown)(plugin);
   return ctx;
 }
 
@@ -123,7 +128,7 @@ describe("conformance: real DSH runtime tool registry (G5 Tier 1)", () => {
     const srcRoot = fileURLToPath(new URL("../../src", import.meta.url));
     const consumed = new Set<string>();
     for (const file of typescriptFiles(srcRoot)) {
-      for (const match of readFileSync(file, "utf8").matchAll(/\bctx\.([a-zA-Z_]+)/g)) consumed.add(match[1]);
+      for (const match of readFileSync(file, "utf8").matchAll(/\bctx\.([a-zA-Z_]+)/g)) if (match[1]) consumed.add(match[1]);
     }
     expect([...consumed].sort(), "src should still reach for Host services").not.toHaveLength(0);
     const services = [...consumed].filter((name) => !builtins.has(name)).sort();
@@ -135,7 +140,7 @@ describe("conformance: real DSH runtime tool registry (G5 Tier 1)", () => {
     // Only proven by calling Config() ourselves today; here the loader is the
     // one that must refuse, because that is what a profile row actually does.
     await expect(
-      ctx.plugin(plugin as never, { actionServerCommand: "not-an-array" }) as unknown as Promise<never>,
+      (ctx.plugin as unknown as (definition: unknown, config?: unknown) => Promise<never>)(plugin, { actionServerCommand: "not-an-array" }),
     ).rejects.toThrow();
   });
 });

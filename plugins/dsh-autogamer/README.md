@@ -55,6 +55,10 @@ src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
 pnpm --config.verify-deps-before-run=false run build
 pnpm --config.verify-deps-before-run=false run test
 
+# 类型门禁：tests/ 也纳入 tsc（tsconfig.spec.json，G81）
+pnpm --config.verify-deps-before-run=false run typecheck
+pnpm --config.verify-deps-before-run=false run verify   # build + typecheck + test
+
 # 每次改 patch 后强制自检（R6）：exit 0 且 grep 不到 unmatched
 dsh --profile web --patch <abs>/cordis.patch.yml --dump-config
 ```

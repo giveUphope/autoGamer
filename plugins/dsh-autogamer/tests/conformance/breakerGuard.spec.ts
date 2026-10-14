@@ -10,6 +10,11 @@
  * execution is enough: a plain-context guard applies globally.
  */
 import { afterEach, describe, expect, it } from "vitest";
+
+/** cordis's `plugin()` carries a signature this plugin never uses; the specs only
+ * ever hand it one definition, so the seam is narrowed once, here. */
+const mount = (root: { plugin: unknown }, mod: { default?: unknown }): unknown =>
+  (root.plugin as (input: unknown) => unknown)(mod.default);
 import { Context } from "@deepseek-ai/cordis";
 import * as pluginModule from "../../src/index.js";
 
@@ -30,7 +35,7 @@ async function boot(withScreenSize = true): Promise<Context> {
   const root = new Context();
   for (const specifier of SERVICE_PACKAGES) {
     const mod = (await import(specifier)) as { default: unknown };
-    await root.plugin(mod.default as never);
+    await mount(root, mod);
   }
   await root.plugin(
     {

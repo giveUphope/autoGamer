@@ -37,6 +37,6 @@ describe("README Layout lists the module tree (changelogs #61)", () => {
 
   it("names no module in the Layout that is not on disk", () => {
     const named = new Set([...layout.matchAll(/([A-Za-z0-9_-]+\.ts)/g)].map((m) => m[1]));
-    expect([...named].filter((name) => !onDisk.has(name))).toEqual([]);
+    expect([...named].filter((name) => name !== undefined && !onDisk.has(name))).toEqual([]);
   });
 });

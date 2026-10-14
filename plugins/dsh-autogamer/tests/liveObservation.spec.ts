@@ -8,6 +8,7 @@
  * defect, not a nicety.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { DeviceBreaker } from "../src/breaker.js";
 import { LiveObservations } from "../src/observations.js";
 import { harness } from "./support/pool.js";
@@ -75,8 +76,8 @@ function setup(options: { devices?: string[]; observations?: LiveObservations } 
   return tool;
 }
 
-function exec(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal };
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
 }
 
 async function observe(tool: ReturnType<typeof setup>, device?: string): Promise<void> {
@@ -110,7 +111,7 @@ describe("live observation: an unobserved handle is not a target", () => {
     const tool = setup();
     await tool.execute({ action: "click", target: { text: "显示" }, reason: "t" }, exec() as never);
     expect(taps()).toHaveLength(1);
-    expect(taps()[0].coordinates).toEqual([120, 630]);
+    expect(taps()[0]?.coordinates).toEqual([120, 630]);
   });
 });
 
@@ -122,7 +123,7 @@ describe("live observation: resolution follows identity, not array position", ()
     await tool.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never);
     // Positional resolution would hit 新2 here.
     expect(taps()).toHaveLength(1);
-    expect(taps()[0].coordinates).toEqual([120, 630]);
+    expect(taps()[0]?.coordinates).toEqual([120, 630]);
   });
 
   it("refuses a handle that is in the fresh tree but never was in the observation", async () => {
@@ -163,7 +164,7 @@ describe("live observation: only what the model was shown renews a handle", () =
     await tool.execute({ action: "click", target: { index: 0 }, reason: "t" }, exec() as never);
     // #0 is still 亮度 from the OBSERVED list; had the ladder replaced it, this
     // would tap 新1 at [400,40].
-    expect(taps()[0].coordinates).toEqual([120, 430]);
+    expect(taps()[0]?.coordinates).toEqual([120, 430]);
   });
 
   it("replaces the observation with the next one the model asks for", async () => {
@@ -174,7 +175,7 @@ describe("live observation: only what the model was shown renews a handle", () =
     log.length = 0;
     hierarchies.push(INSERTED);
     await tool.execute({ action: "click", target: { index: 0 }, reason: "t" }, exec() as never);
-    expect(taps()[0].coordinates).toEqual([400, 40]);
+    expect(taps()[0]?.coordinates).toEqual([400, 40]);
   });
 });
 

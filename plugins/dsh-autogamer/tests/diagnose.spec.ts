@@ -5,6 +5,7 @@
  * environment throws, and then the preflight text wins.
  */
 import { describe, expect, it } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { ArtemisBackend, Diagnosis } from "../src/artemis/types.js";
 import type { PreflightResult } from "../src/env/preflight.js";
 import { defineDiagnose } from "../src/tools/diagnose.js";
@@ -55,8 +56,8 @@ function defineWith(options?: {
   return { tool, serials };
 }
 
-function exec(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal };
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
 }
 
 describe("diagnose: the merge", () => {

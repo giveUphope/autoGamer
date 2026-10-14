@@ -286,7 +286,21 @@
 
 - [x] 从归档分支搬迁插件工程 `plugins/dsh-autogamer/`，**逐文件做 D20 清理**（方案见上方「搬迁-1」，2026-10-14 完成）
 - [x] 工作树环境残留检测（D19 环境护栏）：`scripts/check-env.mjs` + `post-checkout`/`post-merge`/`pre-push` 钩子（方案见上方「基建-1」，2026-10-14 完成）
-- [ ] TS 版文档门禁，替代未随迁的 py 脚本（`check_doc_registry` / `check_doc_tables` 的机械职责）
+- [x] **G81 · 插件 spec 纳入类型检查**（2026-10-14 完成）：新增 `tsconfig.spec.json`（`noEmit` + `rootDir: .`
+      + `allowJs`，覆盖 `src` / `tests` / `vitest.config.ts`）与 `typecheck` 脚本，并把 build+typecheck+test
+      串成 `verify`。**存量 124 条类型错误清零**（`tsc -p tsconfig.spec.json` rc 0）。
+      - 根因有两类，值的记：① **测试双件的 seam 没在边界收窄**——`exec()` 只有 `signal`、cordis 的 `on`/`plugin`/
+        `createScope` 带宿主泛型、`Config` 被声明成 `object` 而它其实是个可调用的归一化器；
+        ② `noUncheckedIndexedAccess` 下的索引取值。
+      - **纪律修正**：我一度把 `Config` 在 **src** 里改成可调用类型以图省事，结果 schemastery 的 `Schema<>`
+        不是函数型，在 src 里引出 5 条新错。**不该为迁就测试改生产类型**——已回退 src，改为在
+        `tests/support/config.ts` 提供 `configOf` 收窄（测试边界才配做收窄，R21）。
+      - **变异校验**（R27）：在 `tests/hierarchy.spec.ts` 插一行 `const deliberate: string = 42`
+        ⇒ `typecheck` exit 2 并报出该行；移除后 rc 0 ⇒ 门禁会咬。
+      - 收窄一律放在 seam（`exec()`、`on`/`plugin`/`createScope` 的局部 cast、`read()` 读取器），
+        **不放宽 `strict` 与 `noUncheckedIndexedAccess`**，也没加 `any`。
+      - 顺带修掉两处由我造成的脚本事故（批量替换误伤 `exec()` 函数体、`fields..type`），均已修复并复验。
+- [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 
 ### T1 · 引擎去消费者（**G82**）· 方案（2026-10-14 立项，R22）

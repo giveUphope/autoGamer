@@ -7,6 +7,7 @@
  * assert the coordinates the py action server actually receives.
  */
 import { beforeEach, describe, expect, it, vi } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { fileURLToPath } from "node:url";
 import { parseImageSize } from "../src/coord.js";
 import {
@@ -102,7 +103,8 @@ vi.mock("../src/env/preflight.js", () => ({
   preflightErrorText: () => "environment: mocked preflight failure",
 }));
 
-const { apply, Config } = await import("../src/index.js");
+const { apply } = await import("../src/index.js");
+const { configOf: Config } = await import("./support/config.js");
 
 /**
  * Cordis-faithful context double. `effect(setup)` runs `setup` IMMEDIATELY and
@@ -198,8 +200,8 @@ async function registerToolWith(
   return tool;
 }
 
-function exec(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal };
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
 }
 
 beforeEach(() => {
@@ -297,7 +299,7 @@ describe("apply(): registration lifetime (G30 regression)", () => {
 
 describe("apply(): screenshot media path (G36)", () => {
   const ref: DshImageAttachment = {
-    attachmentId: "opaque-id-from-the-store",
+    attachmentId: "opaque-id-from-the-store" as DshImageAttachment["attachmentId"],
     mediaType: "image/png",
     bytes: 33,
     width: 1080,
@@ -318,15 +320,15 @@ describe("apply(): screenshot media path (G36)", () => {
       unknown
     >;
     expect(saved).toHaveLength(1);
-    expect(saved[0].mediaType).toBe("image/png");
-    expect(parseImageSize(saved[0].data)).toEqual({ width: 1080, height: 2400 });
+    expect(saved[0]?.mediaType).toBe("image/png");
+    expect(parseImageSize(saved[0]?.data ?? new Uint8Array())).toEqual({ width: 1080, height: 2400 });
     expect(value.image).toEqual(ref);
     expect(value.screenshot).toBe("captured 1080x2400");
 
     const blocks = tool.output!.render({}, value);
     expect(blocks.map((block) => block.type)).toEqual(["text", "image"]);
-    expect(blocks[0].text).toBe("screenshot=captured 1080x2400");
-    expect(blocks[1].attachment).toBe(ref);
+    expect(blocks[0]?.text).toBe("screenshot=captured 1080x2400");
+    expect(blocks[1]?.attachment).toBe(ref);
   });
 
   it("keeps encoded bytes out of the persisted tool value", async () => {
@@ -420,10 +422,10 @@ describe("apply(): turn conclusion on the reported outcome (G41)", () => {
   it("does not let a device action conclude the turn", async () => {
     const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     let concluded = 0;
-    await tool.execute({ action: "back", reason: "act" }, {
-      signal: new AbortController().signal,
-      concludeTurn: () => { concluded += 1; },
-    });
+    await tool.execute(
+      { action: "back", reason: "act" },
+      { signal: new AbortController().signal, concludeTurn: () => { concluded += 1; } } as unknown as ToolRunContext,
+    );
     expect(concluded).toBe(0);
   });
 });
@@ -512,7 +514,7 @@ describe("apply(): the result envelope must not starve the hierarchy (G42)", () 
   it("keeps a long hierarchy dump whole while clipping prose fields", async () => {
     const t = await registeredTools(CONFIG);
     const long = Array.from({ length: 40 }, (_, i) => `#${i} [10,20] clickable pkg=com.x label 设置项`).join("\n");
-    const rendered = t.runDeviceAction.output.render(
+    const rendered = t.runDeviceAction.output!.render(
       {},
       { result: "Success", hierarchy: long, message: "x".repeat(400) },
     ) as Array<{ text?: string }>;
@@ -535,7 +537,7 @@ describe("apply(): the result envelope must not starve the hierarchy (G42)", () 
     for (const [key, text] of Object.entries(fields)) {
       expect(text.length, `${key} is already over the envelope budget`).toBeLessThanOrEqual(200);
     }
-    const rendered = t.runDeviceAction.output.render({}, { effect: "unchanged", ...fields }) as Array<{
+    const rendered = t.runDeviceAction.output!.render({}, { effect: "unchanged", ...fields }) as Array<{
       text?: string;
     }>;
     const seen = rendered.map((part) => part.text ?? "").join("");
@@ -546,13 +548,13 @@ describe("apply(): the result envelope must not starve the hierarchy (G42)", () 
 
   it("renders the image as a block instead of flattening its reference", async () => {
     const t = await registeredTools(CONFIG);
-    const rendered = t.runDeviceAction.output.render({}, {
+    const rendered = t.runDeviceAction.output!.render({}, {
       result: "Success",
       image: { attachmentId: "att-1", mediaType: "image/jpeg" },
     }) as Array<{ type: string; text?: string }>;
 
     expect(rendered.map((part) => part.type)).toEqual(["text", "image"]);
-    expect(rendered[0].text).not.toContain("att-1");
+    expect(rendered[0]?.text).not.toContain("att-1");
   });
 });
 
@@ -562,7 +564,7 @@ describe("apply(): checker facts persist on tool/result meta (P1-b)", () => {
   it("projects the validator verdict and nothing else", async () => {
     const t = await registeredTools(CONFIG);
     expect(
-      t.runDeviceAction.output.presentationMeta?.({}, {
+      t.runDeviceAction.output?.presentationMeta?.({}, {
         result: "Success",
         effect: "unchanged",
         category: "disappeared",
@@ -578,8 +580,8 @@ describe("apply(): checker facts persist on tool/result meta (P1-b)", () => {
 
   it("projects an empty meta for verdict-less values instead of throwing", async () => {
     const t = await registeredTools(CONFIG);
-    expect(t.runDeviceAction.output.presentationMeta?.({}, { result: "Success" })).toEqual({});
-    expect(t.runDeviceAction.output.presentationMeta?.({}, null)).toEqual({});
+    expect(t.runDeviceAction.output?.presentationMeta?.({}, { result: "Success" })).toEqual({});
+    expect(t.runDeviceAction.output?.presentationMeta?.({}, null)).toEqual({});
   });
 
   it("projects the terminal outcome for exit audits", async () => {
@@ -642,6 +644,7 @@ describe("apply(): breaker refusal lives in a registry guard (G33)", () => {
     const double = fakeContext(definitions);
     await apply(double.context as never, CONFIG as never);
     const [guard] = double.guards();
+    if (guard === undefined) throw new Error("the breaker guard was never registered");
     expect(guard({ name: "job_submit", arguments: {} })).toBeUndefined();
     expect(guard({ name: "report_task_status", arguments: { status: "completed" } })).toBeUndefined();
     // Fresh breaker: our own tool is admitted too.

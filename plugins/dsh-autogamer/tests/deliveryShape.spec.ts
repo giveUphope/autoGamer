@@ -26,7 +26,7 @@ function presetPlugins(url: URL): string {
 
 /** Plugin names contributed by the preset (item-level `name:` keys). */
 function contributedNames(url: URL): string[] {
-  return [...presetPlugins(url).matchAll(/^\s*(?:- )?name: "?([^"\n]+?)"?\s*$/gm)].map((m) => m[1].trim());
+  return [...presetPlugins(url).matchAll(/^\s*(?:- )?name: "?([^"\n]+?)"?\s*$/gm)].map((m) => (m[1] ?? "").trim());
 }
 
 /** The persona `prefix:` block scalar, dedented. */
@@ -34,7 +34,7 @@ function personaPrefix(url: URL): string {
   const lines = presetPlugins(url).split("\n");
   const start = lines.findIndex((l) => /^\s*prefix: \|\s*$/.test(l));
   if (start < 0) throw new Error(`${url.pathname} has no persona prefix`);
-  const indent = lines[start].match(/^\s*/)![0].length;
+  const indent = (lines[start]?.match(/^\s*/)?.[0].length ?? 0);
   const body: string[] = [];
   for (const line of lines.slice(start + 1)) {
     if (line.trim() && !line.startsWith(" ".repeat(indent + 2))) break;

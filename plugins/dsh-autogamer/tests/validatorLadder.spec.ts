@@ -11,6 +11,7 @@
  * strictness levels.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import {
@@ -89,8 +90,8 @@ function setup(strictness?: ValidatorStrictness) {
   return tool;
 }
 
-function exec(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal };
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
 }
 
 /**
@@ -188,8 +189,8 @@ describe("validator ladder: post-execution retry", () => {
     expect(value.effect).toBe("changed");
     const taps = tapCalls();
     expect(taps).toHaveLength(2);
-    expect(taps[0].args.coordinates).toEqual([120, 630]);
-    expect(taps[1].args.coordinates).toEqual([120, 710]);
+    expect(taps[0]?.args.coordinates).toEqual([120, 630]);
+    expect(taps[1]?.args.coordinates).toEqual([120, 710]);
     expect(value).not.toHaveProperty("incident");
   });
 

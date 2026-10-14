@@ -14,6 +14,7 @@ import { fileURLToPath } from "node:url";
 import Schema from "@deepseek-ai/schemastery";
 import { KNOWN_SESSION_EVENT_TYPES, SESSION_FORMAT_VERSION } from "@deepseek-ai/dsh-session";
 import { Config } from "../../src/index.js";
+import { configOf } from "../support/config.js";
 import { ACTION_TO_PY_TOOL, ACTIONS } from "../../src/tools/runDeviceAction.js";
 import { buildFixture, mappedPyTools } from "../../scripts/spike-mcp.mjs";
 import { typescriptFiles } from "../support/srcFiles.js";
@@ -23,7 +24,6 @@ type SchemaObject = {
   type: string;
   dict: Record<string, { type: string }>;
 };
-type ConfigCallable = (data?: unknown) => Record<string, unknown>;
 
 const fixtureRoot = fileURLToPath(new URL("../fixtures", import.meta.url));
 
@@ -72,8 +72,8 @@ describe("conformance: py action server surface", () => {
     const direct = new Set<string>();
     for (const file of typescriptFiles(fileURLToPath(new URL("../../src", import.meta.url)))) {
       const text = readFileSync(file, "utf8");
-      for (const match of text.matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) direct.add(match[1]);
-      for (const match of text.matchAll(/callTransport\(\s*client\s*,\s*"([a-z_]+)"/g)) direct.add(match[1]);
+      for (const match of text.matchAll(/client\.callTool\(\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
+      for (const match of text.matchAll(/callTransport\(\s*client\s*,\s*"([a-z_]+)"/g)) { if (match[1]) direct.add(match[1]); }
     }
     expect([...direct].sort(), "src should still contain direct call sites").toEqual([
       "compare_ui_frames",
@@ -111,9 +111,11 @@ describe("conformance: DSH peer version pin", () => {
   it("pins every installed harness package to one verified generation", () => {
     const peers = Object.entries(manifest.peerDependencies ?? {});
     expect(peers.length, "peerDependencies must state the verified generation").toBeGreaterThan(0);
+    const pinned = peers[0]?.[1];
+    expect(pinned, "no peer dependency is declared").toBeTypeOf("string");
     for (const [pkg, range] of peers) {
       expect(pkg, "peer dependency should target @deepseek-ai scope").toMatch(/^@deepseek-ai\//);
-      expect(range, `${pkg} must pin the same generation`).toBe(peers[0][1]);
+      expect(range, `${pkg} must pin the same generation`).toBe(pinned);
     }
 
     const installed = readdirSync(scopeDir)
@@ -121,12 +123,12 @@ describe("conformance: DSH peer version pin", () => {
       .map((name) => [name, JSON.parse(readFileSync(join(scopeDir, name, "package.json"), "utf8")).version as string]);
     expect(installed.length, "no @deepseek-ai/dsh-* packages installed").toBeGreaterThan(0);
     for (const [name, version] of installed) {
-      expect(version, `${name} is not the pinned generation`).toBe(peers[0][1]);
+      expect(version, `${name} is not the pinned generation`).toBe(pinned);
     }
     // The pin must be carried by something the test graph actually boots, or it
     // could drift away from the runtime it claims to describe.
     const peerNames = peers.map(([pkg]) => pkg.replace("@deepseek-ai/", ""));
-    expect(installed.map(([name]) => name).filter((name) => peerNames.includes(name))).toContain("dsh-tools");
+    expect(installed.map(([name]) => name ?? "").filter((name) => peerNames.includes(name))).toContain("dsh-tools");
   });
 
   it("cross-checks the pin against a locally installed DSH runtime when there is one", () => {
@@ -183,8 +185,8 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     // Guards the discriminator itself: if instanceof ever stops meaning
     // "native", the assertions below would pass vacuously.
     expect(schemaSymbols).toContain("Symbol(schemastery)");
-    expect({} instanceof Schema).toBe(false);
-    expect(null instanceof Schema).toBe(false);
+    expect(({} as object) instanceof Schema).toBe(false);
+    expect((null as unknown) instanceof Schema).toBe(false);
   });
 
   it("exports a native object schema at the top level", () => {
@@ -226,17 +228,17 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     for (const [name, sub] of Object.entries(fields)) {
       expect(sub instanceof Schema, `${name} must be a native Schemastery schema`).toBe(true);
     }
-    expect(fields.actionServerCommand.type).toBe("array");
-    expect(fields.actionServerEnv.type).toBe("dict");
-    expect(fields.screenSize.type).toBe("tuple");
+    expect(fields.actionServerCommand?.type).toBe("array");
+    expect(fields.actionServerEnv?.type).toBe("dict");
+    expect(fields.screenSize?.type).toBe("tuple");
     // G3/G28: the roster is an array of serials and the ceiling a plain number.
-    expect(fields.devices.type).toBe("array");
-    expect(fields.maxConcurrentDevices.type).toBe("number");
-    expect(fields.discoverDevices.type).toBe("boolean");
+    expect(fields.devices?.type).toBe("array");
+    expect(fields.maxConcurrentDevices?.type).toBe("number");
+    expect(fields.discoverDevices?.type).toBe("boolean");
   });
 
   it("applies declared defaults and leaves the un-defaulted tuple null-filled", () => {
-    const resolved = (Config as ConfigCallable)();
+    const resolved = configOf();
     expect(resolved.actionServerCommand).toEqual([
       "python",
       "-m",
@@ -278,6 +280,6 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
   });
 
   it("rejects a malformed value rather than coercing it silently", () => {
-    expect(() => (Config as ConfigCallable)({ actionServerCommand: "not-an-array" })).toThrow();
+    expect(() => configOf({ actionServerCommand: "not-an-array" })).toThrow();
   });
 });

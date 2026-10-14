@@ -6,6 +6,7 @@
  * breaker plus a recording stub client.
  */
 import { beforeEach, describe, expect, it } from "vitest";
+import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import { DeviceBreaker } from "../src/breaker.js";
 import { defaultPool } from "./support/pool.js";
 import { defineRunDeviceAction } from "../src/tools/runDeviceAction.js";
@@ -31,8 +32,8 @@ function setup(resolveScreenSize?: () => Promise<{ width: number; height: number
   return { tool, breaker };
 }
 
-function exec(): { signal: AbortSignal } {
-  return { signal: new AbortController().signal };
+function exec(): ToolRunContext {
+  return { signal: new AbortController().signal } as unknown as ToolRunContext;
 }
 
 beforeEach(() => {

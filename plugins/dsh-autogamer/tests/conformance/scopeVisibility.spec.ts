@@ -10,6 +10,11 @@
  * tools resolve.
  */
 import { afterEach, describe, expect, it } from "vitest";
+
+/** cordis's `plugin()` carries a signature this plugin never uses; the specs only
+ * ever hand it one definition, so the seam is narrowed once, here. */
+const mount = (root: { plugin: unknown }, mod: { default?: unknown }): unknown =>
+  (root.plugin as (input: unknown) => unknown)(mod.default);
 import { Context } from "@deepseek-ai/cordis";
 import { createScope, scopeOf } from "@deepseek-ai/dsh-scope";
 import * as pluginModule from "../../src/index.js";
@@ -36,10 +41,10 @@ describe("conformance: scope-mounted tools resolve through the scope key (G57)",
     const root = new Context();
     for (const specifier of SERVICE_PACKAGES) {
       const mod = (await import(specifier)) as { default: unknown };
-      await root.plugin(mod.default as never);
+      await mount(root, mod);
     }
 
-    const presetRealm = createScope(root, Symbol("g57-realm"));
+    const presetRealm = createScope(root, Symbol("g57-realm") as unknown as object);
     cleanups.push(() => presetRealm.dispose());
     await presetRealm.ctx.plugin(
       {
@@ -51,8 +56,12 @@ describe("conformance: scope-mounted tools resolve through the scope key (G57)",
       { actionServerCommand: STUB_ACTION_SERVER, screenSize: [1080, 2400] } as never,
     );
 
-    let inside: { keyType: string; schemas: string[]; get: string | null } | null = null;
-    await presetRealm.ctx.plugin({
+    type Shape = { keyType: string; schemas: string[]; get: string | null };
+    let inside: Shape | null = null;
+    // `inside` is written from inside the plugin callback, so flow analysis would
+    // pin it to `null` at the assertions; one typed read keeps the checks honest.
+    const read = (): Shape | null => inside as Shape | null;
+    await (presetRealm.ctx.plugin as unknown as (definition: unknown) => unknown)({
       name: "g57-reader",
       inject: ["tools"],
       apply: (ctx: {
@@ -70,8 +79,8 @@ describe("conformance: scope-mounted tools resolve through the scope key (G57)",
       },
     } as never);
 
-    expect(inside?.keyType).toBe("symbol");
-    expect(inside?.schemas).toEqual([
+    expect(read()?.keyType).toBe("symbol");
+    expect(read()?.schemas).toEqual([
       "autogamer_diagnose",
       "autogamer_get_device_state",
       "autogamer_inspect_trace",
@@ -80,7 +89,7 @@ describe("conformance: scope-mounted tools resolve through the scope key (G57)",
       "report_task_status",
       "run_device_action",
     ]);
-    expect(inside?.get).toBe("run_device_action");
+    expect(read()?.get).toBe("run_device_action");
     // Scoped registrations do not leak into the global view (D16 isolation).
     expect(root.tools.schemas()).toHaveLength(0);
   });
