@@ -1,0 +1,30 @@
+#!/bin/sh
+# pre-commit: run the documentation gate when a commit touches the docs.
+#
+# Scoped on purpose: a code-only commit should not pay for the gate, and the
+# gate is meaningless for files it does not read. Staged paths come from the
+# index, so this fires on what is actually about to be committed.
+#
+# Escape hatch: `git commit --no-verify`, which is a deliberate act and must be
+# justified in the ledger when used (same rule as the pre-push guard).
+#
+# The gate is local; this branch has no CI, so nothing else runs it.
+
+staged=$(git diff --cached --name-only --diff-filter=ACMR)
+if [ -z "$staged" ]; then
+  exit 0
+fi
+
+touched=$(printf '%s\n' "$staged" | grep -E '^(docs/.*\.md|AGENTS\.md|README\.md)$')
+if [ -z "$touched" ]; then
+  exit 0
+fi
+
+if ! node scripts/check-docs.mjs; then
+  echo ""
+  echo "pre-commit: documentation gate failed (paths: $(printf '%s' "$touched" | tr '\n' ' '))."
+  echo "pre-commit: fix the findings, or bypass deliberately with: git commit --no-verify"
+  exit 1
+fi
+
+exit 0

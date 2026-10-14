@@ -66,8 +66,11 @@ Instructions for agents working in this repository.
   `pnpm --config.verify-deps-before-run=false run build|test`
 - 声明面自检：`dsh --profile <name> --patch <abs path> --dump-config`（`dsh` 取 PATH，**不要写死安装盘符**）
 - `dsh plugin` 只是包管理转发垫片，只证明「装了」，**不证明「生效」**（R9）
-- **文档门禁暂缺**：旧 fork 的门禁脚本是 Python（`scripts/check_doc_*.py`），不随迁；本分支暂无机械门禁，
-  以人工核对为准并**记债**（见 `docs/TODO.md`）。TS 版门禁是待办项。
+- **文档门禁（TS 版，2026-10-14 落地，基建-2）**：`node scripts/check-docs.mjs` —— 六条机械检查（结清一致性 / 链接可解析 /
+  派生计数只认权威 / 编号范围自算 / 表格成形（只在未转义 `|` 处切分）/ 自称完成不得留未勾验收项）；`--selftest` 内置变异自证不假绿。
+  **触发**：版本化 `.githooks/pre-commit`，仅当暂存路径命中 `docs/**`、`AGENTS.md`、`README.md` 时运行，失败即拒绝提交；
+  逃生口 `git commit --no-verify` 属**故意行为**，须在台账写明理由。**本分支无 CI** ⇒ 门禁是本地钩子 + 手跑，**不许写成「由 CI 保证」**（R27）。
+  新克隆/新机器仍要一次性 `git config core.hooksPath .githooks` 激活全部钩子。
 
 ## 远端与 PR 纪律
 

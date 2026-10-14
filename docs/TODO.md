@@ -445,11 +445,13 @@
 - 回归：`node scripts/check-env.mjs` 仍 exit 0（新脚本必须是 Node，不得引入 py）；插件 `pnpm … run verify` 不受影响。
 
 **Done means**
-- [ ] 脚本落地，现状 exit 0
-- [ ] `--selftest` 覆盖 6 条且证明无 blind
-- [ ] 本轮 6 处真实漂移各别做过一次手工变异并留输出
-- [ ] `.githooks/pre-commit` 按文档范围触发并经 A/B 实测；`AGENTS.md` 的「文档门禁暂缺」改写为现状 + 重装说明（新机器仍需 `git config core.hooksPath .githooks`）
-- [ ] 本文件 §零 与「新分支特有」同步；规格 §七 只加一条**指针**，不写副本
+- [x] 脚本落地，现状 exit 0（`node scripts/check-docs.mjs` → OK，6 checks / 8 files）
+- [x] `--selftest` 覆盖 6 条且证明无 blind（7 例：C1–C4、C6 各红，C5 双向——裸 `|` 红、`\|` 绿）
+- [x] 本轮真实漂移**做过手工变异并留输出**——偏差如实记：C1 单独一次（注入 G81 行 → 恰好 1 条 finding、指向正确行）；
+      C2–C6 **一次五处并行**（→ 恰好 5 条 finding、各对应一条检查），未逐条单独跑；「各检查互不串扰」由 `--selftest` 的逐条过滤另行证明
+- [x] `.githooks/pre-commit` 按文档范围触发并经 A/B 实测（隔离克隆：带漂移提交被拒 `exit 1` + 钩子消息、HEAD 不动；`--no-verify` 才通过并生成提交）；
+      `AGENTS.md` 的「文档门禁暂缺」已改写为现状 + 重装说明
+- [x] 本文件 §零 与「新分支特有」同步；规格 §七 只加一条**指针**，不写副本
 
 **方案立项轮的实测记录（当轮落账，R28）**
 
@@ -478,7 +480,7 @@
       - 收窄一律放在 seam（`exec()`、`on`/`plugin`/`createScope` 的局部 cast、`read()` 读取器），
         **不放宽 `strict` 与 `noUncheckedIndexedAccess`**，也没加 `any`。
       - 顺带修掉两处由我造成的脚本事故（批量替换误伤 `exec()` 函数体、`fields..type`），均已修复并复验。
-- [ ] **基建-2 · 文档门禁 TS 化**（2026-10-14 立项，**方案已提交、实现待开工**）：新增 `scripts/check-docs.mjs` 六条检查 + `--selftest` 变异 + 文档范围 `pre-commit`；范围、取证与验收全部见 §七「基建-2」。**Done 前不得把 `AGENTS.md` 的「文档门禁暂缺」改成已完成。**
+- [x] **基建-2 · 文档门禁 TS 化**（2026-10-14 完成）：`scripts/check-docs.mjs` 六条检查 + `--selftest`（7 例变异，含 C5 双向）+ `.githooks/pre-commit`（文档范围触发，A/B 已实测）；`AGENTS.md` 已同步。范围与取证见 §七「基建-2」。
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 
 ### T1 · 引擎去消费者（**G82**）· 方案（2026-10-14 立项，R22）

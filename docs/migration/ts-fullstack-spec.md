@@ -103,6 +103,8 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 - 每期收尾：插件 `tsc` + `vitest` 全绿；改过 patch 跑 **R6**（`--dump-config` rc 0 且无 `unmatched`）；**R7** 开新会话验证；判「生效」只认 **R9** 的官方检查器。
 - **D19 环境面机械判据**：`node scripts/check-env.mjs`（零依赖）。H1 = 被跟踪 `.py`（即 `git ls-files '*.py'` 为空）；H2 = 工作树 py 栈残留；切分支/拉取后由 `.githooks/post-checkout`/`post-merge` 自动提示，被跟踪 py 会被 `pre-push` 硬拦。
+- **文档面机械判据**：`node scripts/check-docs.mjs`（零依赖，六条检查，见 `../TODO.md` §七「基建-2」）；`--selftest` 以变异证明各检查不盲。
+  触发面是版本化 `.githooks/pre-commit`（**仅文档暂存时**），**不是 CI**——本分支无 CI，不许写成「由 CI 保证」（R27 判据 4）。
 - T2/T3 的对照判据是**同一输入同一输出**，不是「都能跑」：对照结果必须留档（可复跑命令 + 实测输出）。
 - T4 的终态判据按 §一 **五条**逐条勾，且每条都要给出可复跑命令，不许用「CI 会保证」代替。
 
