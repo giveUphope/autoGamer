@@ -1,34 +1,46 @@
 /**
- * `autogamer_manage_task` — status / stop / steer a running task (Phase 2).
+ * `autogamer_manage_task` — status / stop / steer a task (T1 / G82).
  *
- * Backend mapping is locked against the fork's old face: our `task_id` goes
- * out as `trace_id`, and the three actions (status/stop/inject_instruction)
- * are verbatim provider actions. The answer is a free-form dict, so every
- * field is read tolerantly (see the backend's alias lists); the only hard
- * rule enforced HERE is the scheme's context budget: at most 5 recent steps
- * ever reach the model, sliced off the tail.
+ * The answer is now a read over the session's own task projection, not a call
+ * into an engine: status resolves the folded record and its last steps, stop
+ * marks the record terminal, and steer hands the instruction to the agent that
+ * is asking (there is no second runner to forward it to).
+ *
+ * Two behaviours are deliberate and pinned by the specs:
+ *  - **fail-open on a missing read model.** No published projection means the
+ *    answer is `state: "unknown"`, never an error - the same direction the
+ *    effect verdict takes when the device layer cannot decide.
+ *  - **steering is `agent.inject()`, not `followup()`.** The caller is the
+ *    agent itself and is already awake; `inject` appends durable context that
+ *    enters its next admitted step, while `followup` would wake an idle agent
+ *    (R17). The host wiring lives in `apply`, which owns the agent handle.
  */
-import type { ArtemisBackend, ManageAction } from "../artemis/types.js";
 import type { PreflightResult } from "../env/preflight.js";
-import type { ToolDefinitionInput } from "../dsh-types.js";
+import type { JsonValue, ToolDefinitionInput } from "../dsh-types.js";
+import type { TaskStore } from "../task/cache.js";
+import type { TaskFoldState } from "../task/fold.js";
+import { RECENT_ACTIONS_LIMIT, renderRecent, secondsSince } from "../task/readModel.js";
 import { requireEnv } from "./envGate.js";
 
 export interface ManageTaskDeps {
-  backend: ArtemisBackend;
+  store: TaskStore;
   checkEnv: () => Promise<PreflightResult>;
+  /** Session identity of this call; the store is keyed by it. */
+  sessionKey: () => string | undefined;
+  /** Append the instruction to the calling agent's durable context. */
+  steer: (instruction: string) => void;
 }
 
-export const RECENT_ACTIONS_LIMIT = 5;
-
-const ACTIONS: ManageAction[] = ["status", "stop", "inject_instruction"];
+const ACTIONS = ["status", "stop", "inject_instruction"] as const;
+export type ManageAction = (typeof ACTIONS)[number];
 
 export function defineManageTask(deps: ManageTaskDeps): ToolDefinitionInput {
   return {
     name: "autogamer_manage_task",
     description:
-      "Query, stop, or steer a running Android automation task (driven by Google ARTEMIS). " +
-      "status returns the latest state with the last 5 steps; stop asks for termination; " +
-      "inject_instruction forwards a new instruction into the running task.",
+      "Query, stop, or steer a task registered by autogamer_run_task. status returns the folded " +
+      "state with the last 5 steps; stop marks the task terminal (further device actions are not " +
+      "attributed to it); inject_instruction appends a new instruction to this agent's context.",
     parameters: {
       task_id: { type: "string", required: true, description: "The task_id from autogamer_run_task." },
       action: {
@@ -60,6 +72,16 @@ export function defineManageTask(deps: ManageTaskDeps): ToolDefinitionInput {
         },
         additionalProperties: true,
       },
+      // `stop` has to leave a durable trace or the fold cannot stop
+      // attributing steps to a task the model already ended.
+      presentationMeta: (_args, value) => {
+        const record = (value ?? {}) as { task_id?: unknown; state?: unknown; steered?: unknown };
+        const meta: { [key: string]: JsonValue } = {};
+        if (typeof record.task_id === "string") meta.taskId = record.task_id;
+        if (typeof record.state === "string") meta.state = record.state;
+        if (record.steered === true) meta.steered = true;
+        return meta;
+      },
       render: (_args, value) => {
         const record = (value ?? {}) as Record<string, unknown>;
         const steps = Array.isArray(record.recent_actions) ? (record.recent_actions as unknown[]).length : 0;
@@ -74,7 +96,7 @@ export function defineManageTask(deps: ManageTaskDeps): ToolDefinitionInput {
         ];
       },
     },
-    async execute(args, exec) {
+    async execute(args, _exec) {
       const taskId = args.task_id;
       if (typeof taskId !== "string" || taskId.length === 0) {
         throw new Error("task: task_id must be a non-empty string");
@@ -90,33 +112,43 @@ export function defineManageTask(deps: ManageTaskDeps): ToolDefinitionInput {
         }
       }
       await requireEnv(deps.checkEnv);
-      const status = await deps.backend.manageTask(
-        {
-          taskId,
-          action,
-          ...(typeof args.instruction === "string" && args.instruction.length > 0
-            ? { instruction: args.instruction }
-            : {}),
-        },
-        exec?.signal,
-      );
-      const recent = (status.recentSteps ?? []).slice(-RECENT_ACTIONS_LIMIT).map((step) => ({
-        ...(step.index !== undefined ? { index: step.index } : {}),
-        ...(step.action !== undefined ? { action: step.action } : {}),
-        ...(step.reasoning !== undefined ? { reasoning: step.reasoning } : {}),
-        ...(step.screenshotPath !== undefined ? { screenshot_path: step.screenshotPath } : {}),
-        ...(step.timestamp !== undefined ? { timestamp: step.timestamp } : {}),
-      }));
-      return {
-        task_id: status.taskId,
-        state: status.state ?? "unknown",
-        ...(status.currentStep !== undefined ? { current_step: status.currentStep } : {}),
-        ...(status.totalSteps !== undefined ? { total_steps: status.totalSteps } : {}),
-        ...(status.lastAction !== undefined ? { last_action: status.lastAction } : {}),
-        recent_actions: recent,
-        ...(status.elapsedSeconds !== undefined ? { elapsed_seconds: status.elapsedSeconds } : {}),
-        ...(status.finalSummary !== undefined ? { final_summary: status.finalSummary } : {}),
-      };
+
+      const state = deps.store.read(deps.sessionKey());
+      const record = state?.tasks[taskId];
+
+      if (action === "inject_instruction") {
+        // The append happens here, in a tool body - not from an event callback,
+        // so no boundary deferral is needed (R23 is about reentering a publish).
+        deps.steer(args.instruction as string);
+        return {
+          task_id: taskId,
+          state: record?.state ?? "unknown",
+          steered: true,
+          ...(state === undefined || record === undefined ? {} : statusFields(state, taskId)),
+        };
+      }
+
+      if (action === "stop") {
+        return { task_id: taskId, state: "stopped" };
+      }
+
+      if (record === undefined || state === undefined) {
+        return { task_id: taskId, state: "unknown", recent_actions: [] };
+      }
+      return { task_id: taskId, state: record.state, ...statusFields(state, taskId) };
     },
+  };
+}
+
+function statusFields(state: TaskFoldState, taskId: string): Record<string, unknown> {
+  const record = state.tasks[taskId];
+  if (record === undefined) return {};
+  const steps = state.steps[taskId] ?? [];
+  const elapsed = secondsSince(record, steps);
+  return {
+    current_step: record.stepCount,
+    ...(record.lastAction === undefined ? {} : { last_action: record.lastAction }),
+    recent_actions: renderRecent(steps.slice(-RECENT_ACTIONS_LIMIT)),
+    ...(elapsed === undefined ? {} : { elapsed_seconds: elapsed }),
   };
 }

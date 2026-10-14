@@ -30,13 +30,6 @@ import type {
   DeviceStateArgs,
   DiagnoseArgs,
   Diagnosis,
-  InspectArgs,
-  ManageArgs,
-  TaskInfo,
-  TaskStartArgs,
-  TaskStatus,
-  TaskStep,
-  TraceView,
 } from "./types.js";
 
 export interface McpBackendOptions {
@@ -195,60 +188,6 @@ export class McpArtemisBackend implements ArtemisBackend {
     return { deviceSerial: args.deviceSerial ?? "", connected: true, screenSummary: text };
   }
 
-  async startTask(args: TaskStartArgs, signal?: AbortSignal): Promise<TaskInfo> {
-    const params: Record<string, unknown> = {
-      task_desc: args.instruction,
-      model: args.profile,
-    };
-    if (args.deviceSerial !== undefined) params.device_serial = args.deviceSerial;
-    const payload = await this.dictCall("mobile_run_task", params, signal);
-    const taskId = readString(payload, ["trace_id", "task_id"]);
-    if (taskId === undefined) {
-      throw new Error(
-        "internal: mobile_run_task answered with no trace_id (provider drift; do not retry the same call)",
-      );
-    }
-    return {
-      taskId,
-      profile: args.profile,
-      ...(args.deviceSerial !== undefined ? { deviceSerial: args.deviceSerial } : {}),
-      startedAt: new Date().toISOString(),
-    };
-  }
-
-  async manageTask(args: ManageArgs, signal?: AbortSignal): Promise<TaskStatus> {
-    const params: Record<string, unknown> = { action: args.action, trace_id: args.taskId };
-    if (args.instruction !== undefined) params.instruction = args.instruction;
-    const payload = await this.dictCall("mobile_manage_task", params, signal);
-    const steps = Array.isArray(payload.steps)
-      ? (payload.steps as Record<string, unknown>[])
-      : Array.isArray(payload.recent_actions)
-        ? (payload.recent_actions as Record<string, unknown>[])
-        : [];
-    return {
-      taskId: args.taskId,
-      state: readString(payload, ["state", "status"]),
-      currentStep: readNumber(payload, ["current_step", "step", "currentStep"]),
-      totalSteps: readNumber(payload, ["total_steps", "totalSteps"]),
-      lastAction: readString(payload, ["last_action", "lastAction"]),
-      recentSteps: steps.map(mapStep),
-      elapsedSeconds: readNumber(payload, ["elapsed_seconds", "elapsedSeconds", "elapsed"]),
-      finalSummary: readString(payload, ["final_summary", "finalSummary", "summary"]),
-    };
-  }
-
-  async inspectTrace(args: InspectArgs, signal?: AbortSignal): Promise<TraceView> {
-    const payload = await this.dictCall("mobile_inspect_trace", { action: "view_summary", trace_id: args.traceId }, signal);
-    const raw = Array.isArray(payload.steps) ? (payload.steps as Record<string, unknown>[]) : [];
-    return {
-      taskId: args.traceId,
-      finalStatus: readString(payload, ["final_status", "finalStatus", "status", "state"]),
-      totalSteps: readNumber(payload, ["total_steps", "totalSteps"]) ?? raw.length,
-      steps: raw.map(mapStep),
-      artifactPaths: readStringArray(payload, ["artifact_paths", "artifacts", "artifactPaths"]),
-    };
-  }
-
   async diagnose(args: DiagnoseArgs, signal?: AbortSignal): Promise<Diagnosis> {
     const params: Record<string, unknown> = {};
     if (args.deviceSerial !== undefined) params.device_serial = args.deviceSerial;
@@ -330,23 +269,3 @@ export class McpArtemisBackend implements ArtemisBackend {
   }
 }
 
-export function mapStep(raw: Record<string, unknown>): TaskStep {
-  const step: TaskStep = {};
-  const index = readNumber(raw, ["index", "step_number", "step", "n"]);
-  if (index !== undefined) step.index = index;
-  const action = readString(raw, ["action"]);
-  if (action !== undefined) step.action = action;
-  const reasoning = readString(raw, ["reasoning", "reason"]);
-  if (reasoning !== undefined) step.reasoning = reasoning;
-  const screenshot = readString(raw, ["screenshot_path", "screenshot"]);
-  if (screenshot !== undefined) step.screenshotPath = screenshot;
-  const timestamp = readString(raw, ["timestamp", "time"]);
-  if (timestamp !== undefined) step.timestamp = timestamp;
-  const duration = readNumber(raw, ["duration_ms", "durationMs", "duration"]);
-  if (duration !== undefined) step.durationMs = duration;
-  const status = readString(raw, ["status", "state"]);
-  if (status !== undefined) step.status = status;
-  const ok = readBoolean(raw, ["ok", "success"]);
-  if (ok !== undefined) step.ok = ok;
-  return step;
-}

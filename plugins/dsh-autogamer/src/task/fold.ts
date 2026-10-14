@@ -64,7 +64,7 @@ export interface TaskRecord {
 }
 
 /** One in-flight tool call, keyed by callId, carrying only what a step needs. */
-interface PendingCall {
+export interface PendingCall {
   name: string;
   /** Device action for a step row; task actions carry their verb instead. */
   action: string;

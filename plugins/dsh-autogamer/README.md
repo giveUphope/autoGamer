@@ -33,6 +33,9 @@ src/devicePool.ts                 闸门之上的调度：parking / 全局并发
 src/breaker.ts                    设备熔断（closed / open / half-open）
 src/turnLedger.ts                 回合账本：动过手却没汇报终态的回合
 src/task/fold.ts                  任务状态折叠：任务记录与步迹由会话日志派生（T1/G82）
+src/task/cache.ts                 任务读模型缓存：由投影变更流喂入，工具按会话读取
+src/task/projection.ts            session 投影单元定义与可选注册（ctx.inject）
+src/task/readModel.ts             步迹整形：尾部门限（manage）与取边+失败（inspect）
 src/classify.ts                   工具层错误分类（environment / task）
 src/coord.ts                      0-1000 归一坐标换算 + 截图取尺寸（含 configuredScreenSize）
 src/hierarchy.ts                  层级解析：#N 按节点身份在可达界内跟随到当前位置

@@ -328,6 +328,8 @@
    本机宿主上核过**（🔶 见 Verify）。因此读路径改走官方 `onChanged` 变更流：在 `apply` 期维护
    `sessionId → 投影值` 的缓存，三条工具只按 `sessionId` 读缓存。**这不是自建容器**（出处 1：插件内存本就是
    派生缓存；真相源仍是日志，重放时由注册表从日志重折叠）。
+⚠️ **2026-10-14 实施中更正**：本条的前提写错了。`onChanged` **只为「客户端可见」单元推送**——文档原文是 "called once per **client-visible** unit whose raw view changed by `Object.is`"，且监听器的 `key` 类型被限定为 `SessionProjectionMap`。**host-only 单元（不声明 `wire`）永远不会推送**，照原设想实现会得到「折叠正确、但三条工具永远读到 `undefined`」的死路。
+   ⇒ 单元**必须带 `wire.view`**；顺带让 Web Client 拿到成品值而不必自己折叠（分工正是 seam 的设计）。连带约束：`view` 必须复用引用，故取 `view(state) => state`（折叠已保证不关心的事件返回同一引用）。
 5. **步迹来源 = `tool/result` 事件**（出处 7）：本会话 `run_device_action` 的结果折叠成 step
    （action / effect 三态 / category / incident / 时间戳）。`inspect_trace` 的 `summary|full` 复用现有
    `summarizeSteps()`（取边 + 失败步），语义不变。
@@ -367,15 +369,12 @@
 
 - [x] 落自足条目（What / How / Verify / Done）并按 R22 先提交方案（`ab3c3c3`，含 R20 九条一手出处原文）
 - [x] **切片 1 · 日志折叠**（2026-10-14）：`plugins/dsh-autogamer/src/task/fold.ts` + `tests/taskFold.spec.ts`（13 锁）
-- [ ] 切片 2 · 三条工具接线：各加 `presentationMeta`（`run_task` 写 `taskId` 等）+ 改读折叠状态，
-      不再调 `backend.startTask/manageTask/inspectTrace`
-- [ ] 切片 3 · 宿主绑定：`ctx.inject(['sessionProjections'], …)` 注册单元 + `onChanged` 维护
-      `sessionId → 值` 缓存（🔶 需 live 核验真实签名）
-- [ ] 跨回合任务状态载体定案 —— **已定案**（方案 How-2/4：session 投影 + `onChanged` 派生缓存，
-      真相源仍是日志，无自建容器）；🔶 绑定待切片 3
-- [ ] 三条工具不再调用任何外部进程（契约锁 + 变异校验）
+- [x] **切片 2 · 三条工具接线**（2026-10-14）：`run_task` 本地铸 `task_id` 并即时返回；`manage_task` 读折叠状态（status / stop / steer，steer 走 `agent.inject` 而非 `followup`，R17）；`inspect_trace` 读步迹（summary = 取边 + 失败步）。三者的 `presentationMeta` 补上折叠需要的卡片（`run_task` 的 `taskId`、`manage_task` 的 `state`）。**`ArtemisBackend` 接口与 `mcpBackend` 实现已删除 `startTask` / `manageTask` / `inspectTrace` / `mapStep`** —— 引擎在**类型面与实现面都不再可达**，G82 的「无消费者」由结构保证，而不只是调用约定。
+- [ ] 切片 3 · 宿主绑定（🔶）：`ctx.inject(['sessionProjections'], …)` 注册单元 + `onChanged` 维护 `sessionId → 值` 缓存 —— **代码已写**（`src/task/projection.ts` + `src/task/cache.ts`，9 条锁），真实签名与「自定义 key 是否被接受」待 `cordis_inspect_query` 核验
+- [x] 跨回合任务状态载体定案 —— session 投影 + `onChanged` 派生缓存，真相源仍是日志，无自建容器（🔶 绑定待切片 3）
+- [x] 三条工具不再调用任何外部进程 —— 契约锁 `tests/taskSurface.spec.ts`（11 条）；变异校验：故意把 `deps.backend` 塞回 `run_task`，该锁**恰好 1 条变红**、其余 10 条仍绿 ⇒ 会咬
 - [ ] R7 真机跑一条完整任务，终态双轴正确 —— **阻塞于前置-1 的设备环境**
-- [ ] **Done：py 引擎无消费者**
+- [x] **Done：py 引擎无消费者** —— 离线可证的范围内成立（类型面 / 实现面 / 契约锁三重）；live 侧（`inspectCompositions`、roster 诊断）仍待宿主会话核验
 
 **切片 1 的实测记录（当轮落账，R27/R28）**
 

@@ -1,25 +1,35 @@
 /**
- * `autogamer_run_task` — start an Android automation task, return immediately
- * (Phase 2).
+ * `autogamer_run_task` — register a device task and return immediately (T1 / G82).
  *
- * Backend mapping is locked against the fork's old face: our `instruction`
- * goes out as `task_desc`, `profile` as `model` ("Flash"/"Pro"), and the
- * answer's `trace_id` comes back as our `task_id`. Two accepted params have
- * NO backend counterpart (verified signature): `timeout_seconds` and
- * `max_steps` are accepted for contract stability but not forwarded —
- * enforcement is the caller's polling loop via `autogamer_manage_task`.
- * Defaults (`profile`, serial) fall back to the plugin Config.
+ * This plugin no longer runs tasks. Under the single execution route (S11) the
+ * DSH agent loop is the executor: it drives `run_device_action` itself, and
+ * `report_task_status` is what ends a turn. What this tool still owns is the
+ * *record* — the task id every later status and trace read resolves against —
+ * so it mints that id locally instead of asking an engine for one.
+ *
+ * The record becomes durable through the host rather than through us: the id
+ * rides this tool's own `presentationMeta`, the host stores that card on
+ * `tool/result.meta`, and the session projection folds it into the task read
+ * model. We append no event (R16) and keep no private store, so a cold read
+ * replays the log and lands on the same task.
+ *
+ * `profile` and `timeout_seconds` / `max_steps` stay accepted for contract
+ * stability. There is one execution route now, so `profile` no longer selects a
+ * second runner, and no backend exists to enforce a timeout or a step cap: the
+ * bounds are the agent's own `report_task_status` discipline.
  */
-import type { ArtemisBackend } from "../artemis/types.js";
 import type { PreflightResult } from "../env/preflight.js";
 import type { ToolDefinitionInput } from "../dsh-types.js";
+import type { JsonValue } from "../dsh-types.js";
 import { requireEnv } from "./envGate.js";
 
 export interface RunTaskDeps {
-  backend: ArtemisBackend;
   checkEnv: () => Promise<PreflightResult>;
   defaultProfile: "flash" | "pro";
   defaultDeviceSerial: string;
+  /** Mint one task id. Injected so the tool never reaches for a global counter. */
+  newTaskId: () => string;
+  now: () => Date;
 }
 
 export const MAX_INSTRUCTION_CHARS = 2000;
@@ -28,9 +38,9 @@ export function defineRunTask(deps: RunTaskDeps): ToolDefinitionInput {
   return {
     name: "autogamer_run_task",
     description:
-      "Start an Android automation task through the external ARTEMIS backend (driven by Google ARTEMIS). " +
-      "Returns immediately with a task_id; poll it with autogamer_manage_task. " +
-      "flash is fast/reactive, pro is thorough/multi-agent.",
+      "Register an Android automation task and return immediately with a task_id; poll it with " +
+      "autogamer_manage_task. Execution is yours: drive the device through run_device_action " +
+      "(the task tools only keep the record). flash is fast/reactive, pro is thorough/multi-agent.",
     parameters: {
       instruction: {
         type: "string",
@@ -40,7 +50,7 @@ export function defineRunTask(deps: RunTaskDeps): ToolDefinitionInput {
       profile: {
         type: "string",
         enum: ["flash", "pro"],
-        description: "Execution profile; omit for the configured default.",
+        description: "Execution profile recorded with the task; omit for the configured default.",
       },
       device_serial: {
         type: "string",
@@ -48,11 +58,11 @@ export function defineRunTask(deps: RunTaskDeps): ToolDefinitionInput {
       },
       timeout_seconds: {
         type: "number",
-        description: "Accepted but not enforced by the backend (no such provider param): poll and stop yourself.",
+        description: "Accepted for contract stability; nothing enforces it — poll and stop yourself.",
       },
       max_steps: {
         type: "number",
-        description: "Accepted but not forwarded (no such provider param).",
+        description: "Accepted for contract stability; nothing enforces it.",
       },
     },
     output: {
@@ -67,6 +77,16 @@ export function defineRunTask(deps: RunTaskDeps): ToolDefinitionInput {
         },
         additionalProperties: true,
       },
+      // The fold reads this card, not the rendered text: `taskId` is how the
+      // session projection learns which task the following device actions
+      // belong to (T1).
+      presentationMeta: (_args, value) => {
+        const record = (value ?? {}) as { task_id?: unknown; status?: unknown };
+        const meta: { [key: string]: JsonValue } = {};
+        if (typeof record.task_id === "string") meta.taskId = record.task_id;
+        if (typeof record.status === "string") meta.status = record.status;
+        return meta;
+      },
       render: (_args, value) => {
         const record = (value ?? {}) as Record<string, unknown>;
         return [
@@ -79,7 +99,7 @@ export function defineRunTask(deps: RunTaskDeps): ToolDefinitionInput {
         ];
       },
     },
-    async execute(args, exec) {
+    async execute(args, _exec) {
       const instruction = args.instruction;
       if (typeof instruction !== "string" || instruction.trim().length === 0) {
         throw new Error("task: instruction must be a non-empty string");
@@ -94,21 +114,13 @@ export function defineRunTask(deps: RunTaskDeps): ToolDefinitionInput {
           ? args.device_serial
           : deps.defaultDeviceSerial.length > 0
             ? deps.defaultDeviceSerial
-            : undefined;
-      const info = await deps.backend.startTask(
-        {
-          instruction,
-          profile: profile === "pro" ? "Pro" : "Flash",
-          ...(serial !== undefined ? { deviceSerial: serial } : {}),
-        },
-        exec?.signal,
-      );
+            : "";
       return {
-        task_id: info.taskId,
+        task_id: deps.newTaskId(),
         status: "running",
         profile,
-        device_serial: info.deviceSerial ?? serial ?? "",
-        started_at: info.startedAt,
+        device_serial: serial,
+        started_at: deps.now().toISOString(),
       };
     },
   };

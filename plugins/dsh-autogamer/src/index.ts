@@ -11,7 +11,9 @@ import { DeviceGate } from "./gate.js";
 import { DevicePool, type PoolDevice } from "./devicePool.js";
 import { configuredScreenSize, imageSizeFromBase64, type ScreenSize } from "./coord.js";
 import { unwrapText } from "./mcpText.js";
-import { messageId, type DshContext, type DshUserMessage } from "./dsh-types.js";
+import { messageId, type DshAgent, type DshContext, type DshUserMessage } from "./dsh-types.js";
+import { TaskCache } from "./task/cache.js";
+import { registerTaskProjection } from "./task/projection.js";
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction, deviceKeyOf, ActionIncidents } from "./tools/runDeviceAction.js";
@@ -310,6 +312,15 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       return undefined;
     }
   };
+  /** The agent this tool call belongs to; the task read model keys on its id. */
+  const callingAgent = (): DshAgent | undefined => {
+    try {
+      return ctx.agents.currentInitiator?.();
+    } catch (error) {
+      logger.warn(`[task] initiator lookup failed: ${(error as Error)?.message ?? error}`);
+      return undefined;
+    }
+  };
 
   ctx.on(
     "session/event",
@@ -436,16 +447,61 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     checkEnv,
     defaultDeviceSerial: config.defaultDeviceSerial ?? "",
   };
+  // T1/G82: the task tools read the session's own projection instead of driving
+  // an external engine. The cache is the derived read side - the projection
+  // registry owns the fold and publishes on change; nothing here re-reads the
+  // log or keeps a second copy of the truth.
+  const taskCache = new TaskCache();
+  if (!registerTaskProjection(ctx, taskCache)) {
+    logger.warn("[task] no sessionProjections registry: the task tools will answer 'unknown'");
+  }
+  let taskSequence = 0;
   ctx.tools.register(
     defineTool<any, any>(
       defineRunTask({
-        ...autogamerDeps,
+        checkEnv,
+        defaultDeviceSerial: config.defaultDeviceSerial ?? "",
         defaultProfile: config.defaultProfile ?? "flash",
+        newTaskId: () => `autogamer-task-${(taskSequence += 1)}`,
+        now: () => new Date(),
       }),
     ),
   );
-  ctx.tools.register(defineTool<any, any>(defineManageTask(autogamerDeps)));
-  ctx.tools.register(defineTool<any, any>(defineInspectTrace(autogamerDeps)));
+  const taskViewerDeps = {
+    store: taskCache,
+    checkEnv,
+    sessionKey: () => agentIdOfCall(),
+  };
+  ctx.tools.register(
+    defineTool<any, any>(
+      defineManageTask({
+        ...taskViewerDeps,
+        // Steering appends to the calling agent's durable context: it enters
+        // the next admitted step rather than waking anything (R17), and the
+        // caller is that agent, so there is nothing to wake.
+        steer: (instruction) => {
+          const agent = callingAgent();
+          if (agent === undefined) {
+            logger.warn("[task] steer refused: no agent handle for this call");
+            return;
+          }
+          if (typeof agent.inject !== "function") {
+            logger.warn("[task] steer refused: this host's agent exposes no inject (mirror is 🔶)");
+            return;
+          }
+          try {
+            agent.inject({
+              content: [{ type: "text", text: instruction }],
+              source: { kind: "autogamer", reason: "task-steering" },
+            });
+          } catch (error) {
+            logger.warn(`[task] steer refused: ${(error as Error)?.message ?? error}`);
+          }
+        },
+      }),
+    ),
+  );
+  ctx.tools.register(defineTool<any, any>(defineInspectTrace(taskViewerDeps)));
   ctx.tools.register(
     defineTool<any, any>(
       defineDiagnose({

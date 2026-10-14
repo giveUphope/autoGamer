@@ -38,9 +38,6 @@ function defineWith(options?: {
   const serials: (string | undefined)[] = [];
   const backend: ArtemisBackend = {
     getDeviceState: async () => ({ deviceSerial: "", connected: false }),
-    startTask: async (args) => ({ taskId: "t", profile: args.profile, startedAt: "t" }),
-    manageTask: async (args) => ({ taskId: args.taskId }),
-    inspectTrace: async (args) => ({ taskId: args.traceId, steps: [], artifactPaths: [] }),
     diagnose: async (args) => {
       serials.push(args.deviceSerial);
       if (options?.failBackend) throw options.failBackend;

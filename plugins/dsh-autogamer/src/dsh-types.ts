@@ -66,12 +66,22 @@ export interface DshSystemPrompt {
 }
 
 /**
- * Agent/session surface for the G44 turn-end enforcement, narrowed to the two
- * members this plugin calls. `id` is the session-backed agent identity
- * (`@deepseek-ai/dsh-agent` lib/types/types.d.ts:11-13), which is why the ledger
- * and the `turn/end` listener key on the same value.
+ * Agent/session surface for the G44 turn-end enforcement and the T1 task tools,
+ * narrowed to the members this plugin calls. `id` is the session-backed agent
+ * identity (`@deepseek-ai/dsh-agent` lib/types/types.d.ts:11-13), which is why the
+ * ledger, the task read model and the `turn/end` listener key on the same value.
+ *
+ * `inject` is optional in the mirror on purpose: R17 documents it on the tool's
+ * `exec.agent` ("`agent.inject({content, source:{kind}})` 追加持久上下文但不唤醒"),
+ * but nothing in this repo has live-proven it on an installed host, so the
+ * steering path checks for it instead of assuming it (R21 🔶).
  */
-export type DshAgent = Pick<Agent, "id" | "followup">;
+export type DshAgent = Pick<Agent, "id" | "followup"> & {
+  inject?(input: {
+    content: Array<{ type: "text"; text: string }>;
+    source: { kind: string; reason?: string };
+  }): void;
+};
 
 export interface DshAgentsService {
   get(id: SessionId): DshAgent | undefined;
@@ -119,6 +129,22 @@ export interface DshEventOptions {
   global?: boolean;
 }
 
+/**
+ * The session-projection seam, narrowed to the two members T1 uses (R21).
+ * Hand-mirrored from `docs/subsystems/session-projection.zh.md` @ master:
+ * `register()` is "an effect on the calling context's fiber" whose disposer
+ * removes the key, and `onChanged` fires "once per client-visible unit whose
+ * raw view changed by `Object.is`". 🔶 read from the official docs, **not
+ * verified against an installed host** - confirm the real signature with
+ * `cordis_inspect_query` (`Service`) before relying on it (R9/R20).
+ */
+export interface DshSessionProjectionRegistry {
+  register(definition: unknown): () => void;
+  onChanged(
+    listener: (session: DshSessionRef, key: string, value: unknown, seq: number) => void,
+  ): () => void;
+}
+
 export interface DshContext {
   logger: DshLogger;
   tools: {
@@ -154,6 +180,16 @@ export interface DshContext {
     options?: DshEventOptions,
   ): () => void;
   get?(key: string): unknown;
+  /**
+   * Optional service injection: the callback runs only when every named service
+   * resolves, so a profile assembled without the registry leaves the plugin
+   * mountable ("Contributors may preserve optional registration through
+   * `ctx.inject(['sessionProjections'], ...)`, `docs/subsystems/session-projection.zh.md`").
+   * The narrowed context is passed to the setup body. 🔶 mirrored, not live-verified.
+   */
+  inject?(names: readonly string[], setup: (scoped: DshContext) => void): void;
+  /** Present inside `inject(["sessionProjections"], …)`; absent outside it. */
+  sessionProjections?: DshSessionProjectionRegistry;
   /**
    * Cordis effect: the callback runs IMMEDIATELY (it is the setup body) and
    * its returned function becomes the teardown. Verified against upstream

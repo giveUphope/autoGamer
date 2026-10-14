@@ -1,58 +1,40 @@
 /**
- * `autogamer_inspect_trace` — read a task's execution trace (Phase 2).
+ * `autogamer_inspect_trace` — read a task's execution trace (T1 / G82).
  *
- * Backend mapping is locked against the fork's old face: we call
- * `view_summary` over the `trace_id` and shape the answer client-side.
- * `summary` returns the first 3 steps, the last 3, plus any failed step not
- * already covered (deduped by step index); `full` returns everything.
- * `include_screenshots` is accepted for contract stability but has no provider
- * counterpart on this action — screenshots ride inside the step records when
- * the provider includes them. Failure detection is heuristic (a `fail`/`error`
- * status, or an explicit false flag) because the provider never promised a
- * failure vocabulary.
+ * The trace is the session's own device history, folded from the tool result
+ * cards `run_device_action` already writes: one step per committed action, with
+ * the effect verdict, category and incident flag that card carries. Nothing is
+ * fetched from a provider, and nothing is reconstructed from memory.
+ *
+ * `summary` keeps the edges plus the failures, `full` returns everything, and
+ * `include_screenshots` stays accepted for contract stability: screenshots are
+ * durable attachment references inside the log's result cards, so a step has one
+ * when the host admitted it and none when it did not — there is no separate
+ * artifact store to list, which is why `artifact_paths` comes back empty.
  */
-import type { ArtemisBackend, TaskStep } from "../artemis/types.js";
 import type { PreflightResult } from "../env/preflight.js";
 import type { ToolDefinitionInput } from "../dsh-types.js";
+import type { TaskStore } from "../task/cache.js";
+import type { TaskStep } from "../task/fold.js";
+import { summarizeSteps } from "../task/readModel.js";
 import { requireEnv } from "./envGate.js";
 
 export interface InspectTraceDeps {
-  backend: ArtemisBackend;
+  store: TaskStore;
   checkEnv: () => Promise<PreflightResult>;
+  /** Session identity of this call; the store is keyed by it. */
+  sessionKey: () => string | undefined;
 }
 
-const SUMMARY_EDGE = 3;
-
-function stepKey(step: TaskStep, position: number): string {
-  return step.index !== undefined ? `n:${step.index}` : `p:${position}`;
-}
-
-function isFailed(step: TaskStep): boolean {
-  if (step.ok === false) return true;
-  return typeof step.status === "string" && /fail|error/i.test(step.status);
-}
-
-export function summarizeSteps(steps: TaskStep[]): TaskStep[] {
-  if (steps.length <= SUMMARY_EDGE * 2) return steps;
-  const head = steps.slice(0, SUMMARY_EDGE);
-  const tail = steps.slice(-SUMMARY_EDGE);
-  const covered = new Set<string>();
-  head.forEach((step, position) => covered.add(stepKey(step, position)));
-  tail.forEach((step, position) => covered.add(stepKey(step, steps.length - SUMMARY_EDGE + position)));
-  const failed = steps.filter(
-    (step, position) => isFailed(step) && !covered.has(stepKey(step, position)),
-  );
-  return [...head, ...failed, ...tail];
-}
+export { summarizeSteps };
 
 function renderStep(step: TaskStep): Record<string, unknown> {
   return {
-    ...(step.index !== undefined ? { index: step.index } : {}),
-    ...(step.action !== undefined ? { action: step.action } : {}),
-    ...(step.reasoning !== undefined ? { reasoning: step.reasoning } : {}),
-    ...(step.screenshotPath !== undefined ? { screenshot_path: step.screenshotPath } : {}),
-    ...(step.timestamp !== undefined ? { timestamp: step.timestamp } : {}),
-    ...(step.durationMs !== undefined ? { duration_ms: step.durationMs } : {}),
+    action: step.action,
+    effect: step.effect,
+    ...(step.category === undefined ? {} : { category: step.category }),
+    ...(step.incident ? { incident: true } : {}),
+    timestamp: new Date(step.at).toISOString(),
   };
 }
 
@@ -60,8 +42,8 @@ export function defineInspectTrace(deps: InspectTraceDeps): ToolDefinitionInput 
   return {
     name: "autogamer_inspect_trace",
     description:
-      "Read an Android automation task's execution trace (driven by Google ARTEMIS). " +
-      "summary returns the first/last 3 steps plus any failed step; full returns everything.",
+      "Read a task's execution trace as recorded in this session. summary returns the first/last 3 " +
+      "steps plus any failed step; full returns every step.",
     parameters: {
       task_id: { type: "string", required: true, description: "The task_id from autogamer_run_task." },
       format: {
@@ -71,7 +53,7 @@ export function defineInspectTrace(deps: InspectTraceDeps): ToolDefinitionInput 
       },
       include_screenshots: {
         type: "boolean",
-        description: "Accepted; screenshots ride inside step records when the provider includes them.",
+        description: "Accepted; screenshots ride inside the log's result cards when admitted.",
       },
     },
     output: {
@@ -105,21 +87,25 @@ export function defineInspectTrace(deps: InspectTraceDeps): ToolDefinitionInput 
         ];
       },
     },
-    async execute(args, exec) {
+    async execute(args, _exec) {
       const taskId = args.task_id;
       if (typeof taskId !== "string" || taskId.length === 0) {
         throw new Error("task: task_id must be a non-empty string");
       }
       await requireEnv(deps.checkEnv);
-      const view = await deps.backend.inspectTrace({ traceId: taskId }, exec?.signal);
-      const full = args.format === "full";
-      const steps = full ? view.steps : summarizeSteps(view.steps);
+      const state = deps.store.read(deps.sessionKey());
+      const record = state?.tasks[taskId];
+      if (state === undefined || record === undefined) {
+        return { task_id: taskId, final_status: "unknown", total_steps: 0, steps: [], artifact_paths: [] };
+      }
+      const all = state.steps[taskId] ?? [];
+      const steps = args.format === "full" ? all : summarizeSteps(all);
       return {
-        task_id: view.taskId,
-        final_status: view.finalStatus ?? "unknown",
-        total_steps: view.totalSteps ?? view.steps.length,
+        task_id: taskId,
+        final_status: record.state,
+        total_steps: all.length,
         steps: steps.map(renderStep),
-        artifact_paths: view.artifactPaths,
+        artifact_paths: [],
       };
     },
   };
