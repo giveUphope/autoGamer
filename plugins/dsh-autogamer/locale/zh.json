@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "AutoGamer 设备执行",
+    "description": "通过 run_device_action 路由工具操作一台 Android 设备：内置安全闸门、逐动作效果判定，终态由 report_task_status 汇报。"
+  }
+}

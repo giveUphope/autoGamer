@@ -1,0 +1,90 @@
+# AutoGamer device tools for DSH.
+# Bundle patches are insert lists: each row adds an entry to the composed
+# profile tree (id/name/config — see cordis-plugin-loader Entry Options).
+# The preset's child entry carries its own distinct row id — a bare
+# `- name:` item would inherit the root row's id, which the root copy also
+# uses; sessions mount the preset's plugins, the root row is inert for them.
+- insert:
+    - id: dsh-autogamer
+      name: dsh-autogamer
+    - id: preset-autogamer
+      name: "@deepseek-ai/dsh-agent-preset"
+      config:
+        id: autogamer
+        name: AutoGamer
+        description: Single-layer device execution agent (flash/pro merged, S11 router).
+        plugins:
+          # Identity/instruction delivery. An agent preset cannot mount the
+          # prompt registry itself, so this scope-only row is the official way
+          # for a preset to change what the model is told (G45). No {{...}}
+          # groups: unregistered references throw before any model request,
+          # and `cwd` is deliberately not one of the built-in variables.
+          - id: persona
+            name: "@deepseek-ai/dsh-persona"
+            config:
+              prefix: |
+                You are AutoGamer, an Android device operator. You drive one device
+                through the run_device_action tool, which enforces the safety gate
+                and checks that each action visibly changed the screen; you supply
+                intent, targeting and the final report.
+
+                1. One action per call, with a one-sentence reason. No narration
+                   between navigation or typing actions.
+                2. The turn ends only through report_task_status: call it exactly
+                   once, as soon as the goal is met or no path forward remains.
+                   After that call, do not act on the device again, do not wait,
+                   do not report again.
+                3. A handle such as #7 is valid only for the get_ui_hierarchy dump
+                   it came from. After any action that changes the screen, dump
+                   again before using a handle. Use normalized [x,y] coordinates
+                   only when no element matches.
+                4. Never repeat a refused action verbatim: re-observe, change the
+                   target or the approach.
+                5. Judge the screen only from screenshots; never claim a result
+                   you have not seen.
+                6. Audit like a checker at every milestone and at the end:
+                   restate the goal, list what changed on screen (each action
+                   reports effect plus a category), and record assertion
+                   failures in report_task_status tests_failed. An incident
+                   field means three straight failures: stop, audit the
+                   attempts so far, then change the plan or report blocked.
+                   Never audit from memory — quote the action results.
+          - id: dsh-autogamer-inner
+            name: dsh-autogamer
+          - name: "@deepseek-ai/dsh-tool-jobs"
+          # Self-inspection (TODO §零 Step 11, user-approved): the official cordis
+          # preset mounts this same row (no config) to hand sessions
+          # cordis_inspect_list/query — the R9 inspector for "which tools does THIS
+          # agent actually see". Without it the AutoGamer face has no checker at
+          # all (Step 10: the model can only restate its context). Placement
+          # mirrors the shipped cordis preset: right before the skills rows.
+          - id: tool-cordis
+            name: "@deepseek-ai/dsh-tool-cordis"
+          # Skills ship in this package's skills/ dir. Resolving the root at load
+          # time is the official patch-level form (web-app/presets/cordis.patch.yml
+          # does exactly this for dsh-agent-preset): createRequire(baseUrl) anchors
+          # on OUR installed package, so no absolute path is baked into the bundle.
+          # baseUrl is a host-injected loader variable - R6 prints !!js inertly, so
+          # only a live mount proves it resolves here.
+          - id: skill-filesystem
+            name: "@deepseek-ai/dsh-skill-filesystem"
+            config:
+              customSkillDirs:
+                - !!js process.getBuiltinModule('node:path').join(process.getBuiltinModule('node:path').dirname(process.getBuiltinModule('node:module').createRequire(baseUrl).resolve('dsh-autogamer/package.json')), 'skills')
+          - id: tool-skill
+            name: "@deepseek-ai/dsh-tool-skill"
+          # D17: self-install capability. Preset-backed sessions use their own
+          # tool-plugin-manager row (packages/boot/plugin-manager/README.md),
+          # and shipped presets ship it disabled - enabling it hands the model
+          # the ability to install Host code, which runs in-process outside the
+          # workspace sandbox. Every plugin_manager action needs
+          # danger-full-access or per-call approval.
+          # Track the SERVICE's condition instead of `false`: the plugin-manager
+          # row itself is `disabled: !!js "!ctx.get('profileContext')"`, so an
+          # unconditionally enabled tool row would ask for a service that is
+          # absent in a non-profile-backed boot, and a missing service rejects
+          # the whole preset mount (D16). The shipped Creator preset does exactly
+          # this.
+          - id: tool-plugin-manager
+            name: "@deepseek-ai/dsh-plugin-manager/tools"
+            disabled: !!js "!ctx.get('profileContext')"

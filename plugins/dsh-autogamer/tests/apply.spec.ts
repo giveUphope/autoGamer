@@ -1,0 +1,701 @@
+/**
+ * apply() wiring lock. The unit tests around `configuredScreenSize` alone are
+ * not enough: the defect lived at the call site, where a truthiness check on
+ * the Schemastery-resolved tuple (`[undefined, undefined]`) read as
+ * "operator configured it" and fed undefined dimensions into the 0-1000 →
+ * pixel conversion. These tests drive the registered tool through apply() and
+ * assert the coordinates the py action server actually receives.
+ */
+import { beforeEach, describe, expect, it, vi } from "vitest";
+import { fileURLToPath } from "node:url";
+import { parseImageSize } from "../src/coord.js";
+import {
+  PIXEL_GUIDANCE,
+  SELF_CHECK_PROMPT,
+  closurePrompt,
+  incidentPrompt,
+} from "../src/tools/runDeviceAction.js";
+import type { DshImageAttachment } from "../src/dsh-types.js";
+
+/** A 1080x2400 PNG: signature + IHDR carrying the dimensions at byte 16/20. */
+function pngBytes(): Buffer {
+  const bytes = Buffer.alloc(33);
+  Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]).copy(bytes, 0);
+  bytes.writeUInt32BE(13, 8);
+  bytes.write("IHDR", 12, "ascii");
+  bytes.writeUInt32BE(1080, 16);
+  bytes.writeUInt32BE(2400, 20);
+  return bytes;
+}
+
+const harness = vi.hoisted(() => ({
+  calls: [] as { tool: string; args: Record<string, unknown> }[],
+  clientOptions: [] as Record<string, unknown>[],
+  /** What compare_ui_frames should answer; undefined means "no verdict". */
+  changed: true as boolean | undefined,
+  disposed: 0,
+}));
+
+vi.mock("../src/actionClient.js", () => ({
+  ActionClient: class {
+    constructor(options: Record<string, unknown>) {
+      harness.clientOptions.push(options);
+    }
+
+    async callTool(tool: string, args: Record<string, unknown>) {
+      harness.calls.push({ tool, args });
+      if (tool === "take_screenshot") {
+        return { content: [{ type: "text", text: pngBytes().toString("base64") }] };
+      }
+      if (tool === "compare_ui_frames") {
+        return {
+          content: [{ type: "text", text: JSON.stringify({ changed: harness.changed }) }],
+        };
+      }
+      if (tool === "get_ui_hierarchy") {
+        // Live shape: a JSON node list whose own `index` is per-container.
+        return {
+          content: [
+            {
+              type: "text",
+              text: JSON.stringify([
+                { index: "0", text: "亮度", "content-desc": "", "resource-id": "", class: "android.widget.TextView", package: "com.android.settings", clickable: "true", parsed_bounds: { left: 40, top: 400, right: 200, bottom: 460 } },
+                { index: "1", text: "显示", "content-desc": "", "resource-id": "", class: "android.widget.TextView", package: "com.android.settings", clickable: "true", parsed_bounds: { left: 40, top: 600, right: 200, bottom: 660 } },
+              ]),
+            },
+          ],
+        };
+      }
+      return { content: [{ type: "text", text: "Success" }] };
+    }
+
+    async dispose() {
+      harness.disposed += 1;
+    }
+  },
+}));
+
+type ToolDefinition = {
+  name: string;
+  execute(args: Record<string, unknown>, exec: { signal: AbortSignal }): Promise<unknown>;
+  output?: {
+    render(args: unknown, value: unknown): { type: string; text?: string; attachment?: unknown }[];
+    presentationMeta?(args: unknown, value: unknown): Record<string, unknown>;
+  };
+};
+
+/**
+ * The preflight runner is module-mocked here so apply() never spawns real
+ * `uv`/`adb` processes across its dozens of wiring tests: the real runner's
+ * subprocess behaviour is locked in tests/preflight.spec.ts with injected
+ * doubles, and the warm-up call itself is asserted below.
+ */
+const preflightProbe = vi.hoisted(() => ({ runs: 0 }));
+
+vi.mock("../src/env/preflight.js", () => ({
+  createPreflight: () => ({
+    run: async () => {
+      preflightProbe.runs += 1;
+      return { ok: true, checks: [], finishedAt: "2026-10-14T00:00:00.000Z" };
+    },
+  }),
+  preflightErrorText: () => "environment: mocked preflight failure",
+}));
+
+const { apply, Config } = await import("../src/index.js");
+
+/**
+ * Cordis-faithful context double. `effect(setup)` runs `setup` IMMEDIATELY and
+ * keeps its returned function as the teardown (verified against upstream
+ * mount.ts:208 / agent-preset-registry/src/index.ts:112) — the double used to
+ * omit `effect` entirely, which let a teardown-as-callback bug (G30: apply()
+ * disposed its own tool registrations) pass CI while every live session lost
+ * the tool face. Services are real lookups, and `on(name, handler, options)`
+ * records the options so the scope-filter bypass (`{ global: true }`) is itself
+ * under test.
+ */
+function fakeContext(
+  definitions: ToolDefinition[],
+  attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+  agentId = "agent-1",
+) {
+  const cleanups: unknown[] = [];
+  const listeners: Array<{ handler: (session: unknown, event: unknown) => void; options?: { global?: boolean } }> = [];
+  const guards: Array<(execution: { name: string; arguments: unknown }) => string | undefined> = [];
+  const followups: unknown[] = [];
+  const sections: { name: string; order: number; text: string }[] = [];
+  const agent = { id: agentId, followup: (message: unknown) => { followups.push(message); } };
+  const context = {
+    logger: { info: () => {}, warn: () => {}, error: () => {} },
+    tools: {
+      register(definition: unknown) {
+        definitions.push(definition as ToolDefinition);
+        return () => {};
+      },
+      guard(guard: (execution: { name: string; arguments: unknown }) => string | undefined) {
+        guards.push(guard);
+        return () => {};
+      },
+    },
+    agents: {
+      get: (id: string) => (id === agentId ? agent : undefined),
+      currentInitiator: () => agent,
+    },
+    on(event: string, handler: (session: unknown, payload: unknown) => void, options?: { global?: boolean }) {
+      if (event === "session/event") listeners.push({ handler, options });
+      return () => {};
+    },
+    ...(attachments ? { attachments } : {}),
+    systemPrompt: {
+      section: (input: { name: string; order: number; text: string }) => {
+        sections.push(input);
+        return undefined;
+      },
+    },
+    effect(setup: () => unknown): void {
+      cleanups.push(setup());
+    },
+  };
+  return {
+    context,
+    cleanups,
+    followups,
+    sections,
+    guards: () => guards,
+    listenerOptions: () => listeners.map((l) => l.options),
+    emit: (type: string, id = agentId) => {
+      for (const l of listeners) l.handler({ id }, { type });
+    },
+  };
+}
+
+async function registeredTools(
+  config: Record<string, unknown>,
+  attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+) {
+  const definitions: ToolDefinition[] = [];
+  harness.calls.length = 0;
+  const double = fakeContext(definitions, attachments);
+  await apply(double.context as never, config as never);
+  const find = (name: string) => {
+    const tool = definitions.find((d) => d.name === name);
+    if (!tool) throw new Error(`${name} was not registered (got: ${definitions.map((d) => d.name).join(", ")})`);
+    return tool;
+  };
+  return { ...double, runDeviceAction: find("run_device_action"), reportTaskStatus: find("report_task_status") };
+}
+
+async function registerToolWith(
+  config: Record<string, unknown>,
+  attachments?: { saveImages(inputs: readonly unknown[]): Promise<readonly DshImageAttachment[]> },
+): Promise<ToolDefinition> {
+  const definitions: ToolDefinition[] = [];
+  harness.calls.length = 0;
+  const { context } = fakeContext(definitions, attachments);
+  await apply(context as never, config as never);
+  const tool = definitions.find((definition) => definition.name === "run_device_action");
+  if (!tool) throw new Error(`run_device_action was not registered (got: ${definitions.map((d) => d.name).join(", ")})`);
+  return tool;
+}
+
+function exec(): { signal: AbortSignal } {
+  return { signal: new AbortController().signal };
+}
+
+beforeEach(() => {
+  harness.calls.length = 0;
+  harness.clientOptions.length = 0;
+  harness.changed = true;
+  harness.disposed = 0;
+  preflightProbe.runs = 0;
+});
+
+describe("apply(): screen size sourcing wiring", () => {
+  it("probes the screenshot when no screenSize is configured", async () => {
+    const tool = await registerToolWith(Config());
+    await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "probe path" }, exec());
+
+    expect(harness.calls.map((call) => call.tool)).toContain("take_screenshot");
+    const tap = harness.calls.find((call) => call.tool === "tap");
+    expect(tap?.args.coordinates).toEqual([540, 1200]);
+  });
+
+  it("honours an explicit screenSize without probing", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "configured" }, exec());
+
+    // Effect observation captures a before-frame and an after-frame, so "no
+    // probe" means exactly two captures around the tap, not three.
+    expect(harness.calls.filter((call) => call.tool === "take_screenshot")).toHaveLength(2);
+    const tap = harness.calls.find((call) => call.tool === "tap");
+    expect(tap?.args.coordinates).toEqual([360, 800]);
+  });
+
+  it("never leaks the schema's empty tuple into pixel math", async () => {
+    const tool = await registerToolWith(Config());
+    const result = await tool.execute(
+      { action: "click", target: { coordinate: [500, 500] }, reason: "NaN guard" },
+      exec(),
+    );
+    const tap = harness.calls.find((call) => call.tool === "tap");
+    expect(tap, "the action must not be dispatched with unresolved dimensions").toBeDefined();
+    expect(JSON.stringify((tap?.args as { coordinates: number[] }).coordinates)).not.toContain("null");
+    expect(result).toBeDefined();
+  });
+
+  it("passes the resolved action-server settings through to the client", async () => {
+    await registerToolWith(Config());
+    expect(harness.clientOptions).toHaveLength(1);
+    expect(harness.clientOptions[0]?.command).toEqual([
+      "python",
+      "-m",
+      "artemis.interfaces.cli.main",
+      "mcp",
+      "--type",
+      "adb",
+    ]);
+  });
+});
+
+describe("apply(): registration lifetime (G30 regression)", () => {
+  it("returns teardown from effect() instead of running it during apply()", async () => {
+    const definitions: ToolDefinition[] = [];
+    harness.calls.length = 0;
+    const { context, cleanups } = fakeContext(definitions);
+    await apply(context as never, Config() as never);
+
+    // All three tools must still be registered once apply() resolved: cordis
+    // effect() takes the RETURNED function as the disposer. The broken
+    // ancestor passed teardown as the callback body, so it executed inline,
+    // disposing both registrations within apply() while every official
+    // checker still reported the row "running".
+    expect(definitions.map((definition) => definition.name)).toEqual([
+      "run_device_action",
+      "report_task_status",
+      "autogamer_get_device_state",
+      "autogamer_run_task",
+      "autogamer_manage_task",
+      "autogamer_inspect_trace",
+      "autogamer_diagnose",
+    ]);
+    expect(cleanups).toHaveLength(1);
+    expect(typeof cleanups[0]).toBe("function");
+    // apply() itself must not have disposed anything synchronously.
+    expect(harness.disposed).toBe(0);
+  });
+
+  it("tears down the action client only when the effect disposer runs", async () => {
+    const definitions: ToolDefinition[] = [];
+    const { context, cleanups } = fakeContext(definitions);
+    await apply(context as never, Config() as never);
+
+    const cleanup = cleanups[0] as () => void;
+    cleanup();
+    expect(harness.disposed).toBe(1);
+  });
+});
+
+describe("apply(): screenshot media path (G36)", () => {
+  const ref: DshImageAttachment = {
+    attachmentId: "opaque-id-from-the-store",
+    mediaType: "image/png",
+    bytes: 33,
+    width: 1080,
+    height: 2400,
+  };
+
+  it("commits bytes to the attachment store and renders [text, image]", async () => {
+    const saved: { data: Uint8Array; mediaType: string }[] = [];
+    const tool = await registerToolWith(Config(), {
+      saveImages: async (inputs) => {
+        saved.push(...(inputs as { data: Uint8Array; mediaType: string }[]));
+        return [ref];
+      },
+    });
+
+    const value = (await tool.execute({ action: "take_screenshot", reason: "look" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(saved).toHaveLength(1);
+    expect(saved[0].mediaType).toBe("image/png");
+    expect(parseImageSize(saved[0].data)).toEqual({ width: 1080, height: 2400 });
+    expect(value.image).toEqual(ref);
+    expect(value.screenshot).toBe("captured 1080x2400");
+
+    const blocks = tool.output!.render({}, value);
+    expect(blocks.map((block) => block.type)).toEqual(["text", "image"]);
+    expect(blocks[0].text).toBe("screenshot=captured 1080x2400");
+    expect(blocks[1].attachment).toBe(ref);
+  });
+
+  it("keeps encoded bytes out of the persisted tool value", async () => {
+    const tool = await registerToolWith(Config(), { saveImages: async () => [ref] });
+    const value = await tool.execute({ action: "take_screenshot", reason: "look" }, exec());
+    // The session log records the result value; only the reference may appear.
+    expect(JSON.stringify(value)).not.toContain(pngBytes().toString("base64"));
+  });
+
+  it("still reports dimensions when the store refuses the image", async () => {
+    const tool = await registerToolWith(Config(), {
+      saveImages: async () => {
+        throw new Error("AttachmentError: exceeds maxImageBytes");
+      },
+    });
+    const value = (await tool.execute({ action: "take_screenshot", reason: "look" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(value).toEqual({ screenshot: "captured 1080x2400" });
+    expect(tool.output!.render({}, value)).toEqual([{ type: "text", text: "screenshot=captured 1080x2400" }]);
+  });
+});
+
+describe("apply(): effect observation (S10 ② / G39 route A)", () => {
+  it("reports unchanged when the action server sees no screen change", async () => {
+    harness.changed = false;
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute(
+      { action: "click", target: { coordinate: [500, 500] }, reason: "observe" },
+      exec(),
+    )) as Record<string, unknown>;
+    expect(value.effect).toBe("unchanged");
+  });
+
+  it("reports changed when the action server sees the screen move", async () => {
+    harness.changed = true;
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute(
+      { action: "back", reason: "observe" },
+      exec(),
+    )) as Record<string, unknown>;
+    expect(value.effect).toBe("changed");
+  });
+
+  it("hands the tap coordinates to the verdict so the ROI rule can apply", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "observe" }, exec());
+    const compare = harness.calls.find((call) => call.tool === "compare_ui_frames");
+    expect(compare?.args.action).toBe("tap");
+    expect(compare?.args.coordinates).toEqual([360, 800]);
+  });
+
+  it("reports unknown rather than guessing when no verdict comes back", async () => {
+    harness.changed = undefined;
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute({ action: "back", reason: "observe" }, exec())) as Record<string, unknown>;
+    expect(value.effect).toBe("unknown");
+  });
+
+  it("takes no observation frames for read-only actions", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    const value = (await tool.execute({ action: "get_ui_hierarchy", reason: "read" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(value).not.toHaveProperty("effect");
+    expect(harness.calls.map((call) => call.tool)).toEqual(["get_ui_hierarchy"]);
+  });
+});
+
+describe("apply(): turn conclusion on the reported outcome (G41)", () => {
+  async function reportWith(exec: { signal: AbortSignal; concludeTurn?(): void }) {
+    const definitions: ToolDefinition[] = [];
+    const { context } = fakeContext(definitions);
+    await apply(context as never, Config() as never);
+    const tool = definitions.find((d) => d.name === "report_task_status");
+    if (!tool) throw new Error("report_task_status was not registered");
+    return tool.execute(
+      { status: "blocked", summary: "device never answered", reason: "report" },
+      exec,
+    );
+  }
+
+  it("concludes the agent turn once the outcome is reported", async () => {
+    let concluded = 0;
+    await reportWith({ signal: new AbortController().signal, concludeTurn: () => { concluded += 1; } });
+    expect(concluded).toBe(1);
+  });
+
+  it("does not let a device action conclude the turn", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+    let concluded = 0;
+    await tool.execute({ action: "back", reason: "act" }, {
+      signal: new AbortController().signal,
+      concludeTurn: () => { concluded += 1; },
+    });
+    expect(concluded).toBe(0);
+  });
+});
+
+describe("apply(): element handles reach the device (G42)", () => {
+  it("resolves a #N handle to that element's pixel center", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
+    // G67: a handle is only meaningful against the list the model was shown.
+    await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec());
+    await tool.execute({ action: "click", target: { index: 1 }, reason: "tap 显示" }, exec());
+    const tap = harness.calls.find((call) => call.tool === "tap");
+    // #1 is the 显示 row at bounds [40,600]-[200,660] on a 1600x900 screen.
+    expect(tap?.args.coordinates).toEqual([120, 630]);
+  });
+
+  it("hands the model a numbered list rather than the raw per-container index", async () => {
+    const tool = await registerToolWith(Config({ screenSize: [1600, 900] }));
+    const value = (await tool.execute({ action: "get_ui_hierarchy", reason: "look" }, exec())) as Record<
+      string,
+      unknown
+    >;
+    expect(value.element_count).toBe(2);
+    const lines = String(value.hierarchy).split("\n");
+    expect(lines[0]).toMatch(/^#0 /);
+    expect(lines[1]).toMatch(/^#1 .*显示$/);
+  });
+});
+
+describe("apply(): unreported turns are nudged (G44 v2)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("registers its session listener to bypass scope filtering", async () => {
+    const tools = await registeredTools(CONFIG);
+    expect(tools.listenerOptions()).toEqual([{ global: true }]);
+  });
+
+  it("follows up once when a turn ended after device actions without reporting", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    tools.emit("turn/end");
+    // Rule R23: appending inside the emit is rejected by the host
+    // ("session append cannot reenter while another append is being published"),
+    // so the call must NOT have happened yet at this point in the same task.
+    expect(tools.followups).toHaveLength(0);
+    // The followup is deferred out of the append/publication boundary, so let the
+    // macrotask run before asserting it landed.
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tools.followups).toHaveLength(1);
+    const text = JSON.stringify(tools.followups[0]);
+    expect(text).toContain("report_task_status");
+    expect(text).toContain("Do not call run_device_action");
+  });
+
+  it("stays silent when the turn reported its outcome", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    await tools.reportTaskStatus.execute({ status: "completed", summary: "done" }, exec());
+    tools.emit("turn/end");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tools.followups).toHaveLength(0);
+  });
+
+  it("never nudges twice for the same agent", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    tools.emit("turn/end");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    await tools.runDeviceAction.execute({ action: "back", reason: "again" }, exec());
+    tools.emit("turn/end");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tools.followups).toHaveLength(1);
+  });
+
+  it("ignores other session events", async () => {
+    const tools = await registeredTools(CONFIG);
+    await tools.runDeviceAction.execute({ action: "back", reason: "act" }, exec());
+    tools.emit("tool/call");
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    expect(tools.followups).toHaveLength(0);
+  });
+});
+
+describe("apply(): the result envelope must not starve the hierarchy (G42)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("keeps a long hierarchy dump whole while clipping prose fields", async () => {
+    const t = await registeredTools(CONFIG);
+    const long = Array.from({ length: 40 }, (_, i) => `#${i} [10,20] clickable pkg=com.x label 设置项`).join("\n");
+    const rendered = t.runDeviceAction.output.render(
+      {},
+      { result: "Success", hierarchy: long, message: "x".repeat(400) },
+    ) as Array<{ text?: string }>;
+    const text = rendered.map((part) => part.text ?? "").join("");
+
+    expect(text).toContain(long); // the whole list reaches the model
+    expect(text).toContain(`${"x".repeat(200)}…`); // other fields keep the generic budget
+  });
+
+  it("hands every prompt field over whole, not clipped mid-sentence (G68 ①)", async () => {
+    const t = await registeredTools(CONFIG);
+    // The longest serial this plugin can be asked to talk about: adb over the wire.
+    const serial = "192.168.1.100:5555";
+    const fields = {
+      pixel_guidance: PIXEL_GUIDANCE,
+      self_check: SELF_CHECK_PROMPT,
+      audit_request: incidentPrompt(3, serial, true),
+      closure_request: closurePrompt({ consecutive_failures: 3 }, serial),
+    };
+    for (const [key, text] of Object.entries(fields)) {
+      expect(text.length, `${key} is already over the envelope budget`).toBeLessThanOrEqual(200);
+    }
+    const rendered = t.runDeviceAction.output.render({}, { effect: "unchanged", ...fields }) as Array<{
+      text?: string;
+    }>;
+    const seen = rendered.map((part) => part.text ?? "").join("");
+    for (const [key, text] of Object.entries(fields)) {
+      expect(seen, `${key} reached the model truncated`).toContain(`${key}=${text}`);
+    }
+  });
+
+  it("renders the image as a block instead of flattening its reference", async () => {
+    const t = await registeredTools(CONFIG);
+    const rendered = t.runDeviceAction.output.render({}, {
+      result: "Success",
+      image: { attachmentId: "att-1", mediaType: "image/jpeg" },
+    }) as Array<{ type: string; text?: string }>;
+
+    expect(rendered.map((part) => part.type)).toEqual(["text", "image"]);
+    expect(rendered[0].text).not.toContain("att-1");
+  });
+});
+
+describe("apply(): checker facts persist on tool/result meta (P1-b)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("projects the validator verdict and nothing else", async () => {
+    const t = await registeredTools(CONFIG);
+    expect(
+      t.runDeviceAction.output.presentationMeta?.({}, {
+        result: "Success",
+        effect: "unchanged",
+        category: "disappeared",
+        pixel_guidance: "look",
+        incident: { consecutive_failures: 3 },
+      }),
+    ).toEqual({
+      effect: "unchanged",
+      category: "disappeared",
+      incident: { consecutive_failures: 3 },
+    });
+  });
+
+  it("projects an empty meta for verdict-less values instead of throwing", async () => {
+    const t = await registeredTools(CONFIG);
+    expect(t.runDeviceAction.output.presentationMeta?.({}, { result: "Success" })).toEqual({});
+    expect(t.runDeviceAction.output.presentationMeta?.({}, null)).toEqual({});
+  });
+
+  it("projects the terminal outcome for exit audits", async () => {
+    const t = await registeredTools(CONFIG);
+    expect(
+      t.reportTaskStatus.output?.presentationMeta?.({}, {
+        status: "blocked",
+        tests_failed: 2,
+        outcome: "blocked",
+      }),
+    ).toEqual({ status: "blocked", tests_failed: 2, outcome: "blocked" });
+  });
+});
+
+
+describe("report_task_status: the outcome carries BOTH axes (changelogs #62)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  async function report(args: Record<string, unknown>): Promise<Record<string, unknown>> {
+    const t = await registeredTools(CONFIG);
+    return (await t.reportTaskStatus.execute(
+      { summary: "done", reason: "report", ...args },
+      exec(),
+    )) as Record<string, unknown>;
+  }
+
+  it("keeps assertion failures in the outcome of a completed task", async () => {
+    expect(await report({ status: "completed", tests_failed: 2 })).toEqual({
+      status: "completed",
+      tests_failed: 2,
+      outcome: "completed (with assertion failures on record)",
+    });
+  });
+
+  it("reports a clean completion without the failure suffix", async () => {
+    expect(await report({ status: "completed" })).toMatchObject({
+      tests_failed: 0,
+      outcome: "completed",
+    });
+  });
+
+  it("never lets a blocked report read as completed, failures or not", async () => {
+    expect(await report({ status: "blocked", tests_failed: 3 })).toMatchObject({ outcome: "blocked" });
+    expect(await report({ status: "blocked" })).toMatchObject({ outcome: "blocked" });
+  });
+});
+
+describe("apply(): breaker refusal lives in a registry guard (G33)", () => {
+  const CONFIG = Config({ screenSize: [720, 1600] }) as Record<string, unknown>;
+
+  it("registers exactly one guard", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, CONFIG as never);
+    expect(double.guards()).toHaveLength(1);
+  });
+
+  it("lets other tools and the report outlet through untouched", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, CONFIG as never);
+    const [guard] = double.guards();
+    expect(guard({ name: "job_submit", arguments: {} })).toBeUndefined();
+    expect(guard({ name: "report_task_status", arguments: { status: "completed" } })).toBeUndefined();
+    // Fresh breaker: our own tool is admitted too.
+    expect(guard({ name: "run_device_action", arguments: { action: "back" } })).toBeUndefined();
+  });
+});
+
+describe("apply(): external ARTEMIS wiring (dsh-autogamer Phase 1)", () => {
+  it("registers autogamer_get_device_state alongside the two router tools", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, Config() as never);
+    expect(definitions.map((d) => d.name).sort()).toEqual([
+      "autogamer_diagnose",
+      "autogamer_get_device_state",
+      "autogamer_inspect_trace",
+      "autogamer_manage_task",
+      "autogamer_run_task",
+      "report_task_status",
+      "run_device_action",
+    ]);
+  });
+
+  it("warms the preflight cache on mount unless autoPreflight is off", async () => {
+    const first: ToolDefinition[] = [];
+    await apply(fakeContext(first).context as never, Config() as never);
+    expect(preflightProbe.runs).toBeGreaterThanOrEqual(1);
+    preflightProbe.runs = 0;
+    const second: ToolDefinition[] = [];
+    await apply(fakeContext(second).context as never, Config({ autoPreflight: false }) as never);
+    expect(preflightProbe.runs).toBe(0);
+  });
+});
+
+describe("apply(): provider rules reach the system prompt (Phase 5)", () => {
+  const REPO = fileURLToPath(new URL("./fixtures/fake-repo", import.meta.url));
+
+  it("contributes the provider rules file when configured", async () => {
+    const definitions: ToolDefinition[] = [];
+    const double = fakeContext(definitions);
+    await apply(double.context as never, Config({ artemisRepoPath: REPO }) as never);
+    expect(double.sections).toHaveLength(1);
+    expect(double.sections[0]?.name).toBe("dsh-autogamer-rules");
+    expect(double.sections[0]?.text).toContain("mobile tester");
+  });
+
+  it("skips silently without a repo path, and stays off when flagged off", async () => {
+    const plain: ToolDefinition[] = [];
+    const withoutRepo = fakeContext(plain);
+    await apply(withoutRepo.context as never, Config() as never);
+    expect(withoutRepo.sections).toHaveLength(0);
+    const flagged: ToolDefinition[] = [];
+    const off = fakeContext(flagged);
+    await apply(off.context as never, Config({ artemisRepoPath: REPO, injectRules: false }) as never);
+    expect(off.sections).toHaveLength(0);
+  });
+});
