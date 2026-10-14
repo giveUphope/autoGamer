@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）。 |
 
 ## 写入规则
 
@@ -266,3 +266,33 @@
   ⚠️ **M7 第一次是绿的**：断言原本只比「本次运行前后目录差集」，而上一轮变异已把两个 `traineddata` 落在插件目录 ⇒ 脏机器上失明。改成**绝对 + 相对**双断言后才咬住，并清掉那两枚遗留文件（4.1 MB / 2.5 MB）。
 - ⚠️ **一条实测否证了「可用」的强口径**（真机 `emulator-5554` 桌面页，跑 `dist/` 产物）：帧 1,279,741 B、层级 83 节点其中 **24 个带文字**、OCR 79 命中 / 754ms，但**两侧同时答得出的只有 2/24**；逐条查因显示 `游戏中心` 这帧被读成 `只@45 / 本@34 / wep@33`（**不是被门槛挡掉，是没认出字形**），dock 的 `设置/图库/文件` 附近零命中。⇒ **安全面（fail-open、只补不抢、歧义不猜、零配置、不落垃圾）已锁；召回面在 1600×900 小字浅色 CJK 上不成立 ⇒ 新立 G92**。同一屏的夹具帧反而认得出（92–96），说明逐帧方差大，G92 的候选解法（识别前 2× 放大 / 换 standard 或 best 数据 / 按区域裁剪重试）本片**一条都没选**。
 - 仍 🔶：OCR 从未在**挂载后的宿主内**跑过（与 T1 / T2 的挂载证明同一批）；`chi_sim` 的召回只在两帧上量过。
+
+### #94 T4 收尾：门只问两件真事，被删的面按消费者计数删除（G82/G83/G84/G85/G86/G89/G90/G93 结案）
+
+#### 问题描述
+
+- `src/env/preflight.ts` 还在问七件事（uv / python / 提供方仓库 / 提供方安装 / adb / 设备 / helper），但 T2 之后**没有任何工具走提供方**：设备面、层级、帧、效果判定、诊断、OCR 全在 TS 侧与本机 adb 上完成。于是一次原生层级读取会因为「没装 uv」被拒 —— 门在**替一件不存在的事说话**。
+- 三处「有代码没消费者」的面一直没人裁决：`src/actionClient.ts` 与三个需要活 py 服务的脚本（T2-c/d/e 之后零调用）、`src/mcpText.ts`（只剩死分支可达）、以及**整条镜像链** `src/scrcpy/*` + 5 个 `scrcpy*` 配置字段 —— 它在 `apply()` 里只被构造与销毁、**零工具驱动**，且 `scrcpyServerPath` 默认空 ⇒ 要操作者自备 server 二进制。**全 docs 对 `scrcpy` 零提及**：它是搬迁-1 带过来的，从未经裁决（清点后新立 **G93**）。
+- `ACTION_TO_PY_TOOL` 是**名不副实的第二权威**：路由器早就不读它（每条 action 在 switch 里直接给原生调用名），只剩 contracts 与需要活服务的 `spike-mcp.mjs` 引它；而 contracts 的「与 py 面逐字同名同参」判据在本分支**不可满足**（D19 之后没有可跑的 py 可比）。
+- 规格 §一.3 要求「保留 adapter 能显式指向用户自行安装的外部 ARTEMIS」，但 T2-f 之后**没有任何工具构造它** ⇒ 该条只在文字上成立；`artemisMcpCommand` 的默认值仍是 `["python","-m","mcp_server"]`，即「默认假设有一台 python 提供方」。
+- **G90**：手填/探得的 `screenSize` 按 key 缓存且**永不过期** ⇒ 会话中途转屏后所有坐标落在旧空间里，直到插件重启。
+
+#### 整改方案与实施
+
+- **门收成两项**：`preflight.ts` 352→165 行，只问 `adb` 与「有设备」；提供方五项**删除而非跳过**（跳过会让 `ok` 在不同范围下含义不同），`PreflightScope` 与 `PreflightInput` 随之消失，`run()` 不再要参数。G77 的两形态安装探测与 G79 的 `--serial` 规则随其检查一起退场。
+- **按消费者计数删除**：`src/actionClient.ts`(87) / `src/mcpText.ts` / `scripts/{spike-mcp,mock-action-server,dump-proxy}.mjs` / `tests/{actionClient,clientHalf,mockServer}.spec.ts`；镜像链 `src/scrcpy/{server,input}.ts`(333) + `scrcpyEnabled|ServerPath|MaxFps|MaxWidth|BitrateMbps` 五字段 + `tests/scrcpy.spec.ts`(225)。`ctx.effect` 的清理面从「两个 MCP 客户端」缩成「一个 OCR worker」，注释同批改对（它此前已在说谎）。
+- **§一.3 的读法落进代码**：adapter 不删，**第一次给它消费者** —— `autogamer_diagnose` 增 `provider{configured,command,reachable,error}`：默认 `artemisMcpCommand: []`（**空 ⇒ 永不 spawn**），配了才 lazy 连一次问设备态；连不上只写一行建议并声明「插件自己的 adb 路线不需要它」，检查自己抛错也不炸诊断（与 OCR 的诊断项同构）。
+- **覆盖面锁换成可离线复跑的形态**：`py-action-tools.json`（2026-10-13 活服务名单）成为**历史权威**，锁的是分区 —— 11 条原生 adb + 2 条路由器本地答（`take_screenshot` / `get_ui_hierarchy`）+ 2 条带理由的放弃（`list_devices` T2-a、`compare_ui_frames` T3）= 15，一条不多不少；「原生」那 11 条**逐个打到 `runNativeAction` 上证明 case 真在**（空 payload ⇒ 命中各自参数错误而非 `unsupported action`），另加**反向对照**（名单外的名字必须被判 unsupported），否则覆盖面锁可以是空的。
+- **两条差距就地收**：G90 —— `resolveScreenSize` 的缓存加 `SCREEN_SIZE_TTL_MS = 5_000`（实测一次 `screencap` ≈200ms，一回合内复用足够，转屏最多粘 5 秒）；G89 —— **裁定结案为已知边界**：执行模型是「一进程一插件实例」，进程内 FIFO + 熔断生效，py 文件锁守的是「多个 python 入口抢同一台」那个已随 D19 消失的场景，解锁条件写进 `enumerateRoster` 注释与本行互指。
+- **又一条放弃记录（§一.4 要求的落点）**：`notes / plan` 语法实测**零消费者**（那两个消费者 checker/explorer 按 D8 本就不迁；插件树里 `notes`/`plan` 只出现在一句给模型的提示文案中）⇒ **不迁移**，规格 §二 该行由「未开工」改为「已砍」。
+- 文档口径同步：README（Layout 少 4 行、脚本清单、R15 超时落点、零配置一段）、规格 §二 六行、本文件 §零/§四/§七。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **38 文件 / 437 通过**（T5 后是 42/470+1 skip；文件与用例数同时下降 = 删掉的提供方/镜像锁多于新增，别读成退步）。
+- 变异 **N1–N10 全部落地**（`node scratch/mutate-t4.mjs` → `scratch/mutate-t4.txt`）：N1 门多问一项 / N2 缓存永不过期 / N3 完全不缓存 / N4 提供方检查炸诊断 / N5 未配置被判故障 / N6 原生 case 丢失 / N7 unsupported 判据消失 / N8 提供方默认指回 python / N9 被删面被重新点名 / N10 被删配置字段复活。
+  ⚠️ **N2 第一次是绿的**：G90 判据的时钟跳量当初写成 `SCREEN_SIZE_TTL_MS + 1`，于是「把 TTL 改成永远」的变异把跳量一起放大 ⇒ **判据自我失效**。改成绝对秒数（1s 内复用 / 6s 后重问）后才红。这是本分支第三次撞上同一条：**判据必须被证明会红**（R27），前两见 #92（Q2/Q4 落在桩上）与 §零（门禁 M1 锚点腐烂）。
+- D19/D20 判据读数：`git ls-files '*.py'` = **0**；`git grep -l 'Google LLC' -- ':!docs'`、`'Apache License'`、`minitap` 同形过滤后 = **空**；`third_party/` 被跟踪 = **0**；无 CI 配置（本分支无 CI ⇒ 不写「由 CI 保证」）；`git remote -v` 只有 **origin**；根 `LICENSE` 为自撰 MIT。
+- 删除面：`git grep -E 'ActionClient|ScrcpyManager|scrcpy|ACTION_TO_PY_TOOL|uvPath|artemisRepoPath|mcpText|unwrapText' -- plugins` 只剩注释与锁自身，并由 `contracts.spec`「stay removed」一条钉住（N9 证明会红）。
+- R6：`dsh --profile web --patch <abs>/cordis.patch.yml --dump-config` ⇒ exit 0 / `unmatched` 0 / `autogamer` 行 16（本片不动 patch，跑它是证明配置面收窄没打断 preset 行）。
+- 仍开：**G94**（宿主内 live 证明 —— 本机阻塞在宿主 spawn 路径含空格的缺陷上，R1 不许解包 `app.asar` 继续查）、**G91**（长按语义，与 G94 同批）、**G92**（OCR 召回）、**G88 / G78**（待需求）。
