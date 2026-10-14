@@ -79,9 +79,8 @@
   ⚠️ **一条实测否证了「可用」的强口径**：真机桌面页 24 个带文字节点，OCR 与层级同时答得出的只有 **2 个**，小字浅色 CJK 直接没认出字形 ⇒ 安全面已锁、**召回面另立 G92**。数字与逐条查因见 §七「T5 收口记录」。
 - **挂载面清点（2026-10-15 实测，把「挂载待办」变成一条有依据的阻塞）**：`dsh` 的 CLI 垫片在 PATH（`dsh.cmd`，版本 **0.2.0-rc.2**），且 **`web` profile 里本插件早已安装**——`dsh plugin list --profile web` 读出 `dsh-autogamer@link:D:/DEV/autoGamer/plugins/dsh-autogamer`（开发期 link，不是 bundle 交付）。
   **R6 声明面自检过**：`dsh --profile web --patch <abs>/cordis.patch.yml --dump-config` ⇒ exit 0、输出 grep 不到 `unmatched`，且合出的树里 `dsh-autogamer` 与 `preset-autogamer`（persona + inner + skill dirs）齐备（读数存 `scratch/dump-config-t5.txt`，忽略区）。
-  **但宿主内的 live 会话在本机跑不起来，且原因不在插件**：`dsh headless "…"` 一启动就返回 `'D:\DeepSeek' 不是内部或外部命令`（GBK 乱码原文），即宿主为 profile **spawn 子进程时路径含空格未加引号**（安装在 `D:\DeepSeek Harness\`）；同 profile 的 `--dump-config` / `--dump-config-schema` 都不 spawn，全部正常 ⇒ 故障定位在「启动子进程」这一步，不是配置合成。
-  再往下查要解包 `app.asar` ⇒ **R1 禁止**，所以本分支**不继续**。`headless` / `desktop` 两个 profile 都**没有**本插件行（`--dump-config | grep -c autogamer` = 0），只有 `web` 有。
-  ⇒ **结论：宿主内 R7/R9/R24 的 live 证明阻塞在宿主缺陷**（升级/换安装路径/由用户从 GUI 侧挂载均可解），插件侧能给的证明已给到：真实 cordis 运行时挂载 + 真注册表解析（`tests/conformance/runtimeBoot.spec.ts`，G5 Tier 1）+ R6 声明面自检。这条**记为阻塞、不记为完成**。
+  **一条宿主缺陷（与本分支无关，值得上游修）**：`dsh headless "…"` 一启动就返回 `'D:\DeepSeek' 不是内部或外部命令`（GBK 乱码原文），即宿主为 profile **spawn 子进程时路径含空格未加引号**（安装在 `D:\DeepSeek Harness\`）；同 profile 的 `--dump-config` / `--dump-config-schema` 都不 spawn，全部正常 ⇒ 故障定位在「启动子进程」这一步，不是配置合成。再往下查要解包 `app.asar` ⇒ **R1 禁止**，故不继续。`headless` / `desktop` 两个 profile 都**没有**本插件行（`--dump-config | grep -c autogamer` = 0），只有 `web` 有。
+  ⚠️ **本条上一版据此写下「宿主内 R7/R9/R24 的 live 证明阻塞」——该结论已作废**：`dsh --profile web --no-open --port <p>` 直接把宿主当本地服务起，浏览器带 token 进去就能开真会话，**live 证明已在那儿完成**（读数见上一条「宿主内 live 证明已完成」）。插件侧原有的离线证明（真实 cordis 挂载 + 真注册表解析，`tests/conformance/runtimeBoot.spec.ts`，G5 Tier 1）仍然有效，只是不再是上限。
 - **门禁的锚点又腐烂过一次，这次把自检装进了钩子（2026-10-15，T4 内收口，R28 当轮回写）**：`check-docs --selftest` 的 **M1-C1 在 HEAD 上就已 BLIND** —— 它的锚点是 §四 G78 那一行的**字面文字**，
   而那行在 前置-2 改写后措辞变了，变异不再落地（其余六条当时仍绿，所以没人看见）。已把锚点改成**结构定位**（§四 表头分隔行后插行），`--selftest` 现 7 例全落地。
   这条不是新问题而是**同类错误的复发**：变异用例的锚点用散文，散文一漂移判据就静默失效 —— 与 §五「测试用词不许当判据」是同一条纪律。
@@ -94,6 +93,12 @@
   py 动作面名单改为**分区锁**（11 原生 + 2 本地 + 2 带理由放弃 = 15，逐个打到 `runNativeAction` 上证明 case 在，并配反向对照）；`notes/plan` 语法经实测**零消费者** ⇒ 判为不迁移（放弃记录 #94）。
   **G89 结案为已知边界**（无该并发场景）、**G90 结案**（缓存加 5s TTL）。`verify` **38 文件 / 437 通过**；**N1–N10 十条变异各红一次** —— 其中 **N2 第一次是绿的**：G90 判据的时钟跳量当初写成 `SCREEN_SIZE_TTL_MS + 1`，于是「TTL 改成永远」的变异把跳量也一起放大了 ⇒ 判据**自我失效**；改成绝对秒数后才咬住（第三次撞上 R27 这同一课）。
   D19/D20 判据读数：被跟踪 py **0**、`Google LLC` / `Apache License` / `minitap` 在 `:!docs` 外**零命中**、无 vendored 树、无 CI、`LICENSE` 为自撰 MIT、远端只有 `origin`；R6 复跑 exit 0 / unmatched 0。
+- **宿主内 live 证明已完成（2026-10-15 05:07–05:18，`emulator-5554` 在线）⇒ G94 结案**：走的是 **`dsh --profile web --no-open --port 8731`**（宿主自带 web 服务档口），浏览器按启动日志里的 token 打开后即进入正常会话界面。四条读数：
+  - **R9 官方检查器**：插件面板「已安装 1 · AutoGamer 设备执行 v0.1.0」，启用开关 **on**，「包含的组件 共 2 个 · **2 运行中**」（`dsh-autogamer` 与 `preset-autogamer` 都显示「运行中」）；Agent 预设选择器里出现 **AutoGamer**（描述文案就是我们的 persona 行）。
+  - **R7 新会话**：新建会话、选 AutoGamer 预设、跑两轮任务。
+  - **R24 会话日志**（`session-f07d997c…`，**65 条记录**）：`tool/call=7`、`tool/result=7`、`turn/end=3`（reason 全部 completed），工具计数 `autogamer_get_device_state=1 / run_device_action=4 / report_task_status=2`。关键返回原文：`device_serial=emulator-5554; connected=true; …frame 1600x900…`；`hierarchy=#0 [800,450] pkg=app.lawnchair android.widget.FrameLayout …`（**我们的 #N 编号**）；`result=Success; target_source=hierarchy; effect=changed`（**闸门 + 原生 adb 动作 + 本地效果判定 + T5 的 target_source 全在同一条里**）；`task outcome recorded: completed`。
+  - **R6 声明面**：同 profile `--dump-config` exit 0、`unmatched` 0。
+  ⚠️ **两条被本轮推翻的旧表述（R28 就地标注）**：① 本小节上一版写「宿主内 live 证明阻塞在宿主缺陷（`dsh headless` spawn 路径含空格未加引号）」—— **那只堵了 headless 这一条路**，web profile 完全可用，故该结论作废，`headless` 的故障本身仍如实记录（它是宿主的缺陷，与我们无关，值得上游修）；② 取证脚本 `conformance-live.mjs` **一直只读到日志的第一个 zstd 帧**（Node 的解压器不跨帧），于是它把「跑过四个工具」的会话报成 `tools invoked: none` —— 已改为按帧魔数逐帧解压（同一文件从 1 条记录变 65 条），见提交 `1f4d372`。**这条判据此前是坏的，凡是它报过的「没调用」都不算数**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
   属用户授权动作、不代批）。**前置-3 已完成**（算法/阈值/分支/失败语义/坐标空间五条结论齐备，T3 移植范围收口为
@@ -139,8 +144,6 @@
 
 | 编号 | 一句话 | 归属 |
 |---|---|---|
-| G94 | **宿主内 live 证明未做**：工具面从未在跑起来的 DSH 进程里被真实会话调用过（T1 的 R7/R9/R24 半条、T2 的挂载后复跑、G91 的长按复测都吊在这上面） | **T4 清点新立**（本机阻塞而非插件缺陷：`dsh headless` 一 spawn 就报 `'D:\DeepSeek' 不是内部或外部命令` ⇒ 宿主为 profile 启动子进程时**路径含空格未加引号**；同 profile 的 `--dump-config` / `--dump-config-schema` 全正常，故障定位在 spawn 一步；再往下查要解包 `app.asar` ⇒ **R1 禁止**。读数与复跑命令见 §零「挂载面清点」） |
-| G91 | `long_press` 的**长按语义未在真机上证实**：零距离 swipe 与 `motionevent DOWN/UP` 都 code=0 无报错，但对照组（普通 tap）与它们反应完全一致 ⇒ 那次实验**不成立**，不是阴性结果 | **T2-c/d/e 新立**（实现取「零距离 swipe + duration」这一标准形态；判据需一个有长按菜单且对照组可区分的目标 ⇒ 与 **G94** 同批复测 🔶） |
 | G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 0–3 个（逐帧方差大）；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜、不可读帧先拒）。**2026-10-15 已量过放大假设：整帧 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中（3× 还贵 70%），而同一屏 140×70 的**局部裁剪 @2×** 能正确读出「游戏 中 心」⇒ 瓶颈是**整页版面分析**不是像素尺寸**；解法形态是「按区域识别」，属新设计 ⇒ 另立条目再做，不在本片实现 |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内） |
@@ -152,7 +155,7 @@
 > 顺带更正本行原先写着的「实测 144 条错误」：它与量化小节的基线 **124** 是同一件事的两个数，且 144 无从复核——结清后只保留 124 那一份读数（R28：一个派生事实只留一个权威）。
 > **2026-10-15（T4）一次结案八条**：**G82 / G83 / G84 / G85 / G86 / G89 / G90 / G93** —— 前三条是 T1–T3 的「离线可证」部分（各自的判据、变异与遗留 🔶 见 §七 对应收口记录；**G84 的「与 py 逐条对照」由 T4 的分区锁替代**，因为本分支按 D19 没有可跑的 py 可比）；
 > **G85/G86** 是 D19/D20 的收尾读数（§七「T4 收口记录」）；**G89** 裁定为已知边界（无该并发场景，解锁条件写在 `enumerateRoster` 注释里）；**G90** 用 TTL 收；**G93** 镜像链整体删除。
-> ⚠️ 这八条**都不含**「宿主内真跑过」那一半 —— 那一半现在只有一个编号：**G94**。
+> ⚠️ 这八条**都不含**「宿主内真跑过」那一半 —— 那一半曾集中在 **G94**，现已于 2026-10-15 完成并结案（连同 **G91** 的长按语义复测：换成可区分的靶子后，`input swipe x y x y 1500` 与 `motionevent DOWN/UP` **都真的弹出了长按菜单**，现行实现正确）。权威记录见 CHANGELOGS **#97** 与 §零「宿主内 live 证明已完成」。
 
 ## 七、流程
 

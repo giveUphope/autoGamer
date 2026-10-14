@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 |
 | 三 · 门禁与基建 | #95 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）。 |
 
 
@@ -347,3 +347,29 @@
 - `pnpm --config.verify-deps-before-run=false run verify` ⇒ **38 文件 / 439 通过**（#94 后为 437）。
 - 变异 **M15**（`node scratch/mutate-t5.mjs`，现共 15 条，全落地）：删掉验帧那段 ⇒ 包内那条锁红（真 worker 收到坏帧后进程被未处理 error 打断），证明这条判据会失灵。
 - 已知边界：修的是「**我们能把字节交给 worker 之前**」这一段。若 tesseract.js 在别的场景（wasm 自身崩溃、语言数据损坏）仍抛未处理事件，本层无法通过公开接口挂 handler —— 该残留记在 `TODO.md` §七「T5 收口记录」，不在本片假装已解决。
+
+### #97 宿主内 live 证明完成（G94、G91 结案；顺带修好一条一直报假的取证判据）
+
+#### 问题描述
+
+- T1–T4 的每一条判据都留了同一个尾巴：工具面**从未在跑起来的 DSH 进程里被真会话调用过**（R7 新会话、R9 官方检查器、R24 会话日志三件都缺）。此前记为「阻塞」，依据是 `dsh headless "…"` 一 spawn 就报 `'D:\DeepSeek' 不是内部或外部命令`（宿主为 profile 起子进程时路径含空格未加引号），而再往下查要解包 `app.asar`（R1 禁止）。
+- **那条「阻塞」结论是错的**：它把 headless 一条路的故障当成了整个宿主的不可用。`dsh --profile web --no-open --port <p>` 能把宿主当本地服务起，浏览器带启动日志里的 token 进去就是正常界面。
+- **G91（长按语义）** 此前不成立的原因是靶子不可区分（对照组与实验组反应一致 ⇒ 不是阴性结果，是无效实验）。
+- 取证脚本 `scripts/conformance-live.mjs` 一直报 `tools invoked: none`。
+
+#### 整改方案与实施
+
+- **live 证明（2026-10-15 05:07–05:18，`emulator-5554`）**：
+  - R9：插件面板「已安装 1 · AutoGamer 设备执行 v0.1.0」、启用开关 on、「包含的组件 共 2 个 · **2 运行中**」（`dsh-autogamer` + `preset-autogamer`）；Agent 预设选择器里出现 **AutoGamer**。
+  - R7：新建会话并选该预设，跑三轮任务。
+  - R24：会话 `session-f07d997c…` 共 **65 条记录**，`tool/call=7`、`tool/result=7`、`turn/end=3`（reason 全 completed），工具计数 `autogamer_get_device_state=1 / run_device_action=4 / report_task_status=2`。关键原文：`device_serial=emulator-5554; connected=true; …frame 1600x900…`；`hierarchy=#0 [800,450] pkg=app.lawnchair android.widget.FrameLayout …`（我们的 `#N` 编号在宿主里成立）；**`result=Success; target_source=hierarchy; effect=changed`**（闸门 + 原生 adb 动作 + 本地效果判定 + T5 的 `target_source` 同落一条结果）；`task outcome recorded: completed`。
+  - R6：同 profile `--dump-config` exit 0、`unmatched` 0。
+- **G91 复测（换成可区分的靶子：桌面 `设置` 图标 —— tap 会打开应用，long-press 会弹 Lawnchair 的快捷菜单）**：基线 `menu=[]`；`input motionevent DOWN → sleep 1.5 → UP` ⇒ `menu=["应用信息"]`；**现行实现 `input swipe x y x y 1500` ⇒ 同样 `menu=["应用信息"]`**。⇒ 长按语义成立，实现不动。此前那次「两形态都 code=0 且反应一致」的实验，是因为它跑在**已经被上一次 tap 打开的 Settings 里**（宿主会话日志里能看到 `pkg` 已变成 `com.android.settings.intelligence`），不是手势无效。
+- **修取证判据**：`readSession()` 改为**按 zstd 帧魔数逐帧解压**（Node 的解压器不跨帧，无论 stream 还是 sync），并跳过仍在写入的帧。同一文件：**1 条记录 → 65 条**。原注释写着「multi-frame」而代码做不到，属注释说谎；这条改完，`conformance-live.mjs` 对本会话给出 `declared=ok live=ok`。
+
+#### 验收标准
+
+- `node plugins/dsh-autogamer/scripts/conformance-live.mjs --cwd "D:\DEV\autoGamer" --expect-tool run_device_action --expect-tool report_task_status --expect-tool autogamer_get_device_state` ⇒ 三个 expect 全部 `called Nx`、`verdict: declared=ok live=ok`（复跑需宿主里有那几次调用；日志是持久件，故本条可离线复跑）。
+- 反向自证：修复前同一命令对同一会话报 `tools invoked: none` —— 判据失灵过一次即不算判据（R27），这也是为什么这次先把读数抄进台账再改代码。
+- 复现 live 的路径（新机器/将来复跑）：`dsh --profile web --no-open --port 8731` → 打开日志里带 `?token=` 的地址 → 插件面板核 `运行中` → 新建会话选 AutoGamer 预设 → 让它调 `autogamer_get_device_state` 与一次 `run_device_action`。
+- 遗留：`G92`（OCR 整页召回，形态是「按区域识别」，新设计另立条目）、`G88` / `G78`（待需求，非待办）。**T1–T4 的功能面至此没有未验证项。**
