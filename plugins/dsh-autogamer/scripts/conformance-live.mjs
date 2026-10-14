@@ -20,9 +20,7 @@ import { existsSync, readdirSync, readFileSync, statSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
-import { Readable } from "node:stream";
-import { pipeline } from "node:stream/promises";
-import { createZstdDecompress } from "node:zlib";
+import { zstdDecompressSync } from "node:zlib";
 
 const PLUGIN_ROOT = resolve(dirname(fileURLToPath(import.meta.url)), "..");
 const arg = (name, fallback) => {
@@ -74,22 +72,35 @@ function sessionDir() {
   return chosen;
 }
 
-/** One zstd frame per record: stream-decompress (multi-frame) with Node's own
- *  zlib — no external Python toolchain (D19). */
-async function readSession(dir) {
+/**
+ * The log is one zstd frame per record, and Node's decompressor stops after the
+ * FIRST frame whether it is handed a stream or a buffer - so the frames are
+ * located by their magic bytes and each decompressed on its own. Reading only
+ * that first frame is what made this script report `tools invoked: none` for a
+ * session that had demonstrably run four tools: the header record was all it
+ * ever saw. No external Python toolchain either way (D19).
+ */
+const ZSTD_FRAME = Buffer.from([0x28, 0xb5, 0x2f, 0xfd]);
+
+function readSession(dir) {
   const buf = readFileSync(join(dir, "session.v4.jsonl.zstd"));
-  const chunks = [];
-  await pipeline(Readable.from(buf), createZstdDecompress(), async function* (src) {
-    for await (const chunk of src) {
-      chunks.push(chunk);
-      yield chunk;
+  const lines = [];
+  const seen = new Set();
+  for (let at = buf.indexOf(ZSTD_FRAME); at >= 0; at = buf.indexOf(ZSTD_FRAME, at + 1)) {
+    let text;
+    try {
+      text = zstdDecompressSync(buf.subarray(at)).toString("utf8");
+    } catch {
+      // A frame the host is still appending: skip it rather than fail the read.
+      continue;
     }
-  });
-  return Buffer.concat(chunks)
-    .toString("utf8")
-    .split("\n")
-    .filter((l) => l.trim())
-    .map((l) => JSON.parse(l));
+    for (const line of text.split("\n")) {
+      if (line.trim().length === 0 || seen.has(line)) continue;
+      seen.add(line);
+      lines.push(line);
+    }
+  }
+  return lines.map((line) => JSON.parse(line));
 }
 
 function liveLayer(records) {
