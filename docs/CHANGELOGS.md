@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）。 |
 
 ## 写入规则
 
@@ -240,3 +240,29 @@
 - 变异（R27，`node scratch/mutate-t2f.mjs`）：Q1 预检文本不再优先 ⇒ 1 红；Q2 空帧仍写附件存储 ⇒ 1 红；Q3 crash 缓冲逐行切块 ⇒ 1 红；Q4 跳过 helper 版本探测 ⇒ 1 红。
   **Q2 / Q4 第一次跑是绿的**，原因是断言落在了桩身上而不是探针身上（`noFrame` 抽掉的是依赖、`helperVersion` 只测映射）——补出「帧存在但为空」和 `diagnoseDevice` 真探针两条后才红。**这条自纠比结果本身重要**：它又是 R27 说的「判据必须被证明会红」。
 - 仍 🔶：诊断的 crash 解析只在**这一台**设备的 tombstone 形状上量过；挂载后的宿主内实跑待用户放行（R7 / R9 / R24）。
+
+### #93 T5 · OCR 内置（G87 反转结案）：备用文字元素源改为随包离线 WASM，用户零配置
+
+#### 问题描述
+
+- #87 判 OCR「零消费者 ⇒ 推迟」的前提在 2026-10-15 被用户裁定推翻：目标要求「将 OCR 功能**内置到插件本体**，使用户使用时无需额外安装配置」。消费者由本项目自建 —— `run_device_action` 的 `target:{text}` 在**层级答不出**时没有第二条路（画布 / WebView 界面的文字压根不是节点），这才是那片能力真正的缺口。
+- 上游形态不可照搬：py 侧是 `httpx` → Google Cloud Vision + **用户 API key**，未配置就返回空。要用户先去申请密钥，与「零配置」直接冲突 ⇒ **只取其用途，换其形态**。
+- 落地前的一次性可行性实测（`TODO.md` §七「T5」方案表）用的是 **standard** 语言数据，得到「双语 1964ms、整帧 conf 35、约 4.5 MB」；实施期换 `4.0.0_fast` 后同帧 **657ms / 3.5 MB**，且**整帧 conf 这个口径本身被证明是错的判据**（见下）。
+
+#### 整改方案与实施
+
+- 新增 `src/ocr/recognize.ts`：`createOcrEngine()` 懒建**单例** worker（实测 boot 168ms、次帧 594ms），`recognize()` 任何失败一律返回 `undefined`（fail-open：OCR 只可能**多给**一个答案，绝不可能把一个能成的动作弄失败）；超时自实现（R15）+ 观测 `AbortSignal`；disposer 挂在 `apply()` 的 `ctx.effect` 上。
+- **离线三件套**：`langPath` 指包内 `ocr/`、`cacheMethod:"none"`、`gzip:true`。语言数据 `ocr/{eng,chi_sim}.traineddata.gz`（1,984,273 / 1,730,011 B）随包发布并加进 `files`；`THIRD_PARTY_NOTICES.md` 登记来源、版本、许可与体积（tesseract.js MIT、tessdata_fast Apache-2.0）。
+- **命中模型由实测逼出**（方案只写了 `{text, confidence, bbox}`）：tesseract 把一整排桌面图标读成**一行** —— 夹具里行框 `x0=4..x1=1441`、行中心 **(723,245) 落在两个图标中间的空白**，而行均值 conf 只有 **60**；「游戏中心」是这一行里的三个词（96/93/92，合并框中心 **(1003,240)**）。⇒ `matchWindow()` 把命中**回填到实际匹配的那串词**，置信度门槛按**该串词的最弱词**判（`OCR_MIN_CONFIDENCE = 60`，实测标签 72–96 / 噪声 0–47）。**偏离方案 How-3 的字面「不高于 35」**，因为 35 是整帧口径、不是命中口径；按行判会把真标签拒掉、把噪声放进来，两个方向都有锁。
+- 消费点（`src/tools/runDeviceAction.ts`）：只有 `{text}` 且层级答不出才 `ocr(key, signal)`；`{index}` / `{coordinate}` 永不走；多命中或低置信 ⇒ 保持原层级错误文案（歧义不猜，与 G67 同向）；命中记 `target_source: "hierarchy"|"ocr"` 并复制进 `presentationMeta`（T1 折叠侧只读 `meta`，天然继承）。每轮阶梯各看一次新帧（不缓存）—— 阶梯的本意就是「屏幕可能还在动」。
+- 配置面 `ocrEnabled`（默认 **true**）/ `ocrLanguages` / `ocrTimeoutMs`；诊断项 `ocr_ready` + `ocr{enabled,langs,missing_data,frame?}`，缺语言包或引擎问不出时写进 `recommendations`，**不进 preflight 门**、检查自身抛错也只记一行（`ocrEnabled:false` 算选择不算故障）。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **42 文件 / 470 通过 / 1 跳过**（#92 后为 39/425）。新增 `tests/ocrRecognize.spec.ts`（23）、`tests/ocrConsumer.spec.ts`（9）、`tests/ocrPackaging.spec.ts`（5），`tests/diagnose.spec.ts` +8。
+- **`ocrPackaging.spec` 里有一条真跑包内模型的**：读版本库内的真夹具帧、断言 `TapTap`→(1206,241) 与 `游戏中心`→(1003,240)、且跑完 `ocr/` 与 cwd **一个文件都不多**（这是「零配置且不留垃圾」的唯一可复跑判据；单元 spec 仍全用注入假件，不碰模型）。
+- `node scripts/ocr-probe.mjs`（版本化探针，吃仓库内夹具）离线复跑：`boot=168ms recognize=657ms second=594ms`、`cwd pollution: []`、`ocr dir extras: []`。
+- 变异（R27，`node scratch/mutate-t5.mjs` → `scratch/mutate-t5.txt`）**M1–M14 全部落地**：M1 OCR 抢先于层级 / M2 `{index}` 也走 OCR / M3 命中不回填框 / M4 门槛归 0 / M5 按行置信度判 / M6 `files` 去掉语言包 / M7 `cacheMethod:"write"` / M7b 去掉 `langPath` / M8 OCR 检查炸整条诊断 / M9 建议不落地 / M10 `ocr_ready` 不看缺数据 / M11 render 丢字段 / M12 缺数据判定反了 / M13 `status()` 谎报 worker 已起 / M14 `tesseract.js` 降级为 devDependency。
+  ⚠️ **M7 第一次是绿的**：断言原本只比「本次运行前后目录差集」，而上一轮变异已把两个 `traineddata` 落在插件目录 ⇒ 脏机器上失明。改成**绝对 + 相对**双断言后才咬住，并清掉那两枚遗留文件（4.1 MB / 2.5 MB）。
+- ⚠️ **一条实测否证了「可用」的强口径**（真机 `emulator-5554` 桌面页，跑 `dist/` 产物）：帧 1,279,741 B、层级 83 节点其中 **24 个带文字**、OCR 79 命中 / 754ms，但**两侧同时答得出的只有 2/24**；逐条查因显示 `游戏中心` 这帧被读成 `只@45 / 本@34 / wep@33`（**不是被门槛挡掉，是没认出字形**），dock 的 `设置/图库/文件` 附近零命中。⇒ **安全面（fail-open、只补不抢、歧义不猜、零配置、不落垃圾）已锁；召回面在 1600×900 小字浅色 CJK 上不成立 ⇒ 新立 G92**。同一屏的夹具帧反而认得出（92–96），说明逐帧方差大，G92 的候选解法（识别前 2× 放大 / 换 standard 或 best 数据 / 按区域裁剪重试）本片**一条都没选**。
+- 仍 🔶：OCR 从未在**挂载后的宿主内**跑过（与 T1 / T2 的挂载证明同一批）；`chi_sim` 的召回只在两帧上量过。
