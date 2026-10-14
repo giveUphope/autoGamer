@@ -11,7 +11,7 @@
  */
 import { readdirSync, readFileSync, statSync } from "node:fs";
 import { fileURLToPath } from "node:url";
-import { afterAll, beforeAll, describe, expect, it } from "vitest";
+import { afterAll, beforeAll, describe, expect, it, vi } from "vitest";
 import { chooseHitPoint, createOcrEngine, findNeedleHits, type OcrEngine, type OcrPage } from "../src/ocr/recognize.js";
 
 const ROOT = new URL("../", import.meta.url);
@@ -74,6 +74,24 @@ describe("the built-in engine works with nothing installed", () => {
     // Both centres are the boxes the probe reported for this fixture.
     expect(chooseHitPoint(findNeedleHits(page!, "TapTap"))).toEqual({ x: 1206, y: 241 });
     expect(chooseHitPoint(findNeedleHits(page!, "游戏中心"))).toEqual({ x: 1003, y: 240 });
+  });
+
+  it("refuses a buffer it cannot read rather than handing it to the worker", async () => {
+    // Measured: leptonica rejects an unreadable image with an *unhandled* worker
+    // error - the awaited promise rejects AND a second error lands on
+    // `process.nextTick`, which takes the process down. A truncated `screencap` is
+    // exactly that shape, so the guard runs before the worker is even started.
+    const logger = { warn: vi.fn() };
+    const engine = createOcrEngine({ logger });
+    const truncated = Buffer.concat([
+      Buffer.from([0x89, 0x50, 0x4e, 0x47, 0x0d, 0x0a, 0x1a, 0x0a]),
+      Buffer.alloc(64, 0),
+    ]);
+    expect(await engine.recognize(truncated)).toBeUndefined();
+    expect(await engine.recognize(Buffer.from("not an image at all"))).toBeUndefined();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("not a readable PNG"));
+    expect(engine.status().workerStarted, "the guard runs before the factory").toBe(false);
+    await engine.dispose();
   });
 
   it("writes nothing into the package or the working directory", () => {

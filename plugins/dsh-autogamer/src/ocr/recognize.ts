@@ -30,6 +30,7 @@ import { existsSync } from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
+import { parseImageSize } from "../coord.js";
 
 /** Where the packaged language data lives (`ocr/<lang>.traineddata.gz`). */
 const PACKAGE_DIR = join(dirname(fileURLToPath(import.meta.url)), "..", "..");
@@ -335,6 +336,16 @@ export function createOcrEngine(options: OcrEngineOptions = {}): OcrEngine {
   return {
     async recognize(png, recognizeOptions) {
       if (disposed || langs.length === 0) return undefined;
+      // Never hand the worker bytes it cannot read. Measured: a buffer leptonica
+      // rejects makes tesseract.js emit an *unhandled* worker error - the awaited
+      // promise rejects (we catch that), and a second error arrives on
+      // `process.nextTick`, which takes the process down. A truncated `screencap`
+      // is exactly such a buffer, so the frame is checked here instead.
+      const size = parseImageSize(png);
+      if (size === undefined || size.width <= 0 || size.height <= 0) {
+        options.logger?.warn(`[ocr] refused a buffer that is not a readable PNG (${png.length} bytes)`);
+        return undefined;
+      }
       const at = Date.now();
       try {
         const engine = worker ?? (await start());

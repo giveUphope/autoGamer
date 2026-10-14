@@ -34,6 +34,7 @@ import {
   type OcrPage,
   type OcrWorkerLike,
 } from "../src/ocr/recognize.js";
+import { pngHeaderOnly } from "./support/fakeAdb.js";
 
 /** A word record in tesseract's own shape. */
 function word(text: string, confidence: number, box: [number, number, number, number]) {
@@ -92,6 +93,16 @@ function workerReturning(data: OcrDataLike, over: Partial<OcrWorkerLike> = {}): 
     terminate: vi.fn(async () => undefined),
     ...over,
   };
+}
+
+/**
+ * The engine refuses anything that is not a readable PNG before it touches the
+ * worker (measured: an image leptonica cannot parse makes tesseract.js emit an
+ * unhandled worker error on top of the rejection), so the frames handed to it in
+ * these tests carry a real header.
+ */
+function png(): Buffer {
+  return pngHeaderOnly(720, 1600);
 }
 
 describe("OCR hit model (measured frame shapes)", () => {
@@ -236,8 +247,8 @@ describe("engine lifecycle and fail-open behaviour", () => {
   it("starts one worker, reuses it, and parses the page it returns", async () => {
     const factory = vi.fn(async () => workerReturning(FRAME));
     const engine = createOcrEngine({ workerFactory: factory });
-    const first = await engine.recognize(Buffer.from("png"));
-    const second = await engine.recognize(Buffer.from("png"));
+    const first = await engine.recognize(png());
+    const second = await engine.recognize(png());
     expect(factory).toHaveBeenCalledTimes(1);
     expect(first!.hits.length).toBe(second!.hits.length);
     expect(first!.hits.length).toBeGreaterThan(0);
@@ -249,7 +260,7 @@ describe("engine lifecycle and fail-open behaviour", () => {
   it("passes the configured languages through as a trimmed list", async () => {
     const factory = vi.fn(async () => workerReturning(FRAME));
     const engine = createOcrEngine({ langs: " eng + chi_sim ", workerFactory: factory });
-    expect(await engine.recognize(Buffer.from("png"))).toBeDefined();
+    expect(await engine.recognize(png())).toBeDefined();
     expect(factory).toHaveBeenCalledWith(["eng", "chi_sim"]);
     await engine.dispose();
   });
@@ -257,7 +268,7 @@ describe("engine lifecycle and fail-open behaviour", () => {
   it("recognizes nothing without a worker when there are no languages", async () => {
     const factory = vi.fn(async () => workerReturning(FRAME));
     const engine = createOcrEngine({ langs: "", workerFactory: factory });
-    expect(await engine.recognize(Buffer.from("png"))).toBeUndefined();
+    expect(await engine.recognize(png())).toBeUndefined();
     expect(factory).not.toHaveBeenCalled();
   });
 
@@ -272,7 +283,7 @@ describe("engine lifecycle and fail-open behaviour", () => {
           }),
         }),
     });
-    expect(await engine.recognize(Buffer.from("png"))).toBeUndefined();
+    expect(await engine.recognize(png())).toBeUndefined();
     expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("wasm died"));
     await engine.dispose();
   });
@@ -288,8 +299,8 @@ describe("engine lifecycle and fail-open behaviour", () => {
         return workerReturning(FRAME);
       },
     });
-    expect(await engine.recognize(Buffer.from("png"))).toBeUndefined();
-    expect((await engine.recognize(Buffer.from("png")))?.hits.length).toBeGreaterThan(0);
+    expect(await engine.recognize(png())).toBeUndefined();
+    expect((await engine.recognize(png()))?.hits.length).toBeGreaterThan(0);
     expect(attempts).toBe(2);
     await engine.dispose();
   });
@@ -300,7 +311,7 @@ describe("engine lifecycle and fail-open behaviour", () => {
         () => new Promise<{ data: OcrDataLike }>((resolve) => setTimeout(() => resolve({ data: FRAME }), 50))),
     });
     const engine = createOcrEngine({ timeoutMs: 5, workerFactory: async () => slow });
-    expect(await engine.recognize(Buffer.from("png"))).toBeUndefined();
+    expect(await engine.recognize(png())).toBeUndefined();
     await engine.dispose();
   });
 
@@ -312,14 +323,25 @@ describe("engine lifecycle and fail-open behaviour", () => {
         () => new Promise<{ data: OcrDataLike }>((resolve) => setTimeout(() => resolve({ data: FRAME }), 50))),
     });
     const engine = createOcrEngine({ timeoutMs: 5_000, workerFactory: async () => slow });
-    expect(await engine.recognize(Buffer.from("png"), { signal: controller.signal })).toBeUndefined();
+    expect(await engine.recognize(png(), { signal: controller.signal })).toBeUndefined();
     await engine.dispose();
+  });
+
+  it("refuses bytes that are not a readable PNG, before starting anything", async () => {
+    const factory = vi.fn(async () => workerReturning(FRAME));
+    const logger = { warn: vi.fn() };
+    const engine = createOcrEngine({ workerFactory: factory, logger });
+    expect(await engine.recognize(Buffer.from("not an image at all"))).toBeUndefined();
+    expect(await engine.recognize(Buffer.alloc(4)))
+      .toBeUndefined();
+    expect(factory, "the guard runs before the worker exists").not.toHaveBeenCalled();
+    expect(logger.warn).toHaveBeenCalledWith(expect.stringContaining("not a readable PNG"));
   });
 
   it("reports what the package can answer before any worker starts", async () => {
     const engine = createOcrEngine({ langs: "eng+chi_sim", workerFactory: async () => workerReturning(FRAME) });
     expect(engine.status()).toEqual({ langs: ["eng", "chi_sim"], missingData: [], workerStarted: false });
-    await engine.recognize(Buffer.from("png"));
+    await engine.recognize(png());
     expect(engine.status().workerStarted).toBe(true);
     await engine.dispose();
     expect(engine.status().workerStarted).toBe(false);
@@ -333,10 +355,10 @@ describe("engine lifecycle and fail-open behaviour", () => {
   it("terminates the worker once and recognizes nothing after dispose", async () => {
     const worker = workerReturning(FRAME);
     const engine = createOcrEngine({ workerFactory: async () => worker });
-    await engine.recognize(Buffer.from("png"));
+    await engine.recognize(png());
     await engine.dispose();
     expect(worker.terminate).toHaveBeenCalledTimes(1);
-    expect(await engine.recognize(Buffer.from("png"))).toBeUndefined();
+    expect(await engine.recognize(png())).toBeUndefined();
     expect(worker.terminate).toHaveBeenCalledTimes(1);
     await expect(engine.dispose()).resolves.toBeUndefined();
   });
