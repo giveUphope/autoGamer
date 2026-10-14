@@ -289,7 +289,78 @@
 - [ ] TS 版文档门禁，替代未随迁的 py 脚本（`check_doc_registry` / `check_doc_tables` 的机械职责）
 - [ ] 本分支的 `CHANGELOGS`（首次结案时新建，规则：`### #N` 三段、编号永不复用）
 
-### T1 · 引擎去消费者（**G82**）
+### T1 · 引擎去消费者（**G82**）· 方案（2026-10-14 立项，R22）
+
+**What（范围）**
+
+- `autogamer_run_task` / `autogamer_manage_task` / `autogamer_inspect_trace` 三条工具改为 **TS 原生**：
+  不再经 `backend.startTask / manageTask / inspectTrace` 打外部 ARTEMIS 任务引擎（py 进程）。
+  **G82 的 Done = py 引擎在插件侧无任何消费者。**
+- 任务状态与执行步迹改为**由会话日志派生**（跨回合）。
+- **契约面不动**：工具名、参数、输出字段、render 全部保持现状，只换实现与数据来源
+  （判据是 `tests/fixtures/py-action-tools.json` 与 `deliveryShape.spec.ts`）。
+- 范围外：`run_device_action` 的动作面（属 T2）、效果判定算法（属 T3）、外部 ARTEMIS 作为
+  **可选提供方**的保留（属 §一.3 / T4）。
+
+**R20 第 1 步「查」：查了哪份、原文怎么说**（上游 `deepseek-ai/deepseek-harness` @ `master`，只读取证面，未解包）
+
+| # | 出处 | 原文（摘） | 对本方案的作用 |
+|---|---|---|---|
+| 1 | `skills/cordis-plugin-development/references/practices.md` 原则 1 | "The session log is the only source of truth. Anything the model sees must be reconstructable from committed session events; fork, resume, and replay derive from the log. **Plugin memory is a derived cache.**" | 执行主体交给 agent loop；插件侧只留**派生缓存**，不许自建真相源 |
+| 2 | 同上「Performance」段 | "Keep per-session state derived from the log in a `ctx.sessionProjections` unit instead of subscribing to `session/event` and rescanning `session.events`. `apply(state, event)` is pure and synchronous and returns the same reference for events it ignores… Read with `stateOf()`." | 状态载体定案为 session 投影；禁 `session/event` 重扫 |
+| 3 | `docs/subsystems/session-projection.zh.md`（`ctx.sessionProjections` 签名块） | `register(definition) => disposer`；`stateOf(session, key)`；`onChanged(listener)`；`snapshot`/`checkpoint` | 注册表 API 形状（**🔶 未在本机装好的宿主上核过**） |
+| 4 | 同上「投影单元」段 | `ProjectionDefinition` = `key` / `stateSchema`(Zod) / `init(header, inheritedEventCount)` / `apply(state, event)` / `wire?` / `stateVersion`；"state MUST be plain JSON (the persisted-cache precondition)" | 单元形态与纯 JSON 约束；**推出 zod 依赖**（见 How-8） |
+| 5 | 同上「快照与变更流」段 | `ProjectionChangeListener = (session, key, value, seq) => void`；"an object-valued view must reuse its reference to suppress publication" | **读路径走 `onChanged` 变更流**（见 How-4） |
+| 6 | 同上 | "Contributors may preserve optional registration through `ctx.inject(['sessionProjections'], …)`"；注册是 effect，disposer 随调用方 fiber | 可选注册 + 自清理 |
+| 7 | `practices.md`「Performance」 | "Wait on durable events such as `turn/end`, `assistant/message`, or `tool/result`… Do not poll `agent/status`." | 步迹的折叠源 = `tool/result`（durable） |
+| 8 | `practices.md`「Performance」 | "A timer that starts work calls `agent.followup()`, which wakes the agent; `agent.inject()` does not wake it, so injected context can wait in the inbox" | steer 用 `inject`（调用者本就醒着）；唤醒才用 `followup` |
+| 9 | `practices.md`「Stability」 | "Do not append session events with a new `type`… Derive state from existing events, or keep plugin-owned data in a storage service found through inspection." | 禁自造事件类型（R16 同源） |
+
+**How（做法与关键决策）**
+
+1. **执行主体 = DSH agent loop**（S11）：`run_task` 只登记任务并**立即返回** `task_id`（500ms 内），
+   真正的设备动作由模型调 `run_device_action` 完成。不在插件里另造后台执行循环——那等于第二套 agent loop。
+2. **状态载体 = `ctx.sessionProjections` 单元**（出处 2/3/4/6）。键自定（例 `autogamerTasks`），
+   `state` 是 plain JSON：`{ tasks: { [taskId]: TaskRecord }, steps: Step[] }`。
+3. **单元形态**：`init` 造空态；`apply` 是纯同步折叠，**不关心的事件返回同一引用**（出处 4，官方明文要求）。
+4. **读路径绕开一个未证事实**：`stateOf(session, key)` 需要 `Session` 实例，而本插件的 `ToolExec`
+   镜像只有 `signal` / `concludeTurn`（`src/dsh-types.ts:168`），R17 又称 `exec.agent` 存在——两者**都没在
+   本机宿主上核过**（🔶 见 Verify）。因此读路径改走官方 `onChanged` 变更流：在 `apply` 期维护
+   `sessionId → 投影值` 的缓存，三条工具只按 `sessionId` 读缓存。**这不是自建容器**（出处 1：插件内存本就是
+   派生缓存；真相源仍是日志，重放时由注册表从日志重折叠）。
+5. **步迹来源 = `tool/result` 事件**（出处 7）：本会话 `run_device_action` 的结果折叠成 step
+   （action / effect 三态 / category / incident / 时间戳）。`inspect_trace` 的 `summary|full` 复用现有
+   `summarizeSteps()`（取边 + 失败步），语义不变。
+6. **steer = `agent.inject()`**（出处 8）；**stop** = 任务标 `stopped`，并由**已有**的
+   `ctx.tools.guard()`（同步单调拒绝，R13）挡住该任务后续的设备动作——不新造拒绝机制。
+7. **失败方向 fail-open**：`stateOf`/缓存读不到、或投影未注册 ⇒ 任务工具返回 `state: "unknown"` 而非报错，
+   与 G84 记录的 `compare_ui_frames` fail-open 方向一致。
+8. **新增依赖 `zod`**：`stateSchema` 是 `ZodType`（出处 4）。「不引入任何新依赖」是**搬迁-1** 的约束，
+   不延续到 T1；此处显式决策引入，并记进 Done 的验收（装完必须 `tsc` + 全量测试绿）。
+9. **可选注册**：`ctx.inject(['sessionProjections'], …)`，注册表缺席时插件照常挂载（出处 6）。
+
+**Verify（验收命令）**
+
+- **契约锁 + 变异校验（R27）**：三条工具的 spec 注入「一调用就抛的 fake backend」，断言 `execute` 路径零调用；
+  然后**故意**让 `runTask` 调一次 backend，确认该 spec 变红 ⇒ 证明这条锁会咬。
+- **折叠单测**：用合成事件驱动 `apply`，覆盖五语义：登记任务 / 步迹追加 / effect 三态（changed·unchanged·unknown）/
+  stop 后不再计步 / **不相关事件返回同一引用**（`Object.is`）。
+- `pnpm --config.verify-deps-before-run=false run build`（tsc rc 0）；
+  `pnpm --config.verify-deps-before-run=false run test`（vitest 全绿）。
+- `node scripts/check-env.mjs` → exit 0；`git ls-files '*.py'` 为空。
+- 🔶 **live（阻塞于前置-1 的设备环境，本机做不了）**：`cordis_inspect_query` 核 `sessionProjections`
+  的真实签名与 `onChanged` 载荷形状；按 R7 开新会话跑一条完整任务，终态双轴正确。
+  在此之前，所有宿主交互一律按 R21 标 🔶（仅单测 / 未 live 验证）。
+
+**Done means**
+
+- [ ] 三条工具零外部进程调用（契约锁 + 变异校验通过）
+- [ ] 任务状态与步迹由**会话日志派生**，无自造事件类型、无自建真相源
+- [ ] 折叠纯函数与三条工具的 spec 全绿；`tsc` + `vitest` 全绿
+- [ ] zod 依赖落定并记入插件 `package.json`
+- [ ] 🔶 live 绑定核验（R9 + R7）——**阻塞于前置-1 的设备环境，不在本机可完成范围内**
+
+### T1 · 引擎去消费者（**G82**）· 进度
 
 - [ ] 落自足条目（What / How / Verify / Done）并按 R22 先提交方案
 - [ ] `run_task` / `manage_task` / `inspect_trace` 改 TS 侧编排（S11 路由驱动设备动作工具）
