@@ -33,7 +33,7 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 |---|---|---|---|---|
 | 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | 与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参 | 部分（`ActionClient` 仅为 MCP 转发） |
 | 截图 | py 动作面 | `adb exec-out screencap -p` | 同设备同帧的 PNG IHDR 尺寸等于帧空间（已验 1600x900） | 已具备（`coord.ts` 取源路径已验） |
-| UI 层级 dump | py `uiautomator2` 客户端 | `adb shell uiautomator dump` + 自解析 | 节点集与 py 面一致、`parsed_bounds` 齐备、扁平语义保留 | 部分（`hierarchy.ts` 有骨架，契约未测） |
+| UI 层级 dump | 设备 `uiautomator dump` 出 **XML 嵌套树**，py 侧解析成 JSON 再给插件 | 原生：`adb shell uiautomator dump` + 自带 XML 解析（`parsed_bounds` 由我们自己产出） | 实测 wire 形状（2026-10-15）：77 节点 / 19 属性且每节点全带 / **无 `children`** / 嵌套深度 12 / bounds 全是 `[l,t][r,b]` —— 详见 `../TODO.md` §七「前置-1 实测结论」 | 契约**已测**；解析器仍吃 JSON ⇒ 原生 XML 路径待 T2 |
 | 动作执行闸门 / 熔断 / 分类 | 插件 TS | — | 现有 spec 锁 | 已具备 |
 | 效果判定 `compare_ui_frames` | py 委托上游 `check_ui_change` | `src/effect/{png,diff}.ts`：按其设计移植（遮罩 / 双管线 / ROI 回落 / 分支表；常量带出处） | 判别用例集（5+2 条）+ 三处变异 + 真帧冒烟；**与 py 的同输入同输出对照 🔶 延迟**（本机无 py 运行时、provider 未配置） | 部分（差分已落地，对照表未做） |
 | OCR | py `httpx` → Google Vision | **推迟（G87）**：本分支无消费者；形态与已取证事实见 `../TODO.md` §七「前置-5」 | （未定，随 G87 解锁再填） | 推迟（非放弃：画布类 UI 是真缺口） |

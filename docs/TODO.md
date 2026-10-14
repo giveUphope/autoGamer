@@ -35,7 +35,8 @@
   版本化 `.githooks/pre-commit`（**仅文档暂存时**触发；A/B 实测：带漂移提交被拒 `exit 1`，`--no-verify` 才通过）。
   **手工变异**一次五处并行（C2–C6）→ 恰好 5 条 finding、各对应一条检查；C1 另单独变异一次（注入 G81 行 → 1 条、指向正确行）。
   `AGENTS.md` 的「**文档门禁暂缺**」已改写为现状——门禁是**本地钩子 + 手跑**，本分支无 CI，**不许写成「由 CI 保证」**（R27）。
-  ⚠️ 已知盲区（本轮实测）：门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；要覆盖须新增一条检查，属后续项。
+  ⚠️ 已知盲区（本轮实测）：门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；**也不查 §四 表内编号唯一性**——已实测：把 §四 一行的编号重复一次，门禁仍 `OK` / exit 0，撤掉后照旧，所以这是**真的会漏**的判据缺口。要覆盖这两类须各加一条检查，属后续项。
+  （自我更正一笔：这句初稿引的是「我改 G76 时造出重复行、门禁全绿」——但那次我**并没有在重复行还在的时候跑过门禁**，属自己反对过的未证 claims；已改成上面这种实测过的口径。）
   范围与取证见 §七「基建-2」。
 - **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
@@ -48,6 +49,12 @@
   ⇒ **不实现**（无消费者的 HTTP 客户端 + 密钥面 + 融合策略是净增复杂度），但**不是放弃**：画布类 UI 的文字发现是真缺口，现有支撑是「模型自看截图 + 归一坐标」，更弱但未断。
   设计事实（端点结构 / 密钥回退与「未配置即空」/ 跳过整图合并文本 / 顶点→框 / **XML 优先**的融合 / 三类低价值文本过滤）**已一次取齐**并带出处，将来解锁不必重查。见 §七「前置-5」与 CHANGELOGS #87。
 - **overlay 同判（2026-10-14，新立 G88）**：用同一把尺子量「画面标注」——插件**从不产出标注图**（截图原样交付），两处 `overlay` 命中经核是 dsh patch 语义、与图像标注无关 ⇒ 零消费者，**不实现**（为调试图引入 libvips 原生依赖不划算）。上游的标注只服务 agents 调试产物与 `data_engine` 存档，两者分别已被 D8 与 session log 取代。见 §七「前置-6」与 CHANGELOGS #88。
+- **设备到位，前置-1/2 已测（2026-10-15）⇒ T2 解锁**：`adb` 已在 PATH（WinGet 的 PlatformTools 1.0.41 / 37.0.1），`emulator-5554` 经 `adb reconnect offline` 由 offline 转 `device`；
+  2026-10-14 那条「本机无 adb」**已作废**并就地标注（R28）。**前置-1** 取到 wire 真形状：XML **嵌套树**、**无 `children` 属性**、77 节点 / 19 属性且每节点全带、bounds 全为 `[l,t][r,b]`、`rotation=1`；
+  这同时**否证两条旧表述**——规格里「py 侧已知为扁平」是把**解析结果**当成了 wire 形状；G76 名下「帧空间 vs 探针值可能不等」不成立（两者同源于截图 IHDR），G76 因此收窄为「手填 `screenSize` 无校验」一条。
+  **前置-2** 取到 helper 协议形状（设备端口 18888、host 端口由 adb 分配即隧道身份、除 `/ping` 外要 session token、`transport_id` 变更即陈旧、**与 UiAutomation 互斥**）并验证了转发机制，
+  但服务是 **enabled-but-unbound** ⇒ 请求/响应格式那一半**未验 🔶**（要设备侧重新绑定服务，属用户授权面，本轮未做）。
+  **层级源定案：`uiautomator dump`，helper HTTP 不作主源** ⇒ G78 退出 T2 前置（口径：不采用该路线所以不需要设计，≠ 已解决）。
 - **进行中里程碑**：**D19（TS 全栈、py 归零）+ D20（溯源归零、不保留上游内容；LICENSE 为本项目自撰 MIT，版权人 giveUphope）**。
 - **最先能做的两件事（离线可跑）**：§流程 的「前置-1」与「前置-3」。**2026-10-14 实测修正**：本机**无 `adb`**（全盘 0 命中）、
   无在线设备 ⇒ **前置-1 与前置-2 阻塞在环境**（用户裁定「先做有环境的」；解锁条件与复跑命令见 §七「前置-1/2 阻塞」，
@@ -93,8 +100,8 @@
 | 编号 | 一句话 | 归属 |
 |---|---|---|
 | G75 | 一台模拟器暴露多条 adb 传输被 roster 报成多台 → 闸门/并发上限/熔断计数翻倍 | 设备面，T2 期间处理 |
-| G76 | 坐标空间缺一致性防护（帧空间 vs `wm size`） | 设备面，T2 期间处理 |
-| G78 | `adb forward` 残留：生命周期归属未定 | T2（与前置-2 同源） |
+| G76 | `config.screenSize` 由操作者手填时与截图 IHDR **无校验**（转屏态下 `wm size` 与帧空间差一次转置；插件内部三源实测一致） | 设备面，T2 期间落机械防护（取证见 §七「前置-1 · G76 的新证据」） |
+| G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G82 | py 引擎仍被 `run_task` / `manage_task` / `inspect_trace` 消费 → 须由 S11 路由器替代 | **T1** |
 | G83 | 15 工具动作面是 py-only → 须 TS 原生实现并与现面逐条对照 | **T2** |
 | G84 | 效果判定 `compare_ui_frames` / OCR / overlay 是 py-only → 须 TS 化 | **T3**（差分已 TS 化；OCR / overlay 判为推迟 ⇒ G87 / G88；与 py 的对照表仍缺 🔶） |
@@ -113,8 +120,8 @@
 
 ### 前置：契约实测（动 T2/T3 之前，任一未测不许开工对应期）
 
-- [ ] 前置-1 `adb shell uiautomator dump` 的真 wire 形态（设备侧输出与既往扁平列表的对应关系）— **本机阻塞，见下方「前置-1/2 阻塞」**
-- [ ] 前置-2 helper（accessibility 服务）协议：端口 / 握手 / 请求响应格式 / `adb forward` 生命周期（与 **G78** 同源）— **本机阻塞，同上**
+- [x] 前置-1 `adb shell uiautomator dump` 的真 wire 形态（设备侧输出与既往扁平列表的对应关系）— **已实测**（2026-10-15，设备到位；结论见「前置-1 实测结论」）
+- [x] 前置-2 helper（accessibility 服务）协议：端口 / 握手 / 请求响应格式 / `adb forward` 生命周期（与 **G78** 同源）— **协议形状已取证、隧道机制已验证；helper 本次未应答（原因查明，见「前置-2 实测结论」）**
 - [x] 前置-3 效果判定所依据的差分算法与阈值（**无思路时从旧实现读设计，不搬文本**）— 结论见下方「前置-3 实测结论」（2026-10-14 完成；**T3 移植范围已收口为 `check_ui_change` 单条路径**）
 - [x] 前置-4 外部提供方接入边界 —— **已完成**（2026-10-14；结论见下方「前置-4 实测结论」）：
       `artemisMcpCommand` 留但收窄语义；`artemisRepoPath` 的 **cwd / pyproject 探测 / uv project 三种 py 语义删**，
@@ -123,7 +130,12 @@
 - [x] 前置-6 画面标注 overlay 的消费者清点 + **推迟判定** —— **已完成**（2026-10-14；插件树零消费者 ⇒ **不实现**，新立 **G88**）
 - [x] 前置-5 OCR 与层级融合的设计事实 + **推迟判定** —— **已完成**（2026-10-14；本分支零消费者 ⇒ **不实现**，设计事实已取齐备用，新立 **G87**）
 
-#### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）
+#### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）——**2026-10-15 已解除**
+
+> ⚠️ **本段的「本机无 adb」已被推翻**（R28：旧结论不静默保留）：2026-10-15 复查时 `adb` 已在 PATH
+> （WinGet 装的 `Google.PlatformTools`，version 1.0.41 / 37.0.1-15733141），且 `emulator-5554` 可联
+> ——**「offline」一台在 `adb reconnect offline` 后即转 `device`**。原段的解锁清单逐条跑完，结果落在下面两节。
+> 本段正文保留作**判据来处**（它记录了当时是怎么量的，以及「一次只测一个变量」的口径）。
 
 **阻塞原因（实测，非推测）**：本机**没有 `adb`**——`Get-Command adb` 返回空；`%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`
 与 `C:\Android` / `D:\Android` 等常见位置 `Test-Path` 均为假；`Get-ChildItem C:\ -Filter adb.exe -Recurse -Depth 4` **0 命中**。
@@ -138,6 +150,64 @@
   5. 与规格 §二「UI 层级 dump」行的「py 侧已知为扁平、无 `children`」逐条对照，**对照结果留档后**才允许开工 T2。
 - **授权边界**：安装 platform-tools、连接/开启设备属 AGENTS「涉及权限授予、安装 Host 代码，由用户决定」的动作，**不代批**。
 - **提醒义务**：后续每次进入 T2 相关工作、或用户在会话中提到设备/真机时，先复述本条阻塞与解锁条件。
+
+### 前置-1 实测结论（2026-10-15，设备 `emulator-5554`，product aurora / model 24031PN0DC）
+
+**先记一条判据陷阱**：Git Bash 会把形如 `/sdcard/window_dump.xml` 的**参数**做 MSYS 路径转换——`uiautomator dump` 的回显被打成 `/Files/Git/sdcard/window_dump.xml`，
+但 `ls -l` 证实**落点仍是设备侧 `/sdcard/window_dump.xml`**（回显被改写，不是写错地方）。⇒ 量设备行为必须带 `MSYS_NO_PATHCONV=1`，否则会把工具的输出当设备的事实。
+
+**取到的形状**（一次真实界面：launcher，横屏；命令 `uiautomator dump` + `exec-out cat`，全程只读）
+
+| 面 | 实测 |
+|---|---|
+| 大小与节点数 | 29,417 bytes；`<node>` **77 个** |
+| 属性集 | **19 个，且每个节点全带**：`index` `text` `resource-id` `class` `package` `content-desc` `checkable` `checked` `clickable` `enabled` `focusable` `focused` `scrollable` `selected` `drawing-order` `hint` `password` `bounds` 等 |
+| 层级表达 | **没有 `children` 属性**；嵌套靠**元素**表达，实测最大深度 **12** |
+| bounds | 77/77 都是 `[left,top][right,bottom]`；最大值 `[0,37][1600,900]` |
+| 根与朝向 | `<?xml version='1.0' encoding='UTF-8' standalone='yes' ?><hierarchy rotation="1">` |
+
+**与规格 §二 那行的对照**（这条就是 §四 要求留档的对照）：**「无 children」成立 ✓；「扁平」不成立 ✗**——设备侧从来是嵌套树，
+「扁平列表」是**旧实现解析之后的产物**，不是 wire 形状。规格里那句话把「解析结果」当成了「设备输出」，已按此更正。
+
+**对本插件的真门槛**：`src/hierarchy.ts` 的 `parseVisibleElements` 吃的是 **JSON 数组**（连字符键 `content-desc` / `resource-id`，加上 `parsed_bounds`），
+而设备给的是 **XML**。⇒ 原生动作面必须自带「XML → 节点列表」这一步；`parsed_bounds` 是 py 侧造的字段，原生实现里由我们自己的解析产出，
+不是可以照抄的既有形状（该文件头注释也记着早年「扫 `<node>` 标签结果一个都没匹配上」的教训——方向反过来才成立）。
+
+**层级源的结论**：T2 的层级主源就用 `uiautomator dump`——本次实测可用、不需要 APK、不需要 token、不与任何东西抢绑定。理由见「前置-2」。
+
+#### G76 的新证据：转屏时 `wm size` 与帧空间差一次转置（插件内部不受影响）
+
+| 来源 | 值 |
+|---|---|
+| `adb shell wm size` | **Physical size: 900x1600**（自然方向） |
+| `adb exec-out screencap -p` 的 IHDR | **1600 × 900**，depth 8 / colorType 6（RGBA） |
+| 层级 bounds 最大值 / `rotation` | 1600×900 / `rotation="1"` |
+
+⇒ 屏上旋转态下，`wm size` 与帧空间**确实差一次转置**。但插件的尺寸取源是**截图 IHDR**（`src/index.ts:261-275` `resolveScreenSize`），层级 bounds 也在同一空间
+⇒ **截图、层级、由它们推出的像素三者一致**。**这同时否证了前置-3 留在 G76 名下的那条疑点**（「ROI 按帧尺寸、换算用探针值，二者可能不等」）——两个值同源于截图，不存在不等；按 R28 就地标注。
+⇒ G76 的真实暴露面**收窄为一条**：`config.screenSize` 由操作者**手填**时若填成 `wm size` 的 900×1600，就与帧空间转置失配，而**现在没有任何校验拦得住**。落法见 T2 方案（配置值 vs 截图 IHDR 的机械防护，可离线验）。
+
+### 前置-2 实测结论（2026-10-15；协议形状取自只读 blob，未搬文本）
+
+**协议形状**（`artemis/runtime/helper_manager.py`：`DEVICE_PORT`、`MIN_PROTOCOL_VERSION`、`attach` / `reattach` / `detach`）：
+
+| 面 | 事实 |
+|---|---|
+| 承载 | helper 是 accessibility 服务，在**手机上跑 loopback HTTP** 提供层级；设备端口**固定 18888** |
+| attach | `adb forward tcp:0 → tcp:18888`：**host 端口由 adb 现分配，且它就是隧道的身份**（不是固定号——多设备同主机靠它区分）；同 serial 的既有转发**复用** |
+| token | loopback 端口对手机上**所有 app 可达**，故除 `/ping` 外一律要 **session token**；token 是**每台主机一份随机秘密**，落在 Artemis temp 目录的文件里让多进程共享，经 `am broadcast` 投递（接收器受 `WRITE_SECURE_SETTINGS` 保护）；每次 attach 重投，helper 答 401 时再投 |
+| 版本 | `MIN_PROTOCOL_VERSION = 2`；传输错误时 `reattach` **只试一次** |
+| 生命周期 | detach 只删**本进程建的**转发；物理拔出无需主机动作（adb 随传输丢弃转发，设备侧服务照跑）；`adb devices -l` 的 `transport_id` **每次重插都变** ⇒ 变了就当隧道陈旧重建 |
+| **互斥**（决定选型的一条） | Android 在 UiAutomation 连接存活期间**解绑所有 accessibility 服务** ⇒ **helper 与 uiautomator 天生互斥**，旧实现的做法是发现 uia2 服务器占着就把它停掉（Appium 的从不动，只在错误里点名） |
+
+**本次在设备上验到哪一步**
+- ✅ 隧道机制：`adb forward tcp:0 tcp:18888` 返回分配端口 **57361**；测完已 `--remove`，`forward --list` 为空。
+- ❌ **`/ping` 无应答**（`UND_ERR_SOCKET`）。定位原因（全只读）：设备 `ss -tln` 只有 `*:5555`（adbd）；`dumpsys accessibility` = **`Bound services:{}`** 而 **`Enabled services:{com.artemis.helper/.ArtemisAccessibilityService}`**；`ps -A` 里**没有任何 uia2 / uiautomator / artemis 进程**。
+- ⇒ 不是被 UiAutomation 压制，而是 **helper 已启用但未绑定**（服务进程没跑）。要让它应答得改设备安全设置或启停该服务——属 **AGENTS 的用户授权面**（安装 Host 代码 / 连接开启设备由用户决定，不代批），**本轮未做**。
+- ⇒ 所以「请求/响应格式」这一半**仍未验证 🔶**；`MIN_PROTOCOL_VERSION=2` 之类的版本协商只在服务真跑起来时才量得到。
+
+**对 T2 / G78 的影响**：不把 helper HTTP 路线当层级或动作主源（要 APK、要 token、要和 UiAutomation 抢绑定，而 `uiautomator dump` 单条命令就够）。
+⇒ **G78（`adb forward` 生命周期归属）因此退出 T2 前置**——但结论的口径是「**因为不采用该路线所以不需要设计**」，**不是「已解决」**；将来若真要复刻 helper（D13 的二期），本节就是重查的起点。
 
 ### 前置-3 · 效果判定的差分算法与阈值（方案，2026-10-14 立项，R22）
 
