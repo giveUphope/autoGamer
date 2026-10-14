@@ -243,8 +243,39 @@ describe("apply(): screen size sourcing wiring", () => {
     expect(tapsOf(A.calls)).toEqual([[360, 800]]);
   });
 
-  it("honours an explicit screenSize that matches the frame", async () => {
-    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
+  /**
+   * G90: the cached screen size must expire. A rotation mid-session used to stay
+   * invisible until the plugin restarted. Counted in captures: a click asks the
+   * frame once for the size (only when the cache is cold) and twice for the pair.
+   *
+   * The clock jumps are **absolute numbers, not `SCREEN_SIZE_TTL_MS`**: sizing the
+   * jump from the constant under test makes the criterion vacuous — a mutation
+   * that sets the TTL to forever moves the jump with it and stays green. (That is
+   * exactly what happened to the first version of this test.)
+   */
+  it("re-probes the screen size once the cache has aged out (G90)", async () => {
+    const realNow = Date.now();
+    let offset = 0;
+    const clock = vi.spyOn(Date, "now").mockImplementation(() => realNow + offset);
+    const captures = () => A.calls.filter((args) => screencapArgv.test(args.join(" "))).length;
+    try {
+      const tool = await registerToolWith(Config());
+      await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "first" }, exec());
+      expect(captures(), "cold cache: one size probe plus the effect pair").toBe(3);
+
+      offset = 1_000;
+      await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "second" }, exec());
+      expect(captures(), "one second later the cached space is still trusted").toBe(5);
+
+      offset = 6_000;
+      await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "third" }, exec());
+      expect(captures(), "six seconds later the device is asked again").toBe(8);
+    } finally {
+      clock.mockRestore();
+    }
+  });
+
+  it("honours an explicit screenSize that matches the frame", async () => {    const tool = await registerToolWith(Config({ screenSize: [720, 1600] }));
     await tool.execute({ action: "click", target: { coordinate: [500, 500] }, reason: "configured" }, exec());
 
     expect(tapsOf(A.calls)).toEqual([[360, 800]]);

@@ -24,6 +24,7 @@
     "legacy PIXEL coordinate contract — 0-1000 normalization happens in this plugin (src/coord.ts)",
     "results are plain strings: Success / Failed / Error: ... / Error executing tool ...",
     "real flag is `--type adb` (not --server); stdio transport default",
-    "generated from the live server; the expected surface is ACTION_TO_PY_TOOL, no longer a copy kept here"
+    "2026-10-15 (T4): the live comparison is gone with the provider (D19) — this file is the frozen record of the surface that had to be replaced, and the lock on it is the partition in tests/conformance/contracts.spec.ts",
+    "the plain-string answer contract above is still the one src/device/act.ts answers in today"
   ]
 }

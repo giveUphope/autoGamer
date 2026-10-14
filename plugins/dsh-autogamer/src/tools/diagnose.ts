@@ -36,6 +36,20 @@ export interface DiagnoseDeps {
    * diagnosis or a preflight.
    */
   ocrStatus?(serial: string | undefined, signal?: AbortSignal): Promise<OcrReadout>;
+  /**
+   * The optional external provider (spec §一.3). This is the adapter's only
+   * consumer: the plugin never *requires* a provider and never spawns one on a
+   * tool path, but an operator who did configure one is entitled to see whether
+   * it answers.
+   */
+  provider?(serial: string | undefined, signal?: AbortSignal): Promise<ProviderReadout>;
+}
+
+export interface ProviderReadout {
+  readonly configured: boolean;
+  readonly command?: readonly string[];
+  readonly reachable?: boolean;
+  readonly error?: string;
 }
 
 export interface OcrReadout {
@@ -60,12 +74,30 @@ export function ocrRecommendations(ocr: OcrReadout): string[] {
   return [];
 }
 
+/** A provider nobody configured is the default, not a fault (spec §一.3). */
+export function providerRecommendations(provider: ProviderReadout): string[] {
+  if (!provider.configured) return [];
+  if (provider.reachable === true) return [];
+  return [
+    `the configured external provider did not answer${provider.command ? ` (\`${provider.command.join(" ")}\`)` : ""}: ` +
+      `${provider.error ?? "no reply"} — the plugin's own adb path does not need it`,
+  ];
+}
+
+/** The one word the render line can spare for the provider. */
+function providerSummary(value: unknown): string {
+  const provider = value as { configured?: boolean; reachable?: boolean };
+  if (provider.configured !== true) return "not-configured";
+  return provider.reachable === true ? "reachable" : "unreachable";
+}
+
 export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
   return {
     name: "autogamer_diagnose",
     description:
       "Diagnose the Android device and the plugin's own environment over adb: adb connection, " +
       "screen state, helper APK install and version, recent entries in the device crash log, " +
+      "built-in OCR readiness, the optional external provider when one is configured, " +
       "and actionable fix recommendations. Also the manual entry for a fresh environment preflight.",
     parameters: {
       device_serial: {
@@ -101,6 +133,7 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           },
           ocr_ready: { type: "boolean" },
           ocr: { type: "object", additionalProperties: true },
+          provider: { type: "object", additionalProperties: true },
         },
         additionalProperties: true,
       },
@@ -114,7 +147,8 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           `helper_installed=${String(record.helper_installed ?? false)}; ` +
           `recent_crashes=${crashes}; recommendations=${fixes}` +
           // Only when the check ran: a report that never asked must not answer.
-          (record.ocr_ready === undefined ? "" : `; ocr_ready=${String(record.ocr_ready)}`);
+          (record.ocr_ready === undefined ? "" : `; ocr_ready=${String(record.ocr_ready)}`) +
+          (record.provider === undefined ? "" : `; provider=${providerSummary(record.provider)}`);
         // Same rule as the router: the attachment becomes an image block, so it
         // must not also be flattened into the text envelope.
         const image = record.screenshot as DshImageAttachment | undefined;
@@ -161,6 +195,20 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           if (!recommendations.includes(note)) recommendations.push(note);
         }
       }
+      // T4-b: the optional provider's only consumer. Unconfigured (the default)
+      // means this never spawns anything; configured means the operator asked to
+      // be told whether it is alive.
+      let provider: ProviderReadout | undefined;
+      if (deps.provider !== undefined) {
+        try {
+          provider = await deps.provider(serial, exec?.signal);
+        } catch (error) {
+          provider = { configured: true, error: String((error as Error)?.message ?? error) };
+        }
+        for (const note of providerRecommendations(provider)) {
+          if (!recommendations.includes(note)) recommendations.push(note);
+        }
+      }
       let screenshot: DshImageAttachment | undefined;
       if (args.include_screenshot === true && deps.capturePng !== undefined && deps.saveScreenshot !== undefined) {
         const png = await deps.capturePng(serial, exec?.signal);
@@ -191,6 +239,16 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
                 missing_data: [...ocr.missingData],
                 ...(ocr.frame !== undefined ? { frame: ocr.frame } : {}),
                 ...(ocr.error !== undefined ? { error: ocr.error } : {}),
+              },
+            }),
+        ...(provider === undefined
+          ? {}
+          : {
+              provider: {
+                configured: provider.configured,
+                ...(provider.command !== undefined ? { command: [...provider.command] } : {}),
+                ...(provider.reachable !== undefined ? { reachable: provider.reachable } : {}),
+                ...(provider.error !== undefined ? { error: provider.error } : {}),
               },
             }),
         recommendations,

@@ -21,6 +21,7 @@ import { defineManageTask } from "./tools/manageTask.js";
 import { defineInspectTrace } from "./tools/inspectTrace.js";
 import { defineDiagnose } from "./tools/diagnose.js";
 import { createPreflight } from "./env/preflight.js";
+import { createArtemisBackend } from "./artemis/adapter.js";
 import { diagnoseDevice } from "./device/diagnose.js";
 import { createOcrEngine, missingLanguageData, OCR_DEFAULT_LANGS } from "./ocr/recognize.js";
 import { judgeEffectChanged } from "./effect/diff.js";
@@ -28,7 +29,6 @@ import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roste
 import { createAdbProbe } from "./device/state.js";
 import { runNativeAction } from "./device/act.js";
 import { readHierarchyXml } from "./device/hierarchy.js";
-import { ScrcpyManager } from "./scrcpy/server.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -65,25 +65,21 @@ export const Config: object = z.object({
    */
   discoverDevices: z.boolean().default(false),
   /**
-   * dsh-autogamer rectification: external ARTEMIS provider wiring.
+   * dsh-autogamer rectification: the optional external ARTEMIS provider (spec
+   * §一.3). Empty by default — **the plugin ships, installs and configures no
+   * python and no provider**: an operator who runs one names its argv here, and
+   * `autogamer_diagnose` is the only thing that will ever connect to it.
    * No `.description()` calls on purpose — that builder form is unverified on
    * the installed schemastery, and the settings auto-form works without
    * descriptions. `traceRetentionDays` and `defaultTimeoutSeconds` are
    * reserved (spec-required, no consumer yet: no retention sweeper and no
    * task-lifetime timeout policy exist).
    */
-  artemisRepoPath: z.string().default(""),
-  artemisMcpCommand: z.array(z.string()).default(["python", "-m", "mcp_server"]),
-  uvPath: z.string().default("uv"),
+  artemisMcpCommand: z.array(z.string()).default([]),
   defaultProfile: z.union(["flash", "pro"]).default("flash"),
   defaultTimeoutSeconds: z.number().default(1800),
   defaultDeviceSerial: z.string().default(""),
   autoPreflight: z.boolean().default(true),
-  scrcpyEnabled: z.boolean().default(true),
-  scrcpyServerPath: z.string().default(""),
-  scrcpyMaxFps: z.number().default(30),
-  scrcpyMaxWidth: z.number().default(1080),
-  scrcpyBitrateMbps: z.number().default(4),
   traceRetentionDays: z.number().default(7),
   /** P1-a validator strictness (S11 step 5); default "final" like upstream. */
   strictness: z.union(["off", "final", "checkpoints", "strict"]).default("final"),
@@ -107,6 +103,13 @@ export const Config: object = z.object({
  * aspiration.
  */
 export const inject = ["tools", "attachments", "agents"];
+
+/**
+ * G90: how long a probed screen size stays trusted. A capture is ~200ms and one
+ * turn asks for the space repeatedly, so it is cached; a rotation must not stay
+ * invisible for the rest of the session, so the cache expires.
+ */
+export const SCREEN_SIZE_TTL_MS = 5_000;
 // NOTE (reviewed P5 eve): the scheme also asks for 'settings' here, but that
 // service is upstream-only (not installed) and an unresolvable inject in
 // preset scope leaves the row pending — the G30 shape. It waits for a live
@@ -126,18 +129,11 @@ export type PluginConfig = {
   devices?: string[];
   maxConcurrentDevices?: number;
   discoverDevices?: boolean;
-  artemisRepoPath?: string;
   artemisMcpCommand?: string[];
-  uvPath?: string;
   defaultProfile?: "flash" | "pro";
   defaultTimeoutSeconds?: number;
   defaultDeviceSerial?: string;
   autoPreflight?: boolean;
-  scrcpyEnabled?: boolean;
-  scrcpyServerPath?: string;
-  scrcpyMaxFps?: number;
-  scrcpyMaxWidth?: number;
-  scrcpyBitrateMbps?: number;
   traceRetentionDays?: number;
   ocrEnabled?: boolean;
   ocrLanguages?: string;
@@ -159,52 +155,26 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     rosterSource: config.discoverDevices ? () => enumerateRoster() : undefined,
   });
   const incidents = new ActionIncidents();
-  // dsh-autogamer rectification (Phase 4): the mirror manager is constructed
-  // (lazily — no spawn) and disposed with everything else, but no tool drives
-  // it yet: without a DSH binary channel there is no consumer for the video
-  // socket (Phase 0 verdict), so start() waits for a transport that exists.
-  // Disabled by config: no manager at all (this finally gives scrcpyEnabled
-  // a consumer — review item 13).
-  const scrcpy =
-    config.scrcpyEnabled !== false
-      ? new ScrcpyManager({
-          maxWidth: config.scrcpyMaxWidth ?? 1080,
-          maxFps: config.scrcpyMaxFps ?? 30,
-          bitrateMbps: config.scrcpyBitrateMbps ?? 4,
-          ...(typeof config.defaultDeviceSerial === "string" && config.defaultDeviceSerial.length > 0
-            ? { serial: config.defaultDeviceSerial }
-            : {}),
-          ...(typeof config.scrcpyServerPath === "string" && config.scrcpyServerPath.length > 0
-            ? { serverPath: config.scrcpyServerPath }
-            : {}),
-        })
-      : undefined;
+  // T4-c (G93): the scrcpy mirror manager is gone. It was constructed and
+  // disposed with nothing ever driving it, and its server binary had to be
+  // supplied by the operator - both contrary to what this plugin ships. A live
+  // screen belongs in a host UI slot (R18) as its own capability.
   // dsh-autogamer rectification (Phase 1) → T2-f: the external ARTEMIS backend
-  // is no longer constructed on any tool path. The adapter module stays until T4
-  // decides whether the optional provider keeps a surface at all.
+  // is no longer constructed on any tool path. T4-a: the preflight asks only
+  // what the native tools actually touch (adb + an attached device).
   const preflight = createPreflight();
-  const preflightInput = {
-    uvPath: config.uvPath ?? "uv",
-    artemisRepoPath: config.artemisRepoPath ?? "",
-    defaultDeviceSerial: config.defaultDeviceSerial ?? "",
-  };
-  const checkEnv = () => preflight.run(preflightInput);
-  // T2-a: the adb-backed tools gate on the device half only. Refusing a native
-  // read because uv is not installed would be the preflight lying about what
-  // the tool actually touches.
-  const checkDeviceEnv = () => preflight.run(preflightInput, "device");
+  const checkEnv = () => preflight.run();
   if (config.autoPreflight !== false) {
     // No ctx.on('ready') exists in the typings (Phase 0): warm the cache
     // without blocking the mount instead.
     void checkEnv().catch(() => undefined);
-    void checkDeviceEnv().catch(() => undefined);
   }
   // G67: which #N handles exist is per (agent, device) and per plugin instance - the
   // list the model was last shown, nothing more.
   const observations = new LiveObservations();
-  // T2-c/d/e: the action surface runs over adb (`src/device/`), so no action
-  // server is started and none is configured. `ActionClient` remains in the tree
-  // as the transport implementation until T4 decides on the provider.
+  // T2-c/d/e: the action surface runs over adb (`src/device/`). T4-b took the
+  // action-server transport out with it: no `ActionClient`, no server command,
+  // no environment configuration for a server that is never started.
   const probe = createAdbProbe();
   /**
    * T5: one lazily-started OCR worker for the plugin's lifetime (measured: 169ms
@@ -223,7 +193,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
           logger: { warn: (message: string) => logger.warn(message) },
         });
 
-  const screenSizeCache = new Map<string, ScreenSize>();
+  const screenSizeCache = new Map<string, { size: ScreenSize; at: number }>();
   /**
    * G64 roster, native since T2-a: `adb devices -l`, folded by `android_id` so one
    * emulator reachable over several transports stays ONE device (G75 - counted
@@ -233,8 +203,13 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
    * attached" for the reason the action-server path recorded: a transient adb
    * failure must not look like an empty fleet.
    *
-   * `isBusy` is reported false because the python pool's cross-process file mutex
-   * has no replacement yet - a known gap, tracked as G89, not a silent one.
+   * `isBusy` is reported false: the python pool's cross-process file mutex has no
+   * replacement, and G89 was closed in T4 as an accepted boundary rather than
+   * implemented - the execution model here is one plugin instance inside one host
+   * process, where the FIFO gate and the breaker do hold. The mutex guarded a
+   * competition (several python entry points grabbing one device) that this
+   * branch does not have; if two hosts ever drive one device at once, that is the
+   * condition to reopen it.
    */
   async function enumerateRoster(): Promise<PoolDevice[] | undefined> {
     const transports = await enumerateTransports();
@@ -281,16 +256,19 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
    * tap half a screen off. The refusal is `environment:` so the breaker stops
    * hammering the device until the config is fixed.
    *
-   * The probed size is cached per key (it was cached before too), which means a
-   * rotation mid-session keeps the old space until the plugin restarts - the
-   * remaining half of G76, recorded in the ledger rather than fixed silently.
+   * The probed size is cached per key for `SCREEN_SIZE_TTL_MS` (G90): a capture
+   * costs ~200ms and a turn asks repeatedly, but a rotation mid-session must not
+   * keep the old space forever - the TTL is what bounds that. The configured
+   * value is still checked against whatever frame is current at the time.
    */
   async function resolveScreenSize(key: string): Promise<ScreenSize | undefined> {
     const configured = configuredScreenSize(config.screenSize);
-    let probed = screenSizeCache.get(key);
+    const now = Date.now();
+    const cached = screenSizeCache.get(key);
+    let probed = cached !== undefined && now - cached.at < SCREEN_SIZE_TTL_MS ? cached.size : undefined;
     if (probed === undefined) {
       probed = await probe.frame(serialOfKey(key));
-      if (probed) screenSizeCache.set(key, probed);
+      if (probed) screenSizeCache.set(key, { size: probed, at: now });
     }
     if (configured) {
       if (probed && (probed.width !== configured.width || probed.height !== configured.height)) {
@@ -481,7 +459,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     defineTool<any, any>(
       defineGetDeviceState({
         probe,
-        checkEnv: checkDeviceEnv,
+        checkEnv,
         defaultDeviceSerial: config.defaultDeviceSerial ?? "",
         saveScreenshot: saveDeviceScreenshot,
       }),
@@ -500,7 +478,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     defineTool<any, any>(
       defineRunTask({
         // A task needs a device, not the optional provider stack (T2-f).
-        checkEnv: checkDeviceEnv,
+        checkEnv,
         defaultDeviceSerial: config.defaultDeviceSerial ?? "",
         defaultProfile: config.defaultProfile ?? "flash",
         newTaskId: () => `autogamer-task-${(taskSequence += 1)}`,
@@ -510,7 +488,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   );
   const taskViewerDeps = {
     store: taskCache,
-    checkEnv: checkDeviceEnv,
+    checkEnv,
     sessionKey: () => agentIdOfCall(),
   };
   ctx.tools.register(
@@ -550,7 +528,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     defineTool<any, any>(
       defineDiagnose({
         diagnose: (serial, options) => diagnoseDevice(serial, { probe, ...options }),
-        checkEnv: checkDeviceEnv,
+        checkEnv,
         defaultDeviceSerial: config.defaultDeviceSerial ?? "",
         // The tool has already resolved which device to ask (arg → config → the
         // one attached device), so no key mapping happens here.
@@ -559,6 +537,30 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
         // T5: readiness is the packaged-data fact plus, when a device answers,
         // one real frame put through the engine. Reported, never gated: a broken
         // OCR costs {text} its second source and nothing else.
+        // T4-b: the optional external provider's only consumer. Nothing is
+        // spawned unless an operator names a command, and a provider that does
+        // not answer is a line in the report rather than a failed diagnosis.
+        provider: async (serial, signal) => {
+          const command = config.artemisMcpCommand ?? [];
+          if (command.length === 0) return { configured: false };
+          const backend = createArtemisBackend({
+            command,
+            callTimeoutMs: config.actionCallTimeoutMs ?? 30_000,
+          });
+          try {
+            await backend.getDeviceState(serial === undefined ? {} : { deviceSerial: serial }, signal);
+            return { configured: true, command, reachable: true };
+          } catch (error) {
+            return {
+              configured: true,
+              command,
+              reachable: false,
+              error: String((error as Error)?.message ?? error),
+            };
+          } finally {
+            await backend.dispose();
+          }
+        },
         ocrStatus: async (serial, signal) => {
           const langs = (config.ocrLanguages ?? OCR_DEFAULT_LANGS)
             .split("+")
@@ -587,12 +589,11 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // Tool registration ownership belongs to the tools registry itself (its
   // entries are cordis effects on this plugin's fiber, exactly like the
   // shipped tool-jobs plugin — it registers bare, with no effect wrapper).
-  // The resources needing an explicit teardown are the two MCP clients. Cordis
-  // effect() runs the callback NOW and keeps its RETURNED function as the
-  // disposer; passing teardown as the callback disposed our own tools during
-  // apply() (changelogs #10, the G30 root cause).
+  // The one resource needing an explicit teardown is the OCR worker (T4-c took
+  // the mirror manager with it). Cordis effect() runs the callback NOW and keeps
+  // its RETURNED function as the disposer; passing teardown as the callback
+  // disposed our own tools during apply() (changelogs #10, the G30 root cause).
   ctx.effect?.(() => () => {
     void ocr?.dispose();
-    void scrcpy?.dispose();
   });
 }

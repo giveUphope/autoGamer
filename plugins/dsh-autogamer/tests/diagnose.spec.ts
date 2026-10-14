@@ -11,7 +11,13 @@ import type { DeviceDiagnosis } from "../src/device/diagnose.js";
 import { diagnoseDevice, parseCrashLogcat, parseVersionName } from "../src/device/diagnose.js";
 import type { PreflightResult } from "../src/env/preflight.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
-import { defineDiagnose, ocrRecommendations, type OcrReadout } from "../src/tools/diagnose.js";
+import {
+  defineDiagnose,
+  ocrRecommendations,
+  providerRecommendations,
+  type OcrReadout,
+  type ProviderReadout,
+} from "../src/tools/diagnose.js";
 import {
   adbRuntime,
   getStateArgv,
@@ -61,11 +67,14 @@ function defineWith(options?: {
   noFrame?: boolean;
   noStore?: boolean;
   ocr?: OcrReadout | "throws";
+  provider?: ProviderReadout | "throws";
 }) {
   const asked: (string | undefined)[] = [];
   const saved: Buffer[] = [];
   const ocrAsked: (string | undefined)[] = [];
+  const providerAsked: (string | undefined)[] = [];
   const ocrReadout = options?.ocr;
+  const providerReadout = options?.provider;
   const tool = defineDiagnose({
     diagnose: async (serial) => {
       asked.push(serial);
@@ -102,8 +111,17 @@ function defineWith(options?: {
             return ocrReadout;
           },
         }),
+    ...(providerReadout === undefined
+      ? {}
+      : {
+          provider: async (serial: string | undefined) => {
+            providerAsked.push(serial);
+            if (providerReadout === "throws") throw new Error("provider would not spawn");
+            return providerReadout;
+          },
+        }),
   });
-  return { tool, asked, saved, ocrAsked };
+  return { tool, asked, saved, ocrAsked, providerAsked };
 }
 
 describe("diagnose: definition", () => {
@@ -271,6 +289,62 @@ describe("diagnose: the built-in OCR is reported, never gated (T5)", () => {
     const { tool } = defineWith();
     const rendered = tool.output!.render({}, { device_serial: "em-1", adb_connected: true }) as { text?: string }[];
     expect(rendered[0]?.text).not.toContain("ocr_ready");
+  });
+});
+
+describe("diagnose: the optional external provider is reported, never required (T4-b)", () => {
+  it("says nothing about a provider nobody configured, and asks once", async () => {
+    const { tool, providerAsked } = defineWith({ provider: { configured: false } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(providerAsked).toEqual([undefined]);
+    expect(value.provider).toEqual({ configured: false });
+    expect(value.recommendations).toEqual(["restart adb"]);
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).toContain("provider=not-configured");
+  });
+
+  it("reports a provider that answers, with the command it was asked to run", async () => {
+    const { tool } = defineWith({
+      provider: { configured: true, command: ["artemis-mcp", "--type", "adb"], reachable: true },
+    });
+    const value = (await tool.execute({ device_serial: "em-9" }, exec())) as Record<string, unknown>;
+    expect(value.provider).toEqual({
+      configured: true,
+      command: ["artemis-mcp", "--type", "adb"],
+      reachable: true,
+    });
+    expect(value.recommendations).toEqual(["restart adb"]);
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).toContain("provider=reachable");
+  });
+
+  it("names an unreachable provider and says the native path does not need it", async () => {
+    const { tool } = defineWith({
+      provider: { configured: true, command: ["python", "-m", "mcp_server"], reachable: false, error: "spawn ENOENT" },
+    });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.provider).toMatchObject({ reachable: false, error: "spawn ENOENT" });
+    const note = (value.recommendations as string[])[1];
+    expect(note).toContain("`python -m mcp_server`");
+    expect(note).toContain("spawn ENOENT");
+    expect(note).toContain("does not need it");
+    expect(value.adb_connected, "the device report is unaffected").toBe(true);
+  });
+
+  it("a provider check that throws is still only a line in the report", async () => {
+    const { tool } = defineWith({ provider: "throws" });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.adb_connected).toBe(true);
+    expect((value.provider as { error?: string }).error).toBe("provider would not spawn");
+    expect((value.recommendations as string[]).join("\n")).toContain("did not answer");
+  });
+
+  it("recommends nothing for a reachable or unconfigured provider, and something for the rest", () => {
+    expect(providerRecommendations({ configured: false })).toEqual([]);
+    expect(providerRecommendations({ configured: true, reachable: true })).toEqual([]);
+    expect(providerRecommendations({ configured: true, reachable: false, error: "x" })[0]).toContain("x");
+    // `reachable` undefined means the check never got an answer either way.
+    expect(providerRecommendations({ configured: true })).toHaveLength(1);
   });
 });
 

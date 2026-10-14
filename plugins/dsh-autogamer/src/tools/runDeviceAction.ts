@@ -2,12 +2,15 @@
  * run_device_action (S11): the single execution tool. The gate/breaker/
  * classification live here — code-enforced, the model cannot bypass them.
  *
- * Contract notes (verified against artemis/mcp/adb_server.py):
- * - the py action server keeps the legacy PIXEL contract; this tool speaks
- *   0-1000 normalized and converts using probe-screenshot dimensions (G24)
- * - results are plain strings ("Success" / "Failed" / "Error: ..."), not
- *   structuredContent; normalizeOutcome below
- * - real tool names: tap / long_press_on / swipe / back / launch_app /
+ * Contract notes (since T2 every call is answered over adb by `src/device/`):
+ * - this tool speaks 0-1000 normalized coordinates and converts them with the
+ *   dimensions of a probe screenshot (G24); the device side is pixels
+ * - the device seam answers in plain strings ("Success" / "Failed" /
+ *   "Error: ..."), not structuredContent; normalizeOutcome below. Keeping that
+ *   shape is a decision, not a leftover: the classifier's two failure classes
+ *   and the locks around them are written against it
+ * - the call names below are ours (`NativeCall.tool`), mapped to adb commands in
+ *   `src/device/act.ts`: tap / long_press_on / swipe / back / launch_app /
  *   stop_app / open_link / focus_and_input_text / focus_and_clear_text /
  *   erase_one_char / press_key / take_screenshot / get_ui_hierarchy
  */
@@ -32,7 +35,6 @@ import {
 } from "../hierarchy.js";
 import { LiveObservations } from "../observations.js";
 import { chooseHitPoint, findNeedleHits, type OcrPage } from "../ocr/recognize.js";
-import { unwrapText } from "../mcpText.js";
 
 export interface RouterLogger {
   info(message: string): void;
@@ -60,28 +62,6 @@ export type DeviceAction = (typeof ACTIONS)[number];
 
 /** Which source answered a `{text}` target: the nodes, or the frame (T5). */
 export type TargetSource = "hierarchy" | "ocr";
-
-/**
- * Contract table: agent action → upstream py action-server tool name
- * (legacy stdio contract; conformance test locks this against the live
- * surface fixture). `wait` is client-side and maps to null.
- */
-export const ACTION_TO_PY_TOOL: Record<DeviceAction, string | null> = {
-  click: "tap",
-  long_press: "long_press_on",
-  swipe: "swipe",
-  input_text: "focus_and_input_text",
-  press_key: "press_key",
-  back: "back",
-  erase_one_char: "erase_one_char",
-  focus_and_clear_text: "focus_and_clear_text",
-  launch_app: "launch_app",
-  stop_app: "stop_app",
-  open_link: "open_link",
-  take_screenshot: "take_screenshot",
-  get_ui_hierarchy: "get_ui_hierarchy",
-  wait: null,
-};
 
 /**
  * Actions that should move the screen. Observation-only actions
@@ -805,7 +785,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       return { ok: false, failure: "internal", message };
     }
 
-    let structured: unknown;
+    let structured: string | undefined;
     // A hierarchy read (T2-b) never reaches the device executor: its answer is
     // built below from the dump. A screenshot answered inside buildCall (T2-c)
     // is likewise already in `value` - and used to be captured twice.
@@ -844,12 +824,10 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     }
     if (action === "get_ui_hierarchy") {
       // Hand the model OUR numbering: the node's own `index` field is a
-      // per-container ordinal and cannot address an element (G42). Read the
-      // untruncated text — normalizeOutcome clips at 4000 chars, which would
-      // cut a real hierarchy dump mid-tree and make it unparseable.
-      const elements = nativeHierarchy
-        ? await fetchHierarchy(key, exec.signal)
-        : parseVisibleElements(unwrapText(structured));
+      // per-container ordinal and cannot address an element (G42). This is the
+      // device dump read straight through `hierarchy`, never an action answer -
+      // since T2-b there is no server text left to parse here.
+      const elements = await fetchHierarchy(key, exec.signal);
       if (elements === undefined) {
         // Same rule the resolution ladder already applies (G68 ⑤): an
         // unreadable observation is the bypass case, so it must not come back
@@ -1113,31 +1091,21 @@ function mapKeycode(keyName: string): string | undefined {
 }
 
 /**
- * The legacy server answers in plain strings: "Success" / "Failed" /
- * "Error: ..." (and informational text). Normalize to one shape.
+ * The device seam answers in plain strings: "Success" / "Failed" / "Error: ..."
+ * (and informational text). `execute` is typed `Promise<string>`, so the shapes
+ * the old server answered with - MCP content arrays, result objects - have no
+ * producer left and are not handled here.
  */
-function normalizeOutcome(structured: unknown): {
+function normalizeOutcome(answer: string | undefined): {
   ok: boolean;
   message: string;
   value?: unknown;
 } {
-  if (typeof structured === "string") {
-    const text = structured.trim();
-    // Two observed error shapes: "Error: ..." and "Error executing tool ...".
-    if (/^error\b/i.test(text)) {
-      return { ok: false, message: text.replace(/^error\b:?\s*/i, "") };
-    }
-    if (text === "Failed") return { ok: false, message: "device reported failure" };
-    return { ok: true, message: text.slice(0, 400), value: { result: text.slice(0, 4000) } };
+  const text = (answer ?? "").trim();
+  // Two observed error shapes: "Error: ..." and "Error executing tool ...".
+  if (/^error\b/i.test(text)) {
+    return { ok: false, message: text.replace(/^error\b:?\s*/i, "") };
   }
-  const record = (structured ?? {}) as Record<string, unknown>;
-  if (record.ok === true) return { ok: true, message: "", value: record };
-  if (record.ok === false) {
-    return { ok: false, message: typeof record.message === "string" ? record.message : "device refused" };
-  }
-  if (Array.isArray(record.content)) {
-    return normalizeOutcome(unwrapText(record));
-  }
-  if (typeof record.result === "string") return normalizeOutcome(record.result);
-  return { ok: true, message: "", value: record };
+  if (text === "Failed") return { ok: false, message: "device reported failure" };
+  return { ok: true, message: text.slice(0, 400), value: { result: text.slice(0, 4000) } };
 }

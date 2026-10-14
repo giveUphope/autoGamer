@@ -21,14 +21,11 @@ src/tools/getDeviceState.ts       只读设备状态（预检门禁 + 可选外�
 src/tools/runTask.ts              启动任务（500ms 内返回 task_id）
 src/tools/manageTask.ts           任务状态/停止/注入
 src/tools/inspectTrace.ts         轨迹查看（summary 取边加失败步）
-src/tools/diagnose.ts             诊断（provider 报告合并本地预检）
+src/tools/diagnose.ts             本机诊断（设备探针 + 本地预检 + OCR / 可选提供方就绪）
 src/tools/envGate.ts              任务工具共用的预检门禁
-src/artemis/adapter.ts            后端选择（仅 MCP 工厂）
-src/artemis/mcpBackend.ts         外部 ARTEMIS 的 MCP stdio 后端（懒连接，传输失败=environment）
-src/artemis/types.ts              外部 ARTEMIS 后端接口
-src/actionClient.ts               动作面 MCP stdio 客户端（超时自实现）
-src/scrcpy/server.ts              镜像服务生命周期（resolve/start/stop）
-src/scrcpy/input.ts               触摸转 adb input 纯函数（降级控制路线）
+src/artemis/adapter.ts            可选外部提供方的后端工厂（仅 MCP；未配置即不构造）
+src/artemis/mcpBackend.ts         外部提供方的 MCP stdio 后端（懒连接，传输失败=environment）
+src/artemis/types.ts              外部提供方后端接口
 src/effect/png.ts                 最小 PNG 解码（depth 8 / colorType 2·6 / 非隔行）
 src/effect/diff.ts                效果差分：遮罩 / 双管线 / ROI 回落（T3/G84）
 src/env/preflight.ts              环境预检（7 项，60 秒缓存，可按 provider / device 范围取）
@@ -50,13 +47,12 @@ src/task/readModel.ts             步迹整形：尾部门限（manage）与取�
 src/classify.ts                   工具层错误分类（environment / task）
 src/coord.ts                      0-1000 归一坐标换算 + 截图取尺寸（含 configuredScreenSize）
 src/hierarchy.ts                  层级解析：#N 按节点身份在可达界内跟随到当前位置
-src/mcpText.ts                    文本解包
 src/observations.ts               活观察快照：每 (agent, device) 只存模型最后所见的列表
 src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
 ```
 
 - 测试在 `tests/`（vitest，含 30+ 语义锁 spec；conformance 下为生成式契约与真实 runtime 挂载）
-- 脚本在 `scripts/`（mock-action-server / spike-mcp / conformance-live / dump-proxy，均为 .mjs）
+- 脚本在 `scripts/`（conformance-live，读宿主会话日志的取证工具；`.mjs`）
 - 执行策略 skill：`skills/autogamer-flash/SKILL.md`
 
 ## 命令
@@ -93,8 +89,8 @@ dsh --profile web --patch <abs>/cordis.patch.yml --dump-config
   `tests/conformance/contracts.spec.ts` 锁。
 - 未配置的可选 tuple 会被 Schemastery 归一化成真值 `[undefined, undefined]`，故「是否配置过」
   必须判数值本身，走 `configuredScreenSize()`（`src/coord.ts`）。
-- 定义里的 `timeoutMs` **不被注册表执行**（R15）：超时由 `src/actionClient.ts` 的 `Promise.race`
-  自实现，并观测 `exec.signal`。
+- 定义里的 `timeoutMs` **不被注册表执行**（R15）：超时自己实现并观测取消信号 —— adb 侧在
+  `src/device/adb.ts`，OCR 侧在 `src/ocr/recognize.ts`，外部提供方后端在 `src/artemis/mcpBackend.ts`。
 - 裸 schema 注册合法（官方 MCP 路径也这样），代价是输入校验归我们：非空、正数、跨字段、
   显式对象节点的 `additionalProperties`。
 - `src/dsh-types.ts` 是宿主契约的手写镜像（DSH 不随包发 `.d.ts`）：每处镜像须标出处与版本，
