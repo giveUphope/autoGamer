@@ -12,6 +12,8 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）。 |
+| 三 · 门禁与基建 | #95 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）。 |
+
 
 ## 写入规则
 
@@ -296,3 +298,29 @@
 - 删除面：`git grep -E 'ActionClient|ScrcpyManager|scrcpy|ACTION_TO_PY_TOOL|uvPath|artemisRepoPath|mcpText|unwrapText' -- plugins` 只剩注释与锁自身，并由 `contracts.spec`「stay removed」一条钉住（N9 证明会红）。
 - R6：`dsh --profile web --patch <abs>/cordis.patch.yml --dump-config` ⇒ exit 0 / `unmatched` 0 / `autogamer` 行 16（本片不动 patch，跑它是证明配置面收窄没打断 preset 行）。
 - 仍开：**G94**（宿主内 live 证明 —— 本机阻塞在宿主 spawn 路径含空格的缺陷上，R1 不许解包 `app.asar` 继续查）、**G91**（长按语义，与 G94 同批）、**G92**（OCR 召回）、**G88 / G78**（待需求）。
+
+## 三 · 门禁与基建
+
+### #95 门禁自检进 pre-commit，七条变异全部改为结构锚点（基建-2 的复发收口）
+
+#### 问题描述
+
+- `check-docs --selftest` 的变异用例**锚在正文文字上**，而正文会被它记录的实测改掉：
+  - **第一次（M1-C1）**：锚点是 §四 G78 那一行的字面文字，前置-2 改写该行措辞后变异不再落地，`--selftest` 报 BLIND（当时只记录、未动门禁范围，见 `TODO.md` §零）。
+  - **第二次（M5-C5 / M6-C5，本次）**：两条都锚在 §四 **G86 行**的文字上，而 **T4 正是结案并删除 G86 那一行**的那次改动 —— 于是同一批提交里两条变异同时失明，而门禁本体仍 `OK / exit 0`（它自己不知道自己已经少证了两条）。
+- 结构性原因：**「锚点腐烂」与「判据失灵」是同一件事的两种说法**（R27），而 `--selftest` 只在人想起来手跑时才说话。本分支无 CI，手跑就是没有。
+
+#### 整改方案与实施
+
+- `scripts/check-docs.mjs`：抽出 `insertIntoGapTable()`（在 §四 表头的 `|---|` 分隔行之后插行）与 `untickFirstBoxAfter(text, "### 前置-4")`（**先按行首定位小节、把范围截到下一个 `### ` 之前，再在该小节内找 `**Done means**`，翻转其中第一个 `- [x]`**），**七条变异全部改用结构锚点**；把这条规则写成文件里的注释（MUTATIONS 段头部），不再靠人记。
+- ⚠️ **改造程中自己踩到第二种锚点病**：`untickFirstBoxAfter` 的第一版用裸子串 `indexOf('### 前置-4')` 定位小节 —— 而 §零 的台账正文里**就引用了这串标题文字**（正是本次改动写进去的），于是变异落到了**前一个小节**的 Done 块上，C6 仍绿、`--selftest` 报 BLIND。锚点光「结构化」不够，还得**按行首匹配并限定作用域**；这条也写进注释。
+- `.githooks/pre-commit`：门禁通过后**再跑 `--selftest`**（实测 87ms，代价可忽略），触发条件除文档路径外**加上 `scripts/check-docs.mjs` 本身** —— 改门禁的人必须在当场看到自己的用例是否还落地。
+- `AGENTS.md`「文档门禁」段同步为现状，并把锚点规则写进去。
+
+#### 验收标准
+
+- `node scripts/check-docs.mjs --selftest` ⇒ `OK (6 checks, 7 mutations, none blind)`。
+- **A/B 实测两道拦截**（都是「先造出该拦的情形，提交被拒、HEAD 不动，再恢复」）：
+  - 门禁条款：向 `docs/TODO.md` 追加一行三列表格（表头两列）⇒ 拒，`C5 docs/TODO.md:1219 -> row 3 has 3 cells, header has 2`。
+  - 自检条款：把 M1 的锚点改成不存在的标题 ⇒ 拒，`the gate's own mutations did not all land - a check has gone blind`；恢复后 `--selftest` 七条全落地。
+- 已知边界：`--selftest` 证明的是「七条变异各自会红」，**不证明**检查覆盖了下一次会出现的新漂移形态；新增检查时仍须自带一条会红的变异（R27）。

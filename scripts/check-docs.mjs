@@ -357,6 +357,44 @@ function printFindings(found) {
 // Each case mutates a copy of the corpus and asserts the owning check reacts.
 // Landing is asserted first: a mutation that did not change the text proves
 // nothing, so it fails as "did not land" rather than passing as green.
+//
+// ANCHOR RULE (learned the hard way, twice): a mutation must splice on document
+// STRUCTURE - a section heading, a table separator row - never on the prose of a
+// line. Prose gets reworded by the very measurements these docs exist to record,
+// and the mutation then quietly stops landing while everything else stays green.
+/** Splices `row` in as the first body row of the §四 open-gap table. */
+function insertIntoGapTable(text, row) {
+  const at = text.indexOf('## 四、开放差距');
+  if (at < 0) return text;
+  const sep = text.indexOf('|---|', at);
+  if (sep < 0) return text;
+  const after = text.indexOf('\n', sep);
+  if (after < 0) return text;
+  return `${text.slice(0, after + 1)}${row}\n${text.slice(after + 1)}`;
+}
+
+/**
+ * Flips the first ticked box inside the `**Done means**` block of the section
+ * whose heading line starts with `prefix` (e.g. "### 前置-4") - which is where C6
+ * looks. Two lessons are encoded here: never anchor on prose (a mutation that
+ * stops landing proves nothing), and never anchor on a bare substring either -
+ * the ledger quotes heading text in its own narrative, and the first such quote
+ * used to send this mutation into the wrong section, where C6 stayed green.
+ */
+function untickFirstBoxAfter(text, prefix) {
+  const at = text.indexOf(`\n${prefix}`);
+  if (at < 0) return text;
+  const next = text.indexOf("\n### ", at + 1);
+  const end = next < 0 ? text.length : next;
+  const block = text.slice(at, end);
+  const done = block.indexOf('**Done means**');
+  if (done < 0) return text;
+  const box = block.indexOf("- [x] ", done);
+  if (box < 0) return text;
+  const where = at + box;
+  return `${text.slice(0, where)}- [ ] ${text.slice(where + "- [x] ".length)}`;
+}
+
 const MUTATIONS = [
   {
     id: 'M1-C1',
@@ -367,15 +405,7 @@ const MUTATIONS = [
     // version spliced after a literal G78 row, that row's wording was later
     // reworded by a measurement, and the mutation silently stopped landing
     // (selftest reported BLIND) while every other case stayed green.
-    apply: (text) => {
-      const at = text.indexOf('## 四、开放差距');
-      if (at < 0) return text;
-      const sep = text.indexOf('|---|', at);
-      if (sep < 0) return text;
-      const after = text.indexOf('\n', sep);
-      if (after < 0) return text;
-      return `${text.slice(0, after + 1)}| G81 | 插件 spec 从未被类型检查（实测 144 条错误） | TS 侧独立债 |\n${text.slice(after + 1)}`;
-    },
+    apply: (text) => insertIntoGapTable(text, '| G81 | 插件 spec 从未被类型检查（实测 144 条错误） | TS 侧独立债 |'),
     file: TODO,
   },
   {
@@ -407,11 +437,9 @@ const MUTATIONS = [
     expect: 'red',
     check: 'C5',
     note: 'a table row gains an extra unescaped cell',
-    apply: (text) =>
-      text.replace(
-        '| G86 | 溯源清理：copyright 头、vendored 第三方、派生文档、致谢文案、git 元数据 | **T4**（约束贯穿 T1–T3） |',
-        '| G86 | 溯源清理：copyright 头、vendored 第三方、派生文档、致谢文案、git 元数据 | **T4**（约束贯穿 T1–T3） |\n| G99 | broken | extra | fourth |',
-      ),
+    // Structural for the same reason as M1: this one anchored on the G86 row's
+    // prose and stopped landing the day G86 was closed and its row removed.
+    apply: (text) => insertIntoGapTable(text, '| G99 | broken | extra | fourth |'),
     file: TODO,
   },
   {
@@ -419,11 +447,7 @@ const MUTATIONS = [
     expect: 'green',
     check: 'C5',
     note: 'an escaped pipe in a cell stays legal (the two-sided half)',
-    apply: (text) =>
-      text.replace(
-        '| G86 | 溯源清理：copyright 头、vendored 第三方、派生文档、致谢文案、git 元数据 | **T4**（约束贯穿 T1–T3） |',
-        '| G86 | 溯源清理：copyright 头、vendored 第三方、派生文档、致谢文案、git 元数据 | **T4**（约束贯穿 T1–T3） |\n| G99 | a \\| pipe inside a cell | fine |',
-      ),
+    apply: (text) => insertIntoGapTable(text, '| G99 | a \\| pipe inside a cell | fine |'),
     file: TODO,
   },
   {
@@ -431,8 +455,7 @@ const MUTATIONS = [
     expect: 'red',
     check: 'C6',
     note: '前置-4 keeps an un-ticked box while claimed complete',
-    apply: (text) =>
-      text.replace('- [x] 三个配置项各自的终局判定表', '- [ ] 三个配置项各自的终局判定表'),
+    apply: (text) => untickFirstBoxAfter(text, '### 前置-4'),
     file: TODO,
   },
 ];

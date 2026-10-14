@@ -5,6 +5,11 @@
 # gate is meaningless for files it does not read. Staged paths come from the
 # index, so this fires on what is actually about to be committed.
 #
+# It also runs the gate's SELF-TEST (87ms): every mutation has to land, because a
+# mutation that stops matching the text means a check went blind. That is not
+# hypothetical - two of the seven anchors rotted on their own prose and the gate
+# stayed green while it was no longer proving anything.
+#
 # Escape hatch: `git commit --no-verify`, which is a deliberate act and must be
 # justified in the ledger when used (same rule as the pre-push guard).
 #
@@ -16,7 +21,8 @@ if [ -z "$staged" ]; then
 fi
 
 touched=$(printf '%s\n' "$staged" | grep -E '^(docs/.*\.md|AGENTS\.md|README\.md)$')
-if [ -z "$touched" ]; then
+gate=$(printf '%s\n' "$staged" | grep -E '^scripts/check-docs\.mjs$')
+if [ -z "$touched" ] && [ -z "$gate" ]; then
   exit 0
 fi
 
@@ -24,6 +30,14 @@ if ! node scripts/check-docs.mjs; then
   echo ""
   echo "pre-commit: documentation gate failed (paths: $(printf '%s' "$touched" | tr '\n' ' '))."
   echo "pre-commit: fix the findings, or bypass deliberately with: git commit --no-verify"
+  exit 1
+fi
+
+if ! node scripts/check-docs.mjs --selftest; then
+  echo ""
+  echo "pre-commit: the gate's own mutations did not all land - a check has gone blind."
+  echo "pre-commit: re-anchor the case on document structure (a heading, a table separator),"
+  echo "pre-commit: never on a line's prose, or bypass deliberately with: git commit --no-verify"
   exit 1
 fi
 
