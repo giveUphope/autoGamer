@@ -1,45 +1,56 @@
 /**
- * `autogamer_diagnose` — environment and device diagnosis (Phase 2).
+ * `autogamer_diagnose` — device and environment diagnosis, answered locally
+ * over adb (T2-f; was the provider's `mobile_diagnose`).
  *
- * Two sources merge here, and the merge is the point: the provider's
- * `mobile_diagnose` (device_serial only — the old face takes no
- * logcat/screenshot flags, so ours are accepted but not forwarded) plus OUR
- * local preflight. The tool doubles as the manual preflight entry, so unlike
- * its siblings it does NOT throw on a failed environment: it returns the
- * report with the local fixes appended to the recommendations. Only when the
- * provider itself is unreachable AND the environment is broken does it throw —
- * and then the preflight text (the actionable one) wins over the transport
- * error.
+ * Two sources still merge here, and the merge is still the point: the device
+ * report from `src/device/diagnose.ts` plus OUR preflight. The tool doubles as
+ * the manual preflight entry, so unlike its siblings it does NOT throw on a
+ * failed environment - it returns the report with the local fixes appended to
+ * the recommendations. It only throws when the report itself could not be
+ * produced AND the environment is broken, and then the preflight text (the
+ * actionable one) wins.
+ *
+ * `include_screenshot` is no longer accepted-and-ignored: the frame is captured
+ * through the same adb path every other consumer uses and committed to the host
+ * attachment store, so the model gets a real image block (render emits
+ * `[text, image]`, same shape as the action router).
  */
-import type { ArtemisBackend } from "../artemis/types.js";
+import type { DeviceDiagnosis } from "../device/diagnose.js";
+import type { DshImageAttachment, ToolDefinitionInput } from "../dsh-types.js";
 import { preflightErrorText, type PreflightResult } from "../env/preflight.js";
-import type { ToolDefinitionInput } from "../dsh-types.js";
+import { requireEnv } from "./envGate.js";
 
 export interface DiagnoseDeps {
-  backend: ArtemisBackend;
+  diagnose(serial: string | undefined, options?: { signal?: AbortSignal }): Promise<DeviceDiagnosis>;
   checkEnv: () => Promise<PreflightResult>;
   defaultDeviceSerial: string;
+  /** PNG frame for `include_screenshot`; absent means the flag reports nothing. */
+  capturePng?(serial: string | undefined, signal?: AbortSignal): Promise<Buffer | undefined>;
+  saveScreenshot?(
+    bytes: Uint8Array,
+    mediaType: DshImageAttachment["mediaType"],
+  ): Promise<DshImageAttachment | undefined>;
 }
 
 export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
   return {
     name: "autogamer_diagnose",
     description:
-      "Diagnose the Android device and the ARTEMIS environment (driven by Google ARTEMIS): " +
-      "adb connection, Helper install, recent crashes, and actionable fix recommendations. " +
-      "Also the manual entry for a fresh environment preflight.",
+      "Diagnose the Android device and the plugin's own environment over adb: adb connection, " +
+      "screen state, helper APK install and version, recent entries in the device crash log, " +
+      "and actionable fix recommendations. Also the manual entry for a fresh environment preflight.",
     parameters: {
       device_serial: {
         type: "string",
-        description: "Target device serial; omit for the default device.",
+        description: "Target device serial; omit for the only attached device.",
       },
       include_logcat: {
         type: "boolean",
-        description: "Accepted; the provider decides what device logs to include.",
+        description: "Accepted; the crash buffer is always read (main logcat is not).",
       },
       include_screenshot: {
         type: "boolean",
-        description: "Accepted; the provider decides whether to attach a screenshot.",
+        description: "Capture a frame and attach it to the report.",
       },
     },
     output: {
@@ -64,19 +75,21 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
         additionalProperties: true,
       },
       render: (_args, value) => {
-        const record = (value ?? {}) as Record<string, unknown>;
+        const record = { ...(value ?? {}) } as Record<string, unknown>;
         const crashes = Array.isArray(record.recent_crashes) ? (record.recent_crashes as unknown[]).length : 0;
         const fixes = Array.isArray(record.recommendations) ? (record.recommendations as unknown[]).length : 0;
-        return [
-          {
-            type: "text",
-            text:
-              `device_serial=${String(record.device_serial ?? "")}; ` +
-              `adb_connected=${String(record.adb_connected ?? false)}; ` +
-              `helper_installed=${String(record.helper_installed ?? false)}; ` +
-              `recent_crashes=${crashes}; recommendations=${fixes}`,
-          },
-        ];
+        const text =
+          `device_serial=${String(record.device_serial ?? "")}; ` +
+          `adb_connected=${String(record.adb_connected ?? false)}; ` +
+          `helper_installed=${String(record.helper_installed ?? false)}; ` +
+          `recent_crashes=${crashes}; recommendations=${fixes}`;
+        // Same rule as the router: the attachment becomes an image block, so it
+        // must not also be flattened into the text envelope.
+        const image = record.screenshot as DshImageAttachment | undefined;
+        delete record.screenshot;
+        return image?.attachmentId
+          ? [{ type: "text", text }, { type: "image", attachment: image }]
+          : [{ type: "text", text }];
       },
     },
     async execute(args, exec) {
@@ -90,10 +103,12 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
       const localFixes = env.ok
         ? []
         : env.checks.filter((check) => !check.ok && check.fix).map((check) => check.fix as string);
-      let diagnosis;
+      let diagnosis: DeviceDiagnosis;
       try {
-        diagnosis = await deps.backend.diagnose({ deviceSerial: serial }, exec?.signal);
+        diagnosis = await deps.diagnose(serial, { signal: exec?.signal });
       } catch (error) {
+        // The preflight text is the one that says what to do, so it wins over a
+        // bare "adb did not answer" whenever both are true.
         if (!env.ok) throw new Error(preflightErrorText(env));
         throw error;
       }
@@ -101,9 +116,16 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
       for (const fix of localFixes) {
         if (!recommendations.includes(fix)) recommendations.push(fix);
       }
+      let screenshot: DshImageAttachment | undefined;
+      if (args.include_screenshot === true && deps.capturePng !== undefined && deps.saveScreenshot !== undefined) {
+        const png = await deps.capturePng(serial, exec?.signal);
+        // A missing frame is not a reason to fail a diagnosis: the report is
+        // already useful and the recommendations say what could not be read.
+        if (png !== undefined) screenshot = await deps.saveScreenshot(png, "image/png");
+      }
       return {
         device_serial: diagnosis.deviceSerial ?? serial ?? "",
-        adb_connected: diagnosis.adbConnected ?? false,
+        adb_connected: diagnosis.adbConnected,
         helper_installed: diagnosis.helperInstalled ?? false,
         ...(diagnosis.helperVersion !== undefined ? { helper_version: diagnosis.helperVersion } : {}),
         recent_crashes: diagnosis.recentCrashes.map((crash) => ({
@@ -111,8 +133,9 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           ...(crash.timestamp !== undefined ? { timestamp: crash.timestamp } : {}),
           ...(crash.stackExcerpt !== undefined ? { stack_excerpt: crash.stackExcerpt } : {}),
         })),
-        ...(diagnosis.logcatPath !== undefined ? { logcat_path: diagnosis.logcatPath } : {}),
-        ...(diagnosis.screenshotPath !== undefined ? { screenshot_path: diagnosis.screenshotPath } : {}),
+        ...(screenshot !== undefined
+          ? { screenshot, screenshot_path: String(screenshot.attachmentId) }
+          : {}),
         recommendations,
       };
     },

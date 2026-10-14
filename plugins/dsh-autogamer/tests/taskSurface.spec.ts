@@ -40,13 +40,12 @@ describe("G82: no task tool can reach an external engine", () => {
     expect(codeOf(file)).not.toMatch(/child_process|\bspawn\b|\bexecFile\b|\bexecSync\b/);
   });
 
-  it("the other tools keep the optional provider - the ban is scoped, not global", () => {
-    // If this ever fails, the scope of this lock was widened by accident: the
-    // external provider is removed in T4, not by editing this spec.
-    // getDeviceState left the provider in T2-a and answers over adb instead, so
-    // the remaining provider consumer among the non-task tools is diagnose.
+  it("the provider has no tool consumer left — the ban is now the whole surface", () => {
+    // T2-f removed the last one (diagnose). If this ever fails again, a tool has
+    // gone back to the external provider; deleting the adapter module itself is
+    // T4's decision, recorded in TODO §七.
     expect(codeOf("getDeviceState.ts")).not.toMatch(/backend/);
-    expect(codeOf("diagnose.ts")).toMatch(/backend/);
+    expect(codeOf("diagnose.ts")).not.toMatch(/backend/);
   });
 
   it("reads through the task read model instead", () => {

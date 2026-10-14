@@ -20,8 +20,8 @@ import { defineRunTask } from "./tools/runTask.js";
 import { defineManageTask } from "./tools/manageTask.js";
 import { defineInspectTrace } from "./tools/inspectTrace.js";
 import { defineDiagnose } from "./tools/diagnose.js";
-import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
+import { diagnoseDevice } from "./device/diagnose.js";
 import { judgeEffectChanged } from "./effect/diff.js";
 import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
 import { createAdbProbe } from "./device/state.js";
@@ -166,18 +166,9 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
             : {}),
         })
       : undefined;
-  // dsh-autogamer rectification (Phase 1): the external ARTEMIS backend and
-  // the shared preflight runner. The backend connects lazily on first use, so
-  // constructing it here spawns nothing; the preflight warm-up below only
-  // fills the 60s cache and never rejects.
-  const artemisBackend = createArtemisBackend({
-    command: config.artemisMcpCommand ?? ["python", "-m", "mcp_server"],
-    cwd:
-      typeof config.artemisRepoPath === "string" && config.artemisRepoPath.length > 0
-        ? config.artemisRepoPath
-        : undefined,
-    callTimeoutMs: config.actionCallTimeoutMs,
-  });
+  // dsh-autogamer rectification (Phase 1) → T2-f: the external ARTEMIS backend
+  // is no longer constructed on any tool path. The adapter module stays until T4
+  // decides whether the optional provider keeps a surface at all.
   const preflight = createPreflight();
   const preflightInput = {
     uvPath: config.uvPath ?? "uv",
@@ -459,11 +450,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       }),
     ),
   );
-  const autogamerDeps = {
-    backend: artemisBackend,
-    checkEnv,
-    defaultDeviceSerial: config.defaultDeviceSerial ?? "",
-  };
   // T1/G82: the task tools read the session's own projection instead of driving
   // an external engine. The cache is the derived read side - the projection
   // registry owns the fold and publishes on change; nothing here re-reads the
@@ -476,7 +462,8 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.tools.register(
     defineTool<any, any>(
       defineRunTask({
-        checkEnv,
+        // A task needs a device, not the optional provider stack (T2-f).
+        checkEnv: checkDeviceEnv,
         defaultDeviceSerial: config.defaultDeviceSerial ?? "",
         defaultProfile: config.defaultProfile ?? "flash",
         newTaskId: () => `autogamer-task-${(taskSequence += 1)}`,
@@ -486,7 +473,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   );
   const taskViewerDeps = {
     store: taskCache,
-    checkEnv,
+    checkEnv: checkDeviceEnv,
     sessionKey: () => agentIdOfCall(),
   };
   ctx.tools.register(
@@ -519,10 +506,19 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     ),
   );
   ctx.tools.register(defineTool<any, any>(defineInspectTrace(taskViewerDeps)));
+  // T2-f: the diagnosis is assembled from local probes over adb. The provider
+  // adapter (`src/artemis/`) is no longer constructed by any tool path - see
+  // §七's audit note; deleting the module and its config fields is T4's call.
   ctx.tools.register(
     defineTool<any, any>(
       defineDiagnose({
-        ...autogamerDeps,
+        diagnose: (serial, options) => diagnoseDevice(serial, { probe, ...options }),
+        checkEnv: checkDeviceEnv,
+        defaultDeviceSerial: config.defaultDeviceSerial ?? "",
+        // The tool has already resolved which device to ask (arg → config → the
+        // one attached device), so no key mapping happens here.
+        capturePng: (serial, signal) => probe.capture(serial, { signal }),
+        saveScreenshot: saveDeviceScreenshot,
       }),
     ),
   );
@@ -535,7 +531,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // disposer; passing teardown as the callback disposed our own tools during
   // apply() (changelogs #10, the G30 root cause).
   ctx.effect?.(() => () => {
-    void artemisBackend.dispose();
     void scrcpy?.dispose();
   });
 }
