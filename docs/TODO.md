@@ -70,6 +70,8 @@
   路由的 `client` 依赖与 `ActionClient` 装配**整条拆除**，截图改 `exec-out screencap -p`（顺带修掉「一张图抓两次」），模型可控文本/URL 走设备 shell 引号 + 形状白名单（`javascript:`、`file:`、带空格的 URL、`com.x; rm -rf /` 全部**拒在 spawn 之前**）。
   配置面删 `actionServerCommand` / `actionServerEnv` 两字段；`contracts.spec` 的直呼清单锁由「还剩哪些」改成**禁止**（现为空）。
   `verify` **39 文件 / 412 通过 / 1 跳过**；六条变异 P1–P6 各自跑红；真机逐条 `Success` + 三条该拒的拒（见 §七「T2-c/d/e 动作面收口记录」）。**G91 新立**：长按语义的对照实验不成立，待挂载期复测。
+- **T2-f 诊断已落 ⇒ T2 整体除「挂载后真机跑一遍」外收口（2026-10-15）**：`autogamer_diagnose` 改由本地探针拼装（连接 / 锁态 / 帧 / helper 版本 / crash 日志），`include_screenshot` 从「收下但忽略」变成真附图；任务三件套与诊断的预检门改 `device` 范围 ⇒ **没有工具再要求 uv / python / provider**。
+  **提供方清点答案：`src/artemis/` 与 `ActionClient` 均已无工具消费者**（模块与配置字段的删除归 T4）。`verify` **39 文件 / 425 通过 / 1 跳过**；四条变异 Q1–Q4 跑红（其中两条**第一次是绿的**，补了用例才有牙——见 §七「T2-f」的自纠段）。
 - **顺带查出门禁自己盲了一条（2026-10-15，R28 当轮回写）**：`check-docs --selftest` 的 **M1-C1 在 HEAD 上就已 BLIND** —— 它的锚点是 §四 G78 那一行的**字面文字**，
   而那行在 前置-2 改写后措辞变了，变异不再落地（其余六条当时仍绿，所以没人看见）。已把锚点改成**结构定位**（§四 表头分隔行后插行），`--selftest` 现 7 例全落地。
   这条不是新问题而是**同类错误的复发**：变异用例的锚点用散文，散文一漂移判据就静默失效 —— 与 §五「测试用词不许当判据」是同一条纪律。
@@ -898,7 +900,7 @@
 - **T2-c 截图**（**已完成 2026-10-15**）：`exec-out screencap -p` 直接产帧，喂给已有的 `saveScreenshot` / `parseImageSize` / 效果差分（T3 已原生，零改动复用）。附带修掉旧浪费：截图此前被**抓两次**（buildCall 内一次、执行面一次）。
 - **T2-d 手势与输入**（**已完成 2026-10-15**）：tap / long_press / swipe / keyevent / back / 文本（**按前置-7 走 `input text`，剪贴板路线不建**）/ erase_one_char，逐条对上现有字符串契约与分类；长按语义挂 **G91** 待复测。
 - **T2-e 应用与链接**（**已完成 2026-10-15**）：launch_app / stop_app / open_link；包名与 URL 走形状白名单（拒在 spawn 之前）。
-- **T2-f 诊断与设备态**：`diagnose` 不再走 `backend.diagnose()`，改由 preflight（已有七项）+ 本地探针拼装；**顺带落 T4 的 `artemisMcpCommand` 终局**所需的「provider 还有没有消费者」清点。
+- **T2-f 诊断与设备态**（**已完成 2026-10-15**，见 §七「T2-f 诊断本地化与提供方清点」）：`diagnose` 不再走 `backend.diagnose()`，改由 preflight（已有七项）+ 本地探针拼装；**顺带落 T4 的 `artemisMcpCommand` 终局**所需的「provider 还有没有消费者」清点 ⇒ **答案是「无」**。
 
 **范围外**：helper APK 的 TS 复刻（D13 二期，另立）；OCR / overlay（G87 / G88 已推迟）；删除 provider 适配层本身（§一.3 保留为可选外部提供方，T4 定夺）。
 
@@ -921,7 +923,8 @@
 - [x] 动作面直呼清单**为空**（T2-a/b/c/d/e 收口：`contracts.spec` 的锁已从「还剩哪些」改为**禁止**，恢复任何一条即红）——**T2-f 的诊断与提供方清点仍在办**，不在本条范围内
 - [x] G75 / G76 在设备面片内结案（各配一条会红的锁）—— **T2-a 达成**：G75 的锁在 `deviceRoster.spec` + `devicePool.spec` + `apply.spec`（变异 M2 / M4 跑红），G76 的锁在 `apply.spec`（变异 M1 跑红）；残留一半另立 G90
 - [ ] `run_device_action` 全链在 TS 侧跑通一次真机（🔶 挂载需用户放行，未放行前不勾）
-- [ ] **Done：`artemis mcp --type adb` 不再是任何路径的运行时依赖**；15 工具（含效果判定，已由 T3 原生）全在 TS 侧可跑
+- [x] **Done（前半）：`artemis mcp --type adb` 不再是任何路径的运行时依赖** —— T2-c/d/e 清零动作面直呼、T2-f 拆掉最后一个 provider 消费者（diagnose），`ActionClient` 与 `src/artemis/` **均无工具消费者**（模块删除与配置面收窄归 T4）
+- [ ] **Done（后半）：15 工具全在 TS 侧「可跑」的真机证明** —— 离线面全部有锁（425 通过），但「挂进宿主后一次跑完」仍待用户放行（🔶 R7 / R9 / R24）
 
 #### 前置-7 实测结论（2026-10-15，Android 15 / SDK 35，`emulator-5554` aurora / 24031PN0DC）
 
@@ -1020,6 +1023,24 @@
   三条**该拒的都拒了**（`javascript:` URL、无 launcher 的包、`com.x; rm -rf /sdcard/*`）且**没有产生任何子进程**；`capturePng` 1,281,952 bytes / IHDR 1600x900。
   ⚠️ 一处诚实标注：该轮 tap 落点不是输入框，故「文本落到字段里」这一条在**本轮 live 未复现**（前置-7 已量过 `input text` 承载 ASCII 与 CJK，argv 形状另有单测锁）。
 - **verify**：**39 文件 / 412 通过 / 1 跳过**（T2-b 后为 38 / 390）。
+
+#### T2-f 诊断本地化与提供方清点（2026-10-15）
+
+- **落了什么**：`src/device/diagnose.ts` 把诊断拼成本地探针的合成人（连接态 / 锁态 / 帧 / helper 装没装 + `dumpsys package` 的 `versionName` / `logcat -d -b crash` 的 tombstone）；
+  `src/tools/diagnose.ts` 的 `backend` 依赖删除，`include_screenshot` 从「收下但忽略」变成**真的附图**（与路由同一 `[text, image]` 出块规则）；
+  任务三件套与诊断的预检门一并改为 `device` 范围 ⇒ **没有任何工具再要求 uv / python / provider 仓库**（这正是「用户无需额外安装配置」的那道门）。
+- **提供方清点（本片要顺带答的那一问）**：**`src/artemis/` 已无任何工具消费者**（diagnose 是最后一个），`artemisBackend` 不再被构造。
+  仍留着的三样各有去处：① 模块本体与其 `clientHalf` / `mcpBackend` 规格 ⇒ **T4 裁决删除或保留为可选面**；② `Preflight` 的 `provider` 范围 ⇒ 现无调用者，一并裁决；
+  ③ 配置字段 `artemisMcpCommand` / `artemisRepoPath` / `uvPath` ⇒ 归 T4 的「配置面收窄」（前置-4）。
+- **实测补录**：`logcat -d -b crash -v brief` 里**每一次 `uiautomator dump` 都留下一个 SIGSEGV tombstone**（`Cmdline: uiautomator`，本轮读到数十条）
+  ⇒ 这解释了 前置-7 量的「成功也退 139」：dump 写完文件后进程自毁。诊断面因此天然能报告这件事，但**不得**据此判层级读取失败（判据仍是读回的文件）。
+  另：`dumpsys package com.artemis.helper` 有 `versionName=1.2.0`（helper APK 确在本机，前置-2 缺的是 token/授权不是 APK）。
+- **四条变异（R27）**：Q1 预检文本不再优先 ⇒ 1 红；Q2 空帧仍写附件存储 ⇒ 1 红；Q3 crash 缓冲逐行切块 ⇒ 1 红；Q4 不问 helper 版本 ⇒ 1 红。
+  **两条判据卫生自纠**：Q2 与 Q4 **第一次跑是绿的**——因为 `noFrame` 走的是「依赖缺席」而不是「帧缺席」，且 `helperVersion` 只在桩合成报告上断言、没碰探针本体。
+  补了这两个用例（帧存在但为空 / `diagnoseDevice` 的真探针）之后变异才红。**这正是 R27 要防的假绿**：有测试不等于测试有牙。
+- **verify**：**39 文件 / 425 通过 / 1 跳过**。真机跑 `diagnoseDevice("emulator-5554")`：连接 / 锁态 / 帧 1600x900 / helper `1.2.0` / 若干 tombstone 全部答出；
+  坏 serial ⇒ `adbConnected:false` + 两条诚实建议（「adb 没回答」「屏幕态读不到」），helper **不报 false 而是不报**。
+
 
 ### T2 · 动作面 TS 化（**G83**）
 

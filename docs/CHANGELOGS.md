@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
 
 ## 写入规则
 
@@ -214,3 +214,29 @@
 - 真机逐条（`node scratch/live-acts.mjs`）：back / launch / swipe / tap / input text / erase_one_char / press_key / open_link / stop_app / long_press 全 `Success`，`capturePng` 1,281,952 bytes / IHDR 1600x900；三条**该拒的**（`javascript:alert(1)`、`com.no.such.pkg`、`com.x; rm -rf /sdcard/*`）都拒了且**零子进程**。
 - 变异（R27，`node scratch/mutate-t2cde.mjs`）：P1 放开 URL ⇒ 1 红；P2 包名不校验 ⇒ 1 红；P3 文本不转义 ⇒ 2 红；P4 只看退出码 ⇒ 1 红；P5 swipe 丢 duration ⇒ `apply.spec` 1 红；P6 清字段不校验 ⇒ 1 红。
 - 仍 🔶 / 仍欠：长按语义（G91）；本轮 live 的 tap 落点不是输入框，「文本落到字段」只在 前置-7 量过、argv 形状有单测；`ActionClient` 与其夹具**已无生产消费者**，删除裁决属 T4；挂载后的宿主内实跑（R7 / R9 / R24）仍待用户放行。
+
+### #92 T2-f 诊断本地化：报告由本地探针合成，提供方清点答案为「无消费者」（T2 除挂载证明外收口）
+
+#### 问题描述
+
+- `autogamer_diagnose` 是提供方剩下的**最后一个**工具消费者（`backend.diagnose()`），而它问的六件事没有一件需要 uv / python / ARTEMIS 仓库：连着吗、屏幕锁没锁、helper 装没装、崩过什么、屏多大、该怎么办。
+- 它的 `include_screenshot` 参数长期是「收下但忽略」（说明文字写着 the provider decides），模型 asks 一张图却拿不到 —— 一个自称能诊断的界面把最有诊断价值的一帧丢掉，本身就说不过去。
+- 本轮实测（`TODO.md` §七「T2-f 诊断本地化与提供方清点」）两条：
+  - `dumpsys package com.artemis.helper` 有 `versionName=1.2.0`（helper 版本文本上是设备侧读的，不是提供方报告的）；
+  - `logcat -d -b crash -v brief` 里**每一次 `uiautomator dump` 都留一个 SIGSEGV tombstone**（`Cmdline: uiautomator`）⇒ 这解释了 前置-7 的「成功也退 139」：写完文件后进程自毁。**层级判据不变**（仍只认读回的文件），但这件事现在会主动报告出来。
+
+#### 整改方案与实施
+
+- 新增 `src/device/diagnose.ts`：`diagnoseDevice()` 并行问连接态 / 窗口态 / helper / 帧，装了 helper 才去问版本，再读 `crash` 环形缓冲；建议文案只在证据真的在那时才写（`offline` 就说 offline，锁态读不到就说读不到）。
+- `parseCrashLogcat`：按**块**切而不是按行切 —— `-v brief` 每一行都带 `F/DEBUG (pid):` 前缀，逐行判会把一个 tombstone 切成 7 条。块起点只认 `Timestamp:` 开的首行、`F libc : Fatal signal` 与 `*** ***` 分隔行。
+- `src/tools/diagnose.ts`：`backend` 依赖删除；输出键**一个不动**（`recent_crashes` 仍是 `package` / `timestamp` / `stack_excerpt`），`helper_version` 与 `logcat_path` 之类按实测有无；`include_screenshot` 走 `exec-out screencap -p` + 宿主附件存储，render 按 `[text, image]` 出块；**没帧就不写存储**（宁可少一张图，不存空字节）。
+- `src/index.ts`：不再构造 `artemisBackend`；`run_task` / `manage_task` / `inspect_trace` / `diagnose` 的预检门改为 `device` 范围 ⇒ 装了 adb 和一个设备就能用，**不再要求 uv / python / 提供方仓库**（这是「用户无需额外安装配置」的最后一道门）。
+- 清点答案落账：`src/artemis/`（含 `clientHalf` / `mcpBackend` 两份规格）与 `ActionClient` 现在**零工具消费者**；模块与 `artemisMcpCommand` / `artemisRepoPath` / `uvPath` 配置字段的去留是 **T4** 的裁决，本片不擅自动手。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **39 文件 / 425 通过 / 1 跳过**（#91 后为 412）。
+- 真机 `diagnoseDevice("emulator-5554")`：`adbConnected` / 锁态 / 帧 1600x900 / `helperVersion 1.2.0` / 多条 tombstone 全数答出；坏 serial ⇒ `adbConnected:false` 与两条诚实建议，helper **不报 false 而是不报**（问了没答 ≠ 答了没有）。
+- 变异（R27，`node scratch/mutate-t2f.mjs`）：Q1 预检文本不再优先 ⇒ 1 红；Q2 空帧仍写附件存储 ⇒ 1 红；Q3 crash 缓冲逐行切块 ⇒ 1 红；Q4 跳过 helper 版本探测 ⇒ 1 红。
+  **Q2 / Q4 第一次跑是绿的**，原因是断言落在了桩身上而不是探针身上（`noFrame` 抽掉的是依赖、`helperVersion` 只测映射）——补出「帧存在但为空」和 `diagnoseDevice` 真探针两条后才红。**这条自纠比结果本身重要**：它又是 R27 说的「判据必须被证明会红」。
+- 仍 🔶：诊断的 crash 解析只在**这一台**设备的 tombstone 形状上量过；挂载后的宿主内实跑待用户放行（R7 / R9 / R24）。
