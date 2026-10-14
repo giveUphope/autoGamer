@@ -168,7 +168,10 @@ function checkClosedVsOpen(files) {
   //   (b) an explicit closure sentence:  G81 ... 已于 ... 结清
   const closedLine = new Map();
   const subjectRe = /^\s*[-*]\s*\[x\]\s*(?:\*\*)?(G\d+)\b/;
-  const closureRe = /(G\d+)[^\n]{0,60}(?:已于|已)[^\n]{0,30}(?:结清|结案)/;
+  // Closure vocabulary must be adjacent to read as a claim: a sentence that says
+  // an item is NOT settled ("≠ ... 整体结清") cites the words without claiming
+  // them, and the loose form flagged exactly that sentence on its first run.
+  const closureRe = /(G\d+)[^\n]{0,80}(?:已于[^\n]{0,30}结清|已结清|已结案)/;
   todo.forEach((line, idx) => {
     const id = line.match(subjectRe)?.[1] ?? line.match(closureRe)?.[1];
     if (id === undefined || !openIds.has(id)) return;
