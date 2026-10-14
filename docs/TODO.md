@@ -129,6 +129,7 @@
       preflight 七项在 T4 重画为「提供方未配置即跳过，设备面三项才是 gate」
 - [x] 前置-6 画面标注 overlay 的消费者清点 + **推迟判定** —— **已完成**（2026-10-14；插件树零消费者 ⇒ **不实现**，新立 **G88**）
 - [x] 前置-5 OCR 与层级融合的设计事实 + **推迟判定** —— **已完成**（2026-10-14；本分支零消费者 ⇒ **不实现**，设计事实已取齐备用，新立 **G87**）
+- [ ] 前置-7 adb 命令面的真 wire 形态（`input tap/swipe/keyevent/text` 含**非 ASCII 文本**路线、`exec-out screencap -p`、`uiautomator dump` 耗时与失败形态、`am`/`monkey` 的成败字符串、失败与超时的 stderr/exit code、`adb devices -l` 的多传输形态）—— **T2 第 0 步，设备已在线可做**；结论落 §七「T2 · 方案」末尾
 
 #### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）——**2026-10-15 已解除**
 
@@ -804,11 +805,62 @@
 - ⚠️ **更正上一轮的一处高估**：我当时把 `enabled`/`fiberPhase` 等列进「只放行挂载自证」也能拿到，
   那是错的——`--dump-config` 只给组合面。已按实测口径改写。
 
+### T2 · 动作面 TS 化（**G83**）· 方案（2026-10-15 立项，R22）
+
+**前置状态**：**已解锁**。§四 要求的两项（前置-1 / 前置-2）2026-10-15 已在真机量完并落账（见该两节）；helper 路线经判定**不作为层级/动作源**，G78 随之退出。**仍缺的一条实测**是 adb 命令面本身 ⇒ 列为本片第 0 步（前置-7），不许跳过直接写实现。
+
+**R20 第 1 步「查」：已握有的事实**（不重复取证，只指权威）
+
+| 来源 | 事实 | 对 T2 的作用 |
+|---|---|---|
+| §七「前置-1 实测结论」 | 层级 wire 是 **XML 嵌套树**（77 节点 / 19 属性全带 / 无 `children` / 深度 12 / bounds 全 `[l,t][r,b]` / `rotation` 在根上）；本插件解析器现在吃 **JSON 数组**且依赖 py 造的 `parsed_bounds` | T2 必须自带 XML→节点列表；`#N` 句柄与 G67「按身份不按位置」的语义**不变** |
+| §七「前置-1 · G76 的新证据」 | 转屏态下 `wm size`=900x1600 而**帧空间**=1600x900；插件三处尺寸同源于截图 ⇒ 唯一暴露面是**手填 `screenSize` 无校验** | 落一条机械防护（配置值 vs 截图 IHDR 不符即拒） |
+| §七「前置-2 实测结论」 | helper 要 APK + token + 与 UiAutomation 互斥 ⇒ **不采用**；`adb forward` 生命周期因此不需要设计（G78 口径：不是已解决） | 层级/动作全走 `adb` CLI + `uiautomator dump` |
+| §七「前置-3 实测结论」 | 效果判定已在 TS 侧（`00106f8`），`compare_ui_frames` **不再是插件调用** | T2 的 15 工具面**去掉这一条** ⇒ 原生面实为 14 项，provider 仍可有它 |
+| `tests/fixtures/py-action-tools.json` 的 notes | 结果形状是**纯字符串**：`Success` / `Failed` / `Error: …` / `Error executing tool …`；坐标是 legacy 像素、归一化发生在插件内；真旗标是 `--type adb` | 原生实现的**可观察输出契约**（分类器 `classify.ts` 靠这些串分类，不能换形状） |
+| 守则 **R14 / R15** | 宿主已有并发约定（safe 并发 / mutating 独占）；`timeoutMs` **不被执行**，超时须自实现并观测取消信号 | adb 子进程的超时与 `signal` 传播必须由我们做 |
+| 守则 **R12 / R13** | 扩展点「够用即最弱」；策略不许内建进工具正文 | 设备执行机制留在工具内，闸门/熔断仍走既有 `ctx.tools.guard()` |
+
+**What（范围与切片顺序）** —— 每片都要「先测后写」，一片一个收尾门禁（`verify` 全绿 + 涉及 patch 则 R6）：
+
+- **前置-7（第 0 步，纯测量）**：adb 命令面的真 wire 形态 —— `adb devices -l`（含**一台模拟器多条传输**的 G75 现场）、`shell input tap/swipe/keyevent/text`（**含非 ASCII 文本**：`input text` 在多数 Android 版本只吃 ASCII，上游因此走剪贴板注入 ⇒ 本分支必须实测定案）、`exec-out screencap -p`（尺寸/耗时）、`shell monkey/am/start` 的成败与输出、失败与超时时的 stderr/exit code、`uiautomator dump` 的耗时与在部分界面下的失败形态。结果写进本节末「前置-7 实测结论」。
+- **T2-a 设备面**：roster（`adb devices -l` 解析 + **G75 去重**：一条模拟器多传输只算一台）、`getDeviceState` 本地化（连接态 / 屏幕 / helper 状态改为本地探针）、**G76 的 `screenSize` 校验**。
+- **T2-b 层级**：`hierarchyXml.ts`（XML → 节点列表，自产 `parsed_bounds`），`parseVisibleElements` 增加 XML 入口并保持现有 `#N` / 身份解析语义不变（G42 / G67 的锁不动）。
+- **T2-c 截图**：`exec-out screencap -p` 直接产帧，喂给已有的 `saveScreenshot` / `parseImageSize` / 效果差分（T3 已原生，零改动复用）。
+- **T2-d 手势与输入**：tap / long_press / swipe / keyevent / back / 文本（**按前置-7 的实测结论选 `input text` 或剪贴板路线**）/ erase_one_char，逐条对上现有字符串契约与分类。
+- **T2-e 应用与链接**：launch_app / stop_app / open_link。
+- **T2-f 诊断与设备态**：`diagnose` 不再走 `backend.diagnose()`，改由 preflight（已有七项）+ 本地探针拼装；**顺带落 T4 的 `artemisMcpCommand` 终局**所需的「provider 还有没有消费者」清点。
+
+**范围外**：helper APK 的 TS 复刻（D13 二期，另立）；OCR / overlay（G87 / G88 已推迟）；删除 provider 适配层本身（§一.3 保留为可选外部提供方，T4 定夺）。
+
+**How（关键决策）**
+1. **可观察契约不动，只换实现**：与 T1 同一手法——工具名/参数/返回字符串/`render` 保持现状，判据是既有锁（`deliveryShape.spec`、`classify.spec`、`router-errors.spec`、`gate/devicePool/breaker` 全套）。
+2. **子进程边界集中**：所有 adb 调用过一个 `spawnAdb(serial, args, {timeoutMs, signal})`，超时**自实现**并观测 `signal`（R15），错误分类映射到既有字符串形状；禁止各工具自己拼命令（防注入：serial 与参数走 argv 数组，不拼 shell 字符串）。
+3. **一次只测一个变量**：前置-7 的每条测量单独记录原始输出，再据以写实现（R25）；被测量**否证**的旧表述当场就地标注（R28）。
+4. **原生为默认，provider 为可选**：`ActionClient`（MCP stdio）保留但不作为默认路径；「默认走原生」的开关语义与 preflight 的「提供方未配置 ⇒ 跳过」一并在 T2-f/T4 收口。
+5. **live 验证的授权边界**：把插件真挂进 profile 需要 `install_bundle` / 侧边栏面板（要 agent 会话与权限，R19 不代批）⇒ 设备侧 `adb` 测量**可以**由我做，挂载类验证**必须**由用户放行。凡「只过单测、未挂载」的宿主/设备交互，一律标 🔶（R21）。
+
+**Verify（每片必跑）**
+- `pnpm --config.verify-deps-before-run=false run verify`（build + typecheck + vitest 全绿）；`node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` exit 0。
+- 每条 adb 行为都要留**可复跑命令 + 实测输出**（前置-7 那张表就是格式）。
+- **R27 变异校验**：每条新契约锁配一次「故意改坏 ⇒ 恰好它红」（沿用本轮 apply.spec / contracts.spec 的做法）。
+- **与 py 的「同一输入同一输出」对照**：本机仍**做不了**（无 py 运行时；provider 未装）。替代证据 = 字符串契约锁 + 设备实测形状；对照表与 T3 那条一起挂在延迟项上，**不许勾**。
+- 若某片动了 `cordis.patch.yml` ⇒ R6（`--dump-config` rc 0 且无 `unmatched`）；改动影响声明面 ⇒ R7 开新会话复验。
+
+**Done means**（T2 整体）
+- [ ] 前置-7 测完并落「实测结论」（含文本注入路线的定案）
+- [ ] T2-a…T2-f 各自收口：`src/` 内**再无** `client.callTool` 指向动作面工具（`contracts.spec` 的直呼清单收敛为空/仅剩明确保留项）
+- [ ] G75 / G76 在设备面片内结案（各配一条会红的锁）
+- [ ] `run_device_action` 全链在 TS 侧跑通一次真机（🔶 挂载需用户放行，未放行前不勾）
+- [ ] **Done：`artemis mcp --type adb` 不再是任何路径的运行时依赖**；15 工具（含效果判定，已由 T3 原生）全在 TS 侧可跑
+
 ### T2 · 动作面 TS 化（**G83**）
 
-- [ ] 动作工具面 TS 原生实现（adb CLI + on-device 协议客户端）
-- [ ] 与旧实现逐条对照：**同一输入同一输出**（对照结果留档，含可复跑命令与实测输出）
-- [ ] 坐标 / 层级 / 截图三条金标准复测
+> **切片与决策见上方「T2 · 动作面 TS 化（G83）· 方案」**（2026-10-15 立项：前置-1/2 已测、helper 路线不采用、第 0 步是前置-7 的 adb 命令面实测）。下面四条是收尾判据。
+
+- [ ] 动作工具面 TS 原生实现（adb CLI + `uiautomator dump`；**不含** helper 协议客户端）
+- [ ] 与旧实现逐条对照：同一输入同一输出 —— **本机做不了**（无 py 运行时、provider 未装）⇒ 替代证据是字符串契约锁 + 设备实测形状；本条留开 🔶，不许以「都能跑」代勾
+- [ ] 坐标 / 层级 / 截图三条金标准复测（坐标含 G76 的 `screenSize` 校验；层级含 XML→节点；截图含 IHDR 与效果差分的同源）
 - [ ] **Done：不再依赖任何 py 动作面**
 
 ### T3 · 效果差分 TS 化（**G84** 第一片）· 方案（2026-10-14 立项，R22）
