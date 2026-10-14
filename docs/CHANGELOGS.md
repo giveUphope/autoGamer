@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）；以及一条**推迟判定**（OCR / G87）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）；以及两条**推迟判定**（OCR / G87、画面标注 overlay / G88）。 |
 
 ## 写入规则
 
@@ -110,3 +110,23 @@
 - `TODO.md` §四 有 **G87** 行（归属「待需求」，不在 T1–T4 排期内）；§七「前置-5」四条 Done 全勾；§二 的 OCR 行状态为「推迟（非放弃）」。
 - 解锁条件成文：出现真实消费者（层级为空的画布界面反复失败）⇒ 另立实现条目，形态按已取证事实落（零依赖 `fetch`、密钥走我们自己的配置项、未配置即空、XML 优先融合、三条质量过滤）。
 - `node scripts/check-docs.mjs` exit 0（新行、新表仍成形）。
+
+### #88 画面标注 overlay 判为推迟（G88；T3 收尾的同一次消费者清点）
+
+#### 问题描述
+
+- 规格 §二 列了「画面标注 overlay（py `PIL`/`cv2` → sharp/libvips）」为待迁移能力，T3 收尾要回答做不做。
+- 清点（实测）：插件树 `grep -rniE 'overlay|annotat|drawbox|draw_text|label_image|标注'` 只有两处命中，且都是 **dsh patch 的 overlay 语义**（`tests/deliveryShape.spec.ts:6`、`README.md:73`），与图像标注无关；截图路径 `saveScreenshot` 是把原帧交给 `ctx.attachments.saveImages`，插件**从不产出标注图** ⇒ **零消费者**。
+- 上游侧（只读 blob）：标注只出现在 `artemis/agents/**` 的调试产物与 `artemis/data_engine/**` 的存档可视化里。
+
+#### 整改方案与实施
+
+- **不实现**，判**推迟**并新立 **G88**：为「给人看的调试图」引入 libvips 原生依赖，换来的是零消费者的产物。
+- 上游那两个消费者各自已被别的决议覆盖：agents 感知层按 **D8** 不迁移；`data_engine` 存档按规格 §二 改由 **DSH session log** 承载（T1 已落）。
+- **不是放弃**：若将来做 Web toolview 的「把命中元素画出来」类展示（P3/G2 轨道），那才是消费者出现之时；届时形态必须走 **R18**（client 插件的 `tool.call.toolview` keyed slot，不 iframe、不 import 宿主 Client 包），依赖选择重新评估。
+
+#### 验收标准
+
+- `TODO.md` §四 有 **G88** 行（归属「待需求」）；§七「前置-6」三条 Done 全勾；§二 的 overlay 行状态为「推迟」；G84 行同步写明「OCR / overlay 判为推迟」。
+- `node scripts/check-docs.mjs` exit 0。
+- 附带记录一条判据卫生问题：本条立案时我先写过「`grep -rn compare_ui_frames src` 为空」当作 T3 Done 的判据——**那是错的**（src 里两处命中都是注释文字，裸 grep 会把无害散文判红）；正确判据是只匹配调用形状的 `contracts.spec` 直呼清单 + apply 的零调用锁。已改正并在 `TODO.md` §七 T3 条目里留下这段来处。
