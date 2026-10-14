@@ -3,8 +3,9 @@
 > 本文件是决策 **D19**（TS 全栈、py 归零）与 **D20**（溯源归零、不保留上游内容；`LICENSE` 为本项目自撰 MIT）的展开规格。
 > 本分支的编号与开放项看 [`../TODO.md`](../TODO.md)；归档分支 `legacy-fork-v2-dsh-plugin` 持有旧 fork 的全部实现与调研台账（`registry` / `CHANGELOGS` / `inventory`），本分支不携带。
 > 本文件不写体量与行数（体量属派生事实，一律由脚本生成，不手抄）。每期开工前按守则 **R22** 先在 `../TODO.md` §七 落自足条目，方案提交早于实现提交。
-> 状态（2026-10-14 更新，进度权威是 [`../TODO.md`](../TODO.md) §零）：**插件 TS 树已搬入**（`plugins/dsh-autogamer/`，tsc + vitest 293 passed）；
-> LICENSE 已重写为本项目自撰 MIT；工作树环境残留护栏已落地（`scripts/check-env.mjs`）。**下一步 T1（G82），尚未开工。**
+> 状态：**本文件不记进度、不记测试数、不记「下一步」**——那些是派生事实，唯一权威是 [`../TODO.md`](../TODO.md) §零（阶段）与 §七（当期进度）。
+> 本文件只承载终态定义（§一）、能力矩阵（§二）、分期（§三）、契约边界（§四）、溯源判据（§八）与资产映射（§九）这些**不随每一轮提交变动**的内容。
+> 已成立的基础设施事实（不随进度变动，故留下）：`LICENSE` 为本项目自撰 MIT；D19 环境护栏是 `scripts/check-env.mjs`。
 
 ## 一、终态定义（Done 的判据）
 
@@ -25,6 +26,8 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 > **读表前提**：本表「TS 落点」描述的代码已随插件 TS 树搬入本分支（`plugins/dsh-autogamer/`）。状态列按 **T1–T4 的契约对齐进度**标注——
 > 「已具备」= TS 侧代码在跑；「部分」= 有骨架但契约未对齐；「未开工」= 待 T1–T4 实现。
+> **本列只在落点发生结构变动时才改**（例：某能力从「无 TS 落点」变成「有骨架」）；某一期的实时进度、阻塞与测试读数一律看
+> [`../TODO.md`](../TODO.md) §零与 §七，**不要拿本列当现状**（它已经滞后过一次：T1 切片 1–3 落地后本表仍写「未开工」）。
 
 | 能力（上游面） | 现载体 | TS 落点 | 判据 | 状态 |
 |---|---|---|---|---|
@@ -35,9 +38,9 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 | 效果判定 `compare_ui_frames` | py 委托上游 `check_ui_change` | TS 差分（dHash 类） | 同一 before/after 对判 red/green 与 py 一致 | 未开工 |
 | OCR | py `httpx` → Google Vision | TS `fetch` | 同图同密钥返回同一文本集与坐标 | 未开工 |
 | 画面标注 overlay | py `PIL` / `cv2` | sharp（libvips） | 标注元素集与 py 一致 | 未开工 |
-| 任务编排 `run_task` / `manage_task` / `inspect_trace` | py 引擎（langgraph 图） | TS 单层路由（S11）+ DSH agent loop | 三条工具不再调 `mobile_*`；任务由 TS 侧循环驱动 `run_device_action` | 未开工 |
+| 任务编排 `run_task` / `manage_task` / `inspect_trace` | py 引擎（langgraph 图） | TS 单层路由（S11）+ DSH agent loop | 三条工具不再调 `mobile_*`；任务由 TS 侧循环驱动 `run_device_action` | 部分（T1 切片 1–3 代码已落：三条工具改读会话投影，引擎方法已从类型面与实现面删除；live 绑定核验待设备 🔶） |
 | 诊断 `diagnose` | py `core.diagnostics` | TS 探针 | 就绪七项同判 | 部分（`preflight.ts` 已有七项骨架） |
-| 轨迹 / 步骤持久化 | py `data_engine`（SQLite） | DSH session log（首选）或 better-sqlite3 | 回放同一步集 | 未开工 |
+| 轨迹 / 步骤持久化 | py `data_engine`（SQLite） | DSH session log（首选）或 better-sqlite3 | 回放同一步集 | 部分（已选 session log 一侧：步迹由 `tool/result` 折叠进投影，SQLite 路线未采用；「回放同一步集」待 live 🔶） |
 | rules 注入 | `<repo>/mcp_server/rules.md` | 插件内固定文本或外部文件 | 注入内容非空且可达模型 | 部分（`rulesInjector.ts` 已在，供应链随 T4 改） |
 | 录屏 / 视频分析 | py ffmpeg 系 | 不迁移（D12：一期无录像） | 放弃记录进本分支 CHANGELOGS（待新建） | 已砍 |
 | notes / plan 语法 | py `utils` | TS 状态机（checker 用） | 计划与检查项语义等价 | 未开工 |
@@ -91,7 +94,8 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 - **D8 / D13 / D14 的对应**：D8「langgraph 智能栈不迁移」由 T1 落实（不是新设计，是把已声明的做法做完）；D13「helper 二期 TS 复刻」归入 T2/T3；D14/S11 是 T1 的设计依据。
 - **S5 的退化**：S5 原写「原样复用 py action server」。D19 下它退化为**迁移期过渡**，主体由 TS 原生执行面取代；外部 ARTEMIS 若被配置，它就是「可选外部提供方」。
 - **G72 / G74 / G78 的终局**：G72（提供方形状）在 T4 消解——不再需要仓内提供方；G74（映射层按 5 工具面锁形状）在 T2 重锁为 TS 原生契约；G78（`adb forward` 残留）由 §四.2 的生命周期设计一并处置。
-- **G81 并行**：spec 类型检查是 TS 侧独立债，与本期并行，不构成前置。
+- **G81 已结清（2026-10-14）**：spec 类型检查不再是独立债——`typecheck` 脚本与 `verify`（build + typecheck + test）门禁已落地。
+  它原先「与本期并行、不构成前置」的定性不变；结清记录与基线读数只有一份，在 [`../TODO.md`](../TODO.md)「新分支特有」的 G81 行与其量化小节。
 - **D20 与 §一.5 / G86**：D20 是**独立于 D19 的一根轴**——D19 管「用什么语言实现」，D20 管「内容从哪来、留什么」。两者同期收尾（T4），但判据互不替代：py 删干净 ≠ 溯源清干净（copyright 头、vendored 第三方、派生文档、文案措辞、git 元数据都可能残留）。
 - **D1 的边界不变**：D1「方案基线 = google/artemis 上游」指的是**设计灵感来源**，与 D20 的「不留存上游内容」不冲突；D20 正是把这条说清楚——借鉴设计，不保留内容。
 
@@ -175,4 +179,4 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 1. **搬迁顺序（已完成 2026-10-14）**：整块搬 TS 树 → 逐文件过 D20（实测插件树零上游痕迹）；插件 README 措辞已改「灵感来源」。
    **已搬入**：src 27 / tests 36（含 fixtures、support）/ scripts 4 个 `.mjs` / locale / skill；**未搬**：`spike/`（py + 写死旧机盘符的 overlay，留待 T2 前按当前环境重建）。
-2. **本分支现状**：插件工程在 `plugins/dsh-autogamer/`，`tsc` 构建 + `vitest` 全绿（293 passed / 1 skipped）；下一步 **T1**（G82）。
+2. **本分支现状**：插件工程在 `plugins/dsh-autogamer/`（结构性事实）。构建/测试读数与「下一步」**一律看** [`../TODO.md`](../TODO.md) §零与 §七——本文件原先写死的「vitest 293 passed / 下一步 T1（G82）」在 T1 开工后立刻变成假现状，已按 R28 撤下，不再在此复述。
