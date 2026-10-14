@@ -362,12 +362,37 @@
 
 ### T1 · 引擎去消费者（**G82**）· 进度
 
-- [ ] 落自足条目（What / How / Verify / Done）并按 R22 先提交方案
-- [ ] `run_task` / `manage_task` / `inspect_trace` 改 TS 侧编排（S11 路由驱动设备动作工具）
-- [ ] 跨回合任务状态载体定案（先查宿主原生 storage / session 投影，按 R20 取一手口径，不自建容器）
-- [ ] 三条工具不再调用任何外部进程（契约锁）
-- [ ] R7 真机跑一条完整任务，终态双轴正确
+- [x] 落自足条目（What / How / Verify / Done）并按 R22 先提交方案（`ab3c3c3`，含 R20 九条一手出处原文）
+- [x] **切片 1 · 日志折叠**（2026-10-14）：`plugins/dsh-autogamer/src/task/fold.ts` + `tests/taskFold.spec.ts`（13 锁）
+- [ ] 切片 2 · 三条工具接线：各加 `presentationMeta`（`run_task` 写 `taskId` 等）+ 改读折叠状态，
+      不再调 `backend.startTask/manageTask/inspectTrace`
+- [ ] 切片 3 · 宿主绑定：`ctx.inject(['sessionProjections'], …)` 注册单元 + `onChanged` 维护
+      `sessionId → 值` 缓存（🔶 需 live 核验真实签名）
+- [ ] 跨回合任务状态载体定案 —— **已定案**（方案 How-2/4：session 投影 + `onChanged` 派生缓存，
+      真相源仍是日志，无自建容器）；🔶 绑定待切片 3
+- [ ] 三条工具不再调用任何外部进程（契约锁 + 变异校验）
+- [ ] R7 真机跑一条完整任务，终态双轴正确 —— **阻塞于前置-1 的设备环境**
 - [ ] **Done：py 引擎无消费者**
+
+**切片 1 的实测记录（当轮落账，R27/R28）**
+
+- **新增发现（决定了折叠的读源）**：本插件**早已把机器可读事实写进 `tool/result.meta`**
+  （`runDeviceAction.ts` 的 `presentationMeta` → `effect`/`category`/`incident`；
+  `reportTaskStatus.ts` → `status`/`tests_failed`/`outcome`，注释标 P1-b / R16）。
+  ⇒ 折叠**只读 `meta`**，不解析模型可见文本；文本是散文，`meta` 才是声明过、经 JSON 校验、能重放的卡片。
+- **事件形状不靠猜**（R25）：`tool/call` / `tool/result` 的载荷取自 `docs/subsystems/session.zh.md` 的
+  `SessionEventMap`；配对字段 `message.toolCallId` 取自**已安装** `@deepseek-ai/dsh-llm`
+  `lib/types/message.d.ts:153-160`（`ToolResultMessage.toolCallId: ToolCallId`，配 `tool/call.callId`）。
+- **既有锁自己咬了一次**：`tests/readmeLayout.spec.ts`（README Layout 必须覆盖每个 `src/` 模块）在新模块落地时变红，
+  补 README Layout 行后转绿——证明该锁不是虚的。
+- **变异校验**（R27）：把 `applyTaskState` 的「非 `tool/result` 事件返回同一引用」改成返回新对象，
+  `tests/taskFold.spec.ts` **恰好 1 条变红**（`an event of another type folds to the SAME reference`，
+  其余 12 条仍绿）⇒ 这条锁会咬。回退后全量 **33 files / 306 passed / 1 skipped**，`tsc` rc 0，
+  `node scripts/check-env.mjs` exit 0。
+- **未定论（留待切片 2/3）**：`run_task` 目前**没有** `presentationMeta`，折叠读的 `meta.taskId` 尚无产出方；
+  切片 2 补上后这条链才闭合。另外 🔶：`ToolExec` 镜像只有 `signal`/`concludeTurn`
+  （`src/dsh-types.ts:168`），工具执行期能否直接拿到 `Session` 实例**未在宿主上核过**——
+  方案 How-4 已用 `onChanged` 绕开该依赖，但绑定仍需 live 核验。
 
 ### T2 · 动作面 TS 化（**G83**）
 
