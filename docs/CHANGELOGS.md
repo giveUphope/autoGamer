@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 |
 | 三 · 门禁与基建 | #95 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）。 |
 
 
@@ -324,3 +324,26 @@
   - 门禁条款：向 `docs/TODO.md` 追加一行三列表格（表头两列）⇒ 拒，`C5 docs/TODO.md:1219 -> row 3 has 3 cells, header has 2`。
   - 自检条款：把 M1 的锚点改成不存在的标题 ⇒ 拒，`the gate's own mutations did not all land - a check has gone blind`；恢复后 `--selftest` 七条全落地。
 - 已知边界：`--selftest` 证明的是「七条变异各自会红」，**不证明**检查覆盖了下一次会出现的新漂移形态；新增检查时仍须自带一条会红的变异（R27）。
+
+### #96 OCR 的不可读帧会带崩宿主：识别前先验帧（#93 的后续修复）
+
+#### 问题描述
+
+- 量 G92 时（`TODO.md` §七「T5 收口记录」的放大补测）把一张**自己生成的、leptonica 读不了的 PNG** 交给 `worker.recognize`，进程直接死掉：
+  `Error in pixReadStream: Unknown format: no pix returned` → `Error: Error attempting to read image.` → 栈顶是 `node:internal/event_target … process.nextTick(() => { throw err; })`。
+- 关键在于**有两路错误**：awaited promise 会 reject（`createOcrEngine` 的 try/catch 接得住，返回 `undefined`），而 tesseract.js **另外**在 worker 上抛一个**无人处理的 error 事件** —— 这一路接不住，Node 视未捕获异常终止进程。
+- 落到本插件就是真路径：`ocr(key)` 读的是 `exec-out screencap -p` 的字节，**截断/半帧是 adb 会发生的事**（T2-b 已实测过「退出码与消息都会撒谎，只有读回的字节可信」）。也就是说 #93 交付的「fail-open」在这一点上并不成立：**设备侧一次异常可能变成宿主进程崩溃**。
+
+#### 整改方案与实施
+
+- `src/ocr/recognize.ts`：`recognize()` 第一步用**坐标空间用的同一个 IHDR 读取器**（`parseImageSize`，`src/coord.ts`）验帧 —— 读不出尺寸就 `logger.warn` 并返回 `undefined`，**worker 根本不起**。放在懒建之前，所以坏帧既不 spawn 也不下载任何东西（`langPath` 那半边不变）。
+- 判据落在两层，各证明一次：
+  - `tests/ocrRecognize.spec.ts`（注入假件）：坏字节 ⇒ `undefined`、`workerFactory` **一次都没被调用**、warn 文案含 `not a readable PNG`；
+  - `tests/ocrPackaging.spec.ts`（真 worker、真语言包）：截断 PNG ⇒ `undefined` 且 `status().workerStarted === false`，测试文件本身活着跑完。
+- 顺带把单元 spec 里所有 `Buffer.from("png")` 换成带真头的帧（`pngHeaderOnly`）—— 它们之前测的是「假 buffer 也能过」这件事，而这件事现在恰恰不成立了。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **38 文件 / 439 通过**（#94 后为 437）。
+- 变异 **M15**（`node scratch/mutate-t5.mjs`，现共 15 条，全落地）：删掉验帧那段 ⇒ 包内那条锁红（真 worker 收到坏帧后进程被未处理 error 打断），证明这条判据会失灵。
+- 已知边界：修的是「**我们能把字节交给 worker 之前**」这一段。若 tesseract.js 在别的场景（wasm 自身崩溃、语言数据损坏）仍抛未处理事件，本层无法通过公开接口挂 handler —— 该残留记在 `TODO.md` §七「T5 收口记录」，不在本片假装已解决。
