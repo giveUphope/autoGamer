@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
 
 ## 写入规则
 
@@ -159,3 +159,27 @@
 - 变异（R27，`node scratch/mutate-t2a.mjs`）：M1 去掉 G76 校验 ⇒ `apply.spec` 恰 1 红；M2 去掉别名折叠 ⇒ `devicePool.spec` 2 红；M3 dumpsys 参数改回 `window displays` ⇒ `deviceRoster.spec` 恰 1 红；M4 停止 `android_id` 折叠 ⇒ `deviceRoster.spec` 恰 1 红；M5「没答的 helper」报成 `false` ⇒ `getDeviceState.spec` 恰 1 红。五条全部跑到红，无一条假绿。
 - `node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` exit 0；`TODO.md` §四 的 G75 / G76 两行移除（结清不留开放行），新立 G89（跨进程互斥）与 G90（缓存不随转屏失效）。
 - 仍 🔶：形状只在**这一台** Android 15 模拟器上量过（其它 ROM 缺 `screenState` 时有回落，但未实测）；挂载后的真机 `get_device_state` 与完整任务未跑（用户授权面）。
+
+### #90 T2-b 层级本地化：`uiautomator dump` 读回 + 自带 XML 解析（G83 内）
+
+#### 问题描述
+
+- `get_ui_hierarchy` 是动作面里最核心的一条：模型的 `{index}` 句柄、`{text}` 目标和执行后的身份复核全都吃它。此前它问的是 py 动作服务器，而 py 给的那份 JSON 是**把设备的 XML 树拍平后自造**的产物（`parsed_bounds` 这个字段名就是 py 造的）。
+- 复测（`node scratch/probe-hierarchy2.mjs`，2026-10-15 同一台 Android 15）：`uiautomator dump` **code=139 / 2439ms** 且照旧打印成功消息；读回的树 **45 节点 / 每节点 19 属性 / 21 自闭合 + 24 成对标签 / bounds 全 `[l,t][r,b]`（45/45）/ `rotation` 在 `<hierarchy>` 根上（本机 = 1）**。`rotation=1` 也正是 #89 里 `wm size`(900x1600) 与帧空间(1600x900) 转置失配的来源。
+- 两条测量自身的错当轮记下（R27 判据 6）：① 第一版探针把 `exec-out cat` 当 utf8 字符串再 `latin1` 转 Buffer ⇒ CJK 全乱码、`bounds` 正则 0 命中，看着像设备行为其实是解码口径错，改成按字节读后 0 个替换字符；② 「深度 15」是探针计数口径的产物（自闭合也算了一层），实现的祖先栈给出 **14**，并用构造已知的三行树独立证明栈本身正确。
+
+#### 整改方案与实施
+
+- 新增 `src/device/hierarchy.ts`：dump 到 `/sdcard/dsh-autogamer-hierarchy-<pid>.xml`（**带 pid**，两个插件实例不得互读）→ `exec-out cat` 按字节读回 → `isHierarchyXml` 校验（要求同时出现 `<hierarchy` 与 `<node `）→ best-effort `rm`。**退出码与成功消息一概不看**（实测两者都会撒谎）。
+- `src/hierarchy.ts`：`parseVisibleElements` 增 XML 入口，产出**与 JSON 入口逐字段相同**的元素记录；`#N` 仍按文档序位置编号、句柄仍按身份解析（G42 / G67 的锁一字未动）。真机 dump 含容器节点，所以列表里会出现无标签容器行 —— 与提供方那份 77 节点的树同构，不是新引入的噪声（旧夹具只有两行是因为 py 那份 JSON 本身是简化的）。
+- `src/tools/runDeviceAction.ts`：`hierarchy` 依赖改为**必填**并**删除 provider 的 JSON 层级路径**，`get_ui_hierarchy` 从此不过传输；读失败冠 `environment:` 前缀（G33：读挂了是设备/宿主的事，不许算 internal 让熔断关着）。
+- 空树（`<hierarchy></hierarchy>`）判为「读不到」而非「屏幕是空的」，沿用 前置-1 的 fail-closed 口径。
+- 测试面：`tests/fixtures/hierarchy-chrome.xml`（真机原文逐字 + 来路头注）、新增 `tests/hierarchyXml.spec.ts`、`tests/support/hierarchyXml.ts`（把 ladder/observation/dedup 三份 JSON 夹具改为同形 XML，并把层级依赖补进各 spec 的路由构造），`contracts.spec` 直呼清单收敛为 `take_screenshot` 一条。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **38 文件 / 390 通过 / 1 跳过**（#89 后为 37 / 374）。
+- 真机端到端（走 `dist/device/hierarchy.js`）：**2038ms** 拿到 45 节点、11 个 clickable，CJK 文本与 resource-id 完好，元素按文档序编号。
+- 变异（R27，`node scratch/mutate-t2b.mjs`）：N1 去掉读回校验 ⇒ 2 红；N2 弃用祖先栈 ⇒ 1 红；N3 把成对标签当自闭合 ⇒ 1 红；N4 读失败丢前缀 ⇒ `validatorLadder.spec` 1 红；N5 层级退回传输 ⇒ `apply.spec` 4 红。
+- `node scripts/check-docs.mjs` / `check-env.mjs` exit 0。
+- 仍 🔶：XML 只在**这一台**设备上量过；`uiautomator` 与宿主 appium 路线的对照、以及 `--compressed`（实测更慢，不采用）之外的大屏层级代价未评估。

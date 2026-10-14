@@ -63,6 +63,9 @@
   新增 `src/device/{adb,roster,state}.ts`；**G75 结案**（`android_id` 去重 + 传输别名折叠进同一把闸门锁），**G76 结案**（手填值与帧 IHDR 不符即拒，
   残留的「缓存不随转屏失效」另立 **G90**）；顺带把预检拆成 `provider` / `device` 两个范围（否则本地工具会被「没装 uv」拒掉）。
   `verify` **37 文件 / 374 通过 / 1 跳过**（上一绿态 35/332），五条新锁各自跑过变异（M1–M5，见 §七「T2-a 收口记录」）。
+- **T2-b 层级已落（2026-10-15）**：`get_ui_hierarchy` 改为**设备侧 `uiautomator dump` 读回 + 自带 XML 解析**（退出码与成功消息实测都会撒谎，唯一可信的是读回的字节），
+  provider 的 JSON 层级路径**整条删除** ⇒ `contracts.spec` 直呼清单只剩 `take_screenshot`；`#N` 编号与身份解析语义不动（G42 / G67 的锁原样跑绿）。
+  `verify` **38 文件 / 390 通过 / 1 跳过**，五条变异 N1–N5 各跑到红（见 §七「T2-b 层级收口记录」）。
 - **顺带查出门禁自己盲了一条（2026-10-15，R28 当轮回写）**：`check-docs --selftest` 的 **M1-C1 在 HEAD 上就已 BLIND** —— 它的锚点是 §四 G78 那一行的**字面文字**，
   而那行在 前置-2 改写后措辞变了，变异不再落地（其余六条当时仍绿，所以没人看见）。已把锚点改成**结构定位**（§四 表头分隔行后插行），`--selftest` 现 7 例全落地。
   这条不是新问题而是**同类错误的复发**：变异用例的锚点用散文，散文一漂移判据就静默失效 —— 与 §五「测试用词不许当判据」是同一条纪律。
@@ -886,7 +889,7 @@
 
 - **前置-7（第 0 步，纯测量）**：adb 命令面的真 wire 形态 —— `adb devices -l`（含**一台模拟器多条传输**的 G75 现场）、`shell input tap/swipe/keyevent/text`（**含非 ASCII 文本**：`input text` 在多数 Android 版本只吃 ASCII，上游因此走剪贴板注入 ⇒ 本分支必须实测定案）、`exec-out screencap -p`（尺寸/耗时）、`shell monkey/am/start` 的成败与输出、失败与超时时的 stderr/exit code、`uiautomator dump` 的耗时与在部分界面下的失败形态。结果写进本节末「前置-7 实测结论」。
 - **T2-a 设备面**（**已完成 2026-10-15**，收口与变异记录见 §七「T2-a 收口记录」）：roster（`adb devices -l` 解析 + **G75 去重**：一条模拟器多传输只算一台）、`getDeviceState` 本地化（连接态 / 屏幕 / helper 状态改为本地探针）、**G76 的 `screenSize` 校验**。
-- **T2-b 层级**：`hierarchyXml.ts`（XML → 节点列表，自产 `parsed_bounds`），`parseVisibleElements` 增加 XML 入口并保持现有 `#N` / 身份解析语义不变（G42 / G67 的锁不动）。
+- **T2-b 层级**（**已完成 2026-10-15**，收口与变异记录见 §七「T2-b 层级收口记录」）：`hierarchyXml.ts`（XML → 节点列表，自产 `parsed_bounds`），`parseVisibleElements` 增加 XML 入口并保持现有 `#N` / 身份解析语义不变（G42 / G67 的锁不动）。实际落名为 `src/device/hierarchy.ts`（读）+ `src/hierarchy.ts` 的 XML 入口（解析后共用同一份元素记录）。
 - **T2-c 截图**：`exec-out screencap -p` 直接产帧，喂给已有的 `saveScreenshot` / `parseImageSize` / 效果差分（T3 已原生，零改动复用）。
 - **T2-d 手势与输入**：tap / long_press / swipe / keyevent / back / 文本（**按前置-7 的实测结论选 `input text` 或剪贴板路线**）/ erase_one_char，逐条对上现有字符串契约与分类。
 - **T2-e 应用与链接**：launch_app / stop_app / open_link。
@@ -973,6 +976,22 @@
   M5 把「没答的 helper 探针」报成 `false` ⇒ `getDeviceState.spec` 恰 1 红。五条全部**跑到红**，无一条假绿。
 - **仍标 🔶 的**：这些 adb 形状只在**这一台** Android 15 模拟器上量过（其它 ROM 的 `screenState` 缺席路径已有回落，但未实测）；
   挂载后的真机 `get_device_state` / 完整任务仍未跑（§六 前置，属用户授权面）。
+
+#### T2-b 层级收口记录（2026-10-15）
+
+**复跑命令**：`node scratch/probe-hierarchy2.mjs`（现场取 dump）、`node -e` 走 `dist/device/hierarchy.js` 的真机核验、`node scratch/mutate-t2b.mjs`（变异）。
+
+- **实测（在 前置-1 之外新增/更正的）**：
+  - `uiautomator dump` 本轮 **code=139 / 2439ms**，stdout 依旧 `UI hierchary dumped to: …`（Android 自己的拼写）⇒ 读回校验这条路再确认一次；
+  - 同一棵树 **45 节点 / 每节点 19 属性**（属性名顺序固定：`index,text,resource-id,class,package,content-desc,checkable,checked,clickable,enabled,focusable,focused,scrollable,long-clickable,password,selected,bounds,drawing-order,hint`）、**混合标签形态**（21 自闭合 + 24 成对）、`bounds` 全为 `[l,t][r,b]`（45/45）、`rotation` 挂在 `<hierarchy>` 根上（本机 = 1，正是 `wm size` 与帧空间转置的来源）；
+  - **深度是 14，不是探针脚本先算出的 15**：那条是探针自己的计数口径错（把自闭合也算一层），实现用**祖先栈**并在 `hierarchyXml.spec` 里以「构造已知的三行树」独立证明栈是对的，再拿真机 dump 锁数值；
+  - 夹具 `tests/fixtures/hierarchy-chrome.xml` = 真机原文逐字（含 CJK 文本与弯引号），头注写明来路；**取回时必须按字节读**：第一版探针把 `exec-out cat` 当 utf8 字符串再 `latin1` 转 Buffer，CJK 全成乱码且 `bounds` 正则 0 命中 —— 看着像设备行为，其实是测量自身的错（按 R27 判据 6 记账）。
+- **落了什么**：`src/device/hierarchy.ts`（dump → 读回 → 校验 → 清理，`dumpPath()` 带 pid 以免两个实例互读）；`src/hierarchy.ts` 的 `parseVisibleElements` 增 XML 入口，**同一份元素记录**由两种 wire 形态产出（锁在「两条入口给出同形」那条）；路由 `hierarchy` 依赖**改为必填**并**删除 provider 的 JSON 层级路径**（`get_ui_hierarchy` 从此不过传输），读失败按 G33 冠 `environment:` 前缀。
+  `contracts.spec` 的直呼清单因此收敛为 **`take_screenshot` 一条**。
+- **一处行为差别（不是回归，但值得记）**：真机 dump 是**整棵树**（容器节点也在内），所以模型看到的 `#N` 列表含无标签的容器行；旧夹具只有两行是因为 py 侧那份 JSON 本来就是简化过的。77 节点那次实测同样包含容器 ⇒ 与提供方一致，不是新引入的噪声。
+- **空层级怎么算**：`<hierarchy></hierarchy>`（0 节点）**判为「读不到」而不是「屏幕是空的」**——与 前置-1 的 fail-closed 口径一致；DRM/安全屏若真给空树，走的是「重读或退回截图+归一坐标」那条既有 refusal。
+- **五条变异（R27）**：N1 去掉读回校验 ⇒ `hierarchyXml.spec` 2 红；N2 不用祖先栈 ⇒ 1 红；N3 把成对标签也当自闭合 ⇒ 1 红；N4 读失败丢掉 `environment:` 前缀 ⇒ `validatorLadder.spec` 1 红；N5 让层级退回传输 ⇒ `apply.spec` 4 红。
+- **verify**：**38 文件 / 390 通过 / 1 跳过**（T2-a 后为 37 / 374）。真机端到端：`dist` 走一遍 **2038ms**，45 节点、11 个 clickable、CJK 完好。
 
 ### T2 · 动作面 TS 化（**G83**）
 

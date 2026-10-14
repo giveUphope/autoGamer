@@ -33,7 +33,7 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 |---|---|---|---|---|
 | 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | 与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参 | 部分（`ActionClient` 仅为 MCP 转发） |
 | 截图 | py 动作面 | `adb exec-out screencap -p` | 同设备同帧的 PNG IHDR 尺寸等于帧空间（已验 1600x900） | 尺寸取源**已本地化**（T2-a：`src/device/state.ts` 问帧 IHDR，手填 `screenSize` 与帧不符即拒 ⇒ G76 结清）；动作面取帧仍走 `ActionClient`，待 T2-c |
-| UI 层级 dump | 设备 `uiautomator dump` 出 **XML 嵌套树**，py 侧解析成 JSON 再给插件 | 原生：`adb shell uiautomator dump` + 自带 XML 解析（`parsed_bounds` 由我们自己产出） | 实测 wire 形状（2026-10-15）：77 节点 / 19 属性且每节点全带 / **无 `children`** / 嵌套深度 12 / bounds 全是 `[l,t][r,b]` —— 详见 `../TODO.md` §七「前置-1 实测结论」 | 契约**已测**；解析器仍吃 JSON ⇒ 原生 XML 路径待 T2 |
+| UI 层级 dump | 设备 `uiautomator dump` 出 **XML 嵌套树**，py 侧解析成 JSON 再给插件 | 原生：`adb shell uiautomator dump` + 自带 XML 解析（`parsed_bounds` 由我们自己产出） | 实测 wire 形状（2026-10-15）：77 节点 / 19 属性且每节点全带 / **无 `children`** / 嵌套深度 12 / bounds 全是 `[l,t][r,b]` —— 详见 `../TODO.md` §七「前置-1 实测结论」 | **已本地化（T2-b）**：`src/device/hierarchy.ts` 读回校验 + `src/hierarchy.ts` 的 XML 入口；`get_ui_hierarchy` 不再过传输（取证与两条测量自纠见 §七「T2-b 层级收口记录」） |
 | 动作执行闸门 / 熔断 / 分类 | 插件 TS | — | 现有 spec 锁 | 已具备 |
 | 效果判定 `compare_ui_frames` | py 委托上游 `check_ui_change` | `src/effect/{png,diff}.ts`：按其设计移植（遮罩 / 双管线 / ROI 回落 / 分支表；常量带出处） | 判别用例集（5+2 条）+ 三处变异 + 真帧冒烟；**与 py 的同输入同输出对照 🔶 延迟**（本机无 py 运行时、provider 未配置） | 部分（差分已落地，对照表未做） |
 | OCR | py `httpx` → Google Vision（要 API key） | **T5 内置离线 WASM**：`tesseract.js` + 包内语言包（零配置、无网络）；上游 key 路线**不采用**（与「无需额外安装配置」冲突） | 层级未命中才走 OCR；`target_source` 进 `presentationMeta`；版本化探针离线复跑 | 未开工（方案已立；可行性实测 696ms/帧、双语约 4.5MB） |
