@@ -30,6 +30,34 @@ export interface DiagnoseDeps {
     bytes: Uint8Array,
     mediaType: DshImageAttachment["mediaType"],
   ): Promise<DshImageAttachment | undefined>;
+  /**
+   * T5: is the built-in OCR usable? Reported, never gated — a broken OCR costs a
+   * `{text}` target its second source, nothing else, so it must not fail a
+   * diagnosis or a preflight.
+   */
+  ocrStatus?(serial: string | undefined, signal?: AbortSignal): Promise<OcrReadout>;
+}
+
+export interface OcrReadout {
+  readonly enabled: boolean;
+  readonly langs: readonly string[];
+  readonly missingData: readonly string[];
+  /** Set only when a frame actually went through the engine. */
+  readonly frame?: { hits: number; ms: number };
+  readonly error?: string;
+}
+
+/** What to tell the operator, in the order they can act on it. */
+export function ocrRecommendations(ocr: OcrReadout): string[] {
+  if (!ocr.enabled) return [];
+  if (ocr.missingData.length > 0) {
+    return [
+      `the built-in OCR is missing its packaged language data for ${ocr.missingData.join(", ")} — ` +
+        `{text} targets fall back to the hierarchy alone`,
+    ];
+  }
+  if (ocr.error !== undefined) return [`the built-in OCR could not be checked: ${ocr.error}`];
+  return [];
 }
 
 export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
@@ -71,6 +99,8 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
             type: "array",
             items: { type: "string" },
           },
+          ocr_ready: { type: "boolean" },
+          ocr: { type: "object", additionalProperties: true },
         },
         additionalProperties: true,
       },
@@ -82,7 +112,9 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           `device_serial=${String(record.device_serial ?? "")}; ` +
           `adb_connected=${String(record.adb_connected ?? false)}; ` +
           `helper_installed=${String(record.helper_installed ?? false)}; ` +
-          `recent_crashes=${crashes}; recommendations=${fixes}`;
+          `recent_crashes=${crashes}; recommendations=${fixes}` +
+          // Only when the check ran: a report that never asked must not answer.
+          (record.ocr_ready === undefined ? "" : `; ocr_ready=${String(record.ocr_ready)}`);
         // Same rule as the router: the attachment becomes an image block, so it
         // must not also be flattened into the text envelope.
         const image = record.screenshot as DshImageAttachment | undefined;
@@ -116,6 +148,19 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
       for (const fix of localFixes) {
         if (!recommendations.includes(fix)) recommendations.push(fix);
       }
+      // T5: the enhancement is asked after the device facts, and its own failure
+      // is a line in the report rather than a thrown diagnosis.
+      let ocr: OcrReadout | undefined;
+      if (deps.ocrStatus !== undefined) {
+        try {
+          ocr = await deps.ocrStatus(serial, exec?.signal);
+        } catch (error) {
+          ocr = { enabled: true, langs: [], missingData: [], error: String((error as Error)?.message ?? error) };
+        }
+        for (const note of ocrRecommendations(ocr)) {
+          if (!recommendations.includes(note)) recommendations.push(note);
+        }
+      }
       let screenshot: DshImageAttachment | undefined;
       if (args.include_screenshot === true && deps.capturePng !== undefined && deps.saveScreenshot !== undefined) {
         const png = await deps.capturePng(serial, exec?.signal);
@@ -136,6 +181,18 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
         ...(screenshot !== undefined
           ? { screenshot, screenshot_path: String(screenshot.attachmentId) }
           : {}),
+        ...(ocr === undefined
+          ? {}
+          : {
+              ocr_ready: ocr.enabled && ocr.missingData.length === 0 && ocr.error === undefined,
+              ocr: {
+                enabled: ocr.enabled,
+                langs: [...ocr.langs],
+                missing_data: [...ocr.missingData],
+                ...(ocr.frame !== undefined ? { frame: ocr.frame } : {}),
+                ...(ocr.error !== undefined ? { error: ocr.error } : {}),
+              },
+            }),
         recommendations,
       };
     },

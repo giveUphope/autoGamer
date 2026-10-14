@@ -32,6 +32,8 @@
     "cordis.patch.yml",
     "skills/**/SKILL.md",
     "locale/*.json",
+    "ocr/*.traineddata.gz",
+    "THIRD_PARTY_NOTICES.md",
     "icon.svg"
   ],
   "scripts": {

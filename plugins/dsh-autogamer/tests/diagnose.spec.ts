@@ -11,7 +11,7 @@ import type { DeviceDiagnosis } from "../src/device/diagnose.js";
 import { diagnoseDevice, parseCrashLogcat, parseVersionName } from "../src/device/diagnose.js";
 import type { PreflightResult } from "../src/env/preflight.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
-import { defineDiagnose } from "../src/tools/diagnose.js";
+import { defineDiagnose, ocrRecommendations, type OcrReadout } from "../src/tools/diagnose.js";
 import {
   adbRuntime,
   getStateArgv,
@@ -60,9 +60,12 @@ function defineWith(options?: {
   failing?: boolean;
   noFrame?: boolean;
   noStore?: boolean;
+  ocr?: OcrReadout | "throws";
 }) {
   const asked: (string | undefined)[] = [];
   const saved: Buffer[] = [];
+  const ocrAsked: (string | undefined)[] = [];
+  const ocrReadout = options?.ocr;
   const tool = defineDiagnose({
     diagnose: async (serial) => {
       asked.push(serial);
@@ -90,8 +93,17 @@ function defineWith(options?: {
             };
           },
         }),
+    ...(ocrReadout === undefined
+      ? {}
+      : {
+          ocrStatus: async (serial: string | undefined) => {
+            ocrAsked.push(serial);
+            if (ocrReadout === "throws") throw new Error("ocr engine absent");
+            return ocrReadout;
+          },
+        }),
   });
-  return { tool, asked, saved };
+  return { tool, asked, saved, ocrAsked };
 }
 
 describe("diagnose: definition", () => {
@@ -188,6 +200,77 @@ describe("diagnose: execute", () => {
       text?: string;
     }[];
     expect(rendered[0]?.text).toBe("device_serial=em-1; adb_connected=true; helper_installed=false; recent_crashes=1; recommendations=2");
+  });
+});
+
+describe("diagnose: the built-in OCR is reported, never gated (T5)", () => {
+  const READY: OcrReadout = { enabled: true, langs: ["eng", "chi_sim"], missingData: [], frame: { hits: 83, ms: 601 } };
+
+  it("reports a ready engine without adding a recommendation", async () => {
+    const { tool, ocrAsked } = defineWith({ ocr: READY });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(ocrAsked).toEqual([undefined]);
+    expect(value.ocr_ready).toBe(true);
+    expect(value.ocr).toEqual({
+      enabled: true,
+      langs: ["eng", "chi_sim"],
+      missing_data: [],
+      frame: { hits: 83, ms: 601 },
+    });
+    expect(value.recommendations).toEqual(["restart adb"]);
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).toContain("ocr_ready=true");
+  });
+
+  it("names the packaged language data that is missing, and keeps the report", async () => {
+    const { tool } = defineWith({ ocr: { enabled: true, langs: ["eng", "chi_sim"], missingData: ["chi_sim"] } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.ocr_ready).toBe(false);
+    const note = (value.recommendations as string[])[1];
+    expect(note).toContain("chi_sim");
+    expect(note).toContain("{text} targets fall back to the hierarchy alone");
+  });
+
+  it("treats a disabled engine as a choice, not a fault", async () => {
+    const { tool } = defineWith({ ocr: { enabled: false, langs: ["eng"], missingData: [] } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.ocr_ready).toBe(false);
+    expect(value.recommendations).toEqual(["restart adb"]);
+  });
+
+  it("turns a check that throws into a line of the report, not a failed diagnosis", async () => {
+    const { tool } = defineWith({ ocr: "throws" });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.adb_connected).toBe(true);
+    expect(value.ocr_ready).toBe(false);
+    expect((value.ocr as { error?: string }).error).toBe("ocr engine absent");
+    expect((value.recommendations as string[]).join("\n")).toContain("could not be checked");
+  });
+
+  it("asks about the device the report is about", async () => {
+    const { tool, ocrAsked } = defineWith({ defaultDeviceSerial: "em-default", ocr: READY });
+    await tool.execute({ device_serial: "em-arg" }, exec());
+    expect(ocrAsked).toEqual(["em-arg"]);
+  });
+
+  it("has nothing to say about a frame it could not capture", async () => {
+    const { tool } = defineWith({ ocr: { enabled: true, langs: ["eng"], missingData: [] } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.ocr_ready).toBe(true);
+    expect(value.ocr).not.toHaveProperty("frame");
+    expect(value.recommendations).toEqual(["restart adb"]);
+  });
+
+  it("prefers the missing-data note over the error note, and both over silence", () => {
+    expect(ocrRecommendations(READY)).toEqual([]);
+    expect(ocrRecommendations({ enabled: true, langs: ["eng"], missingData: ["eng"], error: "boom" })).toHaveLength(1);
+    expect(ocrRecommendations({ enabled: true, langs: ["eng"], missingData: [], error: "boom" })[0]).toContain("boom");
+  });
+
+  it("does not mention OCR in a render that never asked", () => {
+    const { tool } = defineWith();
+    const rendered = tool.output!.render({}, { device_serial: "em-1", adb_connected: true }) as { text?: string }[];
+    expect(rendered[0]?.text).not.toContain("ocr_ready");
   });
 });
 

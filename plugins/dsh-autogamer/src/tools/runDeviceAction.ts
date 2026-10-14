@@ -31,6 +31,7 @@ import {
   type VisibleElement,
 } from "../hierarchy.js";
 import { LiveObservations } from "../observations.js";
+import { chooseHitPoint, findNeedleHits, type OcrPage } from "../ocr/recognize.js";
 import { unwrapText } from "../mcpText.js";
 
 export interface RouterLogger {
@@ -56,6 +57,9 @@ export const ACTIONS = [
 ] as const;
 
 export type DeviceAction = (typeof ACTIONS)[number];
+
+/** Which source answered a `{text}` target: the nodes, or the frame (T5). */
+export type TargetSource = "hierarchy" | "ocr";
 
 /**
  * Contract table: agent action → upstream py action-server tool name
@@ -347,6 +351,12 @@ export interface RouterOptions {
    * the action server's flattened JSON left the path with it, and the flattening
    * is ours now. The `#N` handle and identity rules are unchanged (G42 / G67).
    */
+  /**
+   * T5: the built-in offline OCR, asked only when the hierarchy cannot answer a
+   * `{text}` target. Undefined (or an engine that answers `undefined`) leaves the
+   * behaviour exactly as it was: OCR may add an answer, never take one away.
+   */
+  ocr?(key: string, signal?: AbortSignal): Promise<OcrPage | undefined>;
   hierarchy(key: string, signal?: AbortSignal): Promise<string | undefined>;
   /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
   resolveScreenSize(key: string): Promise<ScreenSize | undefined>;
@@ -393,7 +403,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     args: Record<string, unknown>,
     key: string,
     signal: AbortSignal,
-  ): Promise<{ x: number; y: number }> {
+  ): Promise<{ x: number; y: number; via?: TargetSource }> {
     const target = (args.target ?? {}) as TargetInput;
     if (target.coordinate !== undefined) assertNormalizedPair(target.coordinate, "target.coordinate");
     if (typeof target.coordinate?.[0] === "number" && typeof target.coordinate?.[1] === "number") {
@@ -430,11 +440,37 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         throw new Error("task: hierarchy unreadable (not a node list) — re-run get_ui_hierarchy");
       }
       const hit = resolveTarget(target, fresh, key);
-      if ("center" in hit) return hit.center;
+      if ("center" in hit) return { ...hit.center, via: "hierarchy" };
       if (!hit.retryable) throw new Error(hit.refusal);
       lastError = hit.refusal;
+      // T5: a hierarchy only shows text a widget exposes. Canvas and WebView
+      // screens - the reason OCR exists - show nothing, so a `{text}` target the
+      // nodes cannot answer gets one more source: the frame itself. Only for
+      // {text}, and only after the nodes said "not on this screen".
+      if (typeof target.text === "string" && target.text.length > 0) {
+        const point = await ocrPoint(key, target.text, signal);
+        if (point !== undefined) return { ...point, via: "ocr" };
+      }
     }
     throw new Error(lastError);
+  }
+
+  /** Undefined means "OCR had nothing to say": no frame, no engine, no hit. */
+  async function ocrPoint(
+    key: string,
+    needle: string,
+    signal?: AbortSignal,
+  ): Promise<{ x: number; y: number } | undefined> {
+    if (options.ocr === undefined) return undefined;
+    const page = await options.ocr(key, signal);
+    if (page === undefined) return undefined;
+    const point = chooseHitPoint(findNeedleHits(page, needle));
+    if (point === undefined) {
+      logger.warn(`[route] text "${needle}" not found in the hierarchy nor resolved by OCR (${page.hits.length} boxes)`);
+      return undefined;
+    }
+    logger.info(`[route] text "${needle}" resolved by OCR at ${point.x},${point.y} (${page.ms}ms)`);
+    return point;
   }
 
   /** The live observation for this agent + device, or undefined if it never looked. */
@@ -583,10 +619,15 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       // meta so milestone/exit audits replay it instead of trusting memory.
       // Soft by design — unknown shapes project to {} rather than throwing.
       presentationMeta: (_args, value) => {
-        const record = (value ?? {}) as { effect?: unknown; category?: unknown; incident?: unknown };
+        const record = (value ?? {}) as { effect?: unknown; category?: unknown; incident?: unknown; target_source?: unknown };
         const meta: { [key: string]: JsonValue } = {};
         if (typeof record.effect === "string") meta.effect = record.effect;
         if (typeof record.category === "string") meta.category = record.category;
+        // T5: the trace says whether the tap landed on a node or on a box the
+        // OCR read off the frame - the difference matters when reviewing a miss.
+        if (record.target_source === "hierarchy" || record.target_source === "ocr") {
+          meta.target_source = record.target_source;
+        }
         if (typeof record.incident === "object" && record.incident !== null) {
           meta.incident = record.incident as JsonValue;
         }
@@ -742,11 +783,13 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     let tool: string;
     let payload: Record<string, unknown>;
     let value: unknown;
+    let via: TargetSource | undefined;
     try {
       const call = await buildCall(action, args, key, exec.signal);
       tool = call.tool;
       payload = call.payload;
       value = call.value;
+      via = call.via;
     } catch (error) {
       const message = error instanceof Error ? error.message : String(error);
       // G38: only prefixed errors carry a failure class. An unprefixed throw
@@ -827,7 +870,10 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         value: { hierarchy: formatVisibleElements(elements), element_count: elements.length },
       };
     }
-    const observed = (value ?? outcome.value) as Record<string, unknown>;
+    const observed = {
+      ...((value ?? outcome.value) as Record<string, unknown>),
+      ...(via === undefined ? {} : { target_source: via }),
+    };
     const strictness = strictnessOf(options);
     const ladderOn = isLadderOn(options.strictness);
     const finishSuccess = (val: Record<string, unknown>): DispatchResult => {
@@ -964,16 +1010,16 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     args: Record<string, unknown>,
     key: string,
     signal: AbortSignal,
-  ): Promise<{ tool: string; payload: Record<string, unknown>; value?: unknown }> {
+  ): Promise<{ tool: string; payload: Record<string, unknown>; value?: unknown; via?: TargetSource }> {
     switch (action) {
       case "click": {
-        const { x, y } = await resolvePixelTarget(args, key, signal);
-        return { tool: "tap", payload: { coordinates: [x, y], times: 1, delay_ms: 100 } };
+        const { x, y, via } = await resolvePixelTarget(args, key, signal);
+        return { tool: "tap", payload: { coordinates: [x, y], times: 1, delay_ms: 100 }, via };
       }
       case "long_press": {
         assertPositiveDuration(args.duration_ms, "duration_ms");
-        const { x, y } = await resolvePixelTarget(args, key, signal);
-        return { tool: "long_press_on", payload: { coordinates: [x, y], duration: Number(args.duration_ms ?? 1000) } };
+        const { x, y, via } = await resolvePixelTarget(args, key, signal);
+        return { tool: "long_press_on", payload: { coordinates: [x, y], duration: Number(args.duration_ms ?? 1000) }, via };
       }
       case "swipe": {
         const size = await requireScreenSize(key);
@@ -995,7 +1041,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       }
       case "input_text": {
         assertNonEmptyString(args.text, "text");
-        const { x, y } = await resolvePixelTarget(args, key, signal);
+        const { x, y, via } = await resolvePixelTarget(args, key, signal);
         return {
           tool: "focus_and_input_text",
           payload: {
@@ -1003,11 +1049,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
             text: String(args.text ?? ""),
             clear_before_input: args.clear_before_input === true,
           },
+          via,
         };
       }
       case "focus_and_clear_text": {
-        const { x, y } = await resolvePixelTarget(args, key, signal);
-        return { tool: "focus_and_clear_text", payload: { coordinates: [x, y] } };
+        const { x, y, via } = await resolvePixelTarget(args, key, signal);
+        return { tool: "focus_and_clear_text", payload: { coordinates: [x, y] }, via };
       }
       case "press_key": {
         assertNonEmptyString(args.key, "key");

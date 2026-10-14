@@ -22,6 +22,7 @@ import { defineInspectTrace } from "./tools/inspectTrace.js";
 import { defineDiagnose } from "./tools/diagnose.js";
 import { createPreflight } from "./env/preflight.js";
 import { diagnoseDevice } from "./device/diagnose.js";
+import { createOcrEngine, missingLanguageData, OCR_DEFAULT_LANGS } from "./ocr/recognize.js";
 import { judgeEffectChanged } from "./effect/diff.js";
 import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
 import { createAdbProbe } from "./device/state.js";
@@ -86,6 +87,15 @@ export const Config: object = z.object({
   traceRetentionDays: z.number().default(7),
   /** P1-a validator strictness (S11 step 5); default "final" like upstream. */
   strictness: z.union(["off", "final", "checkpoints", "strict"]).default("final"),
+  /**
+   * T5: built-in offline OCR. On by default — the language data ships with the
+   * package, so "enabled" costs the operator nothing. It only ever answers a
+   * `{text}` target the hierarchy could not answer, and a failure is a missing
+   * extra answer, never a failed action.
+   */
+  ocrEnabled: z.boolean().default(true),
+  ocrLanguages: z.string().default("eng+chi_sim"),
+  ocrTimeoutMs: z.number().default(8_000),
 });
 
 /**
@@ -129,6 +139,9 @@ export type PluginConfig = {
   scrcpyMaxWidth?: number;
   scrcpyBitrateMbps?: number;
   traceRetentionDays?: number;
+  ocrEnabled?: boolean;
+  ocrLanguages?: string;
+  ocrTimeoutMs?: number;
 };
 
 export async function apply(ctx: DshContext, config: PluginConfig = {} as PluginConfig): Promise<void> {
@@ -193,6 +206,22 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // server is started and none is configured. `ActionClient` remains in the tree
   // as the transport implementation until T4 decides on the provider.
   const probe = createAdbProbe();
+  /**
+   * T5: one lazily-started OCR worker for the plugin's lifetime (measured: 169ms
+   * to boot, ~600ms per frame, and it reads the language data out of this
+   * package). Off by config, or unreachable, the text target simply keeps the
+   * answer it used to get.
+   */
+  const ocr =
+    config.ocrEnabled === false
+      ? undefined
+      : createOcrEngine({
+          langs: config.ocrLanguages,
+          timeoutMs: config.ocrTimeoutMs,
+          // Deferred: `logger` is declared below, and the engine must not see a
+          // binding that has not been initialised yet.
+          logger: { warn: (message: string) => logger.warn(message) },
+        });
 
   const screenSizeCache = new Map<string, ScreenSize>();
   /**
@@ -411,6 +440,14 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     execute: (call, key, signal) => runNativeAction(call, serialOfKey(key), { signal }),
     capturePng: (key, signal) => probe.capture(serialOfKey(key), { signal }),
     hierarchy: (key, signal) => readHierarchyXml(serialOfKey(key), { signal }),
+    // T5: OCR reads the same frame the effect judge compares, so no second
+    // capture appears on the text path.
+    ocr: ocr
+      ? async (key, signal) => {
+          const png = await probe.capture(serialOfKey(key), { signal });
+          return png === undefined ? undefined : ocr.recognize(png, { signal });
+        }
+      : undefined,
     onAction: () => ledger.markActed(agentIdOfCall()),
     agentIdOfCall,
     // Screenshots go to the host attachment store so the model gets a real
@@ -519,6 +556,30 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
         // one attached device), so no key mapping happens here.
         capturePng: (serial, signal) => probe.capture(serial, { signal }),
         saveScreenshot: saveDeviceScreenshot,
+        // T5: readiness is the packaged-data fact plus, when a device answers,
+        // one real frame put through the engine. Reported, never gated: a broken
+        // OCR costs {text} its second source and nothing else.
+        ocrStatus: async (serial, signal) => {
+          const langs = (config.ocrLanguages ?? OCR_DEFAULT_LANGS)
+            .split("+")
+            .map((lang) => lang.trim())
+            .filter(Boolean);
+          if (ocr === undefined) {
+            return { enabled: false, langs, missingData: missingLanguageData(langs) };
+          }
+          const status = ocr.status();
+          const png = await probe.capture(serial, { signal });
+          if (png === undefined) {
+            return { enabled: true, langs: status.langs, missingData: status.missingData };
+          }
+          const page = await ocr.recognize(png, { signal });
+          return {
+            enabled: true,
+            langs: status.langs,
+            missingData: status.missingData,
+            ...(page === undefined ? {} : { frame: { hits: page.hits.length, ms: page.ms } }),
+          };
+        },
       }),
     ),
   );
@@ -531,6 +592,7 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   // disposer; passing teardown as the callback disposed our own tools during
   // apply() (changelogs #10, the G30 root cause).
   ctx.effect?.(() => () => {
+    void ocr?.dispose();
     void scrcpy?.dispose();
   });
 }

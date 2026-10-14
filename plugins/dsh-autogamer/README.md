@@ -4,6 +4,9 @@ AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`r
 `report_task_status` 终态汇报、五个 `autogamer_*` 任务工具（启动/管理/轨迹/设备状态/诊断）、
 `autogamer` agent 预设，以及设备资源治理。队列、调度、UI、审批、会话记忆全部由宿主提供。
 
+**零配置**：设备面全走本机 `adb`；`{text}` 目标在层级答不出时改由**随包离线 OCR**（`tesseract.js` WASM +
+包内中英文语言包）补一次——不需要 API key、不联网、不额外安装。
+
 - 总方案与进度：[`../../docs/TODO.md`](../../docs/TODO.md)（活文档，本分支编号权威）
 - 终态规格：[`../../docs/migration/ts-fullstack-spec.md`](../../docs/migration/ts-fullstack-spec.md)
 - 动手前必读：[`../../docs/migration/plugin-contract-rules.md`](../../docs/migration/plugin-contract-rules.md)（守则逐条）
@@ -35,6 +38,7 @@ src/device/state.ts               设备态本地探针（连接 / 前台 / 屏�
 src/device/hierarchy.ts           uiautomator dump 读回 + XML 扁平化（T2-b）
 src/device/act.ts                 动作执行：input / am / monkey 的原生路线与字符串契约（T2-c/d/e）
 src/device/diagnose.ts            本机诊断：连接 / 锁态 / helper 版本 / crash 日志（T2-f）
+src/ocr/recognize.ts              内置离线 OCR：随包语言数据、单例 worker、命中框收紧、失败即当作没有（T5）
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
 src/devicePool.ts                 闸门之上的调度：parking / 全局并发 / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）
