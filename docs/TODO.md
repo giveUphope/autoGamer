@@ -66,6 +66,10 @@
 - **T2-b 层级已落（2026-10-15）**：`get_ui_hierarchy` 改为**设备侧 `uiautomator dump` 读回 + 自带 XML 解析**（退出码与成功消息实测都会撒谎，唯一可信的是读回的字节），
   provider 的 JSON 层级路径**整条删除** ⇒ `contracts.spec` 直呼清单只剩 `take_screenshot`；`#N` 编号与身份解析语义不动（G42 / G67 的锁原样跑绿）。
   `verify` **38 文件 / 390 通过 / 1 跳过**，五条变异 N1–N5 各跑到红（见 §七「T2-b 层级收口记录」）。
+- **T2-c/d/e 动作面已落（2026-10-15）**：12 条动作**全部**改走 adb（`src/device/act.ts`，仍产 `Success` / `Failed` / `Error: …` 旧字符串契约 ⇒ 分类器与既有锁原样有效），
+  路由的 `client` 依赖与 `ActionClient` 装配**整条拆除**，截图改 `exec-out screencap -p`（顺带修掉「一张图抓两次」），模型可控文本/URL 走设备 shell 引号 + 形状白名单（`javascript:`、`file:`、带空格的 URL、`com.x; rm -rf /` 全部**拒在 spawn 之前**）。
+  配置面删 `actionServerCommand` / `actionServerEnv` 两字段；`contracts.spec` 的直呼清单锁由「还剩哪些」改成**禁止**（现为空）。
+  `verify` **39 文件 / 412 通过 / 1 跳过**；六条变异 P1–P6 各自跑红；真机逐条 `Success` + 三条该拒的拒（见 §七「T2-c/d/e 动作面收口记录」）。**G91 新立**：长按语义的对照实验不成立，待挂载期复测。
 - **顺带查出门禁自己盲了一条（2026-10-15，R28 当轮回写）**：`check-docs --selftest` 的 **M1-C1 在 HEAD 上就已 BLIND** —— 它的锚点是 §四 G78 那一行的**字面文字**，
   而那行在 前置-2 改写后措辞变了，变异不再落地（其余六条当时仍绿，所以没人看见）。已把锚点改成**结构定位**（§四 表头分隔行后插行），`--selftest` 现 7 例全落地。
   这条不是新问题而是**同类错误的复发**：变异用例的锚点用散文，散文一漂移判据就静默失效 —— 与 §五「测试用词不许当判据」是同一条纪律。
@@ -117,6 +121,7 @@
 |---|---|---|
 | G89 | 跨进程设备互斥缺失：原生 roster 只能报 `isBusy:false`，py 的文件锁（多进程同抢一台）无替代 | **T2-a 新立**（不静默：`enumerateRoster` 的注释与本行互为指针；单进程内的闸门/熔断仍生效，跨进程才失守） |
 | G90 | 帧尺寸与锁态按 key 缓存且不过期 ⇒ 会话中途转屏后停在旧帧上（缓存早于本片存在，非本片引入） | **T2-a 新立**（G76 结案后剩下的那一半；判据需真机转屏，属挂载期动作 🔶） |
+| G91 | `long_press` 的**长按语义未在真机上证实**：零距离 swipe 与 `motionevent DOWN/UP` 都 code=0 无报错，但对照组（普通 tap）与它们反应完全一致 ⇒ 那次实验**不成立**，不是阴性结果 | **T2-c/d/e 新立**（实现取「零距离 swipe + duration」这一标准形态；判据需一个有长按菜单且对照组可区分的目标，属挂载期复测 🔶） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G82 | py 引擎仍被 `run_task` / `manage_task` / `inspect_trace` 消费 → 须由 S11 路由器替代 | **T1** |
 | G83 | 15 工具动作面是 py-only → 须 TS 原生实现并与现面逐条对照 | **T2** |
@@ -890,9 +895,9 @@
 - **前置-7（第 0 步，纯测量）**：adb 命令面的真 wire 形态 —— `adb devices -l`（含**一台模拟器多条传输**的 G75 现场）、`shell input tap/swipe/keyevent/text`（**含非 ASCII 文本**：`input text` 在多数 Android 版本只吃 ASCII，上游因此走剪贴板注入 ⇒ 本分支必须实测定案）、`exec-out screencap -p`（尺寸/耗时）、`shell monkey/am/start` 的成败与输出、失败与超时时的 stderr/exit code、`uiautomator dump` 的耗时与在部分界面下的失败形态。结果写进本节末「前置-7 实测结论」。
 - **T2-a 设备面**（**已完成 2026-10-15**，收口与变异记录见 §七「T2-a 收口记录」）：roster（`adb devices -l` 解析 + **G75 去重**：一条模拟器多传输只算一台）、`getDeviceState` 本地化（连接态 / 屏幕 / helper 状态改为本地探针）、**G76 的 `screenSize` 校验**。
 - **T2-b 层级**（**已完成 2026-10-15**，收口与变异记录见 §七「T2-b 层级收口记录」）：`hierarchyXml.ts`（XML → 节点列表，自产 `parsed_bounds`），`parseVisibleElements` 增加 XML 入口并保持现有 `#N` / 身份解析语义不变（G42 / G67 的锁不动）。实际落名为 `src/device/hierarchy.ts`（读）+ `src/hierarchy.ts` 的 XML 入口（解析后共用同一份元素记录）。
-- **T2-c 截图**：`exec-out screencap -p` 直接产帧，喂给已有的 `saveScreenshot` / `parseImageSize` / 效果差分（T3 已原生，零改动复用）。
-- **T2-d 手势与输入**：tap / long_press / swipe / keyevent / back / 文本（**按前置-7 的实测结论选 `input text` 或剪贴板路线**）/ erase_one_char，逐条对上现有字符串契约与分类。
-- **T2-e 应用与链接**：launch_app / stop_app / open_link。
+- **T2-c 截图**（**已完成 2026-10-15**）：`exec-out screencap -p` 直接产帧，喂给已有的 `saveScreenshot` / `parseImageSize` / 效果差分（T3 已原生，零改动复用）。附带修掉旧浪费：截图此前被**抓两次**（buildCall 内一次、执行面一次）。
+- **T2-d 手势与输入**（**已完成 2026-10-15**）：tap / long_press / swipe / keyevent / back / 文本（**按前置-7 走 `input text`，剪贴板路线不建**）/ erase_one_char，逐条对上现有字符串契约与分类；长按语义挂 **G91** 待复测。
+- **T2-e 应用与链接**（**已完成 2026-10-15**）：launch_app / stop_app / open_link；包名与 URL 走形状白名单（拒在 spawn 之前）。
 - **T2-f 诊断与设备态**：`diagnose` 不再走 `backend.diagnose()`，改由 preflight（已有七项）+ 本地探针拼装；**顺带落 T4 的 `artemisMcpCommand` 终局**所需的「provider 还有没有消费者」清点。
 
 **范围外**：helper APK 的 TS 复刻（D13 二期，另立）；OCR / overlay（G87 / G88 已推迟）；删除 provider 适配层本身（§一.3 保留为可选外部提供方，T4 定夺）。
@@ -913,7 +918,7 @@
 
 **Done means**（T2 整体）
 - [x] 前置-7 测完并落「实测结论」（含文本注入路线的定案：`input text` 直接承载非 ASCII，剪贴板路线不预建）
-- [ ] T2-a…T2-f 各自收口：`src/` 内**再无** `client.callTool` 指向动作面工具（`contracts.spec` 的直呼清单收敛为空/仅剩明确保留项）
+- [x] 动作面直呼清单**为空**（T2-a/b/c/d/e 收口：`contracts.spec` 的锁已从「还剩哪些」改为**禁止**，恢复任何一条即红）——**T2-f 的诊断与提供方清点仍在办**，不在本条范围内
 - [x] G75 / G76 在设备面片内结案（各配一条会红的锁）—— **T2-a 达成**：G75 的锁在 `deviceRoster.spec` + `devicePool.spec` + `apply.spec`（变异 M2 / M4 跑红），G76 的锁在 `apply.spec`（变异 M1 跑红）；残留一半另立 G90
 - [ ] `run_device_action` 全链在 TS 侧跑通一次真机（🔶 挂载需用户放行，未放行前不勾）
 - [ ] **Done：`artemis mcp --type adb` 不再是任何路径的运行时依赖**；15 工具（含效果判定，已由 T3 原生）全在 TS 侧可跑
@@ -992,6 +997,29 @@
 - **空层级怎么算**：`<hierarchy></hierarchy>`（0 节点）**判为「读不到」而不是「屏幕是空的」**——与 前置-1 的 fail-closed 口径一致；DRM/安全屏若真给空树，走的是「重读或退回截图+归一坐标」那条既有 refusal。
 - **五条变异（R27）**：N1 去掉读回校验 ⇒ `hierarchyXml.spec` 2 红；N2 不用祖先栈 ⇒ 1 红；N3 把成对标签也当自闭合 ⇒ 1 红；N4 读失败丢掉 `environment:` 前缀 ⇒ `validatorLadder.spec` 1 红；N5 让层级退回传输 ⇒ `apply.spec` 4 红。
 - **verify**：**38 文件 / 390 通过 / 1 跳过**（T2-a 后为 37 / 374）。真机端到端：`dist` 走一遍 **2038ms**，45 节点、11 个 clickable、CJK 完好。
+
+#### T2-c/d/e 动作面收口记录（2026-10-15）
+
+**复跑命令**：`node scratch/probe-acts.mjs`、`node scratch/probe-acts2.mjs`、`node scratch/probe-acts3.mjs`、`node scratch/probe-acts5.mjs`（测量）、`node scratch/live-acts.mjs`（真机逐条动作）、`node scratch/mutate-t2cde.mjs`（变异）。
+
+- **实测新增（在 前置-7 之外）**：
+  - `cmd package resolve-activity … <不存在的包>` ⇒ **code=0 + stdout `No activity found`**（退出码又一次撒谎的第二例）⇒ launch_app 先解析、按文本早退；
+  - `input keyevent 67 67 67` 一次调用**恰好删 3 个字符**（真机地址栏 `MARKER9` → `MARK`）⇒ 清字段不必 N 次 spawn；
+  - `input text` 落在**光标处**，且 `keyevent 123`（MOVE_END）在 Chrome omnibox **不生效**（实测文本插进了字符串中间）⇒ 清字段做「双向删除 + 读回校验」，不假设单向清空；
+  - `am start -a VIEW -d '<url>'` 成功打印 `Starting: Intent { … }`；`am force-stop <没装过的包>` code=0 无输出（幂等，无需先查）；
+  - 长按：零距离 swipe / `motionevent DOWN…UP` 与**普通 tap 对照组反应完全一致** ⇒ 该实验不成立（不是阴性），形态按标准写法落，语义复测挂 **G91**。
+- **落了什么**：`src/device/act.ts`（12 条动作全部走 adb，产出**旧字符串契约** `Success` / `Failed` / `Error: …`，使 `classify.ts` 与既有锁原样可用）；
+  路由的 `client` 依赖**整条删除**，改为 `execute` + `capturePng` 两个函数；截图改 `exec-out screencap -p`（不再 base64 往返，也修掉「一张截图抓两次」的旧浪费）；
+  模型可控文本/URL 走 `quoteForDeviceShell`，包名/URL 走**形状白名单**（`javascript:` / `file:` / 带空格的 URL 一律拒，且拒在 spawn 之前）。
+  `src/index.ts` 不再构造 ActionClient；配置面因此**删掉两个字段**（`actionServerCommand` / `actionServerEnv`），`contracts.spec` 的字段清单同步。
+- **`contracts.spec` 的直呼清单从 3 条 → 2 条 → 1 条 → 0 条**：本片的锁由「还有哪些直呼」改成**禁止**（`toEqual([])`，恢复任何一条即红）。
+  这**达成 §四 T2 Done 判据第一条**（`src/` 内再无指向动作面工具的 `client.callTool`）。
+- **连带处置**：`ActionClient` 与其夹具（`actionClient.spec` / `mockServer.spec`）现在**无任何生产消费者**，本片**不删**（删它属 T4 的提供方裁决），只在 §七 记为「已无消费者的在测代码」。
+- **六条变异（R27）**：P1 放开 URL 白名单 ⇒ 1 红；P2 包名不校验 ⇒ 1 红；P3 文本不转义 ⇒ 2 红（单参数 + 引号转义两条）；P4 只看退出码不看 stdout ⇒ 1 红；P5 swipe 丢 duration ⇒ `apply.spec` 1 红；P6 清字段不读回校验 ⇒ 1 红。
+- **真机端到端**（`node scratch/live-acts.mjs`，逐条打真机）：back / launch / swipe / tap / input text / erase / press_key / open_link / stop_app / long_press 全 `Success`；
+  三条**该拒的都拒了**（`javascript:` URL、无 launcher 的包、`com.x; rm -rf /sdcard/*`）且**没有产生任何子进程**；`capturePng` 1,281,952 bytes / IHDR 1600x900。
+  ⚠️ 一处诚实标注：该轮 tap 落点不是输入框，故「文本落到字段里」这一条在**本轮 live 未复现**（前置-7 已量过 `input text` 承载 ASCII 与 CJK，argv 形状另有单测锁）。
+- **verify**：**39 文件 / 412 通过 / 1 跳过**（T2-b 后为 38 / 390）。
 
 ### T2 · 动作面 TS 化（**G83**）
 

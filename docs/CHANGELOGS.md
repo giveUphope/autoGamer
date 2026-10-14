@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）；以及两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）。 |
 
 ## 写入规则
 
@@ -183,3 +183,34 @@
 - 变异（R27，`node scratch/mutate-t2b.mjs`）：N1 去掉读回校验 ⇒ 2 红；N2 弃用祖先栈 ⇒ 1 红；N3 把成对标签当自闭合 ⇒ 1 红；N4 读失败丢前缀 ⇒ `validatorLadder.spec` 1 红；N5 层级退回传输 ⇒ `apply.spec` 4 红。
 - `node scripts/check-docs.mjs` / `check-env.mjs` exit 0。
 - 仍 🔶：XML 只在**这一台**设备上量过；`uiautomator` 与宿主 appium 路线的对照、以及 `--compressed`（实测更慢，不采用）之外的大屏层级代价未评估。
+
+### #91 T2-c/d/e 动作面本地化：12 条动作与截图全部走 adb（动作面直呼清单归零；G91 新立）
+
+> 编号提示：本条是 CHANGELOGS 的 **#91**；正文里出现的 **G91** 是 §四 新立的「长按语义未证实」差距，两者互不指代。
+
+#### 问题描述
+
+- 到 T2-b 为止，插件还剩一条动作服务器调用（`take_screenshot`）与一整批经传输执行的动作（tap / long_press / swipe / keyevent / back / 文本 / 清字段 / launch / stop / open_link / wait）。D19 的终态要求 `artemis mcp --type adb` 不再是任何路径的运行时依赖。
+- 本轮实测（`TODO.md` §七「T2-c/d/e 动作面收口记录」）补了四条**改写设计**的事实：
+  - `cmd package resolve-activity <不存在的包>` ⇒ **code=0 + stdout `No activity found`**（退出码撒谎的第二例）⇒ 启动必须按文本早退；
+  - `input keyevent 67 67 67` 一次调用**恰好删 3 个字符**（真机 `MARKER9` → `MARK`）⇒ 清字段不必逐字符 spawn；
+  - `input text` 落在**光标处**，而 `keyevent 123`（MOVE_END）在 Chrome omnibox **不生效**（文本插到字符串中间）⇒ 「单向删除即视为清空」是幻觉，必须双向删 + 读回校验；
+  - 长按的三种形态（零距离 swipe / `motionevent DOWN…UP` / 普通 tap 对照组）在真机上**反应完全一致** ⇒ 对照实验不成立，只能把语义复测挂 **G91**，不许把「没报错」当「已证实」。
+- 安全面：`adb shell` 把参数交给**设备 shell 再切一次**（前置-7 量过 monkey 逐参数回显），所以 argv 数组不免疫；模型可控的文本 / URL / 包名必须有引号或形状白名单。
+
+#### 整改方案与实施
+
+- 新增 `src/device/act.ts`：`runNativeAction(call, serial, {signal, readFieldText})`，按工具产出**旧字符串契约**（`Success` / `Failed` / `Error: …`），因此 `classify.ts` 的 environment/task 分面、validator 阶梯、熔断与全部既有锁**一字不改**地继续有效；设备侧失败文本按测量形状取首行并截 200。
+- 文本注入防线：`input text` / `am start -d` 的参数走 `quoteForDeviceShell`（POSIX 单引号转义）；包名 `^[A-Za-z][A-Za-z0-9_]*(\.[A-Za-z][A-Za-z0-9_]*)+$`、URL 只允许 `http(s)` 且不含空白 —— **不合格就不 spawn**（不是 spawn 后再看输出）。
+- 清字段：读回层级里 focused/EditText 的文本长度（实测 `dumpsys input_method` 在 Android 15 已无 `mText:`，层级是唯一文本源），一次 keyevent 调用带 N 个 `KEYCODE_DEL`，再反向一次 `KEYCODE_FORWARD_DEL`，最后**读回校验**，仍非空则报 `Error: field still holds …`。
+- `src/tools/runDeviceAction.ts`：`client` 依赖删除，换成 `execute(call, key, signal)` 与 `capturePng(key, signal)`；`take_screenshot` 分支改吃 PNG 字节（不再 base64 往返），顺带修掉「一次截图抓两遍」的旧浪费；设备调用抛错按前缀分类，无前置缀仍判 internal（G33 同一条规则）。
+- `src/index.ts`：不再构造 `ActionClient`，配置面删 `actionServerCommand` / `actionServerEnv`；`src/env`、`src/device/*` 成为设备面的全部出口。
+- 测试面：新增 `tests/deviceAct.spec.ts`（22 条，含三条注入防线与「沉默即成功」「stdout 上的失败」两类形状）；`apply.spec` 的假动作服务器整体换成 adb 双件套并按 argv 断言；`contracts.spec` 的直呼清单锁由「还剩哪些」改成 `toEqual([])` 的**禁止式**；`breakerGuard` / `runtimeBoot` / `router-errors` / `dedup` / `liveObservation` / `validatorLadder` 随依赖面同步。
+
+#### 验收标准
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **39 文件 / 412 通过 / 1 跳过**（#90 后为 38 / 390）。
+- `contracts.spec`：`src/` 内动作面直呼清单**为空** ⇒ §四 T2 Done 判据第一条达成（该锁本身经变异可红）。
+- 真机逐条（`node scratch/live-acts.mjs`）：back / launch / swipe / tap / input text / erase_one_char / press_key / open_link / stop_app / long_press 全 `Success`，`capturePng` 1,281,952 bytes / IHDR 1600x900；三条**该拒的**（`javascript:alert(1)`、`com.no.such.pkg`、`com.x; rm -rf /sdcard/*`）都拒了且**零子进程**。
+- 变异（R27，`node scratch/mutate-t2cde.mjs`）：P1 放开 URL ⇒ 1 红；P2 包名不校验 ⇒ 1 红；P3 文本不转义 ⇒ 2 红；P4 只看退出码 ⇒ 1 红；P5 swipe 丢 duration ⇒ `apply.spec` 1 红；P6 清字段不校验 ⇒ 1 红。
+- 仍 🔶 / 仍欠：长按语义（G91）；本轮 live 的 tap 落点不是输入框，「文本落到字段」只在 前置-7 量过、argv 形状有单测；`ActionClient` 与其夹具**已无生产消费者**，删除裁决属 T4；挂载后的宿主内实跑（R7 / R9 / R24）仍待用户放行。

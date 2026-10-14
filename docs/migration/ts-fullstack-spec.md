@@ -31,7 +31,7 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 | 能力（上游面） | 现载体 | TS 落点 | 判据 | 状态 |
 |---|---|---|---|---|
-| 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | 与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参 | 部分（`ActionClient` 仅为 MCP 转发） |
+| 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | 与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参 | **已本地化（T2-c/d/e）**：`src/device/act.ts` 产出同一套字符串契约，动作面直呼清单归零（取证与六条变异见 `../TODO.md` §七「T2-c/d/e 动作面收口记录」）；长按语义 🔶 ⇒ **G91** |
 | 截图 | py 动作面 | `adb exec-out screencap -p` | 同设备同帧的 PNG IHDR 尺寸等于帧空间（已验 1600x900） | 尺寸取源**已本地化**（T2-a：`src/device/state.ts` 问帧 IHDR，手填 `screenSize` 与帧不符即拒 ⇒ G76 结清）；动作面取帧仍走 `ActionClient`，待 T2-c |
 | UI 层级 dump | 设备 `uiautomator dump` 出 **XML 嵌套树**，py 侧解析成 JSON 再给插件 | 原生：`adb shell uiautomator dump` + 自带 XML 解析（`parsed_bounds` 由我们自己产出） | 实测 wire 形状（2026-10-15）：77 节点 / 19 属性且每节点全带 / **无 `children`** / 嵌套深度 12 / bounds 全是 `[l,t][r,b]` —— 详见 `../TODO.md` §七「前置-1 实测结论」 | **已本地化（T2-b）**：`src/device/hierarchy.ts` 读回校验 + `src/hierarchy.ts` 的 XML 入口；`get_ui_hierarchy` 不再过传输（取证与两条测量自纠见 §七「T2-b 层级收口记录」） |
 | 动作执行闸门 / 熔断 / 分类 | 插件 TS | — | 现有 spec 锁 | 已具备 |
