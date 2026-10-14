@@ -26,7 +26,6 @@ src/artemis/types.ts              外部 ARTEMIS 后端接口
 src/actionClient.ts               动作面 MCP stdio 客户端（超时自实现）
 src/scrcpy/server.ts              镜像服务生命周期（resolve/start/stop）
 src/scrcpy/input.ts               触摸转 adb input 纯函数（降级控制路线）
-src/prompt/rulesInjector.ts       rules 经 systemPrompt.section() 注入（每次挂载重读）
 src/env/preflight.ts              环境预检（7 项，60 秒缓存）
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
 src/devicePool.ts                 闸门之上的调度：parking / 全局并发 / roster 与准入

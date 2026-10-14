@@ -212,7 +212,6 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
         "defaultTimeoutSeconds",
         "devices",
         "discoverDevices",
-        "injectRules",
         "maxConcurrentDevices",
         "screenSize",
         "scrcpyBitrateMbps",
@@ -267,7 +266,6 @@ describe("conformance: plugin Config is a native Schemastery schema", () => {
     expect(resolved.defaultProfile).toBe("flash");
     expect(resolved.defaultTimeoutSeconds).toBe(1800);
     expect(resolved.defaultDeviceSerial).toBe("");
-    expect(resolved.injectRules).toBe(true);
     expect(resolved.autoPreflight).toBe(true);
     expect(resolved.scrcpyServerPath).toBe("");
     expect(resolved.traceRetentionDays).toBe(7);

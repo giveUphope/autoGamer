@@ -53,19 +53,6 @@ export interface DshAttachments {
 }
 
 /**
- * The `SystemPrompt` seam, narrowed to the single member this plugin calls.
- * Hand-mirrored with provenance (R21): `@deepseek-ai/dsh-system-prompt`
- * 0.2.0-rc.2 lib/types/index.d.ts exposes `section()` (no `contribute`/`prefix`
- * method exists), and the official skill confirms the usage —
- * "Add prompt text with `ctx.systemPrompt.section()`"
- * (cordis-plugin-development/references/practices.md). Section input is
- * `{ name, order, text }` (numeric order, not priority).
- */
-export interface DshSystemPrompt {
-  section(input: { name: string; order: number; text: string }): unknown;
-}
-
-/**
  * Agent/session surface for the G44 turn-end enforcement and the T1 task tools,
  * narrowed to the members this plugin calls. `id` is the session-backed agent
  * identity (`@deepseek-ai/dsh-agent` lib/types/types.d.ts:11-13), which is why the
@@ -162,13 +149,6 @@ export interface DshContext {
    */
   attachments: DshAttachments;
   agents: DshAgentsService;
-  /**
-   * Host system-prompt service. Declared in `inject`, because cordis throws on the
-   * property GET of an undeclared service rather than returning undefined.
-   * Resolvability is proven in-process by the Tier-1 mount test (runtimeBoot
-   * boots the real dsh-system-prompt service with this plugin's own inject list).
-   */
-  systemPrompt: DshSystemPrompt;
   /**
    * Cordis typed events. `session/event` is scope-filtered, so the G44 listener
    * passes `{ global: true }` (packages/core/scope/README.zh.md:75 - "带

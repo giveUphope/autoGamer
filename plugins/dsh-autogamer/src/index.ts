@@ -25,7 +25,6 @@ import { defineDiagnose } from "./tools/diagnose.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { createPreflight } from "./env/preflight.js";
 import { ScrcpyManager } from "./scrcpy/server.js";
-import { setupRulesInjection, type RulesInjectionOutcome } from "./prompt/rulesInjector.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -71,8 +70,7 @@ export const Config: object = z.object({
    * the installed schemastery, and the settings auto-form works without
    * descriptions. `traceRetentionDays` and `defaultTimeoutSeconds` are
    * reserved (spec-required, no consumer yet: no retention sweeper and no
-   * task-lifetime timeout policy exist); `injectRules` is read by the rules
-   * injector (Phase 5).
+   * task-lifetime timeout policy exist).
    */
   artemisRepoPath: z.string().default(""),
   artemisMcpCommand: z.array(z.string()).default(["python", "-m", "mcp_server"]),
@@ -80,7 +78,6 @@ export const Config: object = z.object({
   defaultProfile: z.union(["flash", "pro"]).default("flash"),
   defaultTimeoutSeconds: z.number().default(1800),
   defaultDeviceSerial: z.string().default(""),
-  injectRules: z.boolean().default(true),
   autoPreflight: z.boolean().default(true),
   scrcpyEnabled: z.boolean().default(true),
   scrcpyServerPath: z.string().default(""),
@@ -100,7 +97,7 @@ export const Config: object = z.object({
  * row pending — the G30 shape — so this list is a live-verified claim, not an
  * aspiration.
  */
-export const inject = ["tools", "attachments", "agents", "systemPrompt"];
+export const inject = ["tools", "attachments", "agents"];
 // NOTE (reviewed P5 eve): the scheme also asks for 'settings' here, but that
 // service is upstream-only (not installed) and an unresolvable inject in
 // preset scope leaves the row pending — the G30 shape. It waits for a live
@@ -128,7 +125,6 @@ export type PluginConfig = {
   defaultProfile?: "flash" | "pro";
   defaultTimeoutSeconds?: number;
   defaultDeviceSerial?: string;
-  injectRules?: boolean;
   autoPreflight?: boolean;
   scrcpyEnabled?: boolean;
   scrcpyServerPath?: string;
@@ -192,9 +188,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
       artemisRepoPath: config.artemisRepoPath ?? "",
       defaultDeviceSerial: config.defaultDeviceSerial ?? "",
     });
-  // G80: the rules outcome is recorded here so `autogamer_diagnose` can report *why* the
-  // provider contract is missing instead of the mount quietly skipping it.
-  let rulesOutcome: RulesInjectionOutcome = "disabled";
   if (config.autoPreflight !== false) {
     // No ctx.on('ready') exists in the typings (Phase 0): warm the cache
     // without blocking the mount instead.
@@ -506,8 +499,6 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     defineTool<any, any>(
       defineDiagnose({
         ...autogamerDeps,
-        rulesStatus: () => rulesOutcome,
-        artemisRepoPath: config.artemisRepoPath ?? "",
       }),
     ),
   );
@@ -524,17 +515,4 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     void artemisBackend.dispose();
     void scrcpy?.dispose();
   });
-
-  // dsh-autogamer rectification (Phase 5): provider rules into the system
-  // prompt via the official section() API. Enhancement-only: a missing repo,
-  // file, or content skips with a warning inside setupRulesInjection, so this
-  // call never throws and never blocks the mount.
-  rulesOutcome = setupRulesInjection(
-    ctx.systemPrompt,
-    {
-      artemisRepoPath: config.artemisRepoPath ?? "",
-      injectRules: config.injectRules !== false,
-    },
-    logger.warn,
-  );
 }

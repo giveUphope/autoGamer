@@ -14,15 +14,11 @@
 import type { ArtemisBackend } from "../artemis/types.js";
 import { preflightErrorText, type PreflightResult } from "../env/preflight.js";
 import type { ToolDefinitionInput } from "../dsh-types.js";
-import { rulesFilePath, type RulesInjectionOutcome } from "../prompt/rulesInjector.js";
 
 export interface DiagnoseDeps {
   backend: ArtemisBackend;
   checkEnv: () => Promise<PreflightResult>;
   defaultDeviceSerial: string;
-  /** G80: why the provider rules did or did not reach the model, read at call time. */
-  rulesStatus: () => RulesInjectionOutcome;
-  artemisRepoPath: string;
 }
 
 export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
@@ -104,18 +100,6 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
       const recommendations = [...diagnosis.recommendations];
       for (const fix of localFixes) {
         if (!recommendations.includes(fix)) recommendations.push(fix);
-      }
-      // G80: rules injection failing silently was the whole defect - a missing provider
-      // repo looked like a working plugin. `disabled` is the operator's choice, so it stays quiet.
-      const rulesStatus = deps.rulesStatus();
-      if (rulesStatus !== "injected" && rulesStatus !== "disabled") {
-        const warning =
-          `rules are NOT in the model's context (reason: ${rulesStatus} from ${rulesFilePath(
-            deps.artemisRepoPath,
-          )}); ` +
-          "the device contract the tools rely on was never injected - set artemisRepoPath to a provider " +
-          "checkout that carries mcp_server/rules.md, or turn injectRules off explicitly";
-        if (!recommendations.includes(warning)) recommendations.push(warning);
       }
       return {
         device_serial: diagnosis.deviceSerial ?? serial ?? "",
