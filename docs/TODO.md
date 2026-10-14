@@ -84,10 +84,52 @@
 
 ### 前置：契约实测（动 T2/T3 之前，任一未测不许开工对应期）
 
-- [ ] 前置-1 `adb shell uiautomator dump` 的真 wire 形态（设备侧输出与既往扁平列表的对应关系）
-- [ ] 前置-2 helper（accessibility 服务）协议：端口 / 握手 / 请求响应格式 / `adb forward` 生命周期（与 **G78** 同源）
-- [ ] 前置-3 效果判定所依据的差分算法与阈值（**无思路时从旧实现读设计，不搬文本**）
+- [ ] 前置-1 `adb shell uiautomator dump` 的真 wire 形态（设备侧输出与既往扁平列表的对应关系）— **本机阻塞，见下方「前置-1/2 阻塞」**
+- [ ] 前置-2 helper（accessibility 服务）协议：端口 / 握手 / 请求响应格式 / `adb forward` 生命周期（与 **G78** 同源）— **本机阻塞，同上**
+- [ ] 前置-3 效果判定所依据的差分算法与阈值（**无思路时从旧实现读设计，不搬文本**）— 方案见下方「前置-3」
 - [ ] 前置-4 外部提供方接入边界：`artemisMcpCommand` / `artemisRepoPath` 在 T4 后只剩「可选外部 ARTEMIS」语义
+
+#### 前置-1/2 阻塞 · 环境缺失（2026-10-14 实测，用户裁定「先做有环境的」）
+
+**阻塞原因（实测，非推测）**：本机**没有 `adb`**——`Get-Command adb` 返回空；`%LOCALAPPDATA%\Android\Sdk\platform-tools\adb.exe`
+与 `C:\Android` / `D:\Android` 等常见位置 `Test-Path` 均为假；`Get-ChildItem C:\ -Filter adb.exe -Recurse -Depth 4` **0 命中**。
+无 `adb` 即无法产生 wire 形态，**也没有在线设备**。`dsh` 在 PATH 且为 `0.2.0-rc.2`（与 R11 基线一致，宿主侧不缺）。
+
+- **影响**：按规格 §四「任一项未测不许开工对应期」，**T2 不得开工**（前置-1/2 未测）。T1、T4 与离线的前置-3/4 不受此阻塞。
+- **解锁条件与复跑命令**（接上设备 + 装好 platform-tools 后重跑，结论当轮回写本节）：
+  1. `Get-Command adb; adb version` → 确认工具链在 PATH；
+  2. `adb devices -l` → 拿到 serial；
+  3. `adb -s <serial> shell uiautomator dump /sdcard/window_dump.xml`；
+  4. `adb -s <serial> exec-out cat /sdcard/window_dump.xml` → 记录设备侧 XML 真形状（是否带 `children` 嵌套、节点属性集）；
+  5. 与规格 §二「UI 层级 dump」行的「py 侧已知为扁平、无 `children`」逐条对照，**对照结果留档后**才允许开工 T2。
+- **授权边界**：安装 platform-tools、连接/开启设备属 AGENTS「涉及权限授予、安装 Host 代码，由用户决定」的动作，**不代批**。
+- **提醒义务**：后续每次进入 T2 相关工作、或用户在会话中提到设备/真机时，先复述本条阻塞与解锁条件。
+
+### 前置-3 · 效果判定的差分算法与阈值（方案，2026-10-14 立项，R22）
+
+**What（范围）**
+- 取证对象（只读 git blob，不 checkout、不装 py、不加依赖）：
+  `legacy-fork-v2-dsh-plugin` 的 `artemis/utils/image_diff.py`（`check_ui_change` / `wait_for_screen_stability` /
+  `wait_for_screen_data_stability`）、其调用点 `artemis/mcp/adb_server.py` 的 `compare_ui_frames`，
+  以及 `tests/unit/utils/test_image_diff.py` 的判别用例集。
+- **只取设计事实**（算法族、参数、阈值、判定分支、失败兜底方向、坐标空间），**不搬文本**（D20）——结论用自己的话写。
+- 产出物：本节末尾的「实测结论」小节，作为 **T3** 的实现依据。本项**不改任何代码**。
+
+**How（做法与关键决策）**
+1. 先判**哪些函数在活路径上**：全仓 grep 调用点，据此收口 T3 的移植范围（死代码不当契约）。
+2. 逐条记录：遮罩比例 → 差分管线每一步及其参数 → 两处阈值 → 按动作名的分支表 → ROI 几何公式 → 失败兜底方向。
+3. **坐标空间单独立一条**：它是下游最易错处（模型面向 0–1000 归一坐标，像素判定需要设备像素）。
+4. 结论每条标注出处（函数名 + 常量名），便于复核；**任何从代码外推的疑点只写「候选 + 待做判别实验」**，不写成结论（R25）。
+
+**Verify（验收命令）**
+- `git grep -n "check_ui_change(" legacy-fork-v2-dsh-plugin -- "*.py"` → 生产调用点数量与位置可核对。
+- `node scripts/check-env.mjs` → exit 0（本项不产生 py 文件）。
+- 结论中每个数字都能指回 blob 内的具体常量（复核时按函数 + 常量名 grep）。
+
+**Done means**
+- [ ] 算法 / 阈值 / 分支 / 失败语义 / 坐标空间 五条均有结论且各带出处
+- [ ] 活路径与死代码判定完成，T3 移植范围收口
+- [ ] 坐标空间疑点登记为待实测候选并写明判别实验（阻塞于前置-1 的设备环境）
 
 ### 搬迁-1 · 插件 TS 树从归档分支搬入（方案，2026-10-14 立项，R22）
 
