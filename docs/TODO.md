@@ -54,6 +54,24 @@
   ② **待补清单第 3 项里有一处路径是凭印象写的**：`docs/dsh-tool-call-timeout-policy` 一查 **404**；真实路径是 **`packages/guard/timeout-policy/README.zh.md`**（**包名 `@deepseek-ai/dsh-tool-call-timeout-policy` 未变**，只是仓库路径挪到了 `packages/guard/` 下）—— 这条本身就是 R20「不许凭印象引用」的现成案例。
      同轮用 `gh api contents` 把待补清单五份文档**逐个核实存在**并记下实测字节数（`capability-seams.md` 65092 / `tool-catalog.md` 102356 / `jobs/README.zh.md` 10059 / `subsystems/scope.zh.md` 3763）⇒ **它们全都可取回，纯读、零设备**。
      另给第 5 项（R14/R15 的真实字段名）补了一条**更省的路**：开宿主会话要模型凭据，而上游公开仓库的 `packages/guard/timeout-policy/types` 与 `packages/core/tools` 可能直接写着 ⇒ 先读声明面，查不到才回到 `cordis_inspect_query`。
+- **⚠️ 本轮我自己犯了一次 R25（跨作用域外推），留着当复发样本**：`capability-seams.md` 里 `ctx.slots` **0 命中**，我据此写下「将来做 UI 必须重新查真名」，
+  **差一步就推出「client 插件可能挂不上」**。错在：`capability-seams.md` 画的是**宿主侧** `ctx.*`，而 `client.js` 跑在**浏览器**里、client 侧有自己的 `ctx` ⇒ **「宿主图谱查不到」根本不构成「该服务不存在」的证据**。
+  正确查证方向是 client 侧（浏览器 console / `cordis_inspect what:"client"`），不是宿主图谱；而 `client.js` 的形状本就**逐字取自官方 decoration 模板** ⇒ 有官方出处。
+  **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
+  而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
+  ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **调研-1 已落地（2026-10-15，CHANGELOGS #106）**：把守则「待补清单」里那五份从未读过的上游文档读完并回写，**本轮推翻了我上一轮自己写下的一个判断** ——
+  R15 原写「包装层未接」，实测**是错的**：上游 `packages/guard/timeout-policy/` 写明该包装层**零配置、随 `dsh` 基础组合默认启用**，
+  且本机 `dsh --profile web --dump-config` 的组合树里确有 `- id: timeout-policy`（**无 `disabled`**）⇒ 我们不是选择不接，它是默认就在。
+  ⇒ **现状是「外层兜底 + 内层自实现」的嵌套**（外层对声明了 `timeoutMs` 的工具设 deadline：`run_device_action` 45s / `report_task_status` 5s；内层 adb / OCR / provider backend 各自自实现），不是重复实现；
+  🔶 **两层同时计时的情形一次都没量过**（#97 的 live 里工具都正常返回）⇒ 量到之前不许写「两层不冲突」，要实测需设备。
+  ⚠️ 核验时踩到 R25 老坑：紧邻上一行 `@deepseek-ai/dsh-tool-workflow` 带 `disabled: true`，不读上下文就会把它错安到 timeout-policy 头上、得出相反结论。
+  其余四条结论：**R14** 的并发读侧入口是 `executionMode()`（声明侧是我们已在用的 `isConcurrencySafe`，已随七个工具 live 验证）⇒ 台账原写「必须用 `cordis_inspect_query` 取真名」**多余**，先读上游声明面即可；
+  **scope** 是库原语、`ScopeKey` 按对象身份比对、`Scope.dispose()` 是完全停稳边界（印证我们 `{ global: true }` 的用法）；
+  **jobs** 归属当前 agent 会话、跨 agent 不可见不可停（我们挂 tool-jobs 但没用它跑任务，任务走会话投影）；
+  **capability-seams** 图谱交叉验证我们 inject 的 `tools`/`attachments`/`agents` 三个服务**都真实存在**（R8 风险当前不成立），而 **`ctx.slots` 0 命中** ⇒ 将来做 UI 必须重查真名；
+  **tool-catalog** 里**没有 adb / 设备执行类工具** ⇒ 本插件能力无官方重叠。
+  另结清一条凭印象写的路径（`docs/dsh-tool-call-timeout-policy` 实测 404，真路径在 `packages/guard/` 下、包名未变）。范围与逐条出处见 §七「调研-1」。
 - **文档对齐-1 已落地（2026-10-15，CHANGELOGS #103）**：把**七个文档面**逐条对当前实现核一遍并改掉漂移，**每条改动都配一条可复跑的核验**（`git grep` / 读源码 / 跑门禁），逐条清单见 §七「文档对齐-1」与 CHANGELOGS **#103**。本轮**未改任何代码**：
   ① **规格 §二** 三行仍挂着已结案的 **G94 / G91**（任务编排、轨迹持久化、长按语义）⇒ 改成实测结论 + 指针 #97，并把「三任务工具宿主内点名仍未做」如实留给「交付-1」C 项；
   ② **规格 §一.3** 还写着 `artemisRepoPath` 是活的配置路径 ⇒ 该字段 T4 已删（`contracts.spec` 有「stay removed」锁），实际只剩 `artemisMcpCommand`（默认 `[]`，唯一消费者 `autogamer_diagnose`）；**§一.1** 的「CI 无 python job」补上「本分支无 CI」这个前提；
@@ -173,6 +191,7 @@
 | G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 0–3 个（逐帧方差大）；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜、不可读帧先拒）。**2026-10-15 已量过放大假设：整帧 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中（3× 还贵 70%），而同一屏 140×70 的**局部裁剪 @2×** 能正确读出「游戏 中 心」⇒ 瓶颈是**整页版面分析**不是像素尺寸**；解法形态是「按区域识别」。**2026-10-15 已立项，方案见 §七「G92 · OCR 按区域识别」**（探针 A 可离线先行，探针 B/C 待设备） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内。**2026-10-15 复核仍未解锁**：宿主侧没有承载标注图的 UI 落点（R18），而 OCR 内置之后，「画框」要成立还多了一个前置——元素源本身要可信 ⇒ 与 **G92** 挂钩。要做时是「UI slot + 可信元素源」的新条目，不是给截图加一层绘制） |
+| G95 | **`client.js` 在 T4 被连坐删掉了锁，却留在交付面里** —— `tests/clientHalf.spec.ts` 随 provider 链删除（`3677a49`），但 `client.js` 仍在 `files` / `exports` / `dsh.client` 声明里，且为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁**；它的头注释还写着「locked by tests/clientHalf.spec.ts」，**指向一个已不存在的文件** | **调研-1 发现（2026-10-15）**，无需设备可做：① 写回一个只锁**结构事实**的小 spec（5 个 key、slot 名、不引用未声明服务、不 import 宿主 Client 包 = R18）；② 修掉注释里那句谎话。**删它的理由不适用**：`client.js` 不是 provider 链成员，它在交付面里且是 R18 路线的唯一实现（G88 将来解锁时的起点） |
 
 > **本表只列还开着的事**（R28：结案的行不再占位，去 §七 与 CHANGELOGS 找记录）。
 > G72（提供方形状）与 G74（映射层按旧 5 工具面锁形状）**不在本分支跟踪**：它们随 T4 消解。
@@ -974,6 +993,59 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - **门禁与回归**：`check-docs` ⇒ **7 checks / 9 files，exit 0**；`--selftest` ⇒ **8 变异，无假绿**；`check-env` exit 0；插件 `verify` **42 文件 / 466 通过**（本片不动插件代码，读数不变）。
 - **盲区①为什么就此打住**（判定，不是搁置）：清点见方案段两张表 —— 当前**零样本**，且按名配对有两条结构性脆点（条目名两种形状、`T1`/`T2`/`T3` 同名小节）。**将来真出现不一致时的正确做法**：先照本条的清点法跑一遍，把**真实样本**贴进本条目，再决定检查形状；不要凭想象写一个靠词表的启发式检查 —— 那会是一台永不红的假绿机器。
 - 提交：方案 `0e74e9e` → 实现与结案（本提交）。
+
+### 调研-1 · 上游五份未读文档读完并回写（含一条推翻自己上一版的实测）（2026-10-15 结案；CHANGELOGS #106）
+
+> 性质：**只读调研 + 文档回写**，不改任何代码。起因是「还有哪些无需设备的内容」这个清点 —— 守则「待补清单」那份
+> 诚实清单本身就是答案：五份上游文档从未读过，且其中一条路径是凭印象写的。
+
+**R20 第 1 步「查」：读了哪份、原文怎么说**（全部取自上游 `master`，副本在忽略区 `scratch/upstream/`，**不入库**、不复制原文进仓）
+
+| 上游文档 | 与本插件相关的取到事实 | 落到哪 |
+|---|---|---|
+| `packages/guard/timeout-policy/README.zh.md` + `src/index.ts` | **零配置、随 `dsh` 基础组合默认启用**；协作式只通知不硬停；只对**声明了 `timeoutMs`** 的工具设 deadline；结构化错误 code 在 **`error.info.code`**；多包装层按注册顺序组合；包名已定为不再改 | **守则 R15**（并**推翻**下面那条） |
+| `packages/core/tools/README.zh.md` | 并发读侧入口 **`executionMode()`**；「**插件只能在自身拥有的定义上声明分类器**」；`tools/pre-execute` **有意不允许改写 `exec.arguments`** | **守则 R14** + 待补清单第 6 条 |
+| `docs/subsystems/scope.zh.md` | scope 是**库原语**（非服务）：`ScopeKey` 是不透明对象身份、`Scoped<T>` 是编译期品牌标记的路由接收器、`Scope.dispose()` 是「完全停稳边界」；注册表层用 `ScopeLayer`/`ScopedLayers` 聚合 | 印证我们 `session/event` + `{ global: true }` 的用法符合官方原语（R8/R16/R20） |
+| `packages/jobs/jobs/README.zh.md` | `dsh-jobs` 的归属是**当前 agent 会话**，id 形如 `<kind>-<short-uuid>`，**跨 agent 不可见也不可停** | 我们挂的是 `dsh-tool-jobs`（给 agent 的工具面），**自己没用 jobs 跑任务**；任务走会话投影，语义方向一致 |
+| `docs/capability-seams.md` | 生成的服务图谱：`ctx.sessionProjections`/`ctx.systemPrompt`/`ctx.tools`/`ctx.attachments`/`ctx.agents` **都存在**；**`ctx.slots` 0 命中** | 交叉验证我们 inject 的三个服务真实存在 ⇒ R8 的「waiting for services」风险当前不成立；`ctx.slots` 的真名待将来做 UI 时重查 |
+| `docs/tool-catalog.md` | 官方工具目录里**没有 adb / 设备执行类工具**（grep 只命中浏览器 stagehand 的 `stagehand_screenshot` 等） | 本插件的能力**无官方重叠**，是真实增量 |
+
+**本轮最重要的一条：推翻我自己在上一轮写下的判断**
+
+上一轮（文档对齐-1 / #103）我把守则 R15 的现状写成「**包装层未接**」。**那是错的**，本轮当场更正：
+
+- 上游 README 写明该包装层**零配置、随 `dsh` 基础组合默认启用** ⇒ 不存在「我们选择不接」这回事；
+- 本机实测 `dsh --profile web --dump-config` 的组合树里确有 `- id: timeout-policy` / `name: '@deepseek-ai/dsh-tool-call-timeout-policy'`，
+  **无 `disabled`** ⇒ 启用中（本轮不需要设备、不需要会话，一条命令 + 读上下文就证完）。
+- ⚠️ **核验时踩到 R25 的老坑**：紧邻上一行 `@deepseek-ai/dsh-tool-workflow` 带 `disabled: true`。
+  不读上下文就 grep，很容易把那个 `disabled` 错安到 `timeout-policy` 头上、得出**相反**的结论。
+- ⇒ **现状是「外层兜底 + 内层自实现」的嵌套**：包装层对声明了 `timeoutMs` 的工具设 deadline（我们 `run_device_action` 45s、`report_task_status` 5s），
+  adb / OCR / provider backend 三处仍各自自实现。不是重复实现：内层通常先返回，包装层是兜底。
+- 🔶 **但两层同时计时的情形一次都没量过**（#97 的 live 里七个工具都正常返回）⇒ **在量到之前不许写「两层不冲突」这种结论**，要实测需设备。
+
+**顺带结清的两条待补**
+
+- **R14 / R15 的真实字段名取到了**（R14：`executionMode()`；R15：包装层**根本没有入参**）⇒ 台账原写「必须用 `cordis_inspect_query` 取真名」**是多余的**，
+  先读上游声明面即可，且省掉一轮需要模型凭据的宿主会话。
+- **一处凭印象写的路径实测 404**：`docs/dsh-tool-call-timeout-policy` 不存在，真路径 `packages/guard/timeout-policy/README.zh.md`（包名未变）。
+  一份标题写着「不许凭印象引用」的清单，自己违反了自己的规矩 —— 留作 R20 的现成案例。
+
+**Verify（验收命令）**
+
+- `node scripts/check-docs.mjs` 与 `--selftest` ⇒ exit 0；`node scripts/check-env.mjs` ⇒ exit 0（上游副本只在忽略区 `scratch/`）。
+- `dsh --profile web --dump-config` ⇒ exit 0，组合树含 `- id: timeout-policy` 且**该行块内无 `disabled`**（R6 口径本轮没改 patch，仅作取证）。
+- `git grep -n "clientHalf.spec" -- plugins` ⇒ **只命中 `client.js` 自己的注释**（那个 spec 已随 T4 删除）⇒ 这就是 **G95** 的判据起点。
+- 回归：插件 `verify` 读数不变（本条只改文档）。
+
+**Done means**
+
+- [x] 五份文档读完 + 包装层 `src/index.ts` 读过，结论逐条落到 R14 / R15 / 待补清单，每条带官方出处
+- [x] **R15 的「包装层未接」被实测推翻并就地更正**（含相邻包 `disabled` 的核验陷阱）
+- [x] 待补清单第 3 项标为已读、第 5 项标为已结清；新增第 6 条记新欠账（宿主图谱交叉验证结论 / `pre-execute` 不可改参数）
+- [x] **本轮自己那次跨作用域外推（R25）已就地作废并留证**，它意外挖出的 `client.js` 零锁缺口新立 **G95**
+- [x] 门禁三条命令 exit 0；插件 `verify` 读数不变；上游副本只在忽略区，未入库
+
+**非目标**：不接那个包装层（本插件的超时自实现保留，R15 的嵌套形态已写清）；不动 `classify.ts`（`error.info.code` 的分类口径记进 R15，等真有超时再落）；不因 `ctx.slots` 未命中就改动任何 UI 计划（G88 仍待需求）。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 

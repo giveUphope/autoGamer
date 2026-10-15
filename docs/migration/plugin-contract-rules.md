@@ -128,7 +128,11 @@ preset 的服务提供方与其**全部**消费方要共处一个 `cordis:group`
 PTC 运行规则写明：**独立只读调用可以并发，变更类调用独占执行并按提交顺序**（「safe calls run concurrently; mutating calls run alone, in submission order」）。`defineTool` 的声明项里含「协作式超时」与「并行安全属性」两个字段。
 
 - **出处**：**文档口径** `packages/core/tools/README.zh.md:12,197`。
-- **判据**：`cordis_inspect_query` 查 `Tool` / `Config.listConfigs` 拿到该属性的**真实字段名与取值**再写代码，不许按英文字面猜字段（本守则不给字段名，因为文档正文未列出）。
+- **判据**：`cordis_inspect_query` 查 `Tool` / `Config.listConfigs` 拿到该属性的**真实字段名与取值**再写代码，不许按英文字面猜字段。
+- **⚠️ 2026-10-15 已取到真名**（读上游 `packages/core/tools/README.zh.md` @ `master`，「待补清单」第 5 项据此结清）：并发分类的**读侧入口是 `executionMode()`**（原文：直接读取已解析的工具定义），
+  并附一条关键限制：**插件只能在自身拥有的定义上声明分类器** —— 并发属性是**每个工具各自声明**的，不是全局开关。
+  声明侧我们早已在用（只读工具上的 `isConcurrencySafe: () => true`，见 `src/tools/getDeviceState.ts`），且它随七个工具在 #97 的宿主 live 里被模型正常调用
+  ⇒ **该声明经 live 验证**，不再为它单独立项。**结论不变的部分**：它只保证宿主不把两个独立只读调用串起来，跨会话的同设备互斥仍要靠我们自己的闸门。
 - **落到本项目**：设备动作天然是变更类，宿主的"独占 + 提交序"已经覆盖我们排队需求的一半；per-device 闸门只该补"同一设备跨会话串行"这另一半，并把只读动作（`take_screenshot` / `get_ui_hierarchy`）标成可并发。
 
 ## R15 `timeoutMs` 是装饰，超时要么用包装层要么自己实现
@@ -136,7 +140,24 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 **注册表绝不强制执行定义里的 `timeoutMs`**；要强制必须挂 `@deepseek-ai/dsh-tool-call-timeout-policy` 包装层。取消是协作式且等完全停稳：工具主体必须观测 `exec.signal`；主体前取消记 `ABORTED_BEFORE_DISPATCH`，主体后取消只能把成功替换为 `ABORTED`；超时报 `TOOL_TIMEOUT`；未知工具与抛异常工具都收敛成 `UNKNOWN_TOOL` 结构化错误，**调用失败但不结束轮次**。
 
 - **出处**：**文档口径** `packages/core/tools/README.zh.md:126,235`。
-- **判据**：任何"超时已生效"的说法必须指出是谁执行的——包装层，还是我们自己实现的超时。**本分支现状（T4 起）**：包装层未接，`timeoutMs` 仍是给模型看的声明，超时由三处自实现并观测取消信号 —— adb 子进程 `src/device/adb.ts`、OCR `src/ocr/recognize.ts`、可选外部提供方后端 `src/artemis/mcpBackend.ts`（归档分支那个 `ActionClient` 的 `Promise.race` 已随 T4 删除）。
+- **判据**：任何"超时已生效"的说法必须指出是谁执行的——包装层，还是我们自己实现的超时。
+- **⚠️ 2026-10-15 实测更正（推翻本守则上一版写的「包装层未接」）**：包装层**不是我们选择不接，而是它默认就在**。
+  上游 `packages/guard/timeout-policy/README.zh.md` 写明该包**零配置、随 `dsh` 基础组合包默认启用**；
+  本机实测 `dsh --profile web --dump-config` 的组合树里确有该行（`- id: timeout-policy` / `name: '@deepseek-ai/dsh-tool-call-timeout-policy'`，**无 `disabled`**，即启用中）。
+  ⚠️ 核验时的一次陷阱：紧邻上一行 `@deepseek-ai/dsh-tool-workflow` 带 `disabled: true`，**不读上下文就会把它错安到 timeout-policy 头上**（R25 的老坑，本轮实测又遇到一次）。
+  ⇒ **本分支现状 = 外层兜底 + 内层自实现的嵌套**：包装层对**声明了 `timeoutMs`** 的工具真的设 deadline（我们 `run_device_action` 声明 45s、`report_task_status` 声明 5s），
+  而 adb 子进程（`src/device/adb.ts`）、OCR（`src/ocr/recognize.ts`）、可选外部提供方后端（`src/artemis/mcpBackend.ts`）三处仍各自自实现超时并观测取消信号。
+  **这不是重复实现**：内层通常先返回（各自的超时更贴近子系统），包装层是兜底。
+- **包装层的四条实测事实**（读 `packages/guard/timeout-policy/src/index.ts` @ `master`）：
+  1. **零入参、零配置** ⇒ 守则「待补清单」原写的"包装层入参是什么"是**伪问题**，已就地作废；
+  2. **协作式、只通知不硬停**：它 `await next()` 等下游真正停稳后才替换结果；忽略 `exec.signal` 的工具会让调用方继续等待；
+  3. **结构化错误形状**：`{ isError: true, error: { message, info: { name: 'ToolTimeoutError', code: 'TOOL_TIMEOUT' } } }`
+     —— 注意 code 在 **`error.info.code`**，不在 `error.code`；将来要在 `classify.ts` 里分类超时，判据取这里；
+  4. 多个 `tools/execute` 包装层**按注册顺序组合、顺序决定语义**（注册在外层覆盖整个重试，在内层覆盖每次尝试）。
+- **🔶 一条从未被触发过的交互**：包装层与我们的内层超时同时存在，但 #97 的宿主 live 里七个工具都正常返回 ⇒ **这两层同时计时的情形一次都没量过**。
+  要实测需要制造一次真超时（要设备）。**在量到之前不许写"两层不冲突"这种结论**（R25）。
+- **包名不会变**：该包 `src/index.ts` 里的 `FIXME` 建议改名 `@deepseek-ai/dsh-timeout-guard`，但其 README 的 dev-note 记明改名台账已把
+  `@deepseek-ai/dsh-tool-call-timeout-policy` 定为既定名称、该 FIXME 已陈旧 ⇒ 本守则引用的包名可以放心沿用。
 
 ## R16 不许自写会话事件类型；可回放状态走 `presentationMeta` 或投影
 
@@ -311,13 +332,26 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**
 2. **已按 R20 补读**：`docs/subsystems/session.zh.md` 的 `session/event` 条目（1299-1317，scope-filtered dispatch 的原文，R20 的反例即出自此处）。
-3. **仍未读，不许凭印象引用**（**路径已于 2026-10-15 用 `gh api contents` 逐个核实存在**，括号内是实测字节数）：
-   `docs/capability-seams.md`（65092）、`docs/tool-catalog.md`（102356，官方口径就该按关键词 grep 而非整读）、
-   `packages/jobs/jobs/README.zh.md`（10059，S2 长任务与 owner 语义）、`docs/subsystems/scope.zh.md`（3763）。
+3. ~~**仍未读，不许凭印象引用**~~ —— **2026-10-15 已全部读完并回写**，逐条结论落在 R14 / R15 与 `TODO.md` §七「调研-1」：
+   `docs/capability-seams.md`（65092，生成的服务图谱）、`docs/tool-catalog.md`（102356，按关键词 grep 而非整读）、
+   `packages/jobs/jobs/README.zh.md`（10059）、`docs/subsystems/scope.zh.md`（3763）、
+   以及第五份路径更正后的 `packages/guard/timeout-policy/README.zh.md`（8318）与其 `src/index.ts`。
    ⚠️ **第五份原先写的路径不存在**：~~`docs/dsh-tool-call-timeout-policy`~~ ⇒ 真实路径是 **`packages/guard/timeout-policy/README.zh.md`**
    （**包名 `@deepseek-ai/dsh-tool-call-timeout-policy` 未变**，只是仓库路径挪到了 `packages/guard/` 下；该包当时的 `version` 已到 `0.2.1-alpha.3`）。
    这条本身就是 **R20 的现成案例**：路径是凭印象写的，一查就 404 —— 与本条标题「不许凭印象引用」互为镜像。
 4. 一条已定论的悬案：`install_bundle` 在 CLI 侧没有等价物——本机 `dsh --help` 只列 `dsh`（boot）与 `dsh plugin`（= pnpm 转发，`--help` 打出来是 pnpm 11.7.0 的帮助），上游 `docs/cli-help.zh.md:29,71` 同述。所以 R2 表里第三层的两条可执行路径是**Web 侧边栏「插件」面板**与**在会话里让 agent 调 `plugin_manager`**（D17）；「shared by dsh CLI」那句里的 CLI 部分指的应是 `dsh plugin` 这层 pnpm 垫片，不是 install_bundle。G31 据此收口。
-5. **待查的真实字段名**：R14 的「并行安全属性」与 R15 的超时包装层入参，官方文本只给了名称描述没给字段名 —— 必须用 `cordis_inspect_query` 在装好的 Harness 上取真名（R1/R9 的口径），取到之前不许写代码。
-   **2026-10-15 补一条更省的路**（本条尚未执行）：开宿主会话要模型凭据，而**上游公开仓库里可能直接写着** —— 包装层的 `packages/guard/timeout-policy/` 有 `types`，`defineTool` 的类型在 `packages/core/tools`。
-   ⇒ 先读这两处的声明面；只有那里也查不到，才回到 `cordis_inspect_query`。
+5. ~~**待查的真实字段名**~~ —— **2026-10-15 结清**：R14 的并发读侧入口是 `executionMode()`、声明侧是我们已在用的 `isConcurrencySafe`（结论见 R14）；
+   R15 的包装层**根本没有入参**（零配置、零参数，四条实测事实见 R15）。
+   **台账原来那句「必须用 `cordis_inspect_query` 在装好的 Harness 上取真名」是多余的** —— 先读上游声明面就能拿到，
+   且不必为它开一轮带模型凭据的宿主会话。这个顺序（R20 先读一手资料，R9 检查器兜底）已写进 R14 / R15 的判据。
+
+6. **本轮读出来、但还欠着的几条**（都不需要设备）：
+   - ~~**`ctx.slots` 在服务图谱里 0 命中**~~ —— **这条我写完就发现是跨作用域外推，已作废（R25）**：
+     `capability-seams.md` 画的是**宿主侧**的 `ctx.*` 服务，而 `client.js` 跑在**浏览器**里、client 侧有自己的 `ctx` ⇒ **「宿主图谱里查不到」不构成「该服务不存在」的证据**。
+     查证方向应该是 client 侧（浏览器 console / `cordis_inspect what:"client"`），**不是**宿主图谱。
+     而 `client.js` 的形状是**逐字取自官方 decoration 模板**（见其头注释引的
+     `packages/preset/agent-preset/skills/cordis-plugin-development/templates/decoration/client.js`）⇒ `ctx.slots.inject(...)` 本身有官方出处。
+     ⚠️ 这条错误的完整经过（我如何差点据此得出「client 插件挂不上」）记在 `TODO.md` §七「调研-1」，**留着当 R25 的复发样本**。
+   - **我们 inject 的三个服务都在图谱里存在**（`ctx.tools` / `ctx.attachments` / `ctx.agents` 各 2 处命中，`ctx.sessionProjections`、`ctx.systemPrompt` 同）
+     ⇒ R8 那条「未解析的 inject 会让整行停在 waiting」在**宿主侧**目前不成立，交叉验证通过。
+   - **`tools/pre-execute` 有意不允许改写 `exec.arguments`**（`packages/core/tools/README.zh.md` 已知限制段）—— 我们没依赖它，但写新工具时这是个会撞上的边界。

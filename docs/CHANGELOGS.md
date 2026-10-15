@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）。 |
 
 
 ## 写入规则
@@ -607,3 +607,42 @@
 - 四份文档存在性：`contents/docs/capability-seams.md` → 65092；`contents/docs/tool-catalog.md` → 102356；`contents/packages/jobs/jobs/README.zh.md` → 10059；`contents/docs/subsystems/scope.zh.md` → 3763（字节数写进守则，便于日后发现上游改动）。
 - 本条**只改文档**：插件 `verify` 读数不变；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
 - 未做（留给下一轮，且都不需要设备）：把上述四份文档真读一遍、按结论回写 R14 / R15 / S2 相关条款。
+
+### #106 上游五份未读文档读完并回写；顺带推翻我上一轮写下的「包装层未接」（调研-1 结案）
+
+#### 问题描述
+
+用户问「还有哪些无需设备的内容 / 需要调研的内容」。守则末尾那份「待补（诚实清单）」本身就是答案的一半：**五份上游文档从未读过**，而且上一轮（#105）已经查出其中一条路径是凭印象写的（404）。
+本轮把它们读完并回写。回写过程里出现了本轮最重要的一条：**我自己在上一轮文档对齐中写下的判断被实测推翻**。
+
+#### 整改方案与实施
+
+- **读到的（转述，不搬原文，D20）**：上游 `packages/guard/timeout-policy/`（README + `src/index.ts`）、`packages/core/tools/README.zh.md`、`docs/subsystems/scope.zh.md`、`packages/jobs/jobs/README.zh.md`、`docs/capability-seams.md`、`docs/tool-catalog.md`。副本只落忽略区 `scratch/upstream/`，不入库。
+- **⚠️ 被推翻的判断（正是 #103 刚写下的）**：#103 把守则 R15 的现状写成「**包装层未接**」。实测**相反**：
+  - 上游 README 写明 `@deepseek-ai/dsh-tool-call-timeout-policy` **零配置、随 `dsh` 基础组合包默认启用** ⇒ 不存在「我们选择不接」；
+  - 本机 `dsh --profile web --dump-config` 的组合树里确有 `- id: timeout-policy` / `name: '@deepseek-ai/dsh-tool-call-timeout-policy'`，**无 `disabled`**。
+  ⇒ 已就地更正为「**外层兜底 + 内层自实现的嵌套**」：外层对声明了 `timeoutMs` 的工具设 deadline（我们 `run_device_action` 45s、`report_task_status` 5s），内层 adb / OCR / provider backend 三处仍各自自实现。
+- **🔶 明确标注还欠着的**：两层同时计时的情形**一次都没量过**（#97 的 live 里七个工具都正常返回）⇒ **在量到之前不许写「两层不冲突」**，实测需设备。
+- **⚠️ 核验时踩到 R25 的老坑**：紧邻上一行 `@deepseek-ai/dsh-tool-workflow` 带 `disabled: true`。不读上下文就 grep，很容易把那个 `disabled` 错安到 `timeout-policy` 头上、得出**相反**结论 —— 这是本分支同一条纪律的又一次复发，当场记下。
+- **顺带结清**：
+  - **R14 / R15 的真实字段名取到**（`executionMode()` / 包装层根本没有入参）⇒ 台账原写「必须用 `cordis_inspect_query` 取真名」**多余**，且省掉一轮需要模型凭据的宿主会话；
+  - 包装层的结构化错误 code 在 **`error.info.code`**（不是 `error.code`）——将来要在 `classify.ts` 分类超时时判据取这里；
+  - scope 是**库原语**（`ScopeKey` 按对象身份比对、`Scope.dispose()` 是完全停稳边界）⇒ 印证我们 `{ global: true }` 的用法符合官方原语；
+  - `dsh-jobs` 归属当前 agent 会话、跨 agent 不可见不可停 ⇒ 我们挂 tool-jobs 但**没用它跑任务**，任务走会话投影，语义方向一致；
+  - 服务图谱交叉验证：我们 inject 的 `tools`/`attachments`/`agents` **都真实存在**（R8 的 waiting-for-services 风险在**宿主侧**当前不成立）；
+  - 官方工具目录里**没有 adb / 设备执行类工具** ⇒ 本插件能力**无官方重叠**。
+- **⚠️ 本轮我自己犯了一次 R25（跨作用域外推），当轮作废并留证**：`capability-seams.md` 里 `ctx.slots` **0 命中**，我据此写下「将来做 UI 必须重新查真名」，差一步就推出「client 插件可能挂不上」。
+  错在：该图谱画的是**宿主侧** `ctx.*`，而 `client.js` 跑在**浏览器**里、client 侧有自己的 `ctx` ⇒ **「宿主图谱查不到」不是「该服务不存在」的证据**；正确查证方向是 client 侧（浏览器 console / `cordis_inspect what:"client"`）。
+  而 `client.js` 的形状本就**逐字取自官方 decoration 模板** ⇒ 有官方出处。守则里那条错误表述已就地划掉。
+- **⚠️ 但这次外推意外挖出一个真缺口（G95）**：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）随 provider 链被删**，
+  而 `client.js` **仍在交付面里**（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁，且注释指向一个已不存在的文件**。
+  **删它的理由不适用** —— `client.js` 不是 provider 链成员，它在交付面里、且是 R18 路线的唯一实现。⇒ 新立 **G95**（§四），无需设备可做。
+- **一处笔误当场改**：初稿把包名打成 `dsh-tool-call-timeout-plugin`，写完复核字符串时发现并改回 `…-policy`（R28：写下的每个标识符都要核）。
+
+#### 验收标准
+
+- `node scripts/check-docs.mjs` 与 `--selftest` ⇒ exit 0；`node scripts/check-env.mjs` ⇒ exit 0（上游副本只在忽略区 `scratch/`）。
+- 取证命令可复跑：`dsh --profile web --dump-config` ⇒ exit 0、组合树含 `- id: timeout-policy`，且该行块内**无** `disabled`（对照项：紧邻的 `@deepseek-ai/dsh-tool-workflow` **有** `disabled: true`）。
+- `git grep -n "clientHalf.spec" -- plugins` ⇒ **只命中 `client.js` 自己的注释**（那个 spec 已随 T4 删除）⇒ **G95** 的判据起点。
+- 插件 `verify` 读数不变（本条只改文档）；`.githooks/pre-commit` 在暂存 `docs/**` 时照旧跑门禁。
+- **未做**：不接那个包装层（自实现超时保留）、不动 `classify.ts`（`error.info.code` 的分类口径已记进 R15，等真有超时再落）、不因 `ctx.slots` 未命中就动 G88。
