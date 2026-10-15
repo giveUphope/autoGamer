@@ -64,6 +64,9 @@ Instructions for agents working in this repository.
 - 本机装依赖与跑脚本**要带旗标**（不带时 pnpm 会隐式 install 并重写 lockfile——那是环境产物，别提交）：
   `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`、
   `pnpm --config.verify-deps-before-run=false run build|test`
+- **依赖的构建脚本策略**写在 `plugins/dsh-autogamer/pnpm-workspace.yaml` 的 `allowBuilds`：`esbuild: true`（vitest 要它的原生二进制）、
+  `tesseract.js: false`（其 `postinstall` 只是赞助横幅、无产物）。若安装报 `ERR_PNPM_IGNORED_BUILDS` 并非零退出，
+  **先看这一行**，不要直接 `pnpm approve-builds`——那条会把构建脚本放行，且 pnpm 会顺手改写被跟踪的 `pnpm-workspace.yaml`。出处见 CHANGELOGS #98。
 - 声明面自检：`dsh --profile <name> --patch <abs path> --dump-config`（`dsh` 取 PATH，**不要写死安装盘符**）
 - `dsh plugin` 只是包管理转发垫片，只证明「装了」，**不证明「生效」**（R9）
 - **文档门禁（TS 版，2026-10-14 落地，基建-2）**：`node scripts/check-docs.mjs` —— 六条机械检查（结清一致性 / 链接可解析 /

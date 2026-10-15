@@ -39,6 +39,7 @@
   ⚠️ 已知盲区（本轮实测）：门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；**也不查 §四 表内编号唯一性**——已实测：把 §四 一行的编号重复一次，门禁仍 `OK` / exit 0，撤掉后照旧，所以这是**真的会漏**的判据缺口。要覆盖这两类须各加一条检查，属后续项。
   （自我更正一笔：这句初稿引的是「我改 G76 时造出重复行、门禁全绿」——但那次我**并没有在重复行还在的时候跑过门禁**，属自己反对过的未证 claims；已改成上面这种实测过的口径。）
   范围与取证见 §七「基建-2」。
+- **基建-3 已落地（2026-10-15，提交 `9dea904`）**：拉取 T5 后首次装依赖，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS` 并 **exit 1**，且**顺手改写了被跟踪的** `plugins/dsh-autogamer/pnpm-workspace.yaml`（写入 `tesseract.js: set this to true or false` 占位行）。该 `postinstall` 的实质是赞助横幅（`opencollective-postinstall || true`）、无产物，而 OCR 语言数据随包 vendored ⇒ 定案 `allowBuilds: tesseract.js: false`（**保留** `esbuild: true`，vitest 要它的原生二进制）。安装现 **exit 0**、不再改写仓库文件；同机同 lockfile 的 A/B：占位形态 exit 1 / 定案形态 exit 0。`build` rc 0、`test` **38 文件 / 439 通过**。🔶 **未钉 pnpm 版本**（本机 11.21.0），故本条策略在更新版本上的兼容性**未验** —— 刻意不夹带，记债在 §七「基建-3」。范围与取证见 §七「基建-3」与 CHANGELOGS **#98**。
 - **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
@@ -755,9 +756,15 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - [x] `allowBuilds` 含 `tesseract.js: false`，且安装不再改写该文件（`git status --short` 里没有它）
 - [x] 安装 exit 0 且无 `ERR_PNPM_IGNORED_BUILDS`；A/B 实测占位形态会红（exit 1）、撤回复绿
 - [x] `build` exit 0、`test` 全绿；`check-docs` / `check-env` exit 0
-- [ ] `AGENTS.md` 安装段落指针；CHANGELOGS 结案条目 + §零 状态行 + §七「新分支特有」清单同步
+- [x] `AGENTS.md` 安装段落指针；CHANGELOGS 结案条目 + §零 状态行 + §七「新分支特有」清单同步
 
 > **解锁条件（不是待办）**：将来某个依赖的 `postinstall` **确有产物**（要编译原生模块之类）⇒ 该条必须改 `true`，并在此处与 CHANGELOGS 同时记明依据。本条判定的是「无产物、只出网打印」这一类，不是对 `tesseract.js` 的永久否决。
+
+**结案记录（2026-10-15）**
+
+- 实施：`pnpm-workspace.yaml` 的 `allowBuilds` 增 `tesseract.js: false`；安装 **exit 0**（865ms）、输出无 `ERR_PNPM_IGNORED_BUILDS`，且**不再改写该文件**；`build` rc 0、`test` **38 文件 / 439 通过**。A/B 见上方 Verify（占位形态 exit 1 是本轮改前的原始读数）。
+- 🔶 **记债（不在本条范围，未修）**：**pnpm 版本未钉**（根无 `package.json`、插件包无 `packageManager`、根无 `.npmrc`；本机 11.21.0）。所以「本条策略在新版 pnpm 上仍被支持」这件事**未验** —— 若将来 pnpm 改了键名或默认值，本条要跟着复核。本条刻意不夹带这件事（改版本策略会牵动 lockfile 与 CI 口径，属另立条目）。
+- 提交：方案 `2fb1982` → 实现 `9dea904` → 结案（本提交）。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
@@ -827,6 +834,7 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
       - 顺带修掉两处由我造成的脚本事故（批量替换误伤 `exec()` 函数体、`fields..type`），均已修复并复验。
 - [x] **基建-2 · 文档门禁 TS 化**（2026-10-14 完成）：`scripts/check-docs.mjs` 六条检查 + `--selftest`（7 例变异，含 C5 双向）+ `.githooks/pre-commit`（文档范围触发，A/B 已实测）；`AGENTS.md` 已同步。范围与取证见 §七「基建-2」。
   **⚠️ 事后自纠（2026-10-15）**：当时写「7 例全绿」并不成立 —— M1-C1 的锚点后来被措辞漂移顶掉、在 HEAD 上报 BLIND（见 §零「顺带查出门禁自己盲了一条」）；锚点已改结构定位，现复跑 7 例全落地。
+- [x] **基建-3 · 依赖构建脚本策略定案**（2026-10-15 完成，提交 `9dea904`）：`pnpm-workspace.yaml` 的 `allowBuilds` 增 `tesseract.js: false`（保留 `esbuild: true`）；pnpm 11 的 `ERR_PNPM_IGNORED_BUILDS` 与「安装改写被跟踪文件」两件事一并消解，安装 exit 0；A/B 实测占位形态会红。🔶 记债：**pnpm 版本未钉**，本条策略在更新版本上的兼容性未验。范围与取证见 §七「基建-3」、结案记录 CHANGELOGS **#98**。
 - [x] **rules-1 · rules 注入链拆除**（2026-10-14 完成，提交 `01de3b2`）：`rulesInjector` 链已删（模块 / 配置 `injectRules` / 诊断项 / spec / 夹具 / 契约断言 / README Layout / `systemPrompt` 缝），规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录 **CHANGELOGS #84**。范围与取证见 §七「rules-1」。
 - [x] 本分支的 `CHANGELOGS`（2026-10-14 首次结案时新建：`docs/CHANGELOGS.md`，编号自 **#84** 续起并写明理由；规则：`### #N` 三段、编号永不复用）
 

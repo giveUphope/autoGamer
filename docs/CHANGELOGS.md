@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 |
-| 三 · 门禁与基建 | #95 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）。 |
+| 三 · 门禁与基建 | #95, #98 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）。 |
 
 
 ## 写入规则
@@ -373,3 +373,26 @@
 - 反向自证：修复前同一命令对同一会话报 `tools invoked: none` —— 判据失灵过一次即不算判据（R27），这也是为什么这次先把读数抄进台账再改代码。
 - 复现 live 的路径（新机器/将来复跑）：`dsh --profile web --no-open --port 8731` → 打开日志里带 `?token=` 的地址 → 插件面板核 `运行中` → 新建会话选 AutoGamer 预设 → 让它调 `autogamer_get_device_state` 与一次 `run_device_action`。
 - 遗留：`G92`（OCR 整页召回，形态是「按区域识别」，新设计另立条目）、`G88` / `G78`（待需求，非待办）。**T1–T4 的功能面至此没有未验证项。**
+
+### #98 依赖构建脚本策略定案：tesseract.js 的安装脚本不执行（基建-3 结案）
+
+#### 问题描述
+
+- T5 把 `tesseract.js` 带进依赖面后，`pnpm install --frozen-lockfile` 在本机 **退出码 1**：`[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: tesseract.js@7.0.0`（附一句 `Run "pnpm approve-builds"`）。
+- **仓库不钉 pnpm 版本**：根无 `package.json`、插件包无 `packageManager` 字段、根无 `.npmrc`；本机实测 **pnpm 11.21.0**。新版 pnpm 把「被拦截的构建脚本」当**错误**退出，旧版只当告警 ⇒ 新 clone 的机器会先撞上一次**没有任何文档能解释**的 exit 1。
+- **更硬的一条**：那次安装**改写了被跟踪文件** —— `plugins/dsh-autogamer/pnpm-workspace.yaml` 被写入 `tesseract.js: set this to true or false`。安装动作不该改仓库文件，而且这不能靠「记得 `git checkout`」兜住：下一个新增依赖会再发生一次。
+- 该脚本的实质（读安装后的包元数据）：`postinstall = "opencollective-postinstall || true"` —— 打印一条赞助横幅，**无任何功能性产物**。OCR 的语言数据是**随包 vendored** 的（`ocr/*.traineddata.gz` 已进 `files`、`langPath` 指包内，见 #93），所以「必须构建才有产物」这件事对本依赖不成立。
+
+#### 整改方案与实施
+
+- `plugins/dsh-autogamer/pnpm-workspace.yaml`：`allowBuilds` 增 **`tesseract.js: false`**，沿用文件里既有的键与 `esbuild: true` 的写法（不引入新键名）。
+- **取显式 `false` 而不是删键**：删键等于回到「每次安装改仓库文件 + 非零退出」的老形状；显式键才有表态 —— pnpm 只对 `true` 执行。
+- 保留 `esbuild: true`（vitest 依赖它的原生二进制，那条确实要构建）。本条只处置「**无产物、只出网打印**」这一类，不顺手放宽别的依赖。
+- 解锁条件随判定一起写进台账：将来某个依赖的 `postinstall` **确有产物**（要编译原生模块之类）⇒ 该条必须改 `true`，并在台账与本文件同时记明依据。本条否掉的是这一类脚本，不是对 `tesseract.js` 的永久否决。
+
+#### 验收标准
+
+- 在 `plugins/dsh-autogamer/`：`pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**、输出无 `ERR_PNPM_IGNORED_BUILDS`；仓库根 `git status --short` 中 `pnpm-workspace.yaml` **不出现**。
+- **A/B（R27）**：同一台机器、同一 lockfile、同一条命令 —— 占位形态（`tesseract.js: set this to true or false`）**exit 1**，定案形态 **exit 0**。本条「问题描述」里那次安装的读数就是占位形态的原始证据，唯一变量就是这一行。
+- 回归：`pnpm --config.verify-deps-before-run=false run build` ⇒ exit 0；`… run test` ⇒ **38 文件 / 439 通过**；`node scripts/check-docs.mjs`（6 checks / 9 tracked md）与 `node scripts/check-env.mjs` ⇒ exit 0。
+- 提交：方案 `2fb1982`（R22 先方案后实现）→ 实现 `9dea904`。
