@@ -766,6 +766,54 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - 🔶 **记债（不在本条范围，未修）**：**pnpm 版本未钉**（根无 `package.json`、插件包无 `packageManager`、根无 `.npmrc`；本机 11.21.0）。所以「本条策略在新版 pnpm 上仍被支持」这件事**未验** —— 若将来 pnpm 改了键名或默认值，本条要跟着复核。本条刻意不夹带这件事（改版本策略会牵动 lockfile 与 CI 口径，属另立条目）。
 - 提交：方案 `2fb1982` → 实现 `9dea904` → 结案（本提交）。
 
+### 基建-4 · 包管理器版本钉死（`packageManager` + `pmOnFail: error`）（方案，2026-10-15 立项，R22）
+
+**背景**：基建-3 结案时记了一笔债 —— 仓库**不钉 pnpm 版本**（根无 `package.json`、插件包无 `packageManager`、根无 `.npmrc`）。而 pnpm 各版本对「依赖的构建脚本被拦截」这件事的处理并不一致（新版非零退出，旧版只告警），于是**同一条安装命令在不同机器上结论不同**，而仓库里没有任何一处能解释。本条把它钉死，让「机器不同」变成「响」而不是「悄悄不同」。
+
+**取证（R20 第 1 步：查了哪份、它怎么说 —— 官方一手，转述不搬文本，D20）**
+
+| 出处 | 取到的设计事实 | 对本方案的作用 |
+|---|---|---|
+| pnpm 官方文档 `pnpm.io/package_json` §`devEngines.packageManager`（Added in **v11.0.0**） | 该字段**支持版本范围**；解析出的版本会存进 `pnpm-lock.yaml` 的 `packageManagerDependencies` 并在仍满足范围时复用 | 「钉版本」有两种载体，而这一种会动 lockfile |
+| 同页 §`packageManager`（legacy 字段，与上条对照） | 用 legacy `packageManager` 声明 **pnpm 12** 且 `pmOnFail` 不是 `ignore` 时，解析信息会写进 lockfile 的 env lockfile 文档 | 反向读法：钉 **11** 不给 lockfile 加东西 ⇒ 选 legacy 字段可保持 lockfile 零churn（并已实测确认） |
+| pnpm 官方文档 `pnpm.io/settings/cli` §`pmOnFail`（Added in **v11.0.0**，默认 **`download`**） | 版本不符时的四种行为：`download`（默认）/ `error` / `warn` / `ignore`；**它取代了已被移除的** `managePackageManagerVersions`、`packageManagerStrict`、`packageManagerStrictVersion`；错误信息自带绕过方式 | 选 `error`：本仓库要的是「不一致就响」，不是自动下载并改用声明版本 |
+| 同页 §`engineStrict` | 项目**自身**（非依赖）的 `engines` 不符时安装**总是**失败 | 记为**未选**的第三条路：`engines.pnpm` 是范围语义，钉不住精确版本 |
+| 本机实测 | `pnpm -v` = **11.21.0**；**`corepack` 未安装**（Node 24.14.1，来自 trae-cn 的 Node 发行，`corepack -v` 报「无法识别」） | 钉法必须是 pnpm 自带的机制；不引入 corepack 前置（本机也没有） |
+
+**What（范围）**
+
+- `plugins/dsh-autogamer/package.json` 增 `"packageManager": "pnpm@11.21.0"`（精确版本，**不带 hash**）。
+- `plugins/dsh-autogamer/pnpm-workspace.yaml` 增 `pmOnFail: error`（与既有 `allowBuilds` 同文件，符合 v11「设置只从 `pnpm-workspace.yaml` 读」的口径）。
+- 文档：本条 + 结案后的 CHANGELOGS；`AGENTS.md` 写明钉法、**误配时的处置**与**升版流程**；**基建-3 记的那笔债就地标注结清**（R28），§零 与「新分支特有」清单同步。
+- **非目标**：不给仓库根加 `package.json`（那会凭空造一个 workspace 根）；**不 pin Node 版本**（另立）；不换包管理器；不动 lockfile 内容；不夹带 `.npmrc` 那笔债（见文末）。
+
+**How（做法与关键决策）**
+
+- **精确版本而不是范围**：`devEngines.packageManager` 支持范围，但范围等于把基建-3 那个洞重新打开 —— 11.5 与 12.x 对「构建脚本被拦截」的处理不同，`ERR_PNPM_IGNORED_BUILDS` 会不会非零退出就会随范围漂移。精确版本 + `error` 才能让这件事响。
+- **legacy `packageManager` 而不是 `devEngines.packageManager`**：后者按官方文档会把解析版本写进 lockfile；前者在本版本下 lockfile 零变化（实测：`pnpm-lock.yaml` 不出现在 `git status` 里）。本仓库把 lockfile 变动视为需要解释的产物，能不动就不动。
+- **`error` 而不是默认的 `download`**：默认行为是**下载并改用**声明版本 —— 一次静默的网络动作加一次版本切换。判据要求不一致时立刻暴露。
+- **不写 hash**（`pnpm@11.21.0+sha512.…`）：hash 的作用是校验下载物，而 `error` 模式下**根本不会下载**；corepack 缺席也生成不出来。写一个自己算不出的 hash 是假严谨。
+- **钉在插件工程**（全仓唯一的 `package.json`，也是所有文档命令的工作目录）。**已知边界**：从仓库根跑 pnpm 读不到这个钉（根无 manifest）—— 那不是文档化的用法，写进 `AGENTS.md`，不假装没有这条边界。
+
+**Verify（验收命令）**
+
+- 匹配态：`pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**；`git status --short` 里 **`pnpm-lock.yaml` 不出现**。
+- **A/B（R27，判据必须会红）**：把 `packageManager` 改成 `pnpm@9.15.0` ⇒ 文档里那条安装命令 **exit 1**，报 `[ERROR] This project is configured to use 9.15.0 of pnpm. Your current pnpm is v11.21.0`，且**报错发生在任何下载/改动之前**（`node_modules` 与 lockfile 均无变化）；改回即复绿。
+- 回归：`pnpm --config.verify-deps-before-run=false run verify` 三段全绿；`node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` exit 0。
+- **判据的边界（如实写）**：它证明的是「版本不符会响」，**不证明 11.21.0 本身就是正确选型** —— 那是本条的选定值，升版流程写进 `AGENTS.md`，由人决定何时动。
+
+**Done means**
+
+- [ ] `package.json` 有 `packageManager: pnpm@11.21.0`，`pnpm-workspace.yaml` 有 `pmOnFail: error`
+- [ ] 匹配态安装 exit 0 且 **lockfile 零变化**；A/B 实测不符时 exit 1、且失败发生在改动之前
+- [ ] `verify` 三段全绿；`check-docs` / `check-env` exit 0
+- [ ] `AGENTS.md` 写明钉法、误配处置、升版流程，以及「从仓库根跑不受本钉约束」这条边界
+- [ ] 基建-3 / CHANGELOGS #98 里那笔「未钉版本」的债**就地标注已结清**并指向本条；§零 与「新分支特有」清单同步
+
+**顺带发现（同轮落账，R28）**
+
+- `plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 **已不被读取**：官方文档写明 v11 起只有 auth/registry 从 `.npmrc` 读（实测 `pnpm config get auto-install-peers` → `undefined`，而同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）。**今天无害**：文档命令都显式带 `--config.autoInstallPeers=false`，且本插件的两个 peer 在 `peerDependenciesMeta` 里都标了 `optional`。**未修** —— 改它需要单独验一次「裸 `pnpm install` 的 peer 行为」，不夹带进本条。
+
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
 **背景**：前置-4 判定 `rulesInjector` 的 `artemisRepoPath → <repo>/mcp_server/rules.md` 这条供应链是 **D20 红线**（上游目录约定 + 上游 prompt 正文进模型面），归属 G85+G86，要求 T4 二选一定案。本轮先按用户要求做**形式调研**（「先调研这个适合在 DSH 中以何种形式使用」），结论把二选一改成了第三条路：**拆除**。
