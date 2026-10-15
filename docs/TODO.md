@@ -60,6 +60,14 @@
   **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
   而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
   ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **设备前置已查清（2026-10-15，调研，见 §七「设备前置调研」）**：那三件「需要设备」的事**能不能用 mock 顶掉**，答案是**机制层能、live 层不能**；
+  而「需要设备」本身的措辞**修正过一次**：本机虚拟化**已启用**、32 GB RAM、712 GB 空闲磁盘、`winget` 里 Platform Tools 与 Android Studio 都可装
+  ⇒ 卡的是**安装**（R19 授权面 + 数 GB 下载），不是硬件能力。**成本最低的解锁路径**：Platform Tools（~10 MB）＋ 用户自己的手机开无线调试。
+  ⚠️ 本轮踩到读数陷阱：`Win32_Processor.VirtualizationFirmwareEnabled` 报 **False**（hypervisor 接管时按设计如此），
+  照它会答成「本机跑不了模拟器」；**可靠来源是 `systeminfo` / `Get-ComputerInfo`**（两者一致：已启用）。这是 R25 的又一条样本。
+  同时查实：**三个任务工具全部过 `requireEnv`**（`runTask.ts:110` / `manageTask.ts:114` / `inspectTrace.ts:95`）
+  ⇒ **交付-1 C 项无法用 mock 替代**（没有设备必被 preflight 挡）；而 `report_task_status` **不过 preflight** 且声明 `timeoutMs: 5000`
+  ⇒ 超时两层机制的**离线验证**可行（需加一个 devDependency，属授权面）。
 - **G92 合成难帧已落地（2026-10-15，离线，CHANGELOGS #108）**：G92 方案 Verify 里那条标「可选」的离线项完成 —— 零依赖生成器 `scripts/synth-hard-frame.mjs` 造出**整帧读不出、区域识别读得出**的合成帧（41 KB）+ 配一份恰好一个叶级候选框的合成层级，
   落 2 条**成对**真模型锁（① 帧确实是难的；② 区域扫到且映射回全屏的落点落在那个候选框内，候选数实测 = 1）。**只证机制可用，不替代真机召回数字**（探针 B/C 仍需设备）。
   **三条否定结论先立在前头**（都是实测，别重试）：① 「把好帧标签缩小再贴」全档 miss —— 缩小在像素层摧毁字形，@2× 救不回来；
@@ -1238,6 +1246,57 @@ pad\scale |  1.0  1.5  2.0  3.0
 - 读数：`verify` **44 文件 / 474 通过**（上一绿态 43/472，+1 文件 +2 条）；三次变异还原后 `git status --short` 对已跟踪文件**零差异**（只剩两个新夹具待入库）。
 - 提交：方案 `69ab7dd` → 实现与结案（本提交）。
 
+### 设备前置调研 · 「这三项能不能不靠设备推进」（2026-10-15 结论；CHANGELOGS #109）
+
+> 起因：用户问「现在没有设备是否可以设计 mock 来完善这三项」。本条只出**结论与路径**，不动代码。
+
+**一、mock 能顶到哪（逐项查实，不是推测）**
+
+| 项 | mock 能顶到哪 | 依据 |
+|---|---|---|
+| **G92 探针 B**（真机难帧召回数字） | ❌ 顶不到 | 探针 A 已把**工程面**做完（管线 / 坐标映射 / 候选过滤 / 锁），B 剩下的**只有真机数字**：字体渲染、抗锯齿、设备实际对比度都不是 mock 能造的 |
+| **G92 探针 C**（判 P2 去留） | ⚠️ 一半 | 「P1 在无层级场景必然失效」可离线锁（合成一张纯渲染帧 + 全屏容器层级）；「P2 能不能救」必须真实渲染帧 |
+| **交付-1 C 项**（三任务工具宿主内点名） | ❌ 顶不到 | **三个工具全部过 `requireEnv`**（`runTask.ts:110` / `manageTask.ts:114` / `inspectTrace.ts:95`）⇒ 没有设备必被 preflight 闸门挡 |
+| （附带）超时两层机制 | ⚠️ 有条件可行 | `report_task_status` **不过 preflight** 且声明 `timeoutMs: 5000` ⇒ 可在 conformance 里用**真实 timeout-policy 包**离线验机制；代价是**加一个 devDependency**（R19 授权面） |
+
+⇒ **一句话**：mock 补的是**机制层**，补不了 **live 层**；任何 mock 绿都必须标 🔶，不许冒充结案（R21 / C1）。
+
+**二、「需要设备」这个前提本身要修正（本条最有价值的产出）**
+
+台账与对话里一直写成「需要用户提供设备」，读起来像**本机做不到**。实测不是：
+
+| 面 | 实测 | 出处 |
+|---|---|---|
+| 虚拟化 | **已启用**（固件中已启用虚拟化 = 是；虚拟机监控程序模式扩展 = 是；要求虚拟化方面的 Hyper-V = 已启用）；`HyperVisorPresent = True` | `systeminfo` / `Get-ComputerInfo` |
+| 内存 / 磁盘 | RAM **32 GB**、C 盘空闲 **712 GB** | `Get-CimInstance` / `Get-PSDrive` |
+| 可安装性 | `winget` 里 `Google.PlatformTools` **37.0.1**、`Google.AndroidStudio` **2026.2.1.8** 均在源内 | `winget search` |
+| CPU | Intel Core Ultra 9 185H（支持 VT-x） | `Win32_Processor` |
+
+⇒ **卡的是「安装」（R19 授权面 + 数 GB 下载），不是硬件能力。**
+
+**三、四条解锁路径（成本 / 授权 / 解锁范围）**
+
+| 路径 | 成本 | 授权面 | 解锁 |
+|---|---|---|---|
+| **B（推荐）** Platform Tools（~10 MB）＋ **用户自己的手机开无线调试** | 最小；手机侧需用户自己操作 | R19：装 adb | **全部三件**（G92 探针 B/C + 交付-1 C）+ 超时两层 live |
+| A Platform Tools ＋ **本机装模拟器**（SDK + system image + AVD） | 数 GB 下载 + 装软件 | R19：装 Host 代码 | 同上，且不依赖用户在场 |
+| C 云端设备农场 | 账号 + 凭据 + 可能付费 + 延迟 | R19：外部服务 | 同上，但引入外部依赖与延迟 |
+| D 只做 mock 机制层 | 0 | 无 | 只覆盖探针 C 前半 + 超时机制；**不解锁任何真机数字** |
+
+**四、本轮踩到的一条读数陷阱（R25 的新样本，已就地留证）**
+
+`Get-CimInstance Win32_Processor` 报 `VirtualizationFirmwareEnabled=False` / `SLAT=False` / `VMMonitorModeExtensions=False`
+—— **照它作答会得出「本机跑不了任何模拟器」，而那是错的**。该属性在**已有 hypervisor 接管**时按设计返回 False
+（本机 `HyperVisorPresent=True` 即反证）。**可靠来源是 `systeminfo` 与 `Get-ComputerInfo`，两者一致。**
+与本分支已记的「一条错误串只能证明那次失败发生、不能证明因果」同源；差别在于这次错误读数会让人**买设备**，代价更高。
+
+**Done means**
+
+- [x] 三项逐一查实「mock 顶到哪」，每条带源码或命令出处（关键：`runTask/manageTask/inspectTrace` 全过 `requireEnv`）
+- [x] 「需要设备」的前提修正：硬件 / 内存 / 磁盘 / winget 可安装性四项实测入库，并写明卡的是安装不是能力
+- [x] 四条解锁路径按成本与授权面列出，推荐路径明确
+- [x] 读数陷阱（R25）就地留证，并写明可靠来源；台账两处措辞同步更正
+
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
 **背景**：前置-4 判定 `rulesInjector` 的 `artemisRepoPath → <repo>/mcp_server/rules.md` 这条供应链是 **D20 红线**（上游目录约定 + 上游 prompt 正文进模型面），归属 G85+G86，要求 T4 二选一定案。本轮先按用户要求做**形式调研**（「先调研这个适合在 DSH 中以何种形式使用」），结论把二选一改成了第三条路：**拆除**。
@@ -1784,6 +1843,19 @@ pad\scale |  1.0  1.5  2.0  3.0
 3. 从旧版本（含 link 版）替换安装后**必须重启宿主**，否则启用记录指向旧 target / 旧模块代。
 
 **阻塞（C 项，2026-10-15 实测）**：本机当前**无 `adb` 且无设备**——PATH 无 `adb`、`winget` 无 `Google.PlatformTools` 记录、无 Android SDK；无模拟器（`C:\Program Files\NetEase` 只有云音乐；D 盘已不在，当前仅 C 盘；5554/5555/16384 等模拟器端口无监听）。`preflight` 闸门要求 `adb` + `adb-devices` 两项（`src/env/preflight.ts`，所有 autogamer_* 工具含 `run_task` 都过 `requireEnv`），故三任务工具 live 点名在设备到位前无法进行。需要用户提供其一：① 安装 Platform Tools 并开启安卓真机无线调试 / USB 连接；② 安装并启动模拟器。离线锁（`runTask` 7 条、`manageTask` 10 条、`inspectTrace` 9 条 + `taskProjection` 9 条）与 #97 的 5 条宿主实跑证据不受影响。
+
+> ⚠️ **2026-10-15 补测：本段「需要用户提供其一」的措辞会误导——本机硬件完全支持模拟器，缺的是安装，不是能力。**
+> 实测：① **虚拟化已启用**（`systeminfo`：「要求虚拟化方面的 Hyper-V = 已启用」「固件中已启用虚拟化 = 是」「虚拟机监控程序模式扩展 = 是」；
+> `Get-ComputerInfo.HyperVisorPresent = True`）② RAM **32 GB**、C 盘空闲 **712 GB** ③ `winget` 里 `Google.PlatformTools`（37.0.1）与
+> `Google.AndroidStudio`（2026.2.1.8）均可安装。
+> ⇒ 解锁路径是**装东西**（属 R19 授权面 + 数 GB 下载），不是买设备；成本最低的一条是「Platform Tools（~10 MB）＋ 用户自己的手机开无线调试」。
+>
+> ⚠️ **本轮踩到一条读数陷阱，留着当 R25 的样本**：`Get-CimInstance Win32_Processor` 报
+> `VirtualizationFirmwareEnabled = False` / `SLAT = False` / `VMMonitorModeExtensions = False`，
+> **据此会得出「本机跑不了任何模拟器」的结论** —— **那是错的**。该属性在**已有 hypervisor 接管**时按设计返回 False
+> （本机 `HyperVisorPresent = True` 即是证据）。**可靠来源是 `systeminfo` 与 `Get-ComputerInfo`**，两者一致。
+> 这与本分支已记的「一串错误串只能证明那次失败发生、不能证明因果」是同一条（R25）—— 若照第一个读数作答，
+> 会让用户以为必须买设备或租云农场，而事实是本机装一下就能跑。
 
 ### G92 · OCR 按区域识别（方案 2026-10-15 立项；探针 A 已完成，B/C 待设备）
 
