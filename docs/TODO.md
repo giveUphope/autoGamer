@@ -1056,6 +1056,55 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - **盲区①为什么就此打住**（判定，不是搁置）：清点见方案段两张表 —— 当前**零样本**，且按名配对有两条结构性脆点（条目名两种形状、`T1`/`T2`/`T3` 同名小节）。**将来真出现不一致时的正确做法**：先照本条的清点法跑一遍，把**真实样本**贴进本条目，再决定检查形状；不要凭想象写一个靠词表的启发式检查 —— 那会是一台永不红的假绿机器。
 - 提交：方案 `0e74e9e` → 实现与结案（本提交）。
 
+### 基建-7 · 包管理器升版到 pnpm 12.11.2（改钉 + 锁文件迁移 + 机器残留清理）（方案，2026-10-15 立项，R22）
+
+**背景**：拉取远端 31 个提交后按 `AGENTS.md` 装依赖，本机全局 pnpm 是 10.12.1、仓库钉 11.21.0。pnpm 10 在插件目录里**自己降到钉版**（`pnpm -v` 报 11.21.0），于是第一次 install 撞 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` —— 旧 `node_modules` 记的是 store `v10`，钉版用 `v11`，pnpm 必须整目录重建，而在无 TTY 的 shell 里它**拒绝 purge**。这正是 #99 立钉要对付的那类「同一命令在不同机器上结论不同」。用户拍板：机器与仓库一起上到 registry 最新 **12.11.2**。
+
+**取证（R20 第 1 步：查了哪份、它怎么说 —— 官方一手转述，不搬文本，D20；外加本机实测）**
+
+| 出处 | 取到的事实 | 对本方案的作用 |
+|---|---|---|
+| pnpm 官方设置文档 `pnpm.io/settings`（12 上复核，#99 升版流程明确要求的一项） | `allowBuilds` 仍在 Build Settings、`pmOnFail` 仍在 CLI Settings；`confirmModulesPurge` **已从文档消失** | #98 的构建脚本策略（`tesseract.js: false` / `esbuild: true`）在 12 上**不会静默失效**；但 purge 的确认绕过旗标在 12 上不再有据，非交互重建要另找载体 |
+| 本机实测：pnpm 12.11.2 对现存 v9 锁文件 | `install --frozen-lockfile` ⇒ `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`（锁文件不含 `packageManagerDependencies`，12 拒绝在 frozen 下补它） | 「只改 `packageManager` 不动锁文件」这条路**走不通**；锁文件迁移是本升级的必要组成，不是顺带产物 |
+| 同上的隔离探针（`scratch/pm12-probe/`，复制 manifest + 锁文件，仓库零触碰） | `install --lockfile-only` exit 0；新锁文件共 2027 行，形状是**两份 YAML 文档拼接**：第一份（行 1–157）是新的 env lock —— `packageManagerDependencies.pnpm` 解析到 12.11.2，带 42 个 `@pnpm/exe.<平台>` 条目；第二份（行 158 起）是原项目锁，`lockfileVersion: '9.0'` 一字未动 | 升 12 的代价被量出来了：pnpm **把自己也当成一条被锁定的依赖**，且是往锁文件里**追加一份文档**而不是改写原文档。#99 当年选 11 正是为了躲这笔 churn，本条把那个取舍反过来 |
+| #99 取证表第 2 行（反向读法，早已预见） | 官方 `pnpm.io/package_json`：用 legacy `packageManager` 声明 pnpm 12 且 `pmOnFail` 不是 `ignore` 时，解析信息会写进锁文件 | 本条不推翻 #99 的判断，只是按它的「升版流程由人决定」把选择换到另一端，并把新代价写清 |
+| 本机实测：12 的 store 与钉版行为 | `pnpm store path` ⇒ `D:\.pnpm-store\v11`（与 11 同一条）；12 在插件目录对 11.21.0 的钉是**硬退** `ERR_PNPM_BAD_PM_VERSION`，**不再自降** | ① 大版本升级不换 store ⇒ `v10` 是纯残留；② 「机器 12 / 仓库仍钉 11」这个中间态会让 `AGENTS.md` 里**每一条**插件命令 exit 1 ⇒ 改钉不是可选项 |
+
+**What（范围）**
+
+- `plugins/dsh-autogamer/package.json`：`packageManager` → `pnpm@12.11.2`（仍精确版本、仍不带 hash，理由同 #99：`error` 模式不下载，写一个自己算不出的 hash 是假严谨）。
+- `plugins/dsh-autogamer/pnpm-lock.yaml`：由 12 追加一份 env lock 文档（`packageManagerDependencies` ＋ 42 个 `@pnpm/exe.<平台>` 条目），原项目锁那份文档的内容不改。
+- 文档面：`AGENTS.md` 里 `pnpm@11.21.0` 的**字面副本**改为以 `package.json` 为权威（派生事实只留一个权威），并补两条 12 的行为差异（frozen 需要迁移后的锁文件；非交互 purge 的旗标变化）。
+- 机器残留清理（用户已圈定范围）：`D:\.pnpm-store\v10`（981M）、corepack 缓存 `pnpm@10.12.1`（21M）、`AppData\Local\pnpm\.tools\pnpm` 下的 11.7.0 与 11.21.0（34M）、9 个 `_tmp_*` 空目录、`AppData\Local\pnpm\store`（955M —— 已查明它是 **C: 盘项目的默认 store**，不是本仓库产物，删除影响机器上其他项目，用户仍选择清理）。
+- **非目标**：不升宿主包（`@deepseek-ai/*` 仍 `0.2.0-rc.2`）；不动 `allowBuilds` 的两项定案；不钉 Node；不把 corepack 变成前置；不碰 `dist/` 交付形态（packed `.tgz` 的复验是 交付-1 的事）。
+
+**How（做法与关键决策）**
+
+- **顺序**：改钉 → 非 frozen `install` 重建锁文件 → **再以 `--frozen-lockfile` 复验**（`AGENTS.md` 的匹配态判据是「frozen 且 exit 0」，只跑一次非 frozen 安装等于没验）→ `build` → `verify` → 文档对齐 → 清残留。
+- **中间态的处置**：全局已是 12 而仓库仍钉 11 时，插件目录每条命令硬退。本方案选**改钉**而不是给所有命令加 `--pm-on-fail=ignore` —— 后者是 #99 与 `AGENTS.md` 归类的「单次临时绕过」，把它写进文档当长期状态，等于把钉版变成装饰。
+- **清理用逐个显式路径**，不用通配；两份 store 分得很清：**保留** `D:\.pnpm-store\v11`（当前活的那条），只删 `v10` 与 `AppData\Local\pnpm\store`。
+- **允许一次锁文件 churn 的理由要写明**：本仓库把锁文件变动视为需要解释的产物（#99 语），本条就是那份解释 —— 换取「机器与仓库都在 registry 最新主版本上」，代价是锁文件多出 pnpm 自身的平台条目。
+
+**Verify（验收命令）**
+
+- 匹配态：在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**；此后 `git status --short` 只应剩 `package.json` 与 `pnpm-lock.yaml` 两处**预期**改动。
+- **A/B-1（R27，证明新钉有牙）**：把 `packageManager` 临时改回 `pnpm@11.21.0` ⇒ 每条 pnpm 命令 exit 1（`ERR_PNPM_BAD_PM_VERSION`）；改回 12.11.2 复绿。
+- **A/B-2（R27，证明锁文件迁移是必要条件）**：把锁文件换回 `git show HEAD:plugins/dsh-autogamer/pnpm-lock.yaml` ⇒ frozen install exit 1（`ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`）；换回新版复绿。
+- 回归：`pnpm --config.verify-deps-before-run=false run build` exit 0；`run verify` ⇒ **45 文件 / 510 通过**（本轮基线，不许降）。
+- 构建脚本策略复核：安装日志里 `esbuild` 的 postinstall **执行**、`tesseract.js` 的**不执行**且无 `ERR_PNPM_IGNORED_BUILDS` 非零退出 ⇒ `allowBuilds` 在 12 上仍被读。
+- `node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` exit 0。
+- 清理后：`D:\.pnpm-store` 只剩 `v11`；`AppData\Local\pnpm` 下 `store` 与 `.tools\pnpm\11.*` 均不存在；**删完再跑一次 frozen install 仍 exit 0** —— 这才是「删的都是不被引用的残留」的证明，而不是「删得干净」的证明。
+
+**Done means**
+
+- [ ] `package.json` 的 `packageManager` = `pnpm@12.11.2`，且锁文件已由 12 重建、frozen install exit 0
+- [ ] A/B-1（改回旧钉 ⇒ 每条命令 exit 1）与 A/B-2（换回旧锁文件 ⇒ frozen exit 1）各实测红一次，改回均复绿
+- [ ] `build` + `verify` 全绿，读数不低于 45 文件 / 510 通过
+- [ ] `allowBuilds` 两项在 12 上的行为实测确认（esbuild 执行 / tesseract.js 不执行）
+- [ ] `AGENTS.md` 的字面版本号副本改成指向 `package.json`，并写明 12 的两处行为差异；CHANGELOGS **#114** 记依据与「#99 的零-churn 取舍已反转」
+- [ ] 五类残留按显式路径删除，`D:\.pnpm-store\v11` 保留；删除后 frozen install 复绿
+
+
 ### 调研-1 · 上游五份未读文档读完并回写（含一条推翻自己上一版的实测）（2026-10-15 结案；CHANGELOGS #106）
 
 > 性质：**只读调研 + 文档回写**，不改任何代码。起因是「还有哪些无需设备的内容」这个清点 —— 守则「待补清单」那份
