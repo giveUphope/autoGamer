@@ -20,6 +20,8 @@ import {
   dumpPath,
   readHierarchyXml,
   decodeXmlEntities,
+  parseOccupants,
+  readUiAutomationOccupants,
 } from "../src/device/hierarchy.js";
 import { parseVisibleElements } from "../src/hierarchy.js";
 import { adbRuntime } from "./support/fakeAdb.js";
@@ -83,6 +85,75 @@ describe("readHierarchyXml", () => {
 
   it("names the dump after this process, so two instances do not read each other's file", () => {
     expect(dumpPath()).toBe(`/sdcard/dsh-autogamer-hierarchy-${process.pid}.xml`);
+  });
+});
+
+describe("readUiAutomationOccupants (能力重审-2)", () => {
+  const psArgv = /shell ps -A -o PID,ARGS/;
+
+  /** A process table in the shape toybox prints: a header, then `pid args` rows. */
+  function table(...rows: string[]): string {
+    return [" PID   ARGS", ...rows].join("\n") + "\n";
+  }
+
+  it("names the holder when a uia2 server is in the table", async () => {
+    A.on(psArgv, {
+      code: 0,
+      stdout: table(
+        " 1 init [smu] ",
+        " 1234 uiautomator",
+        " 2201 app_process /system/bin com.wetest.uia2.Main -p 9008",
+      ),
+    });
+    expect(await readUiAutomationOccupants("emulator-5554")).toEqual({
+      state: "occupied",
+      names: ["uiautomator2 server"],
+    });
+  });
+
+  it("lists every holder it recognises, not just the first", async () => {
+    A.on(psArgv, {
+      code: 0,
+      stdout: table(
+        " 300 app_process /system/bin io.appium.uiautomator2.server.Instrumentation",
+        " 400 app_process /system/bin com.github.uiautomator",
+      ),
+    });
+    const readout = await readUiAutomationOccupants(undefined);
+    expect(readout.state).toBe("occupied");
+    expect(readout.names).toEqual(["openatx uiautomator app", "Appium uiautomator2 server"]);
+  });
+
+  it("asks through the one adb seam with the serial it was given", async () => {
+    A.on(psArgv, { code: 0, stdout: table(" 1 init [smu] ") });
+    await readUiAutomationOccupants("emulator-5554");
+    expect(A.calls.map((args) => args.join(" "))).toEqual(["-s emulator-5554 shell ps -A -o PID,ARGS"]);
+  });
+
+  it("reports free only from a table it could actually read", async () => {
+    A.on(psArgv, { code: 0, stdout: table(" 1 init [smu] ", " 700 com.android.systemui") });
+    expect(await readUiAutomationOccupants(undefined)).toEqual({ state: "free", names: [] });
+  });
+
+  // The column layout of `ps -A -o PID,ARGS` has no measurement in this repo's
+  // ledger, so the branch handling "could not read it" is what keeps the whole
+  // read honest: a failure must never come back as a clean slot.
+  it.each([
+    ["a non-zero exit", { code: 1, stderr: "error: device offline" }],
+    ["an error printed with code 0", { code: 0, stdout: "ps: unknown argument for -o\nUnknown command: -o" }],
+    ["a header and no rows", { code: 0, stdout: " PID   ARGS\n" }],
+    ["nothing at all", { code: 0, stdout: "" }],
+    ["a timeout", { code: -1, timedOut: true }],
+  ])("answers unknown, never free, for %s", async (_label, reply) => {
+    A.on(psArgv, reply);
+    expect(await readUiAutomationOccupants(undefined)).toEqual({ state: "unknown", names: [] });
+  });
+
+  it("parses a table without adb, for the shapes a device really prints", () => {
+    expect(parseOccupants("")).toEqual({ state: "unknown", names: [] });
+    expect(parseOccupants("error: device 'x' not found")).toEqual({ state: "unknown", names: [] });
+    expect(parseOccupants(" PID   ARGS\n 1 init [smu] \n")).toEqual({ state: "free", names: [] });
+    expect(parseOccupants(" PID   ARGS\n 9 androidx.test.runner.MonitoringInstrumentation\n").state).toBe("occupied");
   });
 });
 

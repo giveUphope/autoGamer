@@ -21,7 +21,7 @@ src/tools/getDeviceState.ts       只读设备状态（预检门禁 + 本机 adb
 src/tools/runTask.ts              启动任务（500ms 内返回 task_id）
 src/tools/manageTask.ts           任务状态/停止/注入
 src/tools/inspectTrace.ts         轨迹查看（summary 取边加失败步）
-src/tools/diagnose.ts             本机诊断（设备探针 + 本地预检 + OCR / 可选提供方就绪）
+src/tools/diagnose.ts             本机诊断（设备探针 + 本地预检 + OCR / 元素源占用者 / 可选提供方就绪）
 src/tools/envGate.ts              任务工具共用的预检门禁
 src/artemis/adapter.ts            可选外部提供方的后端工厂（仅 MCP；未配置即不构造）
 src/artemis/mcpBackend.ts         外部提供方的 MCP stdio 后端（懒连接，传输失败=environment）
@@ -32,7 +32,7 @@ src/env/preflight.ts              环境预检：只问两件真事（adb 在 PA
 src/device/adb.ts                 唯一的 adb 出口（自实现超时 + 取消信号 + 二进制安全）
 src/device/roster.ts              设备清单：adb devices 解析 + android_id 去重（G75/G65）
 src/device/state.ts               设备态本地探针（连接 / 前台 / 屏幕 / 帧 / helper）
-src/device/hierarchy.ts           uiautomator dump 读回 + XML 扁平化（T2-b）
+src/device/hierarchy.ts           uiautomator dump 读回 + XML 扁平化（T2-b）；`ps -A -o PID,ARGS` 认 UiAutomation 槽位占用者（能力重审-2，三态：occupied / free / **unknown**，读不出绝不答 free）
 src/device/act.ts                 动作执行：input / am / monkey 的原生路线与字符串契约（T2-c/d/e）
 src/device/diagnose.ts            本机诊断：连接 / 锁态 / helper 版本 / crash 日志（T2-f）
 src/ocr/recognize.ts              内置离线 OCR：随包语言数据、单例 worker、命中框收紧、失败即当作没有（T5）

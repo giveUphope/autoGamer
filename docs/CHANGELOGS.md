@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105, #106, #107, #108, #109, #110, #111 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）；G92 合成难帧 —— 三种造法否掉两种、第三种成立，落成一条成对真模型机制锁，变异把参数扫描的结论变成了会红的判据（#108）；设备前置调研：三项逐一查实 mock 顶不到哪一层（三任务工具全过 requireEnv ⇒ 交付-1 C 项无法替代），并修正「需要设备」这个前提——本机虚拟化已启用，缺的是安装不是能力（#109）；联网调研否掉「改一个 PSM 参数就能解决 G92」，并量出 `setParameters` 不可靠（#110）；能力重审-1 的三个零授权确定性修正——abort 收成第四类 `cancelled` 两侧都不记账、`wait` 上限低于声明值、两处 probe 缝接上 signal，含**两条假锁被变异当场证伪**（#111）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）；G92 合成难帧 —— 三种造法否掉两种、第三种成立，落成一条成对真模型机制锁，变异把参数扫描的结论变成了会红的判据（#108）；设备前置调研：三项逐一查实 mock 顶不到哪一层（三任务工具全过 requireEnv ⇒ 交付-1 C 项无法替代），并修正「需要设备」这个前提——本机虚拟化已启用，缺的是安装不是能力（#109）；联网调研否掉「改一个 PSM 参数就能解决 G92」，并量出 `setParameters` 不可靠（#110）；能力重审-1 的三个零授权确定性修正——abort 收成第四类 `cancelled` 两侧都不记账、`wait` 上限低于声明值、两处 probe 缝接上 signal，含**两条假锁被变异当场证伪**（#111）；能力重审-2 给元素源的 UiAutomation 占用者第一次命名（三态，读不出绝不答「没人占」），并改掉两处「注释指向不存在的锁」——其中一条结构锁当场红在本轮自己写的注释上（#112）。 |
 
 
 ## 写入规则
@@ -863,3 +863,48 @@ G92 的方案 Verify 里有一条标着「（可选）合成难帧」：离线�
   四处自实现超时仍未统一成一个 `Deadline`（重审方案 B，11 个文件，另立）；
   「包装层在真宿主里是否真的替换结果」仍 🔶，需宿主会话而非设备。
 - 提交：方案 `95c536a` → 实现 `3884bd3` → **结案台账与 §零 指针（本提交）**。
+
+### #112 能力重审-2：元素源的 UiAutomation 占用者第一次有了名字，两处「注释指向不存在的锁」被改掉（主题项 能力重审-2）
+
+#### 问题描述
+
+`uiautomator dump` 读不回时，插件**没有任何办法区分两种成因**：自己的 dump 坏了，还是**别人占着那唯一的一个 UiAutomation 连接**。
+一手机制（AOSP）：`UiAutomationConnection.connect()` 在已有连接时抛 `Already connected.` ⇒ 同时刻只能有一个客户端；
+而 **`uiautomator dump` 自己就是客户端**——`UiAutomationShellWrapper.connect()` 调**无参** `connect()`，走「默认压制 accessibility 服务」那一支，**没有 flag 可以不压制**（这两条也是 §七「前置-2」互斥行需要重划轴的原因）。
+现状读数（本轮实跑核验）：`git grep -nE "ps -A|wetest|com\.github\.uiautomator|uiautomator2" -- src` ⇒ **零命中**，即今天完全没问过。
+同一条链上还有两处**文档级假验收**，与 #107 的 `client.js` 注释同类：
+
+- `src/env/preflight.ts:49` 写「`contracts.spec` locks this list」——**本仓没有 `contracts.spec.ts`**（40 个 spec 全清单实查），真锁在 `tests/preflight.spec.ts:76-77`；
+- `src/tools/diagnose.ts:21` import `requireEnv` 却**从不调用**，而 tsconfig 未开 `noUnusedLocals` ⇒ 编译不报，读者会以为诊断也过闸门（它恰恰**必须不过**，否则坏环境就诊断不了）。
+
+#### 整改方案与实施
+
+- **`readUiAutomationOccupants`（`src/device/hierarchy.ts`，与元素源同源）**：`adb shell ps -A -o PID,ARGS`，词表认四个具名占用者
+  （`com.wetest.uia2.Main` / `com.github.uiautomator` / `io.appium.uiautomator2` / `androidx.test.runner.MonitoringInstrumentation`），返回**三态** `occupied` / `free` / `unknown`。
+  ⚠️ **`unknown` 不是保守装饰**：`-o PID,ARGS` 的列布局**本仓 ledger 里从没量过**（§七「前置-2」只记过裸 `ps -A` 的读数），
+  所以「解析不到 marker」绝不许答成「没人占」——那是一张**没有证据的健康证明**，比不报更坏。非零退出 / **code 0 但设备侧报错文本**（复用 `deviceReportedFailure`）/ 只有表头 / 空输出 / `timedOut` 五格全部塌到 `unknown`。
+- **接线在诊断面，不在失败路径**（一处对「现在就做」行 1 的偏离）：新增**可选 dep `hierarchyStatus`**，在 `index.ts` 装配，照 `ocrStatus` / `provider` 的现成形状。
+  理由三条：失败路径上这条读会落进阶梯的 **3 次重取**里；`autogamer_diagnose` 已并行 4 探针 + 2 shell，边际代价近零；占用者是**设备属性**而非本次调用的属性——放进报错只能等坏一次才知道，放进诊断模型能主动问。
+  ⇒ 顺带让**既有 39 条 diagnose 锁一条没动**（若改在 `device/diagnose.ts` 的 `Promise.all` 里加读，每条 recommendation 断言都会因多出一行而不相识）。
+- **`autogamer_diagnose` 新增 `hierarchy` 栏**（`{occupants, holders, error?}`）+ render 尾串 `; hierarchy=<state>`，**只在问过之后出现**；
+  `occupied` 与 `unknown` 各给一条 recommendation，**`free` 只报事实不给建议**；tool description 增写这一栏（R19：命名与展示元信息是义务）。
+- **只读、零副作用**：不 `kill`、不 `force-stop`、不卸载。归档上游清 blocker 的做法是 `pm uninstall --user 0` 卸掉用户的 Maestro，**本仓绝不照搬**（R19 把这类动作留给用户）。
+- **两处真相**：`preflight.ts` 注释改指实际存在的锁，并写明 **`:76` 比的是导出的常量、单独会自愈，真正锁住「只有两项」的是 `:77` 的字面量 `[true, true]`**；
+  `diagnose.ts` 删掉未用 import，头注释改成事实，并加一条**源码结构锁**（源码里出现 `requireEnv` 即红）。
+
+#### 验收标准
+
+- **三条变异**（R27），实测计数**与方案里写的「恰好一条红」不符，如实改判**：
+  ① 删词表 marker ⇒ **1 红**（`hierarchyXml.spec.ts` 的具名占用者）；
+  ② `unknown`→`free` 塌缩 ⇒ **3 红**（同一条判据的三个样本），且 `diagnose.spec.ts` **零红**；
+  ③ recommendation 条件从 `occupied` 翻成 `free` ⇒ **3 红**，且 `hierarchyXml.spec.ts` **零红**。
+  ⇒ 「恰好一条红」当初是**没料到判据本身是参数化的**；成立的是「**各红自己那面、不连坐**」，方案文本已按实测改判。
+- **结构锁当场抓到本轮自己写的注释**：`expect(source).not.toContain("requireEnv")` 第一次跑就红，红在**我新写的头注释点了这个名字**。
+  判据保留、改的是措辞——这条锁的强度因此得到实证（它连注释里提一句都不放过）。
+- **argv 只此一条**：`A.calls` 整表比对 `-s emulator-5554 shell ps -A -o PID,ARGS`（不是 `toContain`）⇒ 加第二条读就红。
+- 新增 18 条：`tests/hierarchyXml.spec.ts` +10（含 `it.each` 五格失败形态）、`tests/diagnose.spec.ts` +8。
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **44 文件 / 497 通过**（上一绿态 44/479）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
+- **未做**（不静默）：失败路径的具名报错（要先解决「一次失败只问一次 `ps`」的计数）；`dump --windows`（收益只有真机能判，离线只能锁 argv ⇒ 按 R27 不以重写立项）；
+  `{text}` 未命中时把候选框 + 帧引用交回模型（契约面改动，需单独设计）；`TOOL_TIMEOUT` 监听器与统一 `Deadline`。
+  🔶 `unknown` 态的收窄**必须等真机复验列名**，在那之前不许改成两态。
+- 提交：方案 `ef617ec` → 实现与结案（本提交）。

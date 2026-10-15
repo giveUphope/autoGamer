@@ -60,6 +60,12 @@
   **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
   而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
   ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **能力重审-2 已落地（2026-10-15，方案 `ef617ec` → 实现与结案 CHANGELOGS #112）**：元素源的 **UiAutomation 占用者第一次有了名字** —— `readUiAutomationOccupants`（`ps -A -o PID,ARGS` + 四个具名 marker）返回**三态** `occupied` / `free` / `unknown`，接到 `autogamer_diagnose` 的新 `hierarchy` 栏（render 只在问过之后出现）。
+  一手机制补进台账：`UiAutomationConnection.connect()` 同时刻只容一个客户端，而 **`uiautomator dump` 自己就是占位者**且 `connect()` **无参**⇒默认压制 a11y 服务、**无 flag 可免**（⇒ §七「前置-2」互斥行的轴已重划）。
+  ⚠️ **`unknown` 不是装饰**：`-o PID,ARGS` 的列布局**本仓从没量过**（ledger 只有裸 `ps -A` 的读数）⇒ 解析不到 marker **绝不许答「没人占」**（没有证据的健康证明比不报更坏）；收窄这一态**必须等真机复验**。
+  一处偏离方案并已记账：接线在**诊断面**（可选 dep，照 `ocrStatus`/`provider` 形状）而非失败路径 —— 后者会把这条读落进阶梯的 **3 次重取**里，且占用者是设备属性不是本次调用的属性；顺带**既有 39 条 diagnose 锁一条没动**。
+  另改掉两处「注释指向不存在的锁」（`preflight.ts:49` 的 `contracts.spec` **不是文件**，真锁 `preflight.spec.ts:76-77`，其中 `:76` 比导出常量会**自愈**、`:77` 的字面量 `[true, true]` 才锁住数量；`tools/diagnose.ts` 的未用 `requireEnv` import 已删并补**源码结构锁**——该锁第一次跑就**红在本轮自己新写的注释**上，实证有牙）。
+  三条变异实测计数**与方案的「恰好一条红」不符**（①1 红、②3 红、③3 红，成立的是「各红自己那面、不连坐」），已按实测改判并记在 #112。新增 18 条；`verify` **44 文件 / 497 通过**。只读零副作用：不 `kill`/不 `force-stop`/不卸载（R19）。
 - **能力重审-1 已落地（2026-10-15，方案 `95c536a` → 实现 `3884bd3` → 结案 CHANGELOGS #111）**：六面重审交回的项里，先做**零授权、离线可判、且不引入新退化**的三条 ——
   ① abort 从 `task` 收成**第四类 `cancelled`**（两侧都不记账；方案原文「统一为 `environment`」被 `breaker.ts:56-63` 的 `allowedFails=1` 否决：**用户按一次停止键就锁死后续全部动作**）；
   ② `wait` 上限 `WAIT_CEILING_MS = 30_000` **低于**声明的 45s、超限拒绝而非钳制、睡眠观测 signal（`duration_ms: 50000` 曾让内部台账与模型可见答案**必然相反**）；
@@ -1501,10 +1507,28 @@ pad\scale |  1.0  1.5  2.0  3.0
 
 **Done means**
 
-- [ ] `readUiAutomationOccupants` 三态落地且词表、`unknown` 判定各带离线单测；三条变异各红一次
-- [ ] `autogamer_diagnose` 报告新增 `hierarchy` 栏，`occupied` / `unknown` 各给 recommendation、`free` 不给
-- [ ] `preflight.ts:49` 注释改指实际存在的锁；`diagnose.ts` 的未用 import 删除并补结构锁
-- [ ] `verify` 全绿、`check-docs` / `check-env` exit 0；§七「重审综合」的「现在就做」行 1、4 改判为已做，行 2 保持待立项
+- [x] `readUiAutomationOccupants` 三态落地且词表、`unknown` 判定各带离线单测；三条变异各红一次
+- [x] `autogamer_diagnose` 报告新增 `hierarchy` 栏，`occupied` / `unknown` 各给 recommendation、`free` 不给
+- [x] `preflight.ts:49` 注释改指实际存在的锁；`diagnose.ts` 的未用 import 删除并补结构锁
+- [x] `verify` 全绿、`check-docs` / `check-env` exit 0；§七「重审综合」的「现在就做」行 1、4 改判为已做，行 2 保持待立项
+
+**实施记录（2026-10-15，一处接线偏离方案 + 变异计数与方案不符 + 结构锁当场抓到我自己的注释）**
+
+| # | 方案说的 | 实际做的 | 为什么 |
+|---|---|---|---|
+| 1 | 接线位置未细说 | 新增**可选 dep `hierarchyStatus`，在 `index.ts` 装配**（照 `ocrStatus` / `provider` 的现成形状），而不是在 `device/diagnose.ts` 的 `Promise.all` 里多跑一条 | 后者会让 `diagnose.spec.ts` 里**每一条既有 recommendation 断言**都因多出一条而不相识；照现成形状接，**既有 39 条锁一条没动**，且「报告从未问过就不许答」这条规则自动适用 |
+| 2 | 「三条变异各红一次、且**恰好一条红**」 | ① 删词表 marker ⇒ **1 红**（`hierarchyXml`）；② `unknown`→`free` 塌缩 ⇒ **3 红**（同一条判据的三个样本：`it.each` 的两格 + 直接解析那条）；③ recommendation 条件从 `occupied` 翻成 `free` ⇒ **3 红**（具名、free 不给建议、纯函数优先级） | 方案写「恰好一条红」时**没料到判据本身是参数化的**。②③ 各自仍**只红自己那面的文件**（② 时 `diagnose.spec` 零红、③ 时 `hierarchyXml` 零红）⇒ 「不连坐」这条成立，「恰好一条」这条按实测改判 |
+| 3 | 结构锁写 `expect(source).not.toContain("requireEnv")` | **保留原判据**，改的是**注释措辞** | 第一次跑就红——红在**我新写的头注释里点了 `requireEnv` 这个名字**。这条锁的强度因此得到实证：它连「注释里提一句」都不放过。改成 prose 说明「不许把闸门 import 加回来」，判据不动 |
+
+**读数与核验**
+
+- 词表与三态：`tests/hierarchyXml.spec.ts` 新增 10 条（含 `it.each` 五格失败形态）；工具面：`tests/diagnose.spec.ts` 新增 8 条。
+- argv 锁：`-s emulator-5554 shell ps -A -o PID,ARGS` **只此一条调用**（`A.calls` 整表比对，不是 `toContain`）⇒ 加第二条读就红。
+- 失败形态五格：非零退出 / **code 0 但设备侧报错文本**（`deviceReportedFailure` 的 `Unknown command:`）/ 只有表头没有行 / 空输出 / `timedOut` ⇒ 全部 `unknown`。
+- 🔶 **`unknown` 态不是保守装饰**：`ps -A -o PID,ARGS` 的**列布局在本仓 ledger 里没有实测**（§七「前置-2」只记过裸 `ps -A` 的读数）。真机第一次跑必须复验列名，验完才允许收窄这一态（R21 反向形态：别把「有读数」写成「验过」）。
+- 两处真相：`preflight.ts` 注释改指 `tests/preflight.spec.ts:76-77` 并写明 **`:76` 比的是导出的常量、会自愈，真正锁住「只有两项」的是 `:77` 的字面量 `[true, true]`**；`src/tools/diagnose.ts` 的 `requireEnv` import 删除，头注释改为事实陈述。
+- `verify` **44 文件 / 497 通过**（上一绿态 44/479，+18 条）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
+- 声明面（R6）：本片**未改** `cordis.patch.yml` ⇒ 无需 `--dump-config`；也**未**给 `autogamer_diagnose` 新增 `timeoutMs`（R15：声明即断言能停稳，新读只带 `AdbOptions.timeoutMs = 10s`）。
 
 ### 重审综合 · 六面能力重审的结论、否证与处置（2026-10-15，只读调研，零设备）
 
@@ -1539,10 +1563,10 @@ pad\scale |  1.0  1.5  2.0  3.0
 
 | # | 做什么 | 为什么是它 | 判据（离线） |
 |---|---|---|---|
-| 1 | **层级占用者诊断器**（约 30 行，`git grep "ps -A\|wetest\|com.github.uiautomator" -- src` 现**零命中**） | dump 静默失败后今天**直接降级到 OCR 且无人知道原因**，是元素源面最大的真实缺口 | `readHierarchyXml` 返回 `undefined` 且喂固定 `ps` 文本命中 marker ⇒ 报**具名**占用者；空 ⇒ 报「dump 本身失败」。变异：删 marker 匹配必红 |
+| 1 | **层级占用者诊断器**（约 30 行，`git grep "ps -A\|wetest\|com.github.uiautomator" -- src` 现**零命中**） | dump 静默失败后今天**直接降级到 OCR 且无人知道原因**，是元素源面最大的真实缺口 | `readHierarchyXml` 返回 `undefined` 且喂固定 `ps` 文本命中 marker ⇒ 报**具名**占用者；空 ⇒ 报「dump 本身失败」。变异：删 marker 匹配必红。**✅ 2026-10-15 已做（能力重审-2 / CHANGELOGS #112）——接线点改到诊断面**（`{text}` 走的是执行路径，那里补一条 `ps` 会落在阶梯的 3 次重取里；占用者是设备属性不是本次调用的属性），三态与理由见该条目 |
 | 2 | **`uiautomator dump --windows`**（`--compressed` 默认关） | `--windows` 取 `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`，能多捞弹窗/系统窗口节点；`--compressed` **反向**（上游 py 显式传 `compressed=True`，而 verbose 的 `setCompressedLayoutHierarchy(false)` 节点**最多**⇒ 照搬上游对 G92 更差） | 离线：mock adb 断言 argv 含 `--windows`。🔶 增量几个节点需真机 |
 | 3 | **`{text}` 未命中时把「叶级候选框编号 + 该帧 attachment 引用」交回模型**（通路已存在：`src/index.ts:292-310` 存附件、`runDeviceAction.ts:693-694` 已产 `[text, image]` 块） | 一条**非 OCR** 的召回轴：层级答不出时让帧进入模型视野、由模型回 `{coordinate}` 或 `{index}`，而不是继续在 tesseract 上重实现版面分析 | 新增 spec：`{text}` 未命中时结果**必含** `frame` 引用且**不含任何猜的坐标**；变异：删引用必红。🔶 收益数字属探针 B |
-| 4 | **两处「注释/代码说谎」的真相修复**：`src/env/preflight.ts:49` 写「`contracts.spec` locks this list」——**该文件不存在**，真锁是 `tests/preflight.spec.ts:76-77`（`:76` 比 id 列表、`:77` 用字面量 `[true, true]` 才真正锁住「只有两项」）；`src/tools/diagnose.ts:21` import `requireEnv` **从不调用**（tsconfig 未开 `noUnusedLocals` ⇒ 编译不报，读者会误以为诊断也过闸门） | 与 #107 的 `client.js` 注释同类缺陷：**指向不存在的锁**＝把读者引向一个假的验收 | 改完 `git grep -n "contracts.spec" -- plugins/dsh-autogamer/src` ⇒ 零命中；`requireEnv` 的 import 删除后 `verify` 不变绿即证它本就没被用 |
+| 4 | **两处「注释/代码说谎」的真相修复**：`src/env/preflight.ts:49` 写「`contracts.spec` locks this list」——**该文件不存在**，真锁是 `tests/preflight.spec.ts:76-77`（`:76` 比 id 列表、`:77` 用字面量 `[true, true]` 才真正锁住「只有两项」）；`src/tools/diagnose.ts:21` import `requireEnv` **从不调用**（tsconfig 未开 `noUnusedLocals` ⇒ 编译不报，读者会误以为诊断也过闸门） | 与 #107 的 `client.js` 注释同类缺陷：**指向不存在的锁**＝把读者引向一个假的验收 | 改完 `git grep -n "contracts.spec" -- plugins/dsh-autogamer/src` ⇒ 零命中；`requireEnv` 的 import 删除后 `verify` 不变绿即证它本就没被用。**✅ 2026-10-15 已做（能力重审-2 / CHANGELOGS #112），并加了一条源码结构锁**（`diagnose.ts` 里出现 `requireEnv` 即红——第一次跑就红在我自己新写的注释上，实证它有牙） |
 
 **待立项两条（本条不实现，因为它们要先补取证或先改规格）**
 

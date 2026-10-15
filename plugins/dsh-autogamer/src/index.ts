@@ -28,7 +28,7 @@ import { judgeEffectChanged } from "./effect/diff.js";
 import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
 import { createAdbProbe } from "./device/state.js";
 import { runNativeAction } from "./device/act.js";
-import { readHierarchyXml } from "./device/hierarchy.js";
+import { readHierarchyXml, readUiAutomationOccupants } from "./device/hierarchy.js";
 import { LiveObservations } from "./observations.js";
 import { defineTool } from "@deepseek-ai/dsh-tools";
 import z from "@deepseek-ai/schemastery";
@@ -560,6 +560,13 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
           } finally {
             await backend.dispose();
           }
+        },
+        // 能力重审-2: name the process holding the one UiAutomation connection, so
+        // a silent hierarchy failure has an owner. One `ps` read, no policy: the
+        // plugin never stops or uninstalls someone else's client (R19).
+        hierarchyStatus: async (serial, signal) => {
+          const readout = await readUiAutomationOccupants(serial, { signal });
+          return { state: readout.state, names: readout.names };
         },
         ocrStatus: async (serial, signal) => {
           const langs = (config.ocrLanguages ?? OCR_DEFAULT_LANGS)

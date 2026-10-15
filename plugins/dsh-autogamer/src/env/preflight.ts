@@ -46,7 +46,13 @@ export interface PreflightResult {
 
 export const PREFLIGHT_CACHE_MS = 60_000;
 
-/** The gate's whole vocabulary. `contracts.spec` locks this list. */
+/**
+ * The gate's whole vocabulary. `tests/preflight.spec.ts` locks it: the id list at
+ * :76 is compared against this exported constant, so it alone would follow any
+ * change here — the literal `[true, true]` two lines below is what pins the
+ * count at two (能力重审-2 corrected this comment, which used to credit a
+ * `contracts.spec` that is not a file in this repository).
+ */
 export const PREFLIGHT_CHECK_IDS = ["adb", "adb-devices"] as const;
 
 const ADB_FIX = "Install Android SDK Platform Tools and put adb on PATH";

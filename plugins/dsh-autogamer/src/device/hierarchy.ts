@@ -21,7 +21,7 @@
  * plugin instances dumping at once must not read each other's file (the wider
  * cross-process hazard is tracked as G89).
  */
-import { adbArgs, runAdb, runAdbBinary, type AdbOptions } from "./adb.js";
+import { adbArgs, deviceReportedFailure, runAdb, runAdbBinary, type AdbOptions } from "./adb.js";
 
 export const DUMP_TIMEOUT_MS = 30_000;
 
@@ -94,6 +94,82 @@ export async function readHierarchyXml(
 /** What a real dump starts with, and what a truncated or failed one does not. */
 export function isHierarchyXml(text: string): boolean {
   return text.includes("<hierarchy") && text.includes("<node ");
+}
+
+/**
+ * Who holds the one UiAutomation slot (能力重审-2).
+ *
+ * The mechanism, from AOSP: `UiAutomationConnection.connect()` throws
+ * `Already connected.` while a connection is live, so **exactly one client can
+ * hold the slot**; and `uiautomator dump` is itself a client —
+ * `UiAutomationShellWrapper.connect()` calls the no-argument `connect()`, which
+ * is the branch that suppresses accessibility services, with no flag to opt out.
+ * From here a dump that answers nothing looks identical in both cases: our own
+ * dump failed, or somebody else holds the slot and will keep failing every dump.
+ * Naming the holder is the only thing that separates them, and today nothing
+ * here asks.
+ *
+ * Read-only by decision. The archived upstream cleared a blocker by uninstalling
+ * the user's Maestro (`pm uninstall --user 0`); this plugin never stops, kills
+ * or uninstalls anything another client owns (R19 puts that call with the user).
+ */
+export const OCCUPANT_MARKERS = [
+  { marker: "com.wetest.uia2.Main", name: "uiautomator2 server" },
+  { marker: "com.github.uiautomator", name: "openatx uiautomator app" },
+  { marker: "io.appium.uiautomator2", name: "Appium uiautomator2 server" },
+  { marker: "androidx.test.runner.MonitoringInstrumentation", name: "instrumentation runner" },
+] as const;
+
+/** `occupied` names a holder; `free` is a positive reading; `unknown` is not one. */
+export type OccupantState = "occupied" | "free" | "unknown";
+
+export interface OccupantReadout {
+  readonly state: OccupantState;
+  readonly names: readonly string[];
+}
+
+/**
+ * A row is a line starting with a pid — nothing else in `ps` output is a
+ * candidate. Markers are matched against the whole line rather than one column
+ * because the column layout of `ps -A -o PID,ARGS` is the one shape here that
+ * has no measurement in this repository's ledger (§七「前置-2」recorded a plain
+ * `ps -A`), so the parser must not depend on which column `ARGS` lands in.
+ *
+ * Zero rows answers `unknown`, never `free`: an unreadable table that reports
+ * "nobody holds it" hands out a clean bill of health on no evidence, which is
+ * worse than not asking.
+ */
+export function parseOccupants(text: string): OccupantReadout {
+  const rows = text
+    .replace(/\r/g, "")
+    .split("\n")
+    .filter((line) => /^\s*\d+\s+\S/.test(line));
+  if (rows.length === 0) return { state: "unknown", names: [] };
+  const names = OCCUPANT_MARKERS.filter((entry) =>
+    rows.some((line) => line.includes(entry.marker)),
+  ).map((entry) => entry.name);
+  return names.length > 0 ? { state: "occupied", names } : { state: "free", names: [] };
+}
+
+export const OCCUPANT_TIMEOUT_MS = 10_000;
+
+/**
+ * Ask the device which processes hold a UiAutomation connection. Every failure
+ * shape (timeout, abort, non-zero code, a device-side error printed with code
+ * 0, an empty or unrecognisable table) collapses to `unknown`: the caller gets
+ * one honest word instead of a stack of causes it cannot act on.
+ */
+export async function readUiAutomationOccupants(
+  serial: string | undefined,
+  options: AdbOptions = {},
+): Promise<OccupantReadout> {
+  const result = await runAdb(adbArgs(serial, ["shell", "ps", "-A", "-o", "PID,ARGS"]), {
+    timeoutMs: OCCUPANT_TIMEOUT_MS,
+    ...options,
+  });
+  if (result.timedOut || result.aborted || result.code !== 0) return { state: "unknown", names: [] };
+  if (deviceReportedFailure(result.stdout, result.stderr)) return { state: "unknown", names: [] };
+  return parseOccupants(result.stdout);
 }
 
 /** `[l,t][r,b]`, the only bounds form uiautomator prints (measured on 45/45 nodes). */

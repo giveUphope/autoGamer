@@ -6,6 +6,8 @@
  * a broken environment throws, and then the preflight text wins.
  */
 import { describe, expect, it } from "vitest";
+import { readFileSync } from "node:fs";
+import { fileURLToPath } from "node:url";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { DeviceDiagnosis } from "../src/device/diagnose.js";
 import { diagnoseDevice, parseCrashLogcat, parseVersionName } from "../src/device/diagnose.js";
@@ -13,8 +15,10 @@ import type { PreflightResult } from "../src/env/preflight.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
 import {
   defineDiagnose,
+  hierarchyRecommendations,
   ocrRecommendations,
   providerRecommendations,
+  type HierarchyReadout,
   type OcrReadout,
   type ProviderReadout,
 } from "../src/tools/diagnose.js";
@@ -68,13 +72,16 @@ function defineWith(options?: {
   noStore?: boolean;
   ocr?: OcrReadout | "throws";
   provider?: ProviderReadout | "throws";
+  hierarchy?: HierarchyReadout | "throws";
 }) {
   const asked: (string | undefined)[] = [];
   const saved: Buffer[] = [];
   const ocrAsked: (string | undefined)[] = [];
   const providerAsked: (string | undefined)[] = [];
+  const hierarchyAsked: (string | undefined)[] = [];
   const ocrReadout = options?.ocr;
   const providerReadout = options?.provider;
+  const hierarchyReadout = options?.hierarchy;
   const tool = defineDiagnose({
     diagnose: async (serial) => {
       asked.push(serial);
@@ -120,8 +127,17 @@ function defineWith(options?: {
             return providerReadout;
           },
         }),
+    ...(hierarchyReadout === undefined
+      ? {}
+      : {
+          hierarchyStatus: async (serial: string | undefined) => {
+            hierarchyAsked.push(serial);
+            if (hierarchyReadout === "throws") throw new Error("adb did not answer the ps read");
+            return hierarchyReadout;
+          },
+        }),
   });
-  return { tool, asked, saved, ocrAsked, providerAsked };
+  return { tool, asked, saved, ocrAsked, providerAsked, hierarchyAsked };
 }
 
 describe("diagnose: definition", () => {
@@ -289,6 +305,81 @@ describe("diagnose: the built-in OCR is reported, never gated (T5)", () => {
     const { tool } = defineWith();
     const rendered = tool.output!.render({}, { device_serial: "em-1", adb_connected: true }) as { text?: string }[];
     expect(rendered[0]?.text).not.toContain("ocr_ready");
+  });
+});
+
+describe("diagnose: who holds the UiAutomation slot is reported, never gated (能力重审-2)", () => {
+  it("names the holder and says what it costs", async () => {
+    const { tool, hierarchyAsked } = defineWith({ hierarchy: { state: "occupied", names: ["uiautomator2 server"] } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(hierarchyAsked).toEqual([undefined]);
+    expect(value.hierarchy).toEqual({ occupants: "occupied", holders: ["uiautomator2 server"] });
+    const note = (value.recommendations as string[])[1];
+    expect(note).toContain("uiautomator2 server");
+    expect(note).toContain("`uiautomator dump` returns nothing");
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).toContain("hierarchy=occupied");
+  });
+
+  // The report is a fact even when there is nothing to fix: `free` must still be
+  // answerable, but it must not manufacture advice.
+  it("reports a slot it found free without adding a recommendation", async () => {
+    const { tool } = defineWith({ hierarchy: { state: "free", names: [] } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.hierarchy).toEqual({ occupants: "free", holders: [] });
+    expect(value.recommendations).toEqual(["restart adb"]);
+  });
+
+  // `unknown` is the branch that keeps the read honest: an unreadable process
+  // table must never be reported as an empty one.
+  it("keeps an unreadable table separate from a free slot", async () => {
+    const { tool } = defineWith({ hierarchy: { state: "unknown", names: [] } });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.hierarchy).toEqual({ occupants: "unknown", holders: [] });
+    const note = (value.recommendations as string[])[1];
+    expect(note).toContain("could not be read");
+    expect(note).toContain("not a finding that the slot is free");
+  });
+
+  it("turns a read that throws into a line of the report, not a failed diagnosis", async () => {
+    const { tool } = defineWith({ hierarchy: "throws" });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.adb_connected).toBe(true);
+    expect((value.hierarchy as { occupants?: string }).occupants).toBe("unknown");
+    expect((value.hierarchy as { error?: string }).error).toBe("adb did not answer the ps read");
+    expect((value.recommendations as string[]).join("\n")).toContain("adb did not answer the ps read");
+  });
+
+  it("asks about the device the report is about, and never about one it was not given", async () => {
+    const { tool, hierarchyAsked } = defineWith({ defaultDeviceSerial: "em-default", hierarchy: { state: "free", names: [] } });
+    await tool.execute({ device_serial: "em-arg" }, exec());
+    expect(hierarchyAsked).toEqual(["em-arg"]);
+  });
+
+  it("has nothing to say about a holder it never asked about", async () => {
+    const { tool } = defineWith();
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value).not.toHaveProperty("hierarchy");
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).not.toContain("hierarchy=");
+  });
+
+  it("prefers silence for a free slot over both findings", () => {
+    expect(hierarchyRecommendations({ state: "free", names: [] })).toEqual([]);
+    expect(hierarchyRecommendations({ state: "occupied", names: ["a", "b"] })[0]).toContain("a, b");
+    expect(hierarchyRecommendations({ state: "unknown", names: [], error: "boom" })[0]).toContain("boom");
+  });
+
+  // Structural lock (能力重审-2): the diagnosis reads the preflight for its report
+  // and does NOT run it as a gate. An unused `requireEnv` import used to sit here
+  // and tell every reader the opposite; tsconfig has no `noUnusedLocals`, so the
+  // compiler never complained and only the source shape can say this is true.
+  it("is not environment-gated, and says so in its own source", () => {
+    const source = readFileSync(
+      fileURLToPath(new URL("../src/tools/diagnose.ts", import.meta.url)),
+      "utf8",
+    );
+    expect(source).not.toContain("requireEnv");
   });
 });
 

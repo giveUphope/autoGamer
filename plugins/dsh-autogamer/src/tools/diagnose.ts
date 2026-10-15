@@ -14,11 +14,17 @@
  * through the same adb path every other consumer uses and committed to the host
  * attachment store, so the model gets a real image block (render emits
  * `[text, image]`, same shape as the action router).
+ *
+ * This tool is deliberately NOT run through the environment gate: it reads the
+ * preflight for its report instead of throwing on it, which is what lets it
+ * diagnose a broken environment at all. Do not add the gate import back here
+ * believing it makes the diagnosis safer — a lock in the spec fails when it
+ * reappears.
  */
 import type { DeviceDiagnosis } from "../device/diagnose.js";
 import type { DshImageAttachment, ToolDefinitionInput } from "../dsh-types.js";
+import type { OccupantState } from "../device/hierarchy.js";
 import { preflightErrorText, type PreflightResult } from "../env/preflight.js";
-import { requireEnv } from "./envGate.js";
 
 export interface DiagnoseDeps {
   diagnose(serial: string | undefined, options?: { signal?: AbortSignal }): Promise<DeviceDiagnosis>;
@@ -43,6 +49,12 @@ export interface DiagnoseDeps {
    * it answers.
    */
   provider?(serial: string | undefined, signal?: AbortSignal): Promise<ProviderReadout>;
+  /**
+   * 能力重审-2: which process holds the single UiAutomation connection. Reported,
+   * never gated — a holder takes away the hierarchy source, and `{text}` targets
+   * still have OCR and `{coordinate}`, so it must not fail a diagnosis.
+   */
+  hierarchyStatus?(serial: string | undefined, signal?: AbortSignal): Promise<HierarchyReadout>;
 }
 
 export interface ProviderReadout {
@@ -59,6 +71,37 @@ export interface OcrReadout {
   /** Set only when a frame actually went through the engine. */
   readonly frame?: { hits: number; ms: number };
   readonly error?: string;
+}
+
+/**
+ * 能力重审-2: who holds the single UiAutomation connection. `unknown` is a
+ * separate answer from `free` on purpose — the column layout of the device `ps`
+ * call has no measurement in this repository's ledger, so an unreadable table
+ * must not be reported as "nobody holds it".
+ */
+export interface HierarchyReadout {
+  readonly state: OccupantState;
+  readonly names: readonly string[];
+  /** Set only when the read itself threw; the report keeps the reason. */
+  readonly error?: string;
+}
+
+/** A free slot says nothing; only a holder or an unreadable table is a finding. */
+export function hierarchyRecommendations(hierarchy: HierarchyReadout): string[] {
+  if (hierarchy.state === "occupied") {
+    return [
+      `the UiAutomation slot is held by ${hierarchy.names.join(", ")} — ` +
+        `\`uiautomator dump\` returns nothing while it runs, so the hierarchy source is unavailable ` +
+        `and \`{text}\` falls back to OCR and \`{coordinate}\``,
+    ];
+  }
+  if (hierarchy.state === "unknown") {
+    return [
+      `the device process list could not be read${hierarchy.error === undefined ? "" : ` (${hierarchy.error})`}, ` +
+        "so nothing is known about who holds the UiAutomation slot — this is not a finding that the slot is free",
+    ];
+  }
+  return [];
 }
 
 /** What to tell the operator, in the order they can act on it. */
@@ -91,13 +134,20 @@ function providerSummary(value: unknown): string {
   return provider.reachable === true ? "reachable" : "unreachable";
 }
 
+/** The one word the render line can spare for the hierarchy source. */
+function hierarchySummary(value: unknown): string {
+  const hierarchy = value as { occupants?: unknown };
+  return String(hierarchy.occupants ?? "unknown");
+}
+
 export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
   return {
     name: "autogamer_diagnose",
     description:
       "Diagnose the Android device and the plugin's own environment over adb: adb connection, " +
       "screen state, helper APK install and version, recent entries in the device crash log, " +
-      "built-in OCR readiness, the optional external provider when one is configured, " +
+      "built-in OCR readiness, which process holds the device's single UiAutomation slot, " +
+      "the optional external provider when one is configured, " +
       "and actionable fix recommendations. Also the manual entry for a fresh environment preflight.",
     parameters: {
       device_serial: {
@@ -133,6 +183,7 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           },
           ocr_ready: { type: "boolean" },
           ocr: { type: "object", additionalProperties: true },
+          hierarchy: { type: "object", additionalProperties: true },
           provider: { type: "object", additionalProperties: true },
         },
         additionalProperties: true,
@@ -148,6 +199,7 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           `recent_crashes=${crashes}; recommendations=${fixes}` +
           // Only when the check ran: a report that never asked must not answer.
           (record.ocr_ready === undefined ? "" : `; ocr_ready=${String(record.ocr_ready)}`) +
+          (record.hierarchy === undefined ? "" : `; hierarchy=${hierarchySummary(record.hierarchy)}`) +
           (record.provider === undefined ? "" : `; provider=${providerSummary(record.provider)}`);
         // Same rule as the router: the attachment becomes an image block, so it
         // must not also be flattened into the text envelope.
@@ -195,6 +247,23 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           if (!recommendations.includes(note)) recommendations.push(note);
         }
       }
+      // 能力重审-2: the element source's availability question, answered from the
+      // device's own process list. Its failure is a report line, never a throw.
+      let hierarchy: HierarchyReadout | undefined;
+      if (deps.hierarchyStatus !== undefined) {
+        try {
+          hierarchy = await deps.hierarchyStatus(serial, exec?.signal);
+        } catch (error) {
+          hierarchy = {
+            state: "unknown",
+            names: [],
+            error: String((error as Error)?.message ?? error),
+          };
+        }
+        for (const note of hierarchyRecommendations(hierarchy)) {
+          if (!recommendations.includes(note)) recommendations.push(note);
+        }
+      }
       // T4-b: the optional provider's only consumer. Unconfigured (the default)
       // means this never spawns anything; configured means the operator asked to
       // be told whether it is alive.
@@ -239,6 +308,15 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
                 missing_data: [...ocr.missingData],
                 ...(ocr.frame !== undefined ? { frame: ocr.frame } : {}),
                 ...(ocr.error !== undefined ? { error: ocr.error } : {}),
+              },
+            }),
+        ...(hierarchy === undefined
+          ? {}
+          : {
+              hierarchy: {
+                occupants: hierarchy.state,
+                holders: [...hierarchy.names],
+                ...(hierarchy.error !== undefined ? { error: hierarchy.error } : {}),
               },
             }),
         ...(provider === undefined
