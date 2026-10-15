@@ -60,6 +60,13 @@
   **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
   而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
   ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **PSM 这条路已查实并否掉（2026-10-15，联网调研 + 离线实测，CHANGELOGS #110）**：`tesseract.js` **支持** `tessedit_pageseg_mode`（`SPARSE_TEXT=11` 的上游语义正是「跳过版面分析」），
+  而这是本分支从未考虑过的设计空间，所以查了。实测（两帧 × 六种设置，**每格独立 worker**）：
+  **合成难帧上所有 PSM 都读不出 needle** ⇒ **「关掉版面分析让引擎自己找」不成立**，P1/P2/P3 的方向**没有被推翻**。
+  ⚠️ 附带一条对未来有用的陷阱：**显式设 PSM 3 比不设更差**（前者 miss、后者 HIT），而枚举里 `AUTO='3'` ⇒
+  **`setParameters` 不是可靠旋钮**（worker 脚本在 recognize 前后有 Save/Restore 参数），将来谁想调 PSM **必须先证明它生效**。
+  ⚠️ 本轮**四次修正了自己的测量**（复用 worker + 语言顺序写反 → 仍复用 worker → 怀疑状态污染 → 独立 worker 才是干净读数），
+  **前三轮数字全部不可用**；那个「PSM 11 HIT」的好消息若直接落账，就是把污染读数当设计依据。
 - **设备前置已查清（2026-10-15，调研，见 §七「设备前置调研」）**：那三件「需要设备」的事**能不能用 mock 顶掉**，答案是**机制层能、live 层不能**；
   而「需要设备」本身的措辞**修正过一次**：本机虚拟化**已启用**、32 GB RAM、712 GB 空闲磁盘、`winget` 里 Platform Tools 与 Android Studio 都可装
   ⇒ 卡的是**安装**（R19 授权面 + 数 GB 下载），不是硬件能力。**成本最低的解锁路径**：Platform Tools（~10 MB）＋ 用户自己的手机开无线调试。
@@ -1296,6 +1303,60 @@ pad\scale |  1.0  1.5  2.0  3.0
 - [x] 「需要设备」的前提修正：硬件 / 内存 / 磁盘 / winget 可安装性四项实测入库，并写明卡的是安装不是能力
 - [x] 四条解锁路径按成本与授权面列出，推荐路径明确
 - [x] 读数陷阱（R25）就地留证，并写明可靠来源；台账两处措辞同步更正
+
+### 调研-2 · 「改一个 PSM 参数就能解决 G92？」—— 联网调研 + 离线实测的否定结论（2026-10-15 结案；CHANGELOGS #110）
+
+> 起因：用户问「能否靠联网调研完善」。这条给出一个**具体问题的具体答案**：
+> T5 判定「瓶颈是整页版面分析」，此后所有设计（P1 区域裁剪、P2 投影分割、P3 网格）都在**自己实现版面分析**——
+> 但**谁都没查过 tesseract 自己有没有这个开关**。查了，而且实测了。
+
+**R20 第 1 步「查」：一手来源（本机 node_modules 里的包本体 + 其类型定义）**
+
+| 出处 | 事实 |
+|---|---|
+| `node_modules/tesseract.js/src/index.d.ts` | `Worker.setParameters(params: Partial<WorkerParams>)`；`WorkerParams` 里**明确列出 `tessedit_pageseg_mode: PSM`** |
+| 同上，`enum PSM` | `AUTO='3' AUTO_OSD='1' AUTO_ONLY='2' SINGLE_BLOCK='6' SINGLE_LINE='7' SINGLE_WORD='8' **SPARSE_TEXT='11'** SPARSE_TEXT_OSD='12' RAW_LINE='13'` |
+| `node_modules/tesseract.js/src/worker-script/index.js` | 内部 `api.SetVariable('tessedit_pageseg_mode', ...)`，且 recognize 前后有 **`api.SaveParameters()` / `api.RestoreParameters()`**（参数被内部保存/恢复） |
+
+⇒ **PSM 11 = SPARSE_TEXT**，上游语义就是「把图当稀疏文本，尽量多找文字，**跳过版面分析**」—— 与 T5 诊断的瓶颈正对。
+这是本分支**从未考虑过**的设计空间，所以值得查。
+
+**实测结论（离线、真模型、两张已入库夹具；每个 PSM 一个全新 worker）**
+
+| 设置 | 真夹具（`screen-chrome-tab-overview.png`） | 合成难帧（`screen-synth-hard.png`） |
+|---|---|---|
+| **不设参数（现状）** | **HIT**（含 `游戏中心`）conf 55 | miss conf 53 |
+| 显式 `PSM 3` | **miss** conf 84 | miss conf 0 |
+| `PSM 6` / `11` / `12` | HIT conf 55 / 69 / 69 | **全 miss** |
+
+**两条结论**
+
+1. **PSM 开关救不了 G92**：合成难帧上**所有** PSM 都读不出 needle ⇒ 「关掉版面分析让引擎自己找」这条路**不成立**，
+   P1/P2/P3 自己切区域的方向**没有被这次调研推翻**。
+2. ⚠️ **`setParameters({tessedit_pageseg_mode})` 不是可靠旋钮**：**显式设 `3` 比不设更差**（前者 miss、后者 HIT），
+   而 tesseract.js 的枚举里 `AUTO = '3'`。结合 worker 脚本里 recognize 前后的 `SaveParameters` / `RestoreParameters`，
+   合理的解释是**内部逻辑会在 recognize 期间覆盖这个变量** ⇒ **任何人将来想调 PSM，必须先证明它真的生效**，
+   不许拿「我设了」当「它起作用了」（R27 判据 6）。
+
+**⚠️ 本轮四次修正了自己的测量（R25 的又一次密集复发，全部留证）**
+
+| 轮次 | 读数 | 为什么错 |
+|---|---|---|
+| 1 | 「PSM 11 在整帧 HIT」 | 复用了同一个 worker，且语言顺序写成 `chi_sim+eng`（插件默认是 `eng+chi_sim`）—— **一次动了两个变量** |
+| 2 | 对齐语言顺序后仍与锁矛盾 | 仍是**同一个 worker 连续多次 recognize** |
+| 3 | 「不设 HIT / PSM11 HIT / PSM3 miss」 | 怀疑 worker 状态污染与内部 Save/Restore |
+| 4 | **每个 PSM 一个全新 worker** | ✅ 干净、可归因、可复跑 |
+
+⇒ 前三轮的数字**全部不可用**。若把第 1 轮那个「好消息」直接写进台账，就会把一条**建立在污染读数上的结论**当成设计依据。
+
+**Done means**
+
+- [x] 联网查到 PSM 这个设计空间并实测（两帧 × 六种设置，每格独立 worker）
+- [x] 否定结论入库：**PSM 救不了 G92**；**`setParameters` 不可当可靠旋钮**（显式 3 ≠ 默认）
+- [x] 四次测量修正的过程落账（R25 样本），并写明前三轮数字不可用
+- [x] 门禁三条命令 exit 0；插件代码未改（探针只在忽略区 `scratch/`）
+
+**非目标**：不改 `recognize.ts` 的封装（setParameters 的取舍留到真机探针 B 有需要时再定）；不做 P2/P3；不因 PSM 结论动任何默认值。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
