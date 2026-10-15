@@ -69,11 +69,13 @@ Instructions for agents working in this repository.
 - **依赖的构建脚本策略**写在 `plugins/dsh-autogamer/pnpm-workspace.yaml` 的 `allowBuilds`：`esbuild: true`（vitest 要它的原生二进制）、
   `tesseract.js: false`（其 `postinstall` 只是赞助横幅、无产物）。若安装报 `ERR_PNPM_IGNORED_BUILDS` 并非零退出，
   **先看这一行**，不要直接 `pnpm approve-builds`——那条会把构建脚本放行，且 pnpm 会顺手改写被跟踪的 `pnpm-workspace.yaml`。出处见 CHANGELOGS #98。
-- **包管理器版本已钉**：`plugins/dsh-autogamer/package.json` 的 `"packageManager": "pnpm@11.21.0"`（精确版本，不带 hash）
-  ＋ 同目录 `pnpm-workspace.yaml` 的 `pmOnFail: error`。**版本不符 ⇒ 每条 pnpm 命令直接 exit 1**（报 `This project is configured to use … of pnpm`），
+- **包管理器版本已钉**：版本号的唯一权威是 `plugins/dsh-autogamer/package.json` 的 `packageManager`（精确版本，不带 hash）——**别在文档里抄这个号**，它已换过一次（CHANGELOGS #114）
+  ＋ 同目录 `pnpm-workspace.yaml` 的 `pmOnFail: error`。**版本不符 ⇒ 每条 pnpm 命令直接 exit 1**（`ERR_PNPM_BAD_PM_VERSION`，报 `This project is configured to use … of pnpm`），
   这不是故障，是设计：不同 pnpm 对「构建脚本被拦截」的处理不同（有的 exit 1、有的只告警），**宁可响不可悄悄不同**。
   - 临时绕过（单次、不改仓库）：`--pm-on-fail=ignore` 或 `warn`；**正解**是先升级本机 pnpm，或按下面的流程改钉。
   - **升版流程（人决定）**：改 `packageManager` 的版本号 → 同一次提交里跑一遍 `install` + `verify` → 在 `docs/TODO.md` §七 与 CHANGELOGS 记明依据；顺带复核 #98 的构建脚本策略在新版本上是否仍被支持（pnpm 换掉 `pmOnFail`/`allowBuilds` 键名时会静默失效）。
+  - **主版本升级会带动锁文件**：pnpm 12 对不含 `packageManagerDependencies` 的锁文件在 frozen 下 **exit 1**（`ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`，12 拒自己在 frozen 下补它）⇒ 先跑一次**非 frozen** `install`，它往 `pnpm-lock.yaml` **追加**一份 env lock 文档（原项目锁那份文档一字不改），**再复跑 frozen 那条当验收**——只跑非 frozen 等于没验。实测与两组 A/B 见 §七「基建-7」/ CHANGELOGS #114。
+  - **非交互 shell 里跨 store 大版本重建会被拦**：`node_modules` 记的 store 与目标版本不同时 pnpm 要整目录 purge，无 TTY 直接 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` 退出（10→11 实测过；当年用 `--config.confirmModulesPurge=false` 放行，该旗标在 12 的官方设置文档里已不列）。**别拿它当长期状态**：手删 `node_modules`（gitignore 的产物，可再生）再装，路径最短也没有确认环节。
   - **边界**：钉在插件工程（全仓唯一的 `package.json`，也是所有文档命令的工作目录）；**从仓库根跑 pnpm 不受本钉约束**（根无 manifest，那也不是文档化的用法）。
   - 出处见 CHANGELOGS #99。
 - 声明面自检：`dsh --profile <name> --patch <abs path> --dump-config`（`dsh` 取 PATH，**不要写死安装盘符**）

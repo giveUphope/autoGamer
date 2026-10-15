@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）；G92 合成难帧 —— 三种造法否掉两种、第三种成立，落成一条成对真模型机制锁，变异把参数扫描的结论变成了会红的判据（#108）；设备前置调研：三项逐一查实 mock 顶不到哪一层（三任务工具全过 requireEnv ⇒ 交付-1 C 项无法替代），并修正「需要设备」这个前提——本机虚拟化已启用，缺的是安装不是能力（#109）；联网调研否掉「改一个 PSM 参数就能解决 G92」，并量出 `setParameters` 不可靠（#110）；能力重审-1 的三个零授权确定性修正——abort 收成第四类 `cancelled` 两侧都不记账、`wait` 上限低于声明值、两处 probe 缝接上 signal，含**两条假锁被变异当场证伪**（#111）；能力重审-2 给元素源的 UiAutomation 占用者第一次命名（三态，读不出绝不答「没人占」），并改掉两处「注释指向不存在的锁」——其中一条结构锁当场红在本轮自己写的注释上（#112）；能力重审-3 在官方最弱的 emit 观察点 `tools/result` 上看清了宿主替换掉的那一份，归因三态、只计数不决策，并把判据钉在生产接线捕获的 handler 上（#113）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113, #114 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）；G92 合成难帧 —— 三种造法否掉两种、第三种成立，落成一条成对真模型机制锁，变异把参数扫描的结论变成了会红的判据（#108）；设备前置调研：三项逐一查实 mock 顶不到哪一层（三任务工具全过 requireEnv ⇒ 交付-1 C 项无法替代），并修正「需要设备」这个前提——本机虚拟化已启用，缺的是安装不是能力（#109）；联网调研否掉「改一个 PSM 参数就能解决 G92」，并量出 `setParameters` 不可靠（#110）；能力重审-1 的三个零授权确定性修正——abort 收成第四类 `cancelled` 两侧都不记账、`wait` 上限低于声明值、两处 probe 缝接上 signal，含**两条假锁被变异当场证伪**（#111）；能力重审-2 给元素源的 UiAutomation 占用者第一次命名（三态，读不出绝不答「没人占」），并改掉两处「注释指向不存在的锁」——其中一条结构锁当场红在本轮自己写的注释上（#112）；能力重审-3 在官方最弱的 emit 观察点 `tools/result` 上看清了宿主替换掉的那一份，归因三态、只计数不决策，并把判据钉在生产接线捕获的 handler 上（#113）；包管理器从钉死 11.21.0 升到 registry 最新 12.11.2 —— 12 **不自降**到旧钉使插件目录每条命令硬退，而它的 frozen 判据要求锁文件先携带 `packageManagerDependencies`，迁移只往锁文件**追加**一份 env lock 文档（42 个 `@pnpm/exe` 平台条目）而不动原项目锁，**#99「选 11 以保持 lockfile 零 churn」的取舍就此反转**；两组 A/B 各红一次、约 1.93 GB 机器残留按「删后复装仍绿」反证清理（#114）。 |
 
 
 ## 写入规则
@@ -954,3 +954,33 @@ G92 的方案 Verify 里有一条标着「（可选）合成难帧」：离线�
 - **同时收紧一条 #111 留下的 🔶**：包装层的**替换条件**已是一手事实——它 `await next()` 且**只在自家 timer 到点时**替换（`timeoutOf(d.signal, TOOL_TIMEOUT) !== undefined`）
   ⇒ **内层先到则模型看到我们自己的消息、外层先到则我们的 `cancelled`/成功被换成 `TOOL_TIMEOUT`**。仍未量的只剩真机耗时分布。守则 R15 已按此改写。
 - 提交：方案 `073229b` → 实现与结案（本提交）。
+
+### #114 包管理器升版到 pnpm 12.11.2：换版把锁文件带成两份 YAML 文档，#99 的「零 churn」取舍就此反转（主题项 基建-7）
+
+#### 问题描述
+
+- 拉取远端 31 个提交后按 `AGENTS.md` 装依赖：本机全局 pnpm 10.12.1、仓库钉 11.21.0。pnpm 10 在插件目录里**自己降到钉版**（`pnpm -v` 报 11.21.0），但首次 `install` 撞 `ERR_PNPM_ABORTED_REMOVE_MODULES_DIR_NO_TTY` —— `node_modules/.modules.yaml` 记的 store 是 `v10`、钉版用 `v11`，pnpm 要整目录 purge，而无 TTY 的 shell 里它拒绝确认。当时靠 `--config.confirmModulesPurge=false` 放行才 exit 0。
+- 用户决定升到 registry 最新（12.11.2）之后，出现**新的中间态故障**：pnpm 12 **不自降**到旧钉，插件目录里每条命令 `ERR_PNPM_BAD_PM_VERSION` 直接 exit 1（`This project is configured to use 11.21.0 of pnpm. Your current pnpm is v12.11.2`）⇒「机器新、仓库仍钉旧」把 `AGENTS.md` 的**全部**插件命令变红，所以改钉不是可选项。
+- 12 的 frozen 判据也变了：对现存锁文件 `install --frozen-lockfile` ⇒ `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`（`Cannot update packageManagerDependencies with "frozen-lockfile" because the lockfile is not up to date`）—— 它拒绝在 frozen 下补自己那一段。
+- 三件事合起来的含义：**#99 当年选 11 的那条理由**（「钉 11 不给 lockfile 加东西 ⇒ 选 legacy 字段可保持 lockfile 零 churn」）在今天变成了要付的代价，而不是能继续沿用的默认。
+
+#### 整改方案与实施
+
+- **改钉**：`plugins/dsh-autogamer/package.json` 的 `packageManager` → `pnpm@12.11.2`（仍精确版本、仍不带 hash，理由与 #99 一致：`error` 模式不下载，写一个自己算不出的 hash 是假严谨）。**换值不换载体**。
+- **锁文件迁移**：先跑一次**非 frozen** `install` ⇒ pnpm 12 往 `pnpm-lock.yaml` **追加**一份 YAML 文档（`git diff --numstat` = 158 插入 / 0 删除；env lock 占行 1–157，含 `packageManagerDependencies.pnpm: 12.11.2` 与 **42** 个 `@pnpm/exe.<平台>` 条目），原项目锁那份文档（行 158 起，`lockfileVersion: '9.0'`）**一字未动**。**随后复跑 frozen 那条当验收** —— 只跑一次非 frozen 安装等于没验。
+- **#98 构建脚本策略复核**（#99 升版流程点名要求的一项）：12 的官方设置文档仍列 `allowBuilds` 与 `pmOnFail` ⇒ 键名未换、不会静默失效；`confirmModulesPurge` 已从文档消失，于是非交互重建改走「手删 `node_modules` 再装」这条不需要确认旗标的路（`node_modules` 是 gitignore 的可生产物，删除可逆）。
+- **文档面对齐**：`AGENTS.md` 里 `"packageManager": "pnpm@11.21.0"` 的**字面副本**改为「版本号的唯一权威在 `package.json`，别在文档里抄这个号」，并补两条 12 的行为差异（主版本升级带动锁文件；跨 store 大版本重建在非交互 shell 会被拦）。TODO §零 的「基建-4」条与 §七「基建-4」取证表第 2 行**就地标注反转**（R28：被推翻的旧表述不许静默保留）。
+- **机器残留清理**（用户圈定范围，逐个显式路径）：`D:\.pnpm-store\v10`（981M）、corepack 的 `pnpm@10.12.1`（21M）、`AppData\Local\pnpm\.tools\pnpm` 下 11.7.0（19M）与 11.21.0（14M）、`AppData\Local\pnpm\store`（955M —— 查明是 **C: 盘项目的默认 store**、本仓库不引用它）、9 个 `_tmp_*` 空目录 ⇒ 合计约 **1.93 GB**。**活 store `D:\.pnpm-store\v11` 保留**。
+
+#### 验收标准
+
+- 匹配态：`pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**；`git status` 只剩 `package.json`、`pnpm-lock.yaml` 与文档面的预期改动。
+- **两组 A/B（R27，判据必须会红）**：① `packageManager` 置回 `pnpm@11.21.0` ⇒ `pnpm --version` **exit 1**（`ERR_PNPM_BAD_PM_VERSION`），改回 12.11.2 复绿 ⇒ 新钉确实在约束版本；② 锁文件换回 `git show HEAD:` 那份（1384 行）⇒ frozen install **exit 1**（`ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`），换回新版（1542 行）⇒ exit 0 ⇒ **锁文件迁移是本次升级的必要组成**，不是顺带产物。
+- **策略在 12 上有牙**：手删 `node_modules` 后的干净 frozen install **exit 0**（91 包，reused 91 / downloaded 0），日志里脚本行只有 `esbuild@0.21.5 ... postinstall$ node install.js` → `Done` 一条，`tesseract.js` **无 postinstall 行**、无 `ERR_PNPM_IGNORED_BUILDS`；`node_modules/.pnpm/esbuild@0.21.5/.../bin/esbuild` 在位。
+- 回归：`build` exit 0；`verify` 三段 exit 0 ⇒ **45 文件 / 510 通过**（与升版前基线持平，不降）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
+- **清理用反证收口**：删掉约 1.93 GB 后复跑 frozen install 仍 **exit 0**、`pnpm store path` 仍是 `D:\.pnpm-store\v11` ⇒ 这证的是「删的都是不被引用的残留」，而不是「删得干净」那种无法证的说法。
+- **边界与未做（不静默）**：宿主包 `@deepseek-ai/*` 仍 `0.2.0-rc.2`，本条不动；**packed `.tgz` 的交付形态未在 12 上复验** —— 锁文件多出的 env lock 文档会不会影响 `pnpm pack` 产物属未知，已**新立 G98** 进 §四 跟踪（离线可先比对 tarball 清单，面板安装复验属 R19 用户点）；本条只证明「机器与仓库同版本且判据都有牙」，**不证明 12.11.2 本身是正确选型**。未动任何 `*.patch.yml` ⇒ R6 自检不适用。
+- 试验的隔离性：所有会改写锁文件的探测先在 `scratch/pm12-probe/`（复制 manifest 与锁文件）里跑，仓库当时零触碰；探针目录结案后删除。
+- **提交状态如实记（R22 / R28）**：三条提交**全部是事后补拆**的 —— 方案 `42b697a` → 实现 `c42b495` → 结案与文档面（本提交）。本轮当时只做到「先写条目、后改码」的动作顺序，没有当场提交；git log 上的先后因此成立，但**它不是当时发生的顺序**，此处在两处声明（本条与 §七「基建-7」），不留「当时按序提交」的假印象。初稿曾在两处写「结案为本提交」，而当时 HEAD 仍是 `d0d56ce`、无任何提交 —— 该句已删，这正是 R28 表头列的第一种失效形态。取码形状也补了一笔：本轮有一次把 `| tail` 之后的 `$?` 当命令退出码读（R27 判据 5），已按 `cmd > /tmp/x.log 2>&1; echo $?` 复测。
+- **字节类口径（R27 判据 3）**：「158 插入 / 0 删除」= **blob** 口径（`git diff --numstat`）；「42 个 `@pnpm/exe` 条目 / 1542 行 / 行 1–157」= **工作树** 口径（`grep` / `wc` 直读文件）。检出环境：Windows 10 26300 x64 / Node v24.18.0 / 全局 pnpm 12.11.2。取码形状一律 `cmd > /tmp/x.log 2>&1; echo $?`（R27 判据 5），本轮曾有一次读自 `| tail` 之后的 `$?`，已按正确形状复测。
+
