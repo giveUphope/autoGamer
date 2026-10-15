@@ -28,12 +28,19 @@
  * needs a device too (🔶). Do not read "has a lock" as "verified live" (R21).
  * Its history: T4 deleted this spec by mistake, reading it as a provider-chain
  * spec (see TODO §七 G95); it was restored unchanged and all six assertions
- * held, which is itself the evidence that this file has not moved since.
+ * held, which was the evidence that the file had not moved since Phase 3. It has
+ * now moved (交付-2, 2026-10-16: the prop path it read did not exist), and the
+ * cell count grew from six text assertions to twelve including behaviour locks.
  *
- * Owner props are read tolerantly: the exact prop contract lives only in the
- * live inspect catalog (`cordis_inspect what:"client"`), so no card may assume
- * a field. Live data channels (polling, controls) need a mounted proof first;
- * until then every card renders the call's own args/result and nothing else.
+ * The prop contract is MEASURED, not hoped for (2026-10-16, live host: read back
+ * from the fiber of a mounted card). `tool.call.toolview` passes the owner props
+ * `{callId, toolName, phase, block, openFile, cwd, home, loadImage}` — there is
+ * no `result` / `value` / `output` prop. The call's own answer lives inside
+ * `block`: `{kind:'tool-result', content:[{type:'text', text}], meta, isError,
+ * call:{name, argsRaw}, callTime, subCalls}`. Two of the five tools also get a
+ * structured `meta` (`run_task` → {taskId,status}, `manage_task` → {taskId,state});
+ * the other three get `null`. Live data channels (polling, controls) still need a
+ * mounted proof first; until then every card renders this call's own answer.
  * No custom styling: plain elements inherit the host theme (R18: no Host
  * Client imports, token names unverified, so no style attributes at all).
  */
@@ -43,14 +50,43 @@ window.__ModuleLoader__.load({
     const React = require('react');
     const h = React.createElement;
 
-    /** Call record from the binding site: result first, then tolerant fallbacks. */
-    function recordOf(props) {
-      if (!props || typeof props !== 'object') return {};
-      const candidates = [props.result, props.value, props.output];
-      for (const candidate of candidates) {
-        if (candidate && typeof candidate === 'object' && !Array.isArray(candidate)) return candidate;
+    /** The one block shape the Host passes this slot; null when props moved on us. */
+    function blockOf(props) {
+      const block = props && props.block;
+      return block && typeof block === 'object' ? block : null;
+    }
+
+    /** Our tool's own envelope (`k=v; k=v`) arrives as text; anything unpairable stays one row. */
+    function envelopeOf(text) {
+      const out = {};
+      for (const pair of text.split('; ')) {
+        const at = pair.indexOf('=');
+        if (at > 0) out[pair.slice(0, at)] = pair.slice(at + 1);
+        else if (pair) out.response = (out.response ? out.response + '; ' : '') + pair;
       }
-      return {};
+      return out;
+    }
+
+    /** `meta` carries the same facts structured; add it only where the envelope has no twin. */
+    function addMeta(record, meta) {
+      if (!meta || typeof meta !== 'object') return;
+      for (const key of Object.keys(meta)) {
+        if (record[key] !== undefined) continue;
+        if (record[key.replace(/[A-Z]/g, (c) => '_' + c.toLowerCase())] !== undefined) continue;
+        record[key] = textOf(meta[key]);
+      }
+    }
+
+    function recordOf(props) {
+      const block = blockOf(props);
+      if (!block) return {};
+      const texts = (Array.isArray(block.content) ? block.content : [])
+        .filter((part) => part && part.type === 'text' && typeof part.text === 'string')
+        .map((part) => part.text);
+      const record = envelopeOf(texts.join('; '));
+      addMeta(record, block.meta);
+      if (block.isError === true) record.error = texts.join(' ').slice(0, 200) || 'the tool reported an error';
+      return record;
     }
 
     function textOf(value) {
@@ -74,10 +110,14 @@ window.__ModuleLoader__.load({
         });
     }
 
-    function Card(title, badge, rows) {
+    function Card(props, title, badge, rows) {
+      const block = blockOf(props);
+      const phase = props && typeof props.phase === 'string' ? props.phase : '';
+      // A card must never dress an error or an unfinished call up as a healthy state.
+      const shown = block && block.isError === true ? 'failed' : phase && phase !== 'result' ? phase : badge;
       return h('section', { className: 'dsh-autogamer-card' },
         h('h3', { key: 't' }, title),
-        badge ? h('p', { key: 'b' }, h('strong', null, badge)) : null,
+        shown ? h('p', { key: 'b' }, h('strong', null, shown)) : null,
         h('dl', { key: 'd' }, rows.flatMap((row) => [
           h('dt', { key: row[0] + '-k' }, row[0]),
           h('dd', { key: row[0] + '-v' }, row[1]),
@@ -92,43 +132,45 @@ window.__ModuleLoader__.load({
       return fallback;
     }
 
+    // Badges name the keys our own render() actually emits (measured against a live
+    // host, 2026-10-16) - a guessed fallback would be a fake health statement.
     function RunTaskCard(props) {
       const record = recordOf(props);
       return Card(
+        props,
         'AutoGamer task',
-        pick(record, ['status'], 'running'),
+        pick(record, ['status', 'state'], '?'),
         rowsOf(record),
       );
     }
 
     function ManageCard(props) {
       const record = recordOf(props);
-      const current = pick(record, ['current_step'], '?');
-      const total = pick(record, ['total_steps'], '?');
       return Card(
+        props,
         'AutoGamer task state',
-        pick(record, ['state'], 'unknown') + ' · step ' + current + '/' + total,
+        pick(record, ['state', 'status'], '?') + (record.steps ? ' · ' + record.steps : ''),
         rowsOf(record),
       );
     }
 
     function InspectCard(props) {
       const record = recordOf(props);
-      const steps = Array.isArray(record.steps) ? record.steps.length : 0;
       return Card(
+        props,
         'AutoGamer trace',
-        pick(record, ['final_status'], 'unknown') + ' · ' + steps + ' steps shown',
+        pick(record, ['final_status'], '?') + (record.total_steps ? ' · ' + record.total_steps : ''),
         rowsOf(record),
       );
     }
 
     function DiagnoseCard(props) {
       const record = recordOf(props);
-      const crashes = Array.isArray(record.recent_crashes) ? record.recent_crashes.length : 0;
       return Card(
+        props,
         'AutoGamer diagnosis',
         'adb ' + pick(record, ['adb_connected'], '?') + ' · helper ' +
-          pick(record, ['helper_installed'], '?') + ' · crashes ' + crashes,
+          pick(record, ['helper_installed'], '?') + ' · crashes ' + pick(record, ['recent_crashes'], '?'),
         rowsOf(record),
       );
     }
@@ -136,6 +178,7 @@ window.__ModuleLoader__.load({
     function DeviceStateCard(props) {
       const record = recordOf(props);
       return Card(
+        props,
         'AutoGamer device state',
         'connected ' + pick(record, ['connected'], '?'),
         rowsOf(record),
