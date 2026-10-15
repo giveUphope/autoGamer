@@ -33,9 +33,9 @@
 - **进度与待拍板（2026-10-15，能力重审三连落地之后清点）**：三条已结清 —— **#111** abort 归入第四类 `cancelled`（两侧都不记账）/ `wait` 上限低于声明值 / 两处 probe 缝接上 signal；
   **#112** 元素源的 UiAutomation 占用者第一次被命名（三态，读不出绝不答「没人占」）+ 两处「注释指向不存在的锁」改掉；
   **#113** 在官方最弱的 emit 观察点 `tools/result` 上看清**宿主替换掉我们答案的那一份**（归因三态，只计数不决策）。
-  **零授权还能继续的一条**：§七「重审综合」「现在就做」行 3 —— `{text}` 未命中时把**叶级候选框编号 + 该帧 attachment 引用**交回模型（**契约面改动，须先单独出方案**）。⚠️ **G99 已把这条的设计前提改掉**：它设想的「让帧进入模型视野」正是宿主那条编码步缺失所打破的形状（`take_screenshot` 实测同病），所以方案必须先回答「图块发不出去时这条还成不成立」，不能照原句直接实现。
+  ~~**零授权还能继续的一条**：§七「重审综合」「现在就做」行 3 —— `{text}` 未命中时把**叶级候选框编号 + 该帧 attachment 引用**交回模型（**契约面改动，须先单独出方案**）~~ ⇒ **「现在就做」四条到此清完**：行 1、4 已做（#112）、行 2 于 2026-10-16 真机判**不做**（读数见 §七「`uiautomator dump` 旗标 A/B」/ CHANGELOGS **#119**）、**行 3 被 G99 挡住** —— 它设想的「让帧进入模型视野」正是宿主缺失的那步编码（`take_screenshot` 实测同病），要先回答「图块发不出去时这条还成不成立」⇒ 归入下面那件待拍板，不再算「零授权可继续」。
   ~~② #113 欠的宿主会话核验~~ ⇒ **已完成（2026-10-16，宿主 live 实测）**：`host_seen=2/2` —— 宿主确实对我们的工具 emit `tools/result`，我们的订阅收得到；为此把「到达」与「被替换」拆成两个计数（`total` 单独无法区分「没 emit」与「emit 的名字匹配不上」）。见 §七「能力重审-3」与 CHANGELOGS **#116**。
-  **设备前置已到（2026-10-16，用户提供 MuMu + 本地 VLM 端点）**：adb 在 PATH、`emulator-5554` 在线 ⇒ 原来「等装 adb + 设备」那一件已解锁并完成大半（探针 B/C、`ps` 列布局、耗时分布、交付-1 C 项、#113 均已入账）；**剩两项**：① **P1 的「可达 ∧ 赢」在同一轮内被自己的复测否证**（剥净 OCR 噪声后重测：TapTap 稳定页 103 次区域命中、合格靶子 0 个 ⇒ 区域读得到的标签层级本来就有；纯渲染帧 P1 候选为 0）—— 根因是「到期条件」量的是可读性而非可达性，**第三级去留转为待拍板**（详见 §四 G92 与 §七「设备 live 复验轮」）；② **新立 G99，归因已定论** —— 插件返回的 image 附件经宿主送进 OpenAI 兼容请求时 `url` 里放的是内容寻址引用而不是 base64 data URL，LM Studio 直接 `400 INVALID_REQUEST`，且这张图留在历史里会让**该会话后续每一轮立刻失败**（判别探针已版本化：`node scripts/probe-attachment-form.mjs`，三形体唯一签名复现，见 §四 G99 与 §七「G99 归因轮」）。⚠️ **受阻面只到「含图的 live 复验」为止**：G98 的面板复验**不**受本条阻挡，那条等的只是 R19 用户点（安装 `.tgz` 与重启路径不产生图块）。
+  **设备前置已到（2026-10-16，用户提供 MuMu + 本地 VLM 端点）**：adb 在 PATH、`emulator-5554` 在线 ⇒ 原来「等装 adb + 设备」那一件已解锁并完成大半（探针 B/C、`ps` 列布局、耗时分布、交付-1 C 项、#113、`dump` 旗标 A/B 均已入账）；**剩两项**：① **P1 的「可达 ∧ 赢」在同一轮内被自己的复测否证**（剥净 OCR 噪声后重测：TapTap 稳定页 103 次区域命中、合格靶子 0 个 ⇒ 区域读得到的标签层级本来就有；纯渲染帧 P1 候选为 0）—— 根因是「到期条件」量的是可读性而非可达性，**第三级去留转为待拍板**（详见 §四 G92 与 §七「设备 live 复验轮」）；② **新立 G99，归因已定论** —— 插件返回的 image 附件经宿主送进 OpenAI 兼容请求时 `url` 里放的是内容寻址引用而不是 base64 data URL，LM Studio 直接 `400 INVALID_REQUEST`，且这张图留在历史里会让**该会话后续每一轮立刻失败**（判别探针已版本化：`node scripts/probe-attachment-form.mjs`，三形体唯一签名复现，见 §四 G99 与 §七「G99 归因轮」）。⚠️ **受阻面只到「含图的 live 复验」为止**：G98 的面板复验**不**受本条阻挡，那条等的只是 R19 用户点（安装 `.tgz` 与重启路径不产生图块）。
   **等用户拍板的四件**（前三件依据与代价在 §七「重审综合」与「设备 live 复验轮」）：provider 自我循环 A–C′ 取舍（推荐 **C′**：依赖降 optional peer，不动规格与工具面）/ 加 devDependency 做离线 conformance / **阶梯第三级（P1 区域 OCR）的去留** —— 已接线且形状有锁，但复测否证了它的收益口径（区域读得到的标签层级本来就有），回退要连带动 `target_source=ocr-region` 与 6 条锁 / **G99 要不要报上游** —— 归因与可复跑判据已备好（`node scripts/probe-attachment-form.mjs`），影响面已实测到普通 `take_screenshot`，开 issue 属共享状态动作，按 R26 由用户决定。⚠️ 连带的第二个问题也归用户：**在宿主修好之前，插件侧要不要临时不回 image 块**（回退成只报尺寸的文字），因为这正是「让模型看画面」这条能力唯一走得通的路。
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（本轮最后绿态 **45 文件 / 519 通过**）＋ `node scripts/check-docs.mjs`（含 `--selftest`）＋ `node scripts/check-env.mjs`。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
@@ -1666,7 +1666,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 - [x] `readUiAutomationOccupants` 三态落地且词表、`unknown` 判定各带离线单测；三条变异各红一次
 - [x] `autogamer_diagnose` 报告新增 `hierarchy` 栏，`occupied` / `unknown` 各给 recommendation、`free` 不给
 - [x] `preflight.ts:49` 注释改指实际存在的锁；`diagnose.ts` 的未用 import 删除并补结构锁
-- [x] `verify` 全绿、`check-docs` / `check-env` exit 0；§七「重审综合」的「现在就做」行 1、4 改判为已做，行 2 保持待立项
+- [x] `verify` 全绿、`check-docs` / `check-env` exit 0；§七「重审综合」的「现在就做」行 1、4 改判为已做，~~行 2 保持待立项~~ ⇒ **行 2 已于 2026-10-16 真机量过并判不做**（读数见 §七「`uiautomator dump` 旗标 A/B」/ CHANGELOGS **#119**）
 
 **实施记录（2026-10-15，一处接线偏离方案 + 变异计数与方案不符 + 结构锁当场抓到我自己的注释）**
 
@@ -1771,7 +1771,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 |---|---|---|---|
 | 超时与执行 | 现状不是「三层兜底」而是**一个共享 abort 信号上的两层记账**：包装层 45s **只 abort 不返回**（`await next()`），我们把 abort 映射成 `task` 级失败 ⇒ 内部台账与模型可见答案互斥 | 三条已修（#111）；`TOOL_TIMEOUT` 识别已挂 `tools/result` 观察点（#113，**只计数不决策**）；`Deadline` 值对象统管四处内层（重审方案 B，11 文件）**仍未做** | 本节「待立项」行 5（✅）、行 6 |
 | OCR 识图 | 保留 `recognize.ts` 的 needle→像素**确定性解析器**，重新定位为「确定性兜底」；**放弃**「区域 OCR 救召回」；**新增一条非 OCR 的召回轴** | 建议 1、2 已做（#111）；建议 3 待立项（本节「现在就做」行 3） | CHANGELOGS #111；下行 3 |
-| 层级元素源 | **保留 dump、不建 uia2 客户端**——uia2 是第二**传输**不是第二**数据源**（两条路都跑 `AccessibilityNodeInfoDumper`）⇒ 换过去**不解决 G92 的渲染区缺席** | 「现在就做」两条：占用者诊断器、`dump --windows` | 下行 1、2 |
+| 层级元素源 | **保留 dump、不建 uia2 客户端**——uia2 是第二**传输**不是第二**数据源**（两条路都跑 `AccessibilityNodeInfoDumper`）⇒ 换过去**不解决 G92 的渲染区缺席** | 「现在就做」两条：占用者诊断器（**已做 #112**）、`dump --windows`（**2026-10-16 真机判不做**） | 下行 1、2 |
 | 闸门与诊断 | 问题不是「2 项太少」而是**闸门放错了地方**：三处真会给出误导性结果的故障都不在 preflight，而 preflight 罩住了两个不碰设备的工具（`manage_task` / `inspect_trace`）、**没罩住唯一真正驱动设备的 `run_device_action`** | 闸门语义按裁决动（需先改规格 ⇒ 待裁决）；两条注释/死代码真相修复「现在就做」 | 下行 4；R19 段 |
 | 智能栈等价物 | **D8 的取代论证只覆盖执行侧**：`explorer`/`runners` 确有取代者，但 `screen_index` 无对应物、`checker` **只有提示词** | 判「重做」而非放弃，但**均需先补 R20 取证**（官方子代理扩展点本轮未查）⇒ 立为**待取证**，不占编号 | 本节「待取证」段 |
 | 可观测与调试 | 轨迹＝**重做而非放弃**（会话内已成立，跨会话查询/聚合/导出是真缺口，其中导出宿主已覆盖大半）；overlay＝**推迟依据部分失效**；录屏＝**维持放弃** | 就地标注四条过期依据（本轮已做）；能力本体待需求 / 待设备 | 本节「已就地标注」段 |
@@ -1791,7 +1791,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 | # | 做什么 | 为什么是它 | 判据（离线） |
 |---|---|---|---|
 | 1 | **层级占用者诊断器**（约 30 行，`git grep "ps -A\|wetest\|com.github.uiautomator" -- src` 现**零命中**） | dump 静默失败后今天**直接降级到 OCR 且无人知道原因**，是元素源面最大的真实缺口 | `readHierarchyXml` 返回 `undefined` 且喂固定 `ps` 文本命中 marker ⇒ 报**具名**占用者；空 ⇒ 报「dump 本身失败」。变异：删 marker 匹配必红。**✅ 2026-10-15 已做（能力重审-2 / CHANGELOGS #112）——接线点改到诊断面**（`{text}` 走的是执行路径，那里补一条 `ps` 会落在阶梯的 3 次重取里；占用者是设备属性不是本次调用的属性），三态与理由见该条目 |
-| 2 | **`uiautomator dump --windows`**（`--compressed` 默认关） | `--windows` 取 `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`，能多捞弹窗/系统窗口节点；`--compressed` **反向**（上游 py 显式传 `compressed=True`，而 verbose 的 `setCompressedLayoutHierarchy(false)` 节点**最多**⇒ 照搬上游对 G92 更差） | 离线：mock adb 断言 argv 含 `--windows`。🔶 增量几个节点需真机 |
+| 2 | ~~**`uiautomator dump --windows`**（`--compressed` 默认关）~~ ⇒ **2026-10-16 真机量过，判不做**（读数见 §七「`uiautomator dump` 旗标 A/B」） | `--windows` 取 `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`，**预期**能多捞弹窗/系统窗口节点；`--compressed` **反向**（上游 py 显式传 `compressed=True`，而 verbose 的 `setCompressedLayoutHierarchy(false)` 节点**最多**⇒ 照搬上游对 G92 更差）。⚠️ **两处预期都没被实测支持**：① 本机增量全是状态栏 chrome（clickable +0、文字 +1），却挤掉 5 个应用区候选并改掉 `#N` 的语义；且下拉栏确实开着时 `NotificationShade` 也**没进 dump** ⇒「interactive windows」≠「所有窗口」。② `--compressed` 其实**保住了 24 个文字节点与 19 个 clickable**，原句「读不到字」推错了方向 —— 真正损失是 53 个只有 `resource-id` 的条目与 12 个候选 | 离线：mock adb 断言 argv 含 `--windows`（**不再需要**，判不做）。~~🔶 增量几个节点需真机~~ ⇒ **已量**：+25 节点 / +0 clickable / −5 应用区候选 |
 | 3 | **`{text}` 未命中时把「叶级候选框编号 + 该帧 attachment 引用」交回模型**（通路已存在：`src/index.ts:298-311` 存附件、`src/tools/runDeviceAction.ts:738-739` 已产 `[text, image]` 块。⚠️ 两处行号在本轮按现状重指 —— 原写 `693-694` 现已是 `isConcurrencySafe`，属「指针指向不存在的代码」同类缺陷） | 一条**非 OCR** 的召回轴：层级答不出时让帧进入模型视野、由模型回 `{coordinate}` 或 `{index}`，而不是继续在 tesseract 上重实现版面分析。⚠️ **G99 打掉了这条的前提**（2026-10-16 实测）：「让帧进入模型视野」要走的正是宿主缺失的那步编码，`take_screenshot` 同病 ⇒ 方案必须先回答「图块发不出去时这条还成不成立」 | 新增 spec：`{text}` 未命中时结果**必含** `frame` 引用且**不含任何猜的坐标**；变异：删引用必红。🔶 收益数字属探针 B |
 | 4 | **两处「注释/代码说谎」的真相修复**：`src/env/preflight.ts:49` 写「`contracts.spec` locks this list」——**该文件不存在**，真锁是 `tests/preflight.spec.ts:76-77`（`:76` 比 id 列表、`:77` 用字面量 `[true, true]` 才真正锁住「只有两项」）；`src/tools/diagnose.ts:21` import `requireEnv` **从不调用**（tsconfig 未开 `noUnusedLocals` ⇒ 编译不报，读者会误以为诊断也过闸门） | 与 #107 的 `client.js` 注释同类缺陷：**指向不存在的锁**＝把读者引向一个假的验收 | 改完 `git grep -n "contracts.spec" -- plugins/dsh-autogamer/src` ⇒ 零命中；`requireEnv` 的 import 删除后 `verify` 不变绿即证它本就没被用。**✅ 2026-10-15 已做（能力重审-2 / CHANGELOGS #112），并加了一条源码结构锁**（`diagnose.ts` 里出现 `requireEnv` 即红——第一次跑就红在我自己新写的注释上，实证它有牙） |
 
@@ -1808,7 +1808,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 **需人裁决（R19 授权面，或 R22 要先改规格）**
 
 - **provider 自我循环四选项**：A 全删（与规格 §一.3 冲突 ⇒ 先改规格；收益是卸掉 `@modelcontextprotocol/sdk` 这个**唯一消费者是 `mcpBackend.ts`** 的运行时依赖）、B 降级为纯文档（**更糟**：留下说谎的规格）、C 重新定位为「原生 adb 读 vs 外部读」的**对照源**（今天 `index.ts:543-563` 把返回值整个丢掉、只拿「有没有回话」当 `reachable` ⇒ **内容盲**）、**C′ 折中＝依赖降为 optional peer**（不动规格、不动工具面，未配置者安装面少一个依赖）。
-- **装 adb + 一台设备**：解锁 G92 探针 B/C、交付-1 C 项、以及本处所有标 🔶 的 live 判据（§七「设备前置调研」已查实成本最低路径＝Platform Tools + 用户手机无线调试）。
+- ~~**装 adb + 一台设备**~~ ⇒ **前置已到（2026-10-16，用户提供 MuMu `emulator-5554` + 本地 VLM 端点）**：已解锁并完成 G92 探针 B/C、交付-1 C 项、`ps` 列布局、耗时分布、#113 的宿主会话核验、`dump` 旗标 A/B。**剩下的 🔶 不是设备能解的**：① 「两层同时计时」的时钟竞赛（本机最坏动作级阶梯实测约 6–8 秒，够不到 45s 的包装层门 ⇒ 在这台快设备上**造不出触发条件**，要慢设备）；② 慢设备的耗时分布（同一原因）；③ 含图路径的 live 复验（阻塞在 G99，宿主侧）。原句的成本最低路径（Platform Tools + 用户手机无线调试）已由本机 MuMu 替代。
 - **加 devDependency 做离线 conformance**：验「声明 `timeoutMs` → 包装层替换结果」这条链（`report_task_status` 不过 preflight 且声明 5s ⇒ 唯一可离线碰的工具），属授权面。
 
 **闸门面的其余处置（不新建编号，逐条给结论）**
@@ -2464,7 +2464,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 - **门禁**：`verify` **42 文件 / 466 测试全过**（探针 A 新增 3 文件 26 条：image 10 + regions 14 + probe 2；基线 39/440）；`check-docs --selftest` 7 变异无假绿；`check-env` 干净；README Layout 已同步 `image.ts`/`regions.ts`。
 - **对 B/C 的输入**：P1 工程面已就绪，唯一未答的是「层级缺席渲染区」的召回——那是探针 B（真机难帧重采、扫 padding/scale/过滤常量）与探针 C（纯 webview 帧判 P2 去留）的范围，均需 adb + 设备。本轮**未接产品阶梯**（`runDeviceAction.ts` 的 hierarchy→整帧 OCR 阶梯未动），接线属探针 B/C 后的 Done 项。
 
-### 设备 live 复验轮 · 收口记录（2026-10-16：探针 B/C、阶梯接线、`ps` 列布局、耗时分布、宿主核验、新立 G99、G99 归因轮）
+### 设备 live 复验轮 · 收口记录（2026-10-16：探针 B/C、阶梯接线、`ps` 列布局、耗时分布、宿主核验、新立 G99、G99 归因轮、G99 影响面实测、`dump` 旗标 A/B）
 
 **前置与工具**：adb 已在 PATH（winget Platform Tools），`emulator-5554` 在线（product aurora / model 24031PN0DC，1600×900 横屏、游戏内 900×1600 竖屏）。两条探针都**版本化**入库，不是临时脚本：`plugins/dsh-autogamer/scripts/probe-recall.mjs`（探针 B）与 `scripts/probe-p2.mjs`（探针 C）。命中判定一律复用**生产同一函数** `findNeedleHits`（探针不自造第二套匹配口径）。
 
@@ -2503,9 +2503,25 @@ pad\scale |  1.0  1.5  2.0  3.0
   - **实验（新会话，一次只动一个变量）**：只让模型调一次 `run_device_action action=take_screenshot`。读数：**同一轮内先「已调用工具 run_device_action · take_screenshot」，随即「本轮运行失败 400 "'url' field must be a base64 encoded image." / INVALID_REQUEST」**，紧接着的第二回合同一处再失败一次。
   - **旁证（工具确实产出了图）**：`~/.dsh/attachments/v1/objects/8c…` 这一分片目录的 mtime 与那次调用同分钟（01:53）⇒ 附件已持久化、结果里带的就是引用；提供方拿到的仍是同一个非 base64 形体。
   - ⇒ **影响面按实测升级**：`take_screenshot` 与 `autogamer_diagnose{include_screenshot:true}` **两条路径同病**，在本地提供方上「让模型看画面」整体不可用（这不是我方能力退化，是宿主那条编码步缺失）。
-  - ⚠️ **一条关于「只认会话日志」的新读数坑（R24 的连带）**：这个失败会话的 `session.v4.jsonl.zstd` 至今只有 **328 字节 / 4 条记录**（header + 三条策略），回合记录**还没落盘** —— 上一轮那个同样失败的会话（00:56 开）也是到 **01:14** 才出现完整记录。⇒ **日志落盘是滞后的：在窗口内读不到回合记录 ≠ 没发生**，据此判「没发生」会把真实事件判没。本轮因此按「面板渲染 + 附件仓 mtime」记为已测，并把「回合记录落盘后复核」留在下面这条待办里。
+  - ⚠️ **一条关于「只认会话日志」的新读数坑（R24 的连带）**：这个失败会话的 `session.v4.jsonl.zstd` 在事后 **4 分钟与 8 分钟两个检查点都仍是 328 字节 / 4 条记录**（header + 三条策略），回合记录**还没落盘** —— 上一轮那个同样失败的会话（00:56 开）也是到 **01:14** 才出现完整记录。⇒ **日志落盘是滞后的：在窗口内读不到回合记录 ≠ 没发生**，据此判「没发生」会把真实事件判没。本轮因此按「面板渲染 + 附件仓 mtime」记为已测，并把「回合记录落盘后复核」留在下面这条待办里。
   - 🔶 **仍欠**：等 38a6e038 的回合记录落盘后用 `node plugins/dsh-autogamer/scripts/conformance-live.mjs`（或直接解 zstd 帧）复跑一次，把这条从「面板读数」升成「日志读数」。
 - **耗时分布入账（45s 预算的依据，各 5 次均值，本机 MuMu）**：`uiautomator dump` **2036ms**（主导项）｜ `exec-out screencap -p` 534ms ｜ `input tap` 53ms ｜ `getprop` 38ms ｜ `dumpsys window` 46ms ｜ OCR 整帧 1235–2498ms ｜ P1 区域 584–832ms。⇒ 一条最坏路径的动作级阶梯（dump + tap + 前后两帧差分 + 一次整帧 + 一次区域）约 **6–8 秒**，**45s 在这台设备上没有上调依据**；`dump` 是唯一稳定上到秒级的内层调用，慢设备场景的分布仍未量（G99 修好后补）。
+- **`uiautomator dump` 旗标 A/B（2026-10-16 真机，量的是「现在就做」行 2 的那个 🔶）**
+  - 同一屏（TapTap，900×1600）、同一台（`emulator-5554`）三种旗标各 dump 一次，全部**用生产的两个函数**解析（`parseHierarchyXml` 数节点、`parseVisibleElements` 数模型看到的列表条目、`selectRegionCandidates(…, 900, 1600, {})` 数 P1 候选）：
+
+    | 旗标 | 字节 | 节点 | 列表条目 | 带文字/描述/资源名 | 只剩 class 名 | clickable | `text>=2` | P1 候选（cap 40） | 候选落在状态栏 | 单次耗时 |
+    |---|---|---|---|---|---|---|---|---|---|---|
+    | `dump`（现状） | 56594 | 154 | 154 | 90 | 64 | 19 | 24 | 40 | 0 | 2437ms |
+    | `dump --windows` | 66861 | 179 | 179 | 112 | 67 | 19 | 25 | 40 | **5** | 2095ms |
+    | `dump --compressed` | 19146 | **51** | 51 | **37** | 14 | 19 | 24 | **28** | 0 | 2077ms |
+
+  - **`--windows` 判不做**（三条各自成立）：① 增量**全是系统栏噪声** —— 两个 `com.android.systemui` 窗口根都量 `0,0→900,31`，26 个节点里 clickable **+0**、`text>=2` 只 +1；② 但它**挤掉了真实靶子** —— 候选表在 `cap=40` 下被 5 个状态栏图标占位，应用区候选 40 ⇒ **35**；③ 它还**改掉 `#N` 的语义** —— 列表条目 154 ⇒ 179，多出的是靠 `resource-id` 才有名字的 chrome 条目（90 ⇒ 112），而 `#N` 是按列表位置发的手柄。
+  - **「多捞弹窗/系统窗口」这条预期在本机没复现**：展开下拉栏后用 `dumpsys window windows` 确认 `Window{… NotificationShade}` 确实在窗口表里（第 2 号），`dump --windows` 仍只多出那两条状态栏 —— 即 **`FLAG_RETRIEVE_INTERACTIVE_WINDOWS` 的「interactive」不等于「所有窗口」**，指望它捞回被 `dump` 漏掉的弹窗层，这台设备上是空的。
+  - **`--compressed` 判不做，但依据要换**（R28 就地更正行 2 原句）：原句写「verbose 节点最多 ⇒ 照搬上游 `compressed=True` 对 G92 更差」——**这句推错了方向**：实测 `--compressed` 把 24 个带文字节点和 19 个 clickable **一个不少地保留**，砍掉的 103 个节点里绝大多数是空容器；真正损失的是**53 个只有 `resource-id` 的条目**（90 ⇒ 37）。候选面也不是「单纯变少」而是**整张表被重排**：40 个候选里 **20 个消失**、只剩 20 个与 plain 相同、另有 **8 个是换了形状的框**（28 个总数）⇒ 空容器一消失，叶级框的合并/切分方式就变，`#N` 与区域扫描对象同时换血。
+  - 耗时三档都在 `dump` 的既有区间内（2036ms 均值，本次 2077–2437ms）⇒ **旗标选择不构成耗时理由**，只构成召回面理由。
+  - **判读脚本没版本化（写明理由）**：这次是**一次判读**（决定两个旗标的去留），不是要长期咬住的判据；版本化它要多第三条依赖 adb 的探针而它没有后续消费者。复跑 = `adb -s emulator-5554 shell uiautomator dump [--windows|--compressed] /sdcard/x.xml` + `adb pull` 后用上面那三个函数各数一次。
+  - **两轮复现（排除「两次 dump 之间换了帧」这个混淆）**：整套 A/B 重跑一遍，两次得到**同一组**替换 —— plain 的 40 个候选里有 5 个（`80,97,144,119`／`166,97,230,119`／`252,97,316,119`／`179,693,369,703`／`199,687,364,702`，都在应用内容区）在 `--windows` 下不见了，取而代之的 5 个全在 `y=0..31` 的状态栏；列表条目两次都是 154 ⇒ 179、带名条目 90 ⇒ 112、clickable 恒 19。⇒ 「挤掉 5 个真实靶子」是**机制性**的（`cap=40` 先到先得），不是采样噪声。
+  - 边界（不静默）：单屏、单设备、两轮复现；`--windows` 在真弹窗（权限对话框 / IME 窗口）上的行为**没测到**，因为本机没能造出那种窗口 —— 这条按「已量场景内判不做」记，不是「全场景否证」。
 - **门禁**：`verify` **45 文件 / 519 通过**（基线 45/510，+6 阶梯锁、+3 到达锁）；`check-docs` / `--selftest` / `check-env` 全 exit 0；README 的「未接线」段按现状改写（R28）。
 
 ### 文档对齐-1 · 全仓文档面对齐当前实现（2026-10-15 结案；CHANGELOGS #103）
