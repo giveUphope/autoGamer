@@ -27,7 +27,7 @@
 - **许可与 git 历史裁定（2026-10-14，用户裁定）**：① `LICENSE` **重写为本项目自撰 MIT 全文**（版权人 giveUphope，2026），保持开源、不再随迁上游 Apache-2.0 文本（含原 `Copyright 2026 Google LLC` 附录行）；② **git 历史保留**——历史中的上游内容仅作记录存在，不影响当前新方案设计与实现，D20 判据只覆盖工作树层。裁定展开见规格 §八。
 - **阶段：T1–T5 全部落地，宿主内 live 证明已完成（2026-10-15）**。插件工程已搬入（搬迁-1）；T1 的三条任务工具、T2 的十五工具面、T3 的效果判定、T4 的收尾与溯源清理、T5 的内置 OCR 均在 TS 侧，`verify` 全绿；
   **宿主内真会话已跑通**（R6/R7/R9/R24 四条读数：面板 2/2 运行中、`Config` 返回 `status:"schema"`、七个工具对模型可见、会话日志 7 次工具调用与 7 次结果），权威记录在 CHANGELOGS **#97**。
-  本文件 §四 现有**五行**：三条**非待办** —— **G92**（OCR 召回面：探针 B/C 已于 2026-10-16 真机入账 —— P1 在三张屏上都测得对整帧的增益（桌面 3/23 vs 1/23、TapTap 13/22 vs 5/22 与 12/24 vs 4/24），P2 判**降级**，剩「既可达又赢」那一屏与接线后的端到端）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）；**G98**（packed `.tgz` 的清单与 manifest 形状**已离线复验并固化为 `scripts/pack-check.mjs`**，剩面板复制安装与重启复验属 R19 用户点）；**G99**（插件返回的 image 附件送进 OpenAI 兼容请求时 `url` 不是 base64 data URL ⇒ 本地提供方 `400 INVALID_REQUEST`，且该图留在历史里会让**整个会话后续每轮立刻失败**；**归因已用三形体判别实验定论在上游**，**影响面已实测到 `take_screenshot`** ⇒ 「模型经我方工具看画面」整体不可用，修复不在我方）。
+  本文件 §四 现有**六行**：三条**非待办** —— **G92**（OCR 召回面：探针 B/C 已于 2026-10-16 真机入账 —— P1 在三张屏上都测得对整帧的**可读性**增益（桌面 3/23 vs 1/23、TapTap 13/22 vs 5/22 与 12/24 vs 4/24）；但「既可达又赢」被同一轮复测否证，见下方 ①，剩的是那一屏与接线后的端到端；P2 判**降级**）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）；**G98**（packed `.tgz` 的清单与 manifest 形状**已离线复验并固化为 `scripts/pack-check.mjs`**，剩面板复制安装与重启复验属 R19 用户点）；**G99**（插件返回的 image 附件送进 OpenAI 兼容请求时 `url` 不是 base64 data URL ⇒ 本地提供方 `400 INVALID_REQUEST`，且该图留在历史里会让**整个会话后续每轮立刻失败**；**归因已用三形体判别实验定论在上游**，**影响面已实测到 `take_screenshot`** ⇒ 「模型经我方工具看画面」整体不可用，修复不在我方）；**一条是我方真待办** —— **G100**（client 卡片读的是宿主根本不传的 prop 键 ⇒ 卡片挂载了却四张全空；渲染那半 🔶 已解除，坏的是数据通道。方案在 §七「交付-2」：离线锁 + 数据级实证归我方，安装级 live 与 G98 同一扇 R19 门）。
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（三段脚本的形状与 `build` 的差别见 `AGENTS.md`「命令」）。
   全部 py 实现均不在本分支（按 D19 归零）。
 - **进度与待拍板（2026-10-15，能力重审三连落地之后清点）**：三条已结清 —— **#111** abort 归入第四类 `cancelled`（两侧都不记账）/ `wait` 上限低于声明值 / 两处 probe 缝接上 signal；
@@ -254,6 +254,7 @@
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内。**2026-10-15 复核仍未解锁**：宿主侧没有承载标注图的 UI 落点（R18），而 OCR 内置之后，「画框」要成立还多了一个前置——元素源本身要可信 ⇒ 与 **G92** 挂钩。要做时是「UI slot + 可信元素源」的新条目，不是给截图加一层绘制）。⚠️ **2026-10-15 能力重审推翻本行两处依据**（结论「仍推迟」**不变**，但理由要换）：① 「宿主侧没有承载落点」**当时为真、现在为假**——宿主自己渲染工具结果里的 image 块（`src/tools/runDeviceAction.ts:738-739` 已产 `[text, image]`），标注图**不需要一张 client 卡片**；② 前置-6 的成本依据「要引入 sharp/libvips」也过期（仓内已有零依赖 PNG 解码 `effect/png.ts:103` + 编码 `ocr/image.ts:119`）。⇒ **唯一成立的前置是元素源可信度（G92）**；判据方法论见 §七「重审综合」的「已就地标注」段 |
 | G98 | packed `.tgz` 的交付形态**未在 pnpm 12 的宿主面板上复验**：**离线半步已于同日完成并固化成判据** —— 比对已是版本化的 `node scripts/pack-check.mjs`（预期与被测物异源，四类变异各红一次，见 §七「基建-8」/ CHANGELOGS **#115**）；读数本身在 §七「基建-7」的 G98 段：清单 49 条与构成式一致，旧 manifest（pin 11.21.0 ＋ 旧锁）与新 manifest 在 12 上 pack 出的清单与 `package.json` **逐字节相同** ⇒ 锁文件形状与钉版换值都不进交付物。**仍开着的是另一半**：面板输入 `.tgz` 的复制安装、`tesseract.js` 构建脚本授权、替换后重启与 2/2 运行态，全都只在 pnpm 11 时代量过 | **基建-7 新立、基建-8 补上判据**（剩余部分是 R19 用户点：须用户在面板操作。原并列的 交付-1 C 项已于 2026-10-16 在宿主 live 完成，见 §七「交付-1」与本表下方 G99 的连带阻塞） |
+| G100 | **client 卡片在宿主里挂载了，但一张都没有数据**：`client.js` 的五张 `tool.call.toolview` 卡读的是 `props.result` / `props.value` / `props.output` —— 这三个键**宿主一个都不传**。一手实测（浏览器里从已挂载卡片的 DOM 反向走 React fiber）给出真实形状：owner props 是 `{callId, toolName, phase, block, openFile, cwd, home, loadImage}`，结果在 **`block.content[0].text`**（我们自己 `render` 的 `k=v` 信封）与 **`block.meta`**（`run_task`=`{taskId,status}`、`manage_task`=`{taskId,state}`、`inspect_trace`/`diagnose`=`null`），另有现成的 `block.isError` 与 `phase` 从没被读。⇒ 四张卡只剩标题 + fallback 徽章（`running` / `unknown · step ?/?` / `adb ? · helper ? · crashes 0`），**比不挂卡更容易误导**（一张写着「running」的空壳就是一份假健康证明，R21 反向形态）。⚠️ 这条同时**解除**了 #107/#112 一直挂着的 🔶「没证明卡片在浏览器渲染过」——渲染是**已证**的，坏的是数据通道 | **交付-2 立项（2026-10-16，R22）**：改读法 + 一条离线结构锁 + 一条负锁归我方；「数据级对着真 props 实证」也在本轮做；**安装级 live 复验属 R19 用户点**（重装 `.tgz` + 重启宿主），与 G98 剩余那半步同一扇门 |
 | G99 | 插件返回的 **image 附件送进 OpenAI 兼容请求时形状不被接受**：模型在 `autogamer_diagnose` 调用里自己传了 `include_screenshot:true`（该参数在声明面就有），diagnose 便按既有契约把设备截图作为附件块返回（`attachmentId=sha256:…`、`mediaType=image/png`、`900x1600`、`bytes=1984755`）；宿主把它转成 `image_url` 送给本地提供方（LM Studio `127.0.0.1:1234/v1`，`api: openai-completions`）时 **`url` 不是 base64 data URL** ⇒ 提供方 `400 "'url' field must be a base64 encoded image."` / `INVALID_REQUEST`，且 `inputTokens=0` 说明**生成前就被拒**。更糟的是这张图留在会话历史里 ⇒ **该会话之后每一轮都在同一处立刻失败**（实测连挂三轮，新开会话才恢复）。**归因已用判别实验定论（R25，一次只动一个变量）**：同一端点、同一模型，只差 `image_url.url` 的形体三跑（读数取自营运已版本化的 `plugins/dsh-autogamer/scripts/probe-attachment-form.mjs`）—— A 内容寻址引用 `sha256:<64hex>` ⇒ `400`，消息**逐字等于现场那句**；B 裸 base64（同一张 64×64 自生成 PNG，5252 字符）⇒ `400 Invalid url.`；C `data:image/png;base64,…`（同字节加 22 字符前缀 = 5274）⇒ **`200`** 且 `prompt_tokens=27`（图形体被接受、字节进了视觉编码器）。⇒ 现场那句**只有 A 能复现**，故「那次请求的 `url` 里放的是附件引用」不是猜测而是复现；C 被接受 ⇒ 提供方不拒「图」，只拒这个形体。**取证（官方一手资料，R20）**：`docs/subsystems/attachment.zh.md`（`master`，2026-10-16 取回 200 / 17799 字节）开篇即写「会话事件和模型可见的附件块包含该引用及其元数据，绝不包含浏览器对象 URL、宿主临时路径、提供方 URL 或 base64 数据」，同文另有 `readImageRequest()` / `RequestImageAttachment`（「按确切的路由目标尺寸和编码字节目标派生并缓存确定性请求版本」，`ImageRequestTarget.maxBytes` 注为「base64 展开之前的编码字节目标」）⇒ **由引用派生请求用编码图是宿主自己定义的一步**，这条 `openai-completions` 路径没做到 ⇒ **上游侧缺陷，我方不改** | **设备 live 复验轮新立（2026-10-16），归因轮取证完成、修复不在我方**。我们不迁就它：`include_screenshot` 与附件契约是官方形状，不该为一个提供方去削弱模型看图。**要报上游（issue）属共享状态动作，由用户决定**（R26：`gh` 写操作一律显式 `--repo`），复现命令已随本条备好。**连带阻塞（已按实测升级，见 §七「G99 影响面实测」）**：不止 diagnose 的 `include_screenshot` —— **普通的 `run_device_action action=take_screenshot` 同病**（两条路径都经 `render` 产 `[text, image]`）。⇒ 在本地提供方上「模型经我方工具看画面」这整条能力不可用，一切含图的 live 复验同理受阻（含图的会话一旦写入历史就不可恢复，只能新开会话）。⚠️ **一条被我纠正的连带说法**：G98 的面板复验**不**受本条阻挡 —— 安装与重启路径不产生图块，它等的只是 R19 用户点 |
 
 > **本表只列还开着的事**（R28：结案的行不再占位，去 §七 与 CHANGELOGS 找记录）。
@@ -2564,3 +2565,38 @@ pad\scale |  1.0  1.5  2.0  3.0
 - [x] 插件 README 的 Layout 描述、脚本清单、`verify` 形状与「两个 `src/ocr/` 模块无生产消费者」这条边界写清
 - [x] `AGENTS.md`（CHANGELOGS 已存在、T1–T5、门禁脚本形状、`ocr-probe` 与交付指针）与根 `README.md`（现状不再写「从零重建中」）
 - [x] 悬空编号 `G97` 的**活引用**清零并按 R28 就地标注更正理由；`verify` 读数不变（纯文档轮）；门禁三条命令全 exit 0
+
+### 交付-2 · client 卡片读错了 prop 键（方案 2026-10-16 立项，R22；主题项 **G100**）
+
+> 起因：设备与宿主面板都到位后，去补 #107/#112 一直标 🔶 的那半句 ——「`clientHalf.spec` 只锁结构，**没证明卡片在浏览器里渲染过**」。
+> 结论分两半：**渲染这半解除**（四张卡片在真会话的 DOM 里挂着），**数据面暴露成新缺口**（四张全是空壳）。
+
+**What（要什么）**
+
+1. `client.js` 的五张卡（`autogamer_run_task` / `manage_task` / `inspect_trace` / `diagnose` / `get_device_state`）在宿主 `tool.call.toolview` 槽里**显示该次调用自己的结果**，而不是一律退回标题 + fallback 徽章。
+2. 判据形状：一条**离线能红的结构锁**钉住「读的是宿主真实给的那条路径」，另加一条负锁钉住「不再假装 `props.result` 存在」。
+
+**How（怎么做，关键决策）**
+
+1. **契约来自一手实测，不来自推测**：本轮在同一台宿主、同一个已装插件上，从已挂载的卡片 DOM 反向取到 React fiber 的 `memoizedProps`。
+   **读到的形状**（`autogamer_run_task` 那张卡，`phase:"result"`）：
+   `ownerProps = {callId, toolName, phase, block, openFile, cwd, home, loadImage}`；
+   `block = {kind:"tool-result", seq, time, callId, call:{name, argsRaw}, callTime, content:[{type:"text", text}], isError, meta, subCalls}`；
+   `block.meta` 对 `run_task` 是 `{taskId, status}`、对 `manage_task` 是 `{taskId, state}`、对 `inspect_trace` / `diagnose` 是 `null`；
+   `block.content[0].text` 就是我们自己 `render` 出的那条形如 `task_id=…; status=running; profile=flash` 的信封（diagnose 那条实测含 9 对 `k=v`）。
+   ⇒ **`props.result` / `props.value` / `props.output` 三个键宿主一个都不传**，这就是四张卡全空的根因。
+   官方检查器那条路（`cordis_inspect what:"client"`）**够不到**：`cordis_inspect_query` 的 provider 只有 `Service / Event / Config / Tool`，**没有 projection / fiber 查询面**（宿主会话实测，§七「T1 · 引擎去消费者」）。
+   ⚠️ **取证渠道要写明边界（R9）**：上面这份形状是**浏览器运行时里读到的一手数据**（从已挂载卡片的 DOM 反向走 React fiber），不是官方检查器给的结论 ⇒ 它能回答「宿主此刻实际传了什么」，不能替代官方契约文档；若上游改了 props，这份读数就过期（所以它同时是一条**要复跑**的实测，不是永久事实）。
+2. **读法按「结构化优先、文本兜底」**：`block.meta`（`{taskId, status}` / `{taskId, state}`）是宿主已结构化的字段 ⇒ 先取它；`block.content` 里那条 `k=v; k=v` 文是我们自己 `render` 的信封（`runDeviceAction.ts:728-737`）⇒ 按对拆解兜底，长值被 `RENDER_TEXT_BUDGET` 裁过会带 `…`，拆不出的整条原样显示，**不猜**。
+3. **错误与阶段要进徽章**：`block.isError` 与 `phase` 是宿主给的现成状态，卡片此前完全没读；失败调用要能看出来，而不是显示一张「running」的假健康卡（R21 的反向形态）。
+4. **`recordOf` 的三个候选键（`result` / `value` / `output`）整体作废**：它们不在宿主 props 里。删干净而不是「再加一个候选」——留着就是下一条「注释指向不存在的对象」。
+5. **不新增能力**：不加轮询、不加控件、不引第二个框架（`clientHalf.spec` 的负锁原样保留）。
+
+**Verify（怎么算完成）**
+
+- [ ] 离线结构锁：`client.js` 出现 `props.block`（含 `content` 与 `isError` 的读取），且 `grep` 不到 `props.result` / `props.value` / `props.output`；**变异校验**（R27）：把读取路径改回 `props.result` ⇒ 这条必红，改回 `block.content` ⇒ 复绿。
+- [ ] `verify` 全绿且**新增条数写进 §零 唯一权威**；`build` + `node scripts/pack-check.mjs` exit 0（`client.js` 在 `files` 白名单里，清单仍 49 条）。
+- [ ] **数据级实证（不必等重装）**：把改后的解析函数在浏览器控制台里对**真实 props** 跑一遍（宿主面板 `.dsh-autogamer-card` 的 fiber），要求四张卡都产出非空行、且 diagnose 那张至少含 `device_serial` / `adb_connected` / `recent_crashes` 三行。这是「逻辑对着真数据成立」，**不等于**「装好的插件渲染出来了」。
+- [ ] 🔶 **live 复验属 R19 用户点**：改后的 `client.js` 要经「重新 `pnpm pack` → 面板替换安装 → 重启宿主」才会被浏览器加载（交付-1 的既有结论），与 **G98** 剩余那半步是同一扇门。未走完之前本项**不许勾**，只记「数据级已证、安装级待验」。
+
+**Done（含义）**：卡片从「挂着但空的」变成「挂着且显示这次调用结果」；`G100` 的离线与数据两半结清，live 半并入 G98 那扇 R19 门。
