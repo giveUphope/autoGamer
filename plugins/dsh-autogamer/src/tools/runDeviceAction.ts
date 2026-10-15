@@ -35,6 +35,7 @@ import {
 } from "../hierarchy.js";
 import { LiveObservations } from "../observations.js";
 import { chooseHitPoint, findNeedleHits, type OcrPage } from "../ocr/recognize.js";
+import { parseHierarchyXml, type HierarchyNode } from "../device/hierarchy.js";
 
 export interface RouterLogger {
   info(message: string): void;
@@ -60,8 +61,8 @@ export const ACTIONS = [
 
 export type DeviceAction = (typeof ACTIONS)[number];
 
-/** Which source answered a `{text}` target: the nodes, or the frame (T5). */
-export type TargetSource = "hierarchy" | "ocr";
+/** Which source answered a `{text}` target: the nodes, the whole frame, or a frame region (T5 / G92). */
+export type TargetSource = "hierarchy" | "ocr" | "ocr-region";
 
 /**
  * Actions that should move the screen. Observation-only actions
@@ -363,6 +364,14 @@ export interface RouterOptions {
    * behaviour exactly as it was: OCR may add an answer, never take one away.
    */
   ocr?(key: string, signal?: AbortSignal): Promise<OcrPage | undefined>;
+  /**
+   * G92 P1: the same frame read one hierarchy-bounds box at a time, asked only after
+   * the whole-frame pass has already missed. The measured reason it exists (探针 B on
+   * the live launcher: whole frame 1/23 needles, P1 3/23) is that tesseract's page
+   * analysis loses small labels in busy layouts - not that pixels are too few.
+   * Same fail-open contract as `ocr`: undefined means "nothing to add", never a refusal.
+   */
+  ocrRegions?(key: string, nodes: readonly HierarchyNode[], signal?: AbortSignal): Promise<OcrPage | undefined>;
   hierarchy(key: string, signal?: AbortSignal): Promise<string | undefined>;
   /**
    * Screen dimensions for 0-1000 → pixel conversion; probe result cached per
@@ -460,7 +469,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
             "check the device connection and re-run get_ui_hierarchy",
         );
       }
-      const hit = resolveTarget(target, fresh, key);
+      const hit = resolveTarget(target, fresh.elements, key);
       if ("center" in hit) return { ...hit.center, via: "hierarchy" };
       if (!hit.retryable) throw new Error(hit.refusal);
       lastError = hit.refusal;
@@ -471,6 +480,9 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       if (typeof target.text === "string" && target.text.length > 0) {
         const point = await ocrPoint(key, target.text, signal);
         if (point !== undefined) return { ...point, via: "ocr" };
+        // G92 P1, the third source: the same frame, read one bounds box at a time.
+        const region = await ocrRegionPoint(key, fresh.nodes, target.text, signal);
+        if (region !== undefined) return { ...region, via: "ocr-region" };
       }
     }
     throw new Error(lastError);
@@ -491,6 +503,29 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       return undefined;
     }
     logger.info(`[route] text "${needle}" resolved by OCR at ${point.x},${point.y} (${page.ms}ms)`);
+    return point;
+  }
+
+  /**
+   * The region pass, third in the ladder. It reads the boxes the nodes expose even
+   * when they carry no text - which is exactly where 探针 B measured the gain - and
+   * adds nothing when it misses, same as `ocrPoint`.
+   */
+  async function ocrRegionPoint(
+    key: string,
+    nodes: readonly HierarchyNode[],
+    needle: string,
+    signal?: AbortSignal,
+  ): Promise<{ x: number; y: number } | undefined> {
+    if (options.ocrRegions === undefined || nodes.length === 0) return undefined;
+    const page = await options.ocrRegions(key, nodes, signal);
+    if (page === undefined) return undefined;
+    const point = chooseHitPoint(findNeedleHits(page, needle));
+    if (point === undefined) {
+      logger.warn(`[route] text "${needle}" also missed the region scan (${page.hits.length} boxes)`);
+      return undefined;
+    }
+    logger.info(`[route] text "${needle}" resolved by region OCR at ${point.x},${point.y} (${page.ms}ms)`);
     return point;
   }
 
@@ -559,7 +594,10 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
    * hierarchy could not be read, which every caller treats as an unusable
    * observation rather than an empty screen (G68 ⑤).
    */
-  async function fetchHierarchy(key: string, signal?: AbortSignal): Promise<VisibleElement[] | undefined> {
+  async function fetchHierarchy(
+    key: string,
+    signal?: AbortSignal,
+  ): Promise<{ elements: VisibleElement[]; nodes: readonly HierarchyNode[] } | undefined> {
     let xml: string | undefined;
     try {
       xml = await options.hierarchy(key, signal);
@@ -571,7 +609,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         `environment: hierarchy read failed: ${error instanceof Error ? error.message : String(error)}`,
       );
     }
-    return parseVisibleElements(xml ?? "");
+    const elements = parseVisibleElements(xml ?? "");
+    if (elements === undefined) return undefined;
+    // The region pass needs the bounds this flattened list drops, and they must come
+    // from THIS dump: a second read could describe a different frame, and a point
+    // mapped onto the wrong frame is a tap on the wrong pixel.
+    return { elements, nodes: parseHierarchyXml(xml ?? "")?.nodes ?? [] };
   }
 
   async function requireScreenSize(key: string, signal?: AbortSignal): Promise<ScreenSize> {
@@ -602,7 +645,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           "it follows that same element while it can still be recognised, and is refused rather than guessed " +
           "when it cannot be — a handle you never saw does not exist); " +
           "{coordinate:[x,y]} in 0-1000 as fallback; {text} is the deterministic channel for a visible label " +
-          "the nodes do not carry (it also reads the frame's own pixels). " +
+          "the nodes do not carry (it also reads the frame's own pixels, whole first and then region by region). " +
           "Required by click/long_press/input_text/focus_and_clear_text.",
         properties: {
           index: { type: "number", description: "The #N handle from your latest get_ui_hierarchy output on this device." },
@@ -612,6 +655,8 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
             description:
               "Visible label to locate. Matched first against the hierarchy (text/content-desc/resource-id), then " +
               "against the frame's own pixels, so it reaches labels a canvas or WebView never exposes as nodes. " +
+              "When the whole frame still misses, the frame is read a second time one hierarchy-bounds box at a " +
+              "time, because a small label inside a busy layout is what page analysis loses first. " +
               "This is the deterministic channel: the plugin computes the point itself and records which source " +
               "answered, unlike coordinate which you estimate from a screenshot. If nothing matches, read the " +
               "screenshot and use coordinate instead — retrying this will not help.",
@@ -665,7 +710,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         if (typeof record.category === "string") meta.category = record.category;
         // T5: the trace says whether the tap landed on a node or on a box the
         // OCR read off the frame - the difference matters when reviewing a miss.
-        if (record.target_source === "hierarchy" || record.target_source === "ocr") {
+        if (record.target_source === "hierarchy" || record.target_source === "ocr" || record.target_source === "ocr-region") {
           meta.target_source = record.target_source;
         }
         if (typeof record.incident === "object" && record.incident !== null) {
@@ -917,7 +962,8 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       // per-container ordinal and cannot address an element (G42). This is the
       // device dump read straight through `hierarchy`, never an action answer -
       // since T2-b there is no server text left to parse here.
-      const elements = await fetchHierarchy(key, exec.signal);
+      const read = await fetchHierarchy(key, exec.signal);
+      const elements = read?.elements;
       if (elements === undefined) {
         // Same rule the resolution ladder already applies (G68 ⑤): an
         // unreadable observation is the bypass case, so it must not come back
@@ -1047,7 +1093,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     if (!retryable) return { status: "nontarget" };
     const fresh = await fetchHierarchy(deviceKey, signal);
     if (fresh === undefined) return { status: "nontarget" };
-    const hit = resolveTarget(tgt, fresh, deviceKey);
+    const hit = resolveTarget(tgt, fresh.elements, deviceKey);
     if (!("center" in hit)) return { status: "missing" };
     const center = hit.center;
     const size = await requireScreenSize(deviceKey, signal);

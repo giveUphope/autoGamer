@@ -1,0 +1,12 @@
+  PID ARGS                       
+    1 init second_stage
+    2 [kthreadd]
+    3 [rcu_gp]
+    4 [rcu_par_gp]
+    5 [kworker/0:0-events]
+    7 [kworker/u2:0-loop30]
+    8 [mm_percpu_wq]
+  668 surfaceflinger
+  790 system_server
+ 1010 app.lawnchair
+ 2959 ps -A -o PID,ARGS

@@ -388,31 +388,57 @@ describe("diagnose: who holds the UiAutomation slot is reported, never gated (�
 
 describe("diagnose: host-minted outcomes are reported, never inferred (能力重审-3)", () => {
   const SNAPSHOT: HostOutcomeSnapshot = {
+    seenAll: 7,
+    seenOurs: 5,
     total: 2,
     byOutcome: { timeout: 1, aborted: 1, "aborted-before-dispatch": 0 },
     last: { outcome: "timeout", tool: "run_device_action", callId: "call-9", at: "2026-10-15T08:00:00.000Z" },
+    lastArrival: { tool: "skill", ours: false, at: "2026-10-15T08:00:01.000Z" },
   };
 
   it("renders the counts in the wire shape the report promises", async () => {
     const { tool } = defineWith({ hostOutcomes: SNAPSHOT });
     const value = (await tool.execute({}, exec())) as Record<string, unknown>;
     expect(value.host_outcomes).toEqual({
+      seen_all: 7,
+      seen_ours: 5,
       total: 2,
       timeouts: 1,
       aborted: 1,
       aborted_before_dispatch: 0,
       last: { outcome: "timeout", tool: "run_device_action", call_id: "call-9", at: "2026-10-15T08:00:00.000Z" },
+      last_seen: { tool: "skill", ours: false, at: "2026-10-15T08:00:01.000Z" },
     });
     const rendered = tool.output!.render({}, value) as { text?: string }[];
     expect(rendered[0]?.text).toContain("host_timeouts=1");
+    // The count the live check needs: timeouts alone cannot tell "nothing was ever
+    // emitted for our tools" from "emitted, and none timed out" (能力重审-3 的 🔶).
+    expect(rendered[0]?.text).toContain("host_seen=5/7");
+    expect(rendered[0]?.text).toContain("host_replaced=2");
   });
 
   it("keeps an untouched ledger visible as zeros rather than omitting the column", async () => {
     const { tool } = defineWith({
-      hostOutcomes: { total: 0, byOutcome: { timeout: 0, aborted: 0, "aborted-before-dispatch": 0 } },
+      hostOutcomes: {
+        seenAll: 0,
+        seenOurs: 0,
+        total: 0,
+        byOutcome: { timeout: 0, aborted: 0, "aborted-before-dispatch": 0 },
+      },
     });
     const value = (await tool.execute({}, exec())) as Record<string, unknown>;
-    expect(value.host_outcomes).toEqual({ total: 0, timeouts: 0, aborted: 0, aborted_before_dispatch: 0 });
+    expect(value.host_outcomes).toEqual({
+      seen_all: 0,
+      seen_ours: 0,
+      total: 0,
+      timeouts: 0,
+      aborted: 0,
+      aborted_before_dispatch: 0,
+    });
+    // 一个到达都没收到时，wire 里读到的必须是 0/0 而不是「这一栏不存在」——
+    // 少一栏与「宿主没 emit」在现场看起来是一样的，这条就是不许它含糊。
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).toContain("host_seen=0/0");
   });
 
   it("says nothing about outcomes it was never asked to read", async () => {

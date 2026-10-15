@@ -111,13 +111,19 @@ const log: { tool: string; args: Record<string, unknown> }[] = [];
 let ocrKeys: string[] = [];
 let pages: (OcrPage | undefined)[] = [];
 let hierarchies: string[] = [];
+let regionKeys: string[] = [];
+let regionNodeCounts: number[] = [];
+let regionPages: (OcrPage | undefined)[] = [];
 let agent = "agent-1";
 
-function setup(options: { devices?: string[]; ocr?: boolean } = {}) {
+function setup(options: { devices?: string[]; ocr?: boolean; regions?: boolean } = {}) {
   log.length = 0;
   ocrKeys = [];
   pages = [];
   hierarchies = [];
+  regionKeys = [];
+  regionNodeCounts = [];
+  regionPages = [];
   agent = "agent-1";
   const tool = defineRunDeviceAction({
     pool: harness(options.devices ?? []).pool,
@@ -138,6 +144,17 @@ function setup(options: { devices?: string[]; ocr?: boolean } = {}) {
           ocr: async (key: string) => {
             ocrKeys.push(key);
             return pages.length > 0 ? pages.shift() : ocrPage(MENU_ROW);
+          },
+        }),
+    // G92 P1: the third source. Absent unless the caller wires it, and by default it
+    // has nothing to say - so every pre-existing lock below still reads as before.
+    ...(options.regions === false
+      ? {}
+      : {
+          ocrRegions: async (key: string, nodes: readonly { bounds?: unknown }[]) => {
+            regionKeys.push(key);
+            regionNodeCounts.push(nodes.length);
+            return regionPages.length > 0 ? regionPages.shift() : undefined;
           },
         }),
     logger: { info: () => {}, warn: () => {} },
@@ -232,6 +249,98 @@ describe("OCR is the second source, never the first", () => {
     );
     expect(taps()[0]?.coordinates).toEqual([1150, 673]);
     expect(ocrKeys).toEqual(["B"]);
+  });
+});
+
+describe("region OCR is the third source, reached only when the frame also missed", () => {
+  /** What the region pass hands back: hits already expressed in frame coordinates. */
+  const REGION_PAGE = ocrPage({
+    blocks: [
+      {
+        paragraphs: [
+          {
+            lines: [
+              {
+                text: "商 城",
+                confidence: 93,
+                bbox: { x0: 500, y0: 1200, x1: 560, y1: 1250 },
+                words: [word("商", 94, [500, 1200, 530, 1250]), word("城", 92, [530, 1200, 560, 1250])],
+              },
+            ],
+          },
+        ],
+      },
+    ],
+    text: "商 城\n",
+    confidence: 93,
+  });
+
+  it("does not ask the region pass what the nodes already answer", async () => {
+    const tool = setup();
+    await tool.execute({ action: "click", target: { text: "显示" }, reason: "t" }, exec() as never);
+    expect(regionKeys).toHaveLength(0);
+  });
+
+  it("does not ask the region pass what the whole frame already answered (变异②的锁)", async () => {
+    const tool = setup();
+    hierarchies.push(CANVAS, CANVAS, CANVAS);
+    const value = (await tool.execute(
+      { action: "click", target: { text: "商店" }, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(value.target_source).toBe("ocr");
+    expect(ocrKeys).toHaveLength(1);
+    // A ladder that always ran the region pass would still tap correctly here and
+    // cost a second frame read - that is exactly what this assertion forbids.
+    expect(regionKeys).toHaveLength(0);
+  });
+
+  it("taps where the region pass put the label, and says which source answered", async () => {
+    const tool = setup();
+    hierarchies.push(CANVAS, CANVAS, CANVAS);
+    pages.push(undefined);
+    regionPages.push(REGION_PAGE);
+    const value = (await tool.execute(
+      { action: "click", target: { text: "商城" }, reason: "t" },
+      exec() as never,
+    )) as Record<string, unknown>;
+    expect(taps()[0]?.coordinates).toEqual([530, 1225]);
+    expect(value.target_source).toBe("ocr-region");
+    expect(ocrKeys).toHaveLength(1);
+    expect(regionKeys).toEqual(["default"]);
+  });
+
+  it("reads the candidates off the same dump it just resolved against, not a second one", async () => {
+    const tool = setup();
+    hierarchies.push(CANVAS, CANVAS, CANVAS);
+    pages.push(undefined);
+    regionPages.push(REGION_PAGE);
+    await tool.execute({ action: "click", target: { text: "商城" }, reason: "t" }, exec() as never);
+    // CANVAS carries two bounded nodes; the region pass must see exactly those.
+    expect(regionNodeCounts).toEqual([2]);
+  });
+
+  it("keeps the original refusal when the region pass also has nothing to say", async () => {
+    const tool = setup();
+    hierarchies.push(CANVAS, CANVAS, CANVAS);
+    pages.push(undefined, undefined, undefined);
+    await expect(
+      tool.execute({ action: "click", target: { text: "商店" }, reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: no element matching text "商店" in the current hierarchy$/);
+    expect(ocrKeys).toHaveLength(3);
+    expect(regionKeys).toHaveLength(3);
+    expect(taps()).toHaveLength(0);
+  });
+
+  it("behaves exactly as before when no region source is wired at all", async () => {
+    const tool = setup({ regions: false });
+    hierarchies.push(CANVAS, CANVAS, CANVAS);
+    pages.push(undefined, undefined, undefined);
+    await expect(
+      tool.execute({ action: "click", target: { text: "商店" }, reason: "t" }, exec() as never),
+    ).rejects.toThrow(/^task: no element matching text/);
+    expect(ocrKeys).toHaveLength(3);
+    expect(taps()).toHaveLength(0);
   });
 });
 

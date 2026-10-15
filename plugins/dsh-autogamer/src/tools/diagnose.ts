@@ -156,6 +156,8 @@ function hierarchySummary(value: unknown): string {
  */
 export function hostOutcomeWire(snapshot: HostOutcomeSnapshot): Record<string, unknown> {
   return {
+    seen_all: snapshot.seenAll,
+    seen_ours: snapshot.seenOurs,
     total: snapshot.total,
     timeouts: snapshot.byOutcome.timeout,
     aborted: snapshot.byOutcome.aborted,
@@ -168,6 +170,15 @@ export function hostOutcomeWire(snapshot: HostOutcomeSnapshot): Record<string, u
             tool: snapshot.last.tool,
             call_id: snapshot.last.callId,
             at: snapshot.last.at,
+          },
+        }),
+    ...(snapshot.lastArrival === undefined
+      ? {}
+      : {
+          last_seen: {
+            tool: snapshot.lastArrival.tool,
+            ours: snapshot.lastArrival.ours,
+            at: snapshot.lastArrival.at,
           },
         }),
   };
@@ -237,7 +248,11 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           (record.hierarchy === undefined ? "" : `; hierarchy=${hierarchySummary(record.hierarchy)}`) +
           (record.host_outcomes === undefined
             ? ""
-            : `; host_timeouts=${String((record.host_outcomes as { timeouts?: number }).timeouts ?? 0)}`) +
+            : `; host_seen=${String((record.host_outcomes as { seen_ours?: number }).seen_ours ?? 0)}/${String(
+                (record.host_outcomes as { seen_all?: number }).seen_all ?? 0,
+              )}` +
+              `; host_replaced=${String((record.host_outcomes as { total?: number }).total ?? 0)}` +
+              `; host_timeouts=${String((record.host_outcomes as { timeouts?: number }).timeouts ?? 0)}`) +
           (record.provider === undefined ? "" : `; provider=${providerSummary(record.provider)}`);
         // Same rule as the router: the attachment becomes an image block, so it
         // must not also be flattened into the text envelope.

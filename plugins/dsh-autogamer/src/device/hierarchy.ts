@@ -130,14 +130,18 @@ export interface OccupantReadout {
 
 /**
  * A row is a line starting with a pid — nothing else in `ps` output is a
- * candidate. Markers are matched against the whole line rather than one column
- * because the column layout of `ps -A -o PID,ARGS` is the one shape here that
- * has no measurement in this repository's ledger (§七「前置-2」recorded a plain
- * `ps -A`), so the parser must not depend on which column `ARGS` lands in.
+ * candidate. Markers are matched against the whole line rather than one column:
+ * the layout is now measured on the live device (2026-10-16, MuMu `emulator-5554`,
+ * `  PID ARGS` header + 160 pid rows — fixture `tests/fixtures/ps-PID-ARGS.txt`),
+ * and `ARGS` is a free-form remainder (a process line is `1 init second_stage`,
+ * three tokens for what one column means), so depending on a column index would
+ * still be the wrong shape. Header and non-numeric lines are excluded by the row
+ * rule, not by trusting the header's position.
  *
  * Zero rows answers `unknown`, never `free`: an unreadable table that reports
  * "nobody holds it" hands out a clean bill of health on no evidence, which is
- * worse than not asking.
+ * worse than not asking. That guard is what the measured layout does NOT narrow —
+ * narrowing it would mean claiming a reading from a table that produced no rows.
  */
 export function parseOccupants(text: string): OccupantReadout {
   const rows = text

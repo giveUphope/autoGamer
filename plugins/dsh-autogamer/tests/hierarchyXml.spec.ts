@@ -31,6 +31,11 @@ const FIXTURE = readFileSync(
   fileURLToPath(new URL("./fixtures/hierarchy-chrome.xml", import.meta.url)),
   "utf8",
 );
+/** 真机原样摘录（2026-10-16，MuMu `emulator-5554`，`adb shell ps -A -o PID,ARGS`）；未加注释行。 */
+const PS_FIXTURE = readFileSync(
+  fileURLToPath(new URL("./fixtures/ps-PID-ARGS.txt", import.meta.url)),
+  "utf8",
+);
 
 const dumpArgv = /shell uiautomator dump /;
 const catArgv = /exec-out cat \/sdcard\/dsh-autogamer-hierarchy-/;
@@ -154,6 +159,28 @@ describe("readUiAutomationOccupants (能力重审-2)", () => {
     expect(parseOccupants("error: device 'x' not found")).toEqual({ state: "unknown", names: [] });
     expect(parseOccupants(" PID   ARGS\n 1 init [smu] \n")).toEqual({ state: "free", names: [] });
     expect(parseOccupants(" PID   ARGS\n 9 androidx.test.runner.MonitoringInstrumentation\n").state).toBe("occupied");
+  });
+
+  /**
+   * 真机复验（能力重审-2 留的那条 🔶）：`ps -A -o PID,ARGS` 的列布局本仓从没量过，
+   * 「按整行匹配 marker」当初是**因为没量过**才这么写的。现在量了（夹具是设备原样摘录），
+   * 这条锁把三件事钉住：表头确实被行规则排除（不是靠跳首行）、除表头外每一行都成了行、
+   * 读出 `free` 是有证据的正读数。`unknown` 那态**没有**被这次测量收窄——收窄它等于
+   * 对着「一行都没读出来」的表签发健康证明。
+   */
+  it("locks the measured device table shape, not a hand-written one", () => {
+    const lines = PS_FIXTURE.replace(/\r/g, "").split("\n");
+    expect(lines[0]).toMatch(/^\s*PID\s+ARGS\s*$/);
+    const rows = lines.filter((l) => /^\s*\d+\s+\S/.test(l));
+    const dataLines = lines.filter((l) => l.trim().length > 0 && !/^\s*PID\s+ARGS\s*$/.test(l));
+    expect(rows).toEqual(dataLines);
+    expect(rows.length).toBeGreaterThan(1);
+    expect(parseOccupants(PS_FIXTURE)).toEqual({ state: "free", names: [] });
+    // marker 落在 ARGS 的任意位置都算，因为它本来就是自由文本的余下部分
+    const injected = [...lines.slice(0, 5), "  9999 com.wetest.uia2.Main -p 6746", ...lines.slice(5)].join("\n");
+    expect(parseOccupants(injected)).toEqual({ state: "occupied", names: ["uiautomator2 server"] });
+    // 只剩表头 = 读不出任何行，仍不许答「没人占」
+    expect(parseOccupants(lines[0] ?? "")).toEqual({ state: "unknown", names: [] });
   });
 });
 

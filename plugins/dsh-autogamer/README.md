@@ -57,14 +57,19 @@ src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
 - 测试在 `tests/`（vitest，数十个语义锁 spec；条数是派生事实，权威在 [`../../docs/TODO.md`](../../docs/TODO.md) §零；
   conformance 下为生成式契约与真实 runtime 挂载）
 - 脚本在 `scripts/`（`.mjs`）：`clean-dist.mjs`（`build` 前清空 `dist`）、`conformance-live.mjs`（读宿主会话日志的取证工具）、
-  `synth-hard-frame.mjs`（生成 G92 的合成难帧夹具；`--scan` 另打印 padding × scale 参数表）
+  `synth-hard-frame.mjs`（生成 G92 的合成难帧夹具；`--scan` 另打印 padding × scale 参数表）、
+  `probe-recall.mjs`（**G92 探针 B**：真机同屏帧 + 层级，报整帧 / P1 / P3 的命中数与耗时；`--new-labels` 只报「像素读得出、层级读不出」的标签，`--quick` 跳过参数扫描）、
+  `probe-p2.mjs`（**G92 探针 C**：纯渲染帧上的 P2 版面投影分割；`--sweep` 扫极性与行阈值，`--needles` 传入 VLM 参照读手给出的文字）
 - 执行策略 skill：`skills/autogamer-flash/SKILL.md`
 
-> `src/ocr/image.ts` 与 `src/ocr/regions.ts` **未接线**（只有探针与锁，没有生产消费者）。这不是「还没来得及」：
-> P1 的候选框全部来自层级 bounds，而「层级没有框」正是 OCR 存在的唯一理由，所以 P1 在需要它的那些帧上
-> **结构性地帮不上**（`regions.ts` 自己的日志就是这么写的）。区域识别是 G92 的第二级阶梯，
-> **到期条件 = 真机探针 B 的 needle 命中率 ≥ 整帧基线**；到那天才接线并定常量，没到就保持未接线。
-> 别按「没人调用」删掉，也别当成已经在跑的 OCR 路径。
+> `src/ocr/image.ts` 与 `src/ocr/regions.ts` **已于 2026-10-16 接进阶梯**（G92 探针 B 两次满足到期条件）：
+> `{text}` 在层级未命中 → 整帧 OCR 未命中 → **区域 OCR（P1）** → 才回落模型视觉；命中记 `target_source=ocr-region`，
+> 三层都答不出时返回仍是原来那句 `task: no element matching text …`（fail-open：区域只加答案、不抢答案，
+> 也不改变失败形态 —— 真机 live 两轮实测）。
+> 但**结构性限制照旧成立且已被量过**：P1 的候选框全部来自层级 bounds，而「层级没有框」正是 OCR 存在的理由之一，
+> 所以在纯渲染帧上 P1 实测 0/8（同帧整帧 5/8、模型读手 8/8 全读出）。因此这台机器上还没量到的是
+> **「P1 既可达又赢」的那一屏**（桌面屏标签都在层级里 ⇒ level 0 就命中；TapTap 读得到但画面会自动刷新，
+> 离屏算好的靶子到执行时已换屏）。见 `docs/TODO.md` §四 G92 与 §七「G92 · OCR 按区域识别」。
 
 ## 命令
 

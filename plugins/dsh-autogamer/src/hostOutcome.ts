@@ -68,16 +68,34 @@ export interface HostOutcomeEntry {
   readonly at: string;
 }
 
+/** The raw name of the most recent arrival, whatever it was — the only thing that
+ * tells `no emissions` apart from `emissions under a name we do not match`. */
+export interface HostArrivalEntry {
+  readonly tool: string;
+  readonly ours: boolean;
+  readonly at: string;
+}
+
 export interface HostOutcomeSnapshot {
+  /** Emissions the observer was handed at all (any tool name). */
+  readonly seenAll: number;
+  /** ...of which carry one of our names. */
+  readonly seenOurs: number;
+  /** ...of which the host had replaced our answer (the original `total`). */
   readonly total: number;
   readonly byOutcome: Readonly<Record<HostOutcome, number>>;
   readonly last?: HostOutcomeEntry;
+  readonly lastArrival?: HostArrivalEntry;
 }
 
 /**
- * Counts and the most recent entry, nothing else. Bounded by construction: one
- * map of three counters and one record, so an observation point that fires for
- * every tool call in a long session cannot grow.
+ * Counts and the most recent entry, nothing else. Bounded by construction: a few
+ * integers plus two records, so an observation point that fires for every tool
+ * call in a long session cannot grow.
+ *
+ * `seenAll` exists because `total` alone cannot answer the question 能力重审-3 left
+ * open: a session where the host never emits, and a session where it emits under a
+ * name our filter drops, both read `total=0`.
  */
 export class HostOutcomeLedger {
   private readonly counts: Record<HostOutcome, number> = {
@@ -86,9 +104,19 @@ export class HostOutcomeLedger {
     "aborted-before-dispatch": 0,
   };
   private last: HostOutcomeEntry | undefined;
+  private lastArrival: HostArrivalEntry | undefined;
+  private seenAll = 0;
+  private seenOurs = 0;
   private total = 0;
 
   constructor(private readonly now: () => number = () => Date.now()) {}
+
+  /** Called for every emission, before any name or outcome filtering. */
+  arrive(tool: string, ours: boolean): void {
+    this.seenAll += 1;
+    if (ours) this.seenOurs += 1;
+    this.lastArrival = { tool, ours, at: new Date(this.now()).toISOString() };
+  }
 
   record(tool: string, outcome: HostOutcome, callId: string): void {
     this.counts[outcome] += 1;
@@ -98,9 +126,12 @@ export class HostOutcomeLedger {
 
   snapshot(): HostOutcomeSnapshot {
     return {
+      seenAll: this.seenAll,
+      seenOurs: this.seenOurs,
       total: this.total,
       byOutcome: { ...this.counts },
       ...(this.last === undefined ? {} : { last: this.last }),
+      ...(this.lastArrival === undefined ? {} : { lastArrival: this.lastArrival }),
     };
   }
 }

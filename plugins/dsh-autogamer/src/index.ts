@@ -25,6 +25,7 @@ import { createPreflight } from "./env/preflight.js";
 import { createArtemisBackend } from "./artemis/adapter.js";
 import { diagnoseDevice } from "./device/diagnose.js";
 import { createOcrEngine, missingLanguageData, OCR_DEFAULT_LANGS } from "./ocr/recognize.js";
+import { recognizeRegions } from "./ocr/regions.js";
 import { judgeEffectChanged } from "./effect/diff.js";
 import { buildRoster, enumerateTransports, screenIsLocked } from "./device/roster.js";
 import { createAdbProbe } from "./device/state.js";
@@ -391,9 +392,13 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
   ctx.on(
     "tools/result",
     (exec, result) => {
+      // 每一次到达都先记名，再谈过滤与判定：没有这一步，「宿主从不 emit」与
+      // 「宿主 emit 时用的是我们匹配不到的名字」在现场读起来完全一样（#113 的天花板）。
+      const ours = OUR_TOOL_NAMES.includes(exec.name);
+      hostOutcomes.arrive(exec.name, ours);
       // The emit spans the whole registry, so another plugin's timeout is not our
       // device being slow.
-      if (!OUR_TOOL_NAMES.includes(exec.name)) return;
+      if (!ours) return;
       const outcome = hostOutcomeOf(result);
       if (outcome === undefined) return;
       hostOutcomes.record(exec.name, outcome, exec.callId);
@@ -439,12 +444,21 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     execute: (call, key, signal) => runNativeAction(call, serialOfKey(key), { signal }),
     capturePng: (key, signal) => probe.capture(serialOfKey(key), { signal }),
     hierarchy: (key, signal) => readHierarchyXml(serialOfKey(key), { signal }),
-    // T5: OCR reads the same frame the effect judge compares, so no second
-    // capture appears on the text path.
+    // T5: OCR reads the same frame the effect judge compares. G92's region pass is a
+    // second capture, but only on the double-miss path (nodes missed, whole frame
+    // missed) — the common paths still capture once.
     ocr: ocr
       ? async (key, signal) => {
           const png = await probe.capture(serialOfKey(key), { signal });
           return png === undefined ? undefined : ocr.recognize(png, { signal });
+        }
+      : undefined,
+    ocrRegions: ocr
+      ? async (key, nodes, signal) => {
+          const png = await probe.capture(serialOfKey(key), { signal });
+          if (png === undefined) return undefined;
+          const result = await recognizeRegions(ocr, png, nodes, {}, { now: () => Date.now() }, signal);
+          return result?.page;
         }
       : undefined,
     onAction: () => ledger.markActed(agentIdOfCall()),
