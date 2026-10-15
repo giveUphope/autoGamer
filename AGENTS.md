@@ -84,6 +84,7 @@ Instructions for agents working in this repository.
   **不含** `clean-dist`（那一步只在 `build` 里，CHANGELOGS #101）⇒ **`pnpm pack` / 交付前必须先跑 `build`**。
 - 版本化离线探针：`node scripts/ocr-probe.mjs`（吃仓内夹具 PNG，证明 OCR 零网络、无临时文件残留）；
   判据与读数见 `docs/TODO.md` §七「T5 收口记录」。
+- 设备侧探针（要 adb + 在线设备）：`node plugins/dsh-autogamer/scripts/probe-recall.mjs`（G92 探针 B：整帧 / P1 / P3 命中数与耗时、常量扫描、`--new-labels` 找「像素读得出、层级读不出」的标签、`--quick` 跳扫描）与 `plugins/dsh-autogamer/scripts/probe-p2.mjs`（探针 C：P2 版面投影分割，`--sweep` 扫极性与行阈值、`--needles` 传 VLM 参照文字）。**已知限制：probe-recall 的读数对调用次序敏感**（`--new-labels` 放在网格扫描之后会读空），根因未查——只采信位置靠前且可复现的数字，别拿「无输出」当结论。读数见 §七「设备 live 复验轮」/ CHANGELOGS #116。
 - **交付清单探针**：`node scripts/pack-check.mjs`（零依赖，自己跑 `pnpm pack` 并解析 tar）。判据的形状是它的要点：**预期与被测物异源** —— 预期由 `package.json` 的 `files` 白名单 ∪ 打包器强制携带（`package.json`/`README*`/`LICEN[CS]E*`）∪ 由 `src/**/*.ts` 1:1 推导的 `dist/*.js` 构成，**`dist` 目录本身不参与**（拿 `dist` 当预期时，塞进一个多余 js 会同时改掉两侧 ⇒ 一条永不红的假判据）。退出码：**0** 通过 / **1** 清单或混淆锁不符 / **2** 前置没就绪 —— 跑之前先 `build`（`verify` 不含 `clean-dist`，见上）。`--tarball <path>` 可对既有包复跑。读数与四类变异见 §七「基建-8」/ CHANGELOGS #115。
 - **交付形态**（面板输入 `.tgz` / 每个新 profile 首次安装必遇 `tesseract.js` 构建脚本授权（R19 用户点）/
   替换安装后必须重启宿主）写在插件 `README.md`「引入与验证」，实测记录在 `docs/TODO.md` §七「交付-1」——

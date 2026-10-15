@@ -27,16 +27,17 @@
 - **许可与 git 历史裁定（2026-10-14，用户裁定）**：① `LICENSE` **重写为本项目自撰 MIT 全文**（版权人 giveUphope，2026），保持开源、不再随迁上游 Apache-2.0 文本（含原 `Copyright 2026 Google LLC` 附录行）；② **git 历史保留**——历史中的上游内容仅作记录存在，不影响当前新方案设计与实现，D20 判据只覆盖工作树层。裁定展开见规格 §八。
 - **阶段：T1–T5 全部落地，宿主内 live 证明已完成（2026-10-15）**。插件工程已搬入（搬迁-1）；T1 的三条任务工具、T2 的十五工具面、T3 的效果判定、T4 的收尾与溯源清理、T5 的内置 OCR 均在 TS 侧，`verify` 全绿；
   **宿主内真会话已跑通**（R6/R7/R9/R24 四条读数：面板 2/2 运行中、`Config` 返回 `status:"schema"`、七个工具对模型可见、会话日志 7 次工具调用与 7 次结果），权威记录在 CHANGELOGS **#97**。
-  本文件 §四 现有**四行**：三条**非待办** —— **G92**（OCR 整页召回——已量过并否证简单方案，解法「按区域识别」已**立项于 §七，探针 A 离线管线已落地、探针 B/C 待设备**）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）；加一条只剩宿主侧一半的 **G98**（packed `.tgz` 的清单与 manifest 形状**已离线复验并固化为 `scripts/pack-check.mjs`**，剩面板复制安装与重启复验属 R19 用户点）。
+  本文件 §四 现有**五行**：三条**非待办** —— **G92**（OCR 召回面：探针 B/C 已于 2026-10-16 真机入账 —— P1 在三张屏上都测得对整帧的增益（桌面 3/23 vs 1/23、TapTap 13/22 vs 5/22 与 12/24 vs 4/24），P2 判**降级**，剩「既可达又赢」那一屏与接线后的端到端）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）；**G98**（packed `.tgz` 的清单与 manifest 形状**已离线复验并固化为 `scripts/pack-check.mjs`**，剩面板复制安装与重启复验属 R19 用户点）；**G99**（插件返回的 image 附件送进 OpenAI 兼容请求时 `url` 不是 base64 data URL ⇒ 本地提供方 `400 INVALID_REQUEST`，且该图留在历史里会让**整个会话后续每轮立刻失败**）。
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（三段脚本的形状与 `build` 的差别见 `AGENTS.md`「命令」）。
   全部 py 实现均不在本分支（按 D19 归零）。
 - **进度与待拍板（2026-10-15，能力重审三连落地之后清点）**：三条已结清 —— **#111** abort 归入第四类 `cancelled`（两侧都不记账）/ `wait` 上限低于声明值 / 两处 probe 缝接上 signal；
   **#112** 元素源的 UiAutomation 占用者第一次被命名（三态，读不出绝不答「没人占」）+ 两处「注释指向不存在的锁」改掉；
   **#113** 在官方最弱的 emit 观察点 `tools/result` 上看清**宿主替换掉我们答案的那一份**（归因三态，只计数不决策）。
-  **零授权还能继续的两条**：① §七「重审综合」「现在就做」行 3 —— `{text}` 未命中时把**叶级候选框编号 + 该帧 attachment 引用**交回模型（**契约面改动，须先单独出方案**）；
-  ② #113 欠的**宿主会话核验**（🔶 只需开一次真会话看 `tools/result` 是否送达我们的工具，**不需要设备**）。
-  **等用户拍板的三件**（逐条依据与代价都在 §七「重审综合」，本行只留指针）：装 adb + 一台设备（解锁 G92 探针 B/C、交付-1 C 项、`ps` 列布局的 `unknown` 收窄、45s 预算的真实依据）/ provider 自我循环 A–C′ 取舍（推荐 **C′**：依赖降 optional peer，不动规格与工具面）/ 加 devDependency 做离线 conformance。
-  **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（本轮最后绿态 **45 文件 / 510 通过**）＋ `node scripts/check-docs.mjs`（含 `--selftest`）＋ `node scripts/check-env.mjs`。
+  **零授权还能继续的一条**：§七「重审综合」「现在就做」行 3 —— `{text}` 未命中时把**叶级候选框编号 + 该帧 attachment 引用**交回模型（**契约面改动，须先单独出方案**）。
+  ~~② #113 欠的宿主会话核验~~ ⇒ **已完成（2026-10-16，宿主 live 实测）**：`host_seen=2/2` —— 宿主确实对我们的工具 emit `tools/result`，我们的订阅收得到；为此把「到达」与「被替换」拆成两个计数（`total` 单独无法区分「没 emit」与「emit 的名字匹配不上」）。见 §七「能力重审-3」与 CHANGELOGS **#116**。
+  **设备前置已到（2026-10-16，用户提供 MuMu + 本地 VLM 端点）**：adb 在 PATH、`emulator-5554` 在线 ⇒ 原来「等装 adb + 设备」那一件已解锁并完成大半（探针 B/C、`ps` 列布局、耗时分布、交付-1 C 项、#113 均已入账）；**剩两项**：① G92「既可达又赢」的那一屏还没量到（见 §四 G92）；② **新立 G99** —— 插件返回的 image 附件经宿主送进 OpenAI 兼容请求时 `url` 不是 base64 data URL，LM Studio 直接 `400 INVALID_REQUEST`，且这张图留在历史里会让**该会话后续每一轮立刻失败**（含面板 `.tgz` 复验因此受阻）。
+  **等用户拍板的两件**（依据与代价都在 §七「重审综合」）：provider 自我循环 A–C′ 取舍（推荐 **C′**：依赖降 optional peer，不动规格与工具面）/ 加 devDependency 做离线 conformance。
+  **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（本轮最后绿态 **45 文件 / 519 通过**）＋ `node scripts/check-docs.mjs`（含 `--selftest`）＋ `node scripts/check-env.mjs`。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
 - **基建-2 已落地（2026-10-14，提交 `f9434cf`）**：`scripts/check-docs.mjs` 六条检查（结清一致性 / 链接可解析 / 派生计数只认权威 / 编号范围自算 /
   表格成形 / 自称完成不得留未勾验收项）+ 内置 `--selftest` 变异（7 例，含 C5 的合法 `\|` 反向例，全不盲）+
@@ -51,7 +52,7 @@
 - **基建-4 已落地（2026-10-15，提交 `6e30db2`）**：把上一条那笔债结清 —— `package.json` 声明 `"packageManager": "pnpm@11.21.0"`（精确版本、无 hash），`pnpm-workspace.yaml` 声明 `pmOnFail: error`。**版本不符时每条 pnpm 命令直接 exit 1**（`install` 与 `pnpm -v` 都实测过），且失败发生在任何下载/改动之前。A/B：`pnpm@9.15.0` ⇒ exit 1 + `This project is configured to use 9.15.0 of pnpm`；改回 ⇒ exit 0 且 **lockfile 零变化**。选型依据取自官方文档：`pmOnFail`（v11 新增，默认 `download`）取代了已移除的 `managePackageManagerVersions`/`packageManagerStrict*`；**选精确版本而非范围**，因为范围正是把「不同机器结论不同」那个洞重新打开；**选 legacy 字段而非 `devEngines.packageManager`**，因为后者会把解析版本写进 lockfile；**选 `error` 而非默认 `download`**，因为后者是静默的网络下载 + 版本切换。本机 `corepack` 未装，故不依赖它。已知边界：钉在插件工程，**从仓库根跑 pnpm 不受约束**；升版流程与误配处置写在 `AGENTS.md`。`verify` **38 文件 / 439 通过**。范围与取证见 §七「基建-4」与 CHANGELOGS **#99**。⚠️ **钉的具体版本号已由 基建-7 换到 12.11.2**（CHANGELOGS **#114**，2026-10-15）—— 本条的钉法机制（`packageManager` ＋ `pmOnFail: error`、精确版本不带 hash、不符即响）仍然成立，被反转的只有「选 11 以保持 lockfile 零 churn」这一项取舍。
 - **基建-5 已落地（2026-10-15，提交 `d524739`）**：把上一条那条「`.npmrc` 死配置无害」的判断**推翻并修好** —— 实测有效默认是 `true`、lockfile 记的是 `false`，于是**裸 `pnpm install --frozen-lockfile` 一直 exit 1**（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。修法：设置搬进 `pnpm-workspace.yaml`（`autoInstallPeers: false`，设置真正被读的那份文件），`.npmrc` 整份删除（全文只有那一行、25 字节、不在 `files` 里）。读数：`pnpm config get autoInstallPeers` → `false`（改前 `undefined`）；裸安装 **exit 0**；文档命令 exit 0；`verify` **38 文件 / 439 通过**；lockfile 全程零变化。**单变量隔离**：把 `.npmrc` 那行临时写回，裸安装仍 exit 0 ⇒ 生效的是文件里的设置，删它去的是重复声明。探针两向证明该设置有牙（自动装入的 peer 只进虚拟 store、不做顶层链接 —— 第一版判据看 `node_modules/react` 是**假绿**，已改读 lockfile）。设置的家写进 `AGENTS.md`。范围与取证见 §七「基建-5」与 CHANGELOGS **#100**。
 - **packed bundle 交付验证已落地（2026-10-15，交付-1）**：`pnpm pack` 出 tarball 后经 web profile 面板完成真实安装（非 link）——**唯一成立的交付形态是面板直接输入 `.tgz` 路径**（`file:` 复制安装，30 依赖落位）；解压目录安装是 `link` 且不装依赖，精简目录必然 `failed to import`（已实测失败）；每个新 profile 首次安装必遇 `tesseract.js` build script 授权（R19 用户点，postinstall 仅赞助横幅，「无产物」裁决见 §七「基建-3」/ CHANGELOGS **#98**，此处为第三来源实锤）；替换安装后**必须重启宿主**。重启后 **2/2 组件运行中**，双语 locale 标题/描述与 icon 浏览器实测正确，R6 `--dump-config` exit 0 / unmatched 0 / autogamer 行 10。验证中抓出构建缺陷——**tsc 增量输出不清理，5 个已裁决删除模块（actionClient/mcpText/rulesInjector/scrcpy×2）随 tarball 分发**，已修（构建前 `clean-dist` + 陈旧产物守卫），见 CHANGELOGS **#101**；`verify` 新读数 **39 文件 / 440 通过**。
-  ⚠️ **C 项（三任务工具宿主内点名）阻塞**：本机当前无 `adb`、无设备（D 盘已不在、无模拟器、无监听端口），preflight 闸门要求 adb + 一台 `device` 状态设备，需用户提供真机或模拟器；完整记录见 §七「交付-1」。
+  ⚠️ **C 项（三任务工具宿主内点名）已于 2026-10-16 完成**：adb 与 `emulator-5554` 到位后在宿主内实测三任务工具各被调用一次（权威读数在 §七「设备 live 复验轮」）。下面这段阻塞记录是 2026-10-15 的现场状态，按 R28 保留不删。
 - **G92 探针 A 已落地（2026-10-15，离线，CHANGELOGS #102）**：区域 OCR 管线 `src/ocr/image.ts`（裁剪/最近邻放大/PNG 编码，零依赖）+ `src/ocr/regions.ts`（层级叶级候选→裁剪 padding 8→@2×→逐块 recognize→坐标映射回全屏，预算/signal/fail-open）。新增 3 测试文件 26 条；真模型夹具实测 16 候选全在 y≤204、16 块 ≈1457ms、命中均落回候选框（映射不漂），并**实证 P1 对层级缺席的渲染区（y≈240 缩略图）无效**（P1 对 TapTap/游戏中心 undefined，整帧命中），强化 P2/P3 必要性。三处变异（坐标映射/容器过滤/fail-open）各红一次；本轮**未接产品阶梯**。`verify` 新读数 **42 文件 / 466 通过**。探针 B/C 与 C 项共用同一设备前置（adb + 设备），G92 不结案。
 - **基建-6 已落地（2026-10-15，CHANGELOGS #104）**：把基建-2 自测时记下的**两条门禁盲区**分头处置 —— ②「§四 表内编号唯一性不查」补为门禁第 **7** 条检查 **C7**（`checkGapIdUniqueness`；C1 把编号收进 `Set`，结构上就看不见重复）；①「同一事实两处状态不一致」**清点后判定不写**：今天全仓**零不一致样本**（唯一两个未全勾的条目 交付-1 4/5、G92 3/8，其 §零 指针行都如实写了阻塞与待设备），且条目名两种形状并存、`T1`/`T2`/`T3` 各有两个同名小节 ⇒ 按名配对天然脆。**没样本的判据是假判据（R27）**，故记判定不占编号，将来有真实样本再按记录的清点法走。
   变异：**M8-C7**（结构锚点＝整行复制，不点编号不碰散文）`--selftest` 里 `ok -> C7 1 finding(s)`；**真实文件手工变异**（`G78` 行改成 `G92`）⇒ exit 1 且 finding **指被改的那一行**（报出首次出现行号），改回 exit 0 且 diff 零差异；那次变异**未**触发 C1 ⇒ 两条检查职责边界符合预期。门禁 **7 checks / 8 变异无假绿**，`check-env` exit 0，插件 `verify` 读数不变（本片不动插件代码）。范围与取证见 §七「基建-6」。
@@ -249,10 +250,11 @@
 
 | 编号 | 一句话 | 归属 |
 |---|---|---|
-| G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 0–3 个（逐帧方差大）；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜、不可读帧先拒）。**2026-10-15 已量过放大假设：整帧 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中（3× 还贵 70%），而同一屏 140×70 的**局部裁剪 @2×** 能正确读出「游戏 中 心」⇒ 瓶颈是**整页版面分析**不是像素尺寸**；解法形态是「按区域识别」。**2026-10-15 已立项，方案见 §七「G92 · OCR 按区域识别」**（探针 A 可离线先行，探针 B/C 待设备）。**2026-10-15 能力重审-1 把 P1 判为「未接线」并给了到期条件**：P1 的候选框全部来自层级 bounds ⇒ 层级无框时它结构性地帮不上，而那正是 OCR 存在的理由 ⇒ 不接线的依据是逻辑；**到期条件 = 探针 B 的真机 needle 命中率 ≥ 整帧基线**，到那天才接线（未加阻止接线的锁） |
+| G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 0–3 个（逐帧方差大）；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜、不可读帧先拒）。**2026-10-15 已量过放大假设：整帧 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中（3× 还贵 70%），而同一屏 140×70 的**局部裁剪 @2×** 能正确读出「游戏 中 心」⇒ 瓶颈是**整页版面分析**不是像素尺寸**；解法形态是「按区域识别」。**2026-10-15 已立项，方案见 §七「G92 · OCR 按区域识别」**（探针 A 离线先行；探针 B/C 已于 2026-10-16 真机入账）。**2026-10-15 能力重审-1 把 P1 判为「未接线」并给了到期条件**：P1 的候选框全部来自层级 bounds ⇒ 层级无框时它结构性地帮不上，而那正是 OCR 存在的理由 ⇒ 不接线的依据是逻辑；**到期条件 = 探针 B 的真机 needle 命中率 ≥ 整帧基线**，到那天才接线（未加阻止接线的锁）。**2026-10-16 到期条件满足并已接线**：三张屏分别 3/23 vs 1/23、13/22 vs 5/22、12/24 vs 4/24（区域比整帧高 2-3 倍且不更贵），常量按实测保持 pad=8 / scale=2 / ratio=0.25 / cap=40；P2 判**降级**（真机上切不出文字行）。**仍未量到的是「P1 既可达又赢」那一屏** —— 桌面屏标签全在层级里（level 0 就命中，够不到第三级），TapTap 读得到但画面自动刷新（离屏算好的靶子到执行时已换屏），纯渲染帧则 P1 候选为 0 ⇒ G92 不结案 |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内。**2026-10-15 复核仍未解锁**：宿主侧没有承载标注图的 UI 落点（R18），而 OCR 内置之后，「画框」要成立还多了一个前置——元素源本身要可信 ⇒ 与 **G92** 挂钩。要做时是「UI slot + 可信元素源」的新条目，不是给截图加一层绘制）。⚠️ **2026-10-15 能力重审推翻本行两处依据**（结论「仍推迟」**不变**，但理由要换）：① 「宿主侧没有承载落点」**当时为真、现在为假**——宿主自己渲染工具结果里的 image 块（`runDeviceAction.ts:693-694` 已产 `[text, image]`），标注图**不需要一张 client 卡片**；② 前置-6 的成本依据「要引入 sharp/libvips」也过期（仓内已有零依赖 PNG 解码 `effect/png.ts:103` + 编码 `ocr/image.ts:119`）。⇒ **唯一成立的前置是元素源可信度（G92）**；判据方法论见 §七「重审综合」的「已就地标注」段 |
-| G98 | packed `.tgz` 的交付形态**未在 pnpm 12 的宿主面板上复验**：**离线半步已于同日完成并固化成判据** —— 比对已是版本化的 `node scripts/pack-check.mjs`（预期与被测物异源，四类变异各红一次，见 §七「基建-8」/ CHANGELOGS **#115**）；读数本身在 §七「基建-7」的 G98 段：清单 49 条与构成式一致，旧 manifest（pin 11.21.0 ＋ 旧锁）与新 manifest 在 12 上 pack 出的清单与 `package.json` **逐字节相同** ⇒ 锁文件形状与钉版换值都不进交付物。**仍开着的是另一半**：面板输入 `.tgz` 的复制安装、`tesseract.js` 构建脚本授权、替换后重启与 2/2 运行态，全都只在 pnpm 11 时代量过 | **基建-7 新立、基建-8 补上判据**（剩余部分是 R19 用户点：须用户在面板操作；交付-1 的 C 项仍阻塞 adb/设备） |
+| G98 | packed `.tgz` 的交付形态**未在 pnpm 12 的宿主面板上复验**：**离线半步已于同日完成并固化成判据** —— 比对已是版本化的 `node scripts/pack-check.mjs`（预期与被测物异源，四类变异各红一次，见 §七「基建-8」/ CHANGELOGS **#115**）；读数本身在 §七「基建-7」的 G98 段：清单 49 条与构成式一致，旧 manifest（pin 11.21.0 ＋ 旧锁）与新 manifest 在 12 上 pack 出的清单与 `package.json` **逐字节相同** ⇒ 锁文件形状与钉版换值都不进交付物。**仍开着的是另一半**：面板输入 `.tgz` 的复制安装、`tesseract.js` 构建脚本授权、替换后重启与 2/2 运行态，全都只在 pnpm 11 时代量过 | **基建-7 新立、基建-8 补上判据**（剩余部分是 R19 用户点：须用户在面板操作。原并列的 交付-1 C 项已于 2026-10-16 在宿主 live 完成，见 §七「交付-1」与本表下方 G99 的连带阻塞） |
+| G99 | 插件返回的 **image 附件送进 OpenAI 兼容请求时形状不被接受**：模型在 `autogamer_diagnose` 调用里自己传了 `include_screenshot:true`（该参数在声明面就有），diagnose 便按既有契约把设备截图作为附件块返回（`attachmentId=sha256:…`、`mediaType=image/png`、`900x1600`、`bytes=1984755`）；宿主把它转成 `image_url` 送给本地提供方（LM Studio `127.0.0.1:1234/v1`，`api: openai-completions`）时 **`url` 不是 base64 data URL** ⇒ 提供方 `400 "'url' field must be a base64 encoded image."` / `INVALID_REQUEST`，且 `inputTokens=0` 说明**生成前就被拒**。更糟的是这张图留在会话历史里 ⇒ **该会话之后每一轮都在同一处立刻失败**（实测连挂三轮，新开会话才恢复）。归因边界（R25：错误串只证明那次被拒，不证明因果）：「宿主未把附件解析成 data URL」是最省事的可疑点，**尚未定论**，也可能是 `openai-completions` 这条 api 要求另一种形体 | **设备 live 复验轮新立（2026-10-16）**。我方不改：`include_screenshot` 与附件契约是官方形状，不该为迁就一个提供方去削弱模型看图。推进顺序 = 先取证官方 `openai-completions` 的 image 块该怎么写，再决定报上游还是加插件侧开关。**连带阻塞**：G98 的面板复验与一切含图的 live 复验 |
 
 > **本表只列还开着的事**（R28：结案的行不再占位，去 §七 与 CHANGELOGS 找记录）。
 > G72（提供方形状）与 G74（映射层按旧 5 工具面锁形状）**不在本分支跟踪**：它们随 T4 消解。
@@ -1679,7 +1681,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 - 词表与三态：`tests/hierarchyXml.spec.ts` 新增 10 条（含 `it.each` 五格失败形态）；工具面：`tests/diagnose.spec.ts` 新增 8 条。
 - argv 锁：`-s emulator-5554 shell ps -A -o PID,ARGS` **只此一条调用**（`A.calls` 整表比对，不是 `toContain`）⇒ 加第二条读就红。
 - 失败形态五格：非零退出 / **code 0 但设备侧报错文本**（`deviceReportedFailure` 的 `Unknown command:`）/ 只有表头没有行 / 空输出 / `timedOut` ⇒ 全部 `unknown`。
-- 🔶 **`unknown` 态不是保守装饰**：`ps -A -o PID,ARGS` 的**列布局在本仓 ledger 里没有实测**（§七「前置-2」只记过裸 `ps -A` 的读数）。真机第一次跑必须复验列名，验完才允许收窄这一态（R21 反向形态：别把「有读数」写成「验过」）。
+- ~~🔶 **`unknown` 态不是保守装饰**：`ps -A -o PID,ARGS` 的**列布局在本仓 ledger 里没有实测**~~ ⇒ **2026-10-16 已在真机量过**（MuMu：表头 `  PID ARGS`，161 行里 160 行是 pid 行，`ARGS` 是自由文本余段）。读数、夹具与锁见 §七「设备 live 复验轮」。**但 `unknown` 这一态不收窄** —— 它守的是「一行都没读出来」，与列布局是否已知无关；收窄它等于对读不出表的设备签发健康证明（比不问更坏）。这次量过之后被改的是**注释里的理由**（从「没量过所以不敢依赖列」变成「量过，`ARGS` 本就是多 token 余段，所以整行匹配才是对的形状」）。
 - 两处真相：`preflight.ts` 注释改指 `tests/preflight.spec.ts:76-77` 并写明 **`:76` 比的是导出的常量、会自愈，真正锁住「只有两项」的是 `:77` 的字面量 `[true, true]`**；`src/tools/diagnose.ts` 的 `requireEnv` import 删除，头注释改为事实陈述。
 - `verify` **44 文件 / 497 通过**（上一绿态 44/479，+18 条）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
 - 声明面（R6）：本片**未改** `cordis.patch.yml` ⇒ 无需 `--dump-config`；也**未**给 `autogamer_diagnose` 新增 `timeoutMs`（R15：声明即断言能停稳，新读只带 `AdbOptions.timeoutMs = 10s`）。
@@ -1751,8 +1753,9 @@ pad\scale |  1.0  1.5  2.0  3.0
   顺带把 README 两条漂移改掉：`runDeviceAction.ts` 行补上**四态分类**（#111 落的 `cancelled` 一直只在代码里、README 还写「错误分类」不列状态），
   `classify.ts` 行写明**它看不到宿主替换掉的结果**（那条路在 `src/hostOutcome.ts`）——这正是 R15 上轮刚纠正过的落点错误，文档面不许再留第二个版本。
 - **读数**：`verify` **45 文件 / 510 通过**（上一绿态 44/497，+1 文件 +13 条）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
-- **仍然没验的（不静默）**：🔶 宿主真的对我们的工具 emit `tools/result` —— 需一次宿主会话（**不需要设备**）；
-  `dsh-tools/testing` 全文只有一个工具定义夹具、无管线 harness ⇒ 这一条**没有离线补法**，本条不许写成已生效（R9 / R24）。
+- ~~**仍然没验的（不静默）**：🔶 宿主真的对我们的工具 emit `tools/result`~~ ⇒ **2026-10-16 宿主 live 已解除**：一次真会话（3 次我们的工具调用）后 `autogamer_diagnose` 报 **`host_seen=2/2`** —— emit 存在、我们的订阅与名字过滤都收得到（第 3 次是 diagnose 自己，它在返回之后才到达，故 2/2 而非 3/3）。
+  这次能答出来靠的是把**「到达」与「被替换」拆成两个计数**（`seen_all` / `seen_ours` / `total`）：原形状里 `total` 只数被替换的结果，于是「宿主从不 emit」与「宿主 emit 时名字匹配不上」在现场读起来完全一样 —— 这一条当时**不可答**，不是没跑够。读数、6 条锁与两类变异见 §七「设备 live 复验轮」；契约面新增 `host_seen` / `host_replaced` 两个摘要键（R19 展示义务）。
+  `dsh-tools/testing` 全文只有一个工具定义夹具、无管线 harness ⇒ 这条**始终没有离线补法**，离线侧只锁形状与归因（R9 / R24 不变）。
 
 ### 重审综合 · 六面能力重审的结论、否证与处置（2026-10-15，只读调研，零设备）
 
@@ -2377,7 +2380,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 - [x] 目录 link 安装在缺依赖时**实测失败**（`failed to import`），失败模式与官方「link checkout」声明吻合。
 - [x] `.tgz` file 安装成功、依赖 30 个落位、build script 授权链完整记录、重启后 **2/2 运行中**。
 - [x] 双 locale 标题/描述与 icon 渲染经浏览器实测；R6 声明面 exit 0 / unmatched 0。
-- [ ] **C：三任务工具宿主内点名（阻塞）** —— 见下方阻塞记录。
+- [x] **C：三任务工具宿主内点名（2026-10-16 完成）** —— 原阻塞于 adb/设备；设备到位后在宿主内实测：`tools invoked: autogamer_run_task=1 / autogamer_manage_task=1 / autogamer_inspect_trace=1 / autogamer_diagnose=1`，同一会话声明面 `--dump-config exit 0 / unmatched 0`。读数与会话号见 §七「设备 live 复验轮」。
 
 **交付流程事实（写给下一次安装）**
 1. 对外交付 = 发布 `.tgz`，在面板「添加插件」输入 `.tgz` 路径；**不要**解压后用目录 link（不装依赖）。
@@ -2438,9 +2441,9 @@ pad\scale |  1.0  1.5  2.0  3.0
 - [x] PNG 裁剪/最近邻放大/编码零依赖落地，像素级锁（`src/ocr/image.ts`，`tests/ocrImage.spec.ts` 10 条）
 - [x] `regions.ts` 管线 + 坐标映射 + 候选过滤落地（`src/ocr/regions.ts`，`tests/ocrRegions.spec.ts` 14 条）
 - [x] 探针 A 离线绿（真模型夹具 2 条：映射不漂、P1 边界固化，见收口记录）
-- [ ] 探针 B 真机召回数字入账（P1/P3 vs 整帧），padding/scale/候选常量定
-- [ ] 探针 C 判定 P2 去留：落地或明确降级为 P1+P3
-- [ ] 阶梯接线 + 消费路径锁 + 四条变异各红一次（① 映射丢偏移、③ 区域失败改抛错、④ 容器过滤放行根节点 已各红一次；**② 阶梯锁本轮不适用**——探针 A 不接产品阶梯，留待接线）
+- [x] 探针 B 真机召回数字入账（P1/P3 vs 整帧），padding/scale/候选常量定 —— **2026-10-16 三张屏**：桌面 3/23 vs 1/23（P3 1/23、2/23）、TapTap 混合屏 12/24 vs 4/24、同屏复采 13/22 vs 5/22（P3 8/22、5/22）；**常量保持** pad=8 / scale=2 / maxAreaRatio=0.25 / maxRegions=40（扫描表与「为什么不改」见下方收口）
+- [x] 探针 C 判定 P2 去留：落地或明确降级为 P1+P3 —— **判降级，P2 不进 src**：纯渲染帧（消消乐协议页，8 节点 / **0 文字节点**）上极性与行阈值扫 12 组，最好一组也只切出 1323–1423px 的巨型带（那是亮面板不是文字行），对照桌面帧同样切不出行 ⇒ 触发方案预设的失败分支
+- [x] 阶梯接线 + 消费路径锁 + 四条变异各红一次（① 映射丢偏移、③ 区域失败改抛错、④ 容器过滤放行根节点 已各红一次；**② 阶梯锁已于 2026-10-16 随接线落地**：新增 6 条锁（`tests/ocrConsumer.spec.ts`），变异② 与 ③ 各精确红一次，见下方收口）
 - [ ] 真机端到端：层级未命中的标签经区域 OCR 命中并点对
 - [ ] G92 结案（或按探针结论重写范围，R28）
 
@@ -2460,6 +2463,30 @@ pad\scale |  1.0  1.5  2.0  3.0
 - **变异（R27，三处植入均精确锁红，已还原）**：① `mapHitToFrame` 去掉 origin 偏移 ⇒ 3 条坐标映射锁红（含嵌套 words、端到端）；③ 单块 catch 内 `continue` 改抛错 ⇒ 「单块抛错仍扫描其余」红；④ 容器过滤改为放行全部 ⇒ 「丢弃包含候选的容器」红（容器框 `[10,10,200,200]` 漏入）。变异②（阶梯锁）本轮不适用，待接线。
 - **门禁**：`verify` **42 文件 / 466 测试全过**（探针 A 新增 3 文件 26 条：image 10 + regions 14 + probe 2；基线 39/440）；`check-docs --selftest` 7 变异无假绿；`check-env` 干净；README Layout 已同步 `image.ts`/`regions.ts`。
 - **对 B/C 的输入**：P1 工程面已就绪，唯一未答的是「层级缺席渲染区」的召回——那是探针 B（真机难帧重采、扫 padding/scale/过滤常量）与探针 C（纯 webview 帧判 P2 去留）的范围，均需 adb + 设备。本轮**未接产品阶梯**（`runDeviceAction.ts` 的 hierarchy→整帧 OCR 阶梯未动），接线属探针 B/C 后的 Done 项。
+
+### 设备 live 复验轮 · 收口记录（2026-10-16：探针 B/C、阶梯接线、`ps` 列布局、耗时分布、宿主核验、新立 G99）
+
+**前置与工具**：adb 已在 PATH（winget Platform Tools），`emulator-5554` 在线（product aurora / model 24031PN0DC，1600×900 横屏、游戏内 900×1600 竖屏）。两条探针都**版本化**入库，不是临时脚本：`plugins/dsh-autogamer/scripts/probe-recall.mjs`（探针 B）与 `scripts/probe-p2.mjs`（探针 C）。命中判定一律复用**生产同一函数** `findNeedleHits`（探针不自造第二套匹配口径）。
+
+- **探针 B：P1 的增益是真的，且不是靠更贵换来的**（needle 集 = 同屏层级的带文字节点，去重后 22–24 个）：
+  - 桌面帧（Lawnchair，81 节点 / 23 needle）：整帧 **1/23** 1235ms ｜ P1 默认 **3/23** 832ms（candidates=40 scanned=40）｜ P3 网格 4×3 **1/23**、6×5 **2/23**。
+  - TapTap 混合屏第一次（142 节点 / 24 needle）：整帧 **4/24** ｜ P1 **12/24** 584ms ｜ P3 8/24、5/24。
+  - TapTap 第二次复采（同屏）：整帧 **5/22** 2498ms ｜ P1 **13/22** 615ms ｜ P3 8/22、5/22。
+  - 三屏一致：**P1 ≈ 整帧的 2–3 倍且更快**（区域块小、版面分析不再迷路），到期条件「P1 ≥ 整帧基线」满足 ⇒ **接线**。
+  - **常量扫描结论：一个都不改**。pad 0/8/16/24 ⇒ 2/3/2/3，scale 1.5/2/3 ⇒ 3/3/2，maxAreaRatio 0.25/0.6/1 ⇒ 3/3/3（同帧）。pad=24 那组里 tesseract 打出 `Image too small to scale!! (2x36 vs min width of 3)` + `Line cannot be recognized!!` —— 扩大 padding 会把小块挤出可识别下限，与离线预演的「pad=24 全 miss」同向。**cap=40 在这一屏确实卡掉了 3 个候选**（候选 43 > 40），但不掉召回（1008ms vs 832ms）⇒ 保持 40，把「会卡」这一事实记下而不是偷偷放宽。
+- **探针 C：P2 判降级**（纯渲染帧 = 消消乐协议弹窗，8 节点、**0 个带文字节点**，正是 P1 结构性失明的场景）：
+  - **P1 在此 0/8**（以 VLM 读手给出的文字当参照 needle，因为层级给不出 needle）——设计矛盾第一次在真机上被直接看到；同帧整帧 5/8、P2 4/8、P3 3/8。
+  - **P2 的公平审判**（`--sweep`：极性 auto/bright/dark × 行阈值 0.004/0.01/0.02/0.05）：最好的配置也只切出 **7–9 条 1323–1423px 的巨型带、覆盖 93–95% 帧高**，其余配置切出 **1 条 = 整帧**；对照桌面帧同样切不出行 ⇒ **「Otsu 单阈值把像素分成字与底」这个前提在真实画面上不成立**（画面至少三层：底图 / 卡片 / 文字），要救 P2 得先做多级分割 = 新方案，不在本条范围。按方案预设的失败分支走：**降级为 P1 + P3，P2 不进 `src`**。
+  - ⚠️ **读数对调用次序敏感（探针自身的缺陷，如实记）**：`--new-labels` 段放在两次网格扫描之后跑，连测两轮都返回「区域扫描无输出」；把它挪到网格之前立刻拿到 40 候选 / 117 命中 / **55 个「像素读得出、层级读不出」的标签**（含 conf 92 的「排行」、conf 94 的「游戏」）。根因未查（不在本轮范围），因此本条只采信**位置靠前且三屏可复现**的 P1 数字；网格与后续段的相对次序改动会使后续段读空 —— **探针侧的已知限制，别拿它的「无输出」当结论**。
+- **接线落地**：`{text}` 在层级未命中 → 整帧 OCR 未命中 → **P1 区域 OCR** → 才回落模型视觉。`TargetSource` 增 `"ocr-region"`（这是 §七 G92 方案 What-3 里写明要区分的 `target_source`，不是新造契约）；`fetchHierarchy` 改为同时带出 `elements` 与 `nodes`，**区域候选必须来自刚读过的那一份 dump**（再读一次可能描述另一帧，坐标就落到错的像素上）；`presentationMeta` 认这个新值；工具描述与 `text` 参数说明同步（R19 的展示义务）。新增 6 条锁（`tests/ocrConsumer.spec.ts`）。
+- **变异（R27，各精确红一次后还原）**：② 「区域永远跑」——把 `if (point !== undefined) return` 挪到区域调用之后 ⇒ **只有那条阶梯锁红**（1 failed / 14 passed，红名正是「does not ask the region pass what the whole frame already answered」）；③ `recognizeRegions` 单块 catch 改 `throw` ⇒ 「skips a block that throws and still scans the rest」红；`build` 复原后 29/29 复绿。
+- **宿主 live 复验（同一构建，三轮会话，权威读数全部来自会话日志 R24）**：
+  - 三任务工具宿主内点名 ⇒ **交付-1 C 项完成**：`tools invoked: autogamer_run_task=1 / autogamer_manage_task=1 / autogamer_inspect_trace=1 / autogamer_diagnose=1`，且声明面 `--dump-config exit 0 / unmatched 0`。
+  - 阶梯 live 行为：`{text:"找游戏"}` ⇒ `target_source=hierarchy`（level 0 命中，**没退化成 OCR，无回归**）；不存在的标签 ⇒ 原句 `task: no element matching text …`（三层都答不出时**失败形态不变**，区域只加答案不抢答案）；`G44` 的未汇报回合 nudge 在 live 里如期触发。
+  - **P1「既可达又赢」的那一屏还没量到**（G92 不结案的确切理由）：桌面屏所有可读标签都在层级里 ⇒ level 0 就命中；TapTap 能读到但画面自动刷新，离屏算好的靶子到执行时已换屏（`本周下载TOP10` 实际由层级命中；`论坛` 三层全空 ⇒ 仍走原拒绝）；纯渲染帧 P1 候选为 0。**我一度把 `本周下载TOP10` 判成「层级没有」也是同类错误**：选择器按大小写敏感比较，而阶梯不分大小写（节点里写作 `Top10`）⇒ 判据修紧后才承认这是选择器的错，不是现场的。
+  - **新立 G99**：`autogamer_diagnose` 被模型传了 `include_screenshot:true` 后返回的 image 附件，在送进本地提供方（LM Studio / `openai-completions`）时被 `400 "'url' field must be a base64 encoded image."` 拒掉，`inputTokens=0` 说明生成前即失败，**且该图留在历史里让此后每轮立刻失败**（连挂三轮，新开会话恢复）⇒ 含图的 live 复验与 G98 面板复验一并受阻。归因边界按 R25 写清：错误串只证明那次被拒，「宿主没把附件解析成 data URL」是最省事的可疑点、**未定论**。
+- **耗时分布入账（45s 预算的依据，各 5 次均值，本机 MuMu）**：`uiautomator dump` **2036ms**（主导项）｜ `exec-out screencap -p` 534ms ｜ `input tap` 53ms ｜ `getprop` 38ms ｜ `dumpsys window` 46ms ｜ OCR 整帧 1235–2498ms ｜ P1 区域 584–832ms。⇒ 一条最坏路径的动作级阶梯（dump + tap + 前后两帧差分 + 一次整帧 + 一次区域）约 **6–8 秒**，**45s 在这台设备上没有上调依据**；`dump` 是唯一稳定上到秒级的内层调用，慢设备场景的分布仍未量（G99 修好后补）。
+- **门禁**：`verify` **45 文件 / 519 通过**（基线 45/510，+6 阶梯锁、+3 到达锁）；`check-docs` / `--selftest` / `check-env` 全 exit 0；README 的「未接线」段按现状改写（R28）。
 
 ### 文档对齐-1 · 全仓文档面对齐当前实现（2026-10-15 结案；CHANGELOGS #103）
 
