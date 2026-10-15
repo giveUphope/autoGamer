@@ -60,6 +60,13 @@
   **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
   而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
   ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **能力重审-1 已落地（2026-10-15，方案 `95c536a` → 实现 `3884bd3` → 结案 CHANGELOGS #111）**：六面重审交回的项里，先做**零授权、离线可判、且不引入新退化**的三条 ——
+  ① abort 从 `task` 收成**第四类 `cancelled`**（两侧都不记账；方案原文「统一为 `environment`」被 `breaker.ts:56-63` 的 `allowedFails=1` 否决：**用户按一次停止键就锁死后续全部动作**）；
+  ② `wait` 上限 `WAIT_CEILING_MS = 30_000` **低于**声明的 45s、超限拒绝而非钳制、睡眠观测 signal（`duration_ms: 50000` 曾让内部台账与模型可见答案**必然相反**）；
+  ③ `resolveScreenSize` / `captureFrame` 两缝补上 `signal`。⚠️ 重审建议「删掉两处 `timeoutMs` 声明」被本仓**否掉**：删后模型最坏等待 **45s → 204s**。
+  🔶 **两条锁被变异当场证伪**（abort 分类锁挂在够不到的分支；signal 锁因 `signal?` + 只记 argv 的记录器而结构上无法生效 ⇒ `fakeAdb.signalSeen` 断言**身份**）；
+  ⚠️ 本条台账的**第一次落账失败**（`oldString` 引了文件里不存在的 `## 四 · 附录`）而实现提交已进库 —— 教训同 R24：**工具调用发出 ≠ 改动生效**。
+  `verify` **44 文件 / 479 通过**（结案时复跑同读数）。六面重审的其余结论**全部落账在 §七「重审综合」**（含三条否证与四条「现在就做」候选）。
 - **PSM 这条路已查实并否掉（2026-10-15，联网调研 + 离线实测，CHANGELOGS #110）**：`tesseract.js` **支持** `tessedit_pageseg_mode`（`SPARSE_TEXT=11` 的上游语义正是「跳过版面分析」），
   而这是本分支从未考虑过的设计空间，所以查了。实测（两帧 × 六种设置，**每格独立 worker**）：
   **合成难帧上所有 PSM 都读不出 needle** ⇒ **「关掉版面分析让引擎自己找」不成立**，P1/P2/P3 的方向**没有被推翻**。
@@ -221,7 +228,7 @@
 |---|---|---|
 | G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 0–3 个（逐帧方差大）；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜、不可读帧先拒）。**2026-10-15 已量过放大假设：整帧 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中（3× 还贵 70%），而同一屏 140×70 的**局部裁剪 @2×** 能正确读出「游戏 中 心」⇒ 瓶颈是**整页版面分析**不是像素尺寸**；解法形态是「按区域识别」。**2026-10-15 已立项，方案见 §七「G92 · OCR 按区域识别」**（探针 A 可离线先行，探针 B/C 待设备）。**2026-10-15 能力重审-1 把 P1 判为「未接线」并给了到期条件**：P1 的候选框全部来自层级 bounds ⇒ 层级无框时它结构性地帮不上，而那正是 OCR 存在的理由 ⇒ 不接线的依据是逻辑；**到期条件 = 探针 B 的真机 needle 命中率 ≥ 整帧基线**，到那天才接线（未加阻止接线的锁） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
-| G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内。**2026-10-15 复核仍未解锁**：宿主侧没有承载标注图的 UI 落点（R18），而 OCR 内置之后，「画框」要成立还多了一个前置——元素源本身要可信 ⇒ 与 **G92** 挂钩。要做时是「UI slot + 可信元素源」的新条目，不是给截图加一层绘制） |
+| G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内。**2026-10-15 复核仍未解锁**：宿主侧没有承载标注图的 UI 落点（R18），而 OCR 内置之后，「画框」要成立还多了一个前置——元素源本身要可信 ⇒ 与 **G92** 挂钩。要做时是「UI slot + 可信元素源」的新条目，不是给截图加一层绘制）。⚠️ **2026-10-15 能力重审推翻本行两处依据**（结论「仍推迟」**不变**，但理由要换）：① 「宿主侧没有承载落点」**当时为真、现在为假**——宿主自己渲染工具结果里的 image 块（`runDeviceAction.ts:693-694` 已产 `[text, image]`），标注图**不需要一张 client 卡片**；② 前置-6 的成本依据「要引入 sharp/libvips」也过期（仓内已有零依赖 PNG 解码 `effect/png.ts:103` + 编码 `ocr/image.ts:119`）。⇒ **唯一成立的前置是元素源可信度（G92）**；判据方法论见 §七「重审综合」的「已就地标注」段 |
 
 > **本表只列还开着的事**（R28：结案的行不再占位，去 §七 与 CHANGELOGS 找记录）。
 > G72（提供方形状）与 G74（映射层按旧 5 工具面锁形状）**不在本分支跟踪**：它们随 T4 消解。
@@ -317,7 +324,7 @@
 | token | loopback 端口对手机上**所有 app 可达**，故除 `/ping` 外一律要 **session token**；token 是**每台主机一份随机秘密**，落在 Artemis temp 目录的文件里让多进程共享，经 `am broadcast` 投递（接收器受 `WRITE_SECURE_SETTINGS` 保护）；每次 attach 重投，helper 答 401 时再投 |
 | 版本 | `MIN_PROTOCOL_VERSION = 2`；传输错误时 `reattach` **只试一次** |
 | 生命周期 | detach 只删**本进程建的**转发；物理拔出无需主机动作（adb 随传输丢弃转发，设备侧服务照跑）；`adb devices -l` 的 `transport_id` **每次重插都变** ⇒ 变了就当隧道陈旧重建 |
-| **互斥**（决定选型的一条） | Android 在 UiAutomation 连接存活期间**解绑所有 accessibility 服务** ⇒ **helper 与 uiautomator 天生互斥**，旧实现的做法是发现 uia2 服务器占着就把它停掉（Appium 的从不动，只在错误里点名） |
+| **互斥**（决定选型的一条） | Android 在 UiAutomation 连接存活期间**解绑所有 accessibility 服务** ⇒ **helper 与 uiautomator 天生互斥**，旧实现的做法是发现 uia2 服务器占着就把它停掉（Appium 的从不动，只在错误里点名）。⚠️ **2026-10-15 重审补两条**（一手，出处见 §七「重审综合」）：**`uiautomator dump` 自己就是 UiAutomation 占位者**，且 `UiAutomationShellWrapper.connect()` 调**无参** `mUiAutomation.connect()` ⇒ 走「默认压制 a11y 服务」分支、**没有 flag 可以不压制**；故本行的互斥成立于**另一根轴**——「helper ⟂ 任何 UiAutomation 使用者」，而 dump 与 uia2 的冲突窗口只是**时长不同**（dump 那几秒 vs uia2 整段寿命），属**可调和**（代价是一套 interlock），不是「天生不可共存」 |
 
 **本次在设备上验到哪一步**
 - ✅ 隧道机制：`adb forward tcp:0 tcp:18888` 返回分配端口 **57361**；测完已 `--remove`，`forward --list` 为空。
@@ -545,6 +552,10 @@
 - 归档侧（只读 blob）：标注出现在 `artemis/agents/**`（flash / operator / summarizer 的调试产物）与 `artemis/data_engine/**`（历史截图存档的可视化）——前者按 **D8** 不迁移，后者按规格 §二 改由 **DSH session log** 承载。
 
 **判定**：**不实现**，判**推迟**并新立 **G88**。为「给人看的调试图」引入 `sharp`（libvips 原生依赖）换来的是零消费者的产物；本分支的调试面是日志与真帧，没有标注图这一层。
+⚠️ **2026-10-15 能力重审：本节的两条依据都已过期，判定「推迟」暂不变但理由要换**（综合见 §七「重审综合」）——
+① **成本依据失效**：仓内已有**零依赖** PNG 解码（`src/effect/png.ts:103`）与编码（`src/ocr/image.ts:119`）⇒ 画框＝改 RGB 缓冲，**不需要 `sharp`**；无字形光栅时可退化成「命中/未命中着色 + 序号」。
+② **承载依据失效**：宿主自己渲染工具结果里的 image 块（`src/tools/runDeviceAction.ts:693-694`）⇒ 标注图作为**工具结果的 image 块**即可，**不需要 client 卡片**（也就不必绕 `tests/clientHalf.spec.ts:64-75` 的禁列）。
+⇒ 现在唯一站得住的前置是**元素源可信度**（G92）。**解锁条件的形态随之改变**：不是「等 UI slot 出现」，而是「等元素源可信」；届时走 A 路线（工具结果 image 块），B（toolview 卡片）只在需要**活数据**时才值。
 **不是放弃**：若将来做 Web toolview 的「把命中的元素框画出来」这类展示（P3/G2 轨道），那才是消费者出现之时——届时按当面的官方形态（client 插件的 `tool.call.toolview` keyed slot，R18）设计，依赖选择重新评估。
 
 **Done means**
@@ -1437,6 +1448,87 @@ pad\scale |  1.0  1.5  2.0  3.0
 - `TOOL_TIMEOUT` 仍**识别不到**：插件没挂 `tools/result` / `post-execute` 监听器，包装层的结构化错误进不了任何分类器。
 - 内层四处自实现超时仍在（adb / OCR / provider / preflight），未统一成一个 `Deadline`（那是重审的方案 B，改 11 个文件，另立）。
 - `wait` 中途 abort 后仍会 `recordSuccess`？——**已修**（abort 时返回 `cancelled`，不记账账）；但「包装层在真宿主里是否真的替换结果」仍 🔶，需宿主会话而非设备。
+
+### 重审综合 · 六面能力重审的结论、否证与处置（2026-10-15，只读调研，零设备）
+
+> **缘起**：用户逐项质证「对照表里有些能力未实现或被改造」后要求「分派子代理完成所有面的重审」（2026-10-15）。六个只读子代理各查一面，
+> 报告全文当时**只存在于会话 transcript**（`ses_ec26d7e82ffe32mbJo2gnEkPRV`），台账里一个字都没有 ⇒ 本小节是它的落账处（R28）。
+> **已结清的三项**（abort 分类 / `wait` 上限 / 两处 signal 缝）走 CHANGELOGS **#111**，本处只记**其余结论、否证与处置**。
+> 证据层级口径：**一手**＝官方 / AOSP / npm 原文（逐条带 `gh api` 或 webfetch 出处）；**结构**＝读源码或归档只读 blob；**单测**＝离线 vitest；**live**＝CHANGELOGS 已记实测；**未验**＝无一手证据。
+> ⚠️ 六份报告**全部零 live 证据**（本轮无设备）；下表凡「判据需真机 / 需宿主」的都标 🔶，不许把结构证据写成实测。
+
+**逐面结论与处置**
+
+| 面 | 一句话结论 | 处置 | 落点 |
+|---|---|---|---|
+| 超时与执行 | 现状不是「三层兜底」而是**一个共享 abort 信号上的两层记账**：包装层 45s **只 abort 不返回**（`await next()`），我们把 abort 映射成 `task` 级失败 ⇒ 内部台账与模型可见答案互斥 | 三条已修（#111）；`Deadline` 值对象统管四处内层（重审方案 B，11 文件）与 `TOOL_TIMEOUT` 识别**未做** | 本节「待立项」行 5、6 |
+| OCR 识图 | 保留 `recognize.ts` 的 needle→像素**确定性解析器**，重新定位为「确定性兜底」；**放弃**「区域 OCR 救召回」；**新增一条非 OCR 的召回轴** | 建议 1、2 已做（#111）；建议 3 待立项（本节「现在就做」行 3） | CHANGELOGS #111；下行 3 |
+| 层级元素源 | **保留 dump、不建 uia2 客户端**——uia2 是第二**传输**不是第二**数据源**（两条路都跑 `AccessibilityNodeInfoDumper`）⇒ 换过去**不解决 G92 的渲染区缺席** | 「现在就做」两条：占用者诊断器、`dump --windows` | 下行 1、2 |
+| 闸门与诊断 | 问题不是「2 项太少」而是**闸门放错了地方**：三处真会给出误导性结果的故障都不在 preflight，而 preflight 罩住了两个不碰设备的工具（`manage_task` / `inspect_trace`）、**没罩住唯一真正驱动设备的 `run_device_action`** | 闸门语义按裁决动（需先改规格 ⇒ 待裁决）；两条注释/死代码真相修复「现在就做」 | 下行 4；R19 段 |
+| 智能栈等价物 | **D8 的取代论证只覆盖执行侧**：`explorer`/`runners` 确有取代者，但 `screen_index` 无对应物、`checker` **只有提示词** | 判「重做」而非放弃，但**均需先补 R20 取证**（官方子代理扩展点本轮未查）⇒ 立为**待取证**，不占编号 | 本节「待取证」段 |
+| 可观测与调试 | 轨迹＝**重做而非放弃**（会话内已成立，跨会话查询/聚合/导出是真缺口，其中导出宿主已覆盖大半）；overlay＝**推迟依据部分失效**；录屏＝**维持放弃** | 就地标注四条过期依据（本轮已做）；能力本体待需求 / 待设备 | 本节「已就地标注」段 |
+
+**三条否证（实测或一手证据，别重试）**
+
+1. **uia2 路线不解决 G92**（一手 + 结构）：`dump` 与 uia2 的 `dumpWindowHierarchy` 分别是 AOSP 与 openatx 的**同名 dumper**，属性词表同源；
+   `xpath` 也不是设备侧能力（openatx 官方：先 `dump_hierarchy` 取 XML，**主机侧 lxml** 解析，动作仍走服务器）；
+   而本仓 OCR/区域候选源就是 `node.bounds`（`src/ocr/regions.ts:78-111` 已自陈「层级无框则无候选」）⇒ **换传输不产生新框**。
+   uia2 的独有增量只有三项（常驻连接、服务端等待器、`max_depth`），且**同一时刻只能有一个 UiAutomation 连接**（AOSP `UiAutomationConnection.connect()` 抛 `Already connected.`）⇒ 走这条路要付 interlock + `u2.jar` 二进制资产（供应链面）+ 自写 TS 客户端（npm 上只有 2016 年废弃包）。
+2. **「自己实现版面分析」的三条路都已实测否掉**：整帧放大 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中；**所有 PSM 在合成难帧上全 miss**（CHANGELOGS #110）；合成帧把标签放大 5× 整帧仍读不出（#108）。
+   ⇒ P1 不接线的依据是**结构性**的（候选源与触发条件互斥），不是「还没来得及」。
+3. **「D8 已取代整个智能栈」不成立**：全仓 `subagent|explorer|checker` grep **0 命中**，`screen_index` 的两半都在仓内但**接口不相交**（`src/observations.ts:12-22` 是不可查询的扁平列表；OCR 页从不进任何索引）。
+
+**「现在就做」四条（零授权、离线可判、各带能红的判据）——待按 R22 立项，本处不实现**
+
+| # | 做什么 | 为什么是它 | 判据（离线） |
+|---|---|---|---|
+| 1 | **层级占用者诊断器**（约 30 行，`git grep "ps -A\|wetest\|com.github.uiautomator" -- src` 现**零命中**） | dump 静默失败后今天**直接降级到 OCR 且无人知道原因**，是元素源面最大的真实缺口 | `readHierarchyXml` 返回 `undefined` 且喂固定 `ps` 文本命中 marker ⇒ 报**具名**占用者；空 ⇒ 报「dump 本身失败」。变异：删 marker 匹配必红 |
+| 2 | **`uiautomator dump --windows`**（`--compressed` 默认关） | `--windows` 取 `FLAG_RETRIEVE_INTERACTIVE_WINDOWS`，能多捞弹窗/系统窗口节点；`--compressed` **反向**（上游 py 显式传 `compressed=True`，而 verbose 的 `setCompressedLayoutHierarchy(false)` 节点**最多**⇒ 照搬上游对 G92 更差） | 离线：mock adb 断言 argv 含 `--windows`。🔶 增量几个节点需真机 |
+| 3 | **`{text}` 未命中时把「叶级候选框编号 + 该帧 attachment 引用」交回模型**（通路已存在：`src/index.ts:292-310` 存附件、`runDeviceAction.ts:693-694` 已产 `[text, image]` 块） | 一条**非 OCR** 的召回轴：层级答不出时让帧进入模型视野、由模型回 `{coordinate}` 或 `{index}`，而不是继续在 tesseract 上重实现版面分析 | 新增 spec：`{text}` 未命中时结果**必含** `frame` 引用且**不含任何猜的坐标**；变异：删引用必红。🔶 收益数字属探针 B |
+| 4 | **两处「注释/代码说谎」的真相修复**：`src/env/preflight.ts:49` 写「`contracts.spec` locks this list」——**该文件不存在**，真锁是 `tests/preflight.spec.ts:76-77`（`:76` 比 id 列表、`:77` 用字面量 `[true, true]` 才真正锁住「只有两项」）；`src/tools/diagnose.ts:21` import `requireEnv` **从不调用**（tsconfig 未开 `noUnusedLocals` ⇒ 编译不报，读者会误以为诊断也过闸门） | 与 #107 的 `client.js` 注释同类缺陷：**指向不存在的锁**＝把读者引向一个假的验收 | 改完 `git grep -n "contracts.spec" -- plugins/dsh-autogamer/src` ⇒ 零命中；`requireEnv` 的 import 删除后 `verify` 不变绿即证它本就没被用 |
+
+**待立项两条（本条不实现，因为它们要先补取证或先改规格）**
+
+5. **`TOOL_TIMEOUT` 识别**：插件只挂 `session/event` 与 `tools.guard`，**没有** `tools/result` / `post-execute` / `tools/execute` 监听器 ⇒ 包装层的结构化错误进不了任何分类器。
+   正确落点**不是** `classify.ts`（它只在我们的工具体内被调用，拿不到包装层的错误）。⚠️ 动手前须按 **R20** 查官方监听器形态与 `error.info.code` 的确切读法。
+6. **统一 `Deadline` 值对象**（重审方案 B）：四处内层（adb / OCR / provider / preflight）各持一份预算与取消观测，三处孤儿计时器（OCR 超时不取消 worker、MCP 计时器从不清除 ⇒ 成功后 30s 仍 `dispose()`、`rm` 子进程 fire-and-forget）。改 11 个文件，**语义不变**、只统一形状。
+
+**需人裁决（R19 授权面，或 R22 要先改规格）**
+
+- **provider 自我循环四选项**：A 全删（与规格 §一.3 冲突 ⇒ 先改规格；收益是卸掉 `@modelcontextprotocol/sdk` 这个**唯一消费者是 `mcpBackend.ts`** 的运行时依赖）、B 降级为纯文档（**更糟**：留下说谎的规格）、C 重新定位为「原生 adb 读 vs 外部读」的**对照源**（今天 `index.ts:543-563` 把返回值整个丢掉、只拿「有没有回话」当 `reachable` ⇒ **内容盲**）、**C′ 折中＝依赖降为 optional peer**（不动规格、不动工具面，未配置者安装面少一个依赖）。
+- **装 adb + 一台设备**：解锁 G92 探针 B/C、交付-1 C 项、以及本处所有标 🔶 的 live 判据（§七「设备前置调研」已查实成本最低路径＝Platform Tools + 用户手机无线调试）。
+- **加 devDependency 做离线 conformance**：验「声明 `timeoutMs` → 包装层替换结果」这条链（`report_task_status` 不过 preflight 且声明 5s ⇒ 唯一可离线碰的工具），属授权面。
+
+**闸门面的其余处置（不新建编号，逐条给结论）**
+
+- 锁屏（候选③）：**不是 preflight 项**，而是修既有闸门的三个缺陷——`roster.ts:113-116` 不看 `timedOut/aborted` ⇒ 一次慢 `dumpsys window` 就 `readScreenState("")=null` ⇒ 每次点名调用被硬拒「lock state is unknown」；auto 路径不查门；auto + 唯一锁屏设备时 `eligibleDevice` 恒 undefined 且 `acquire` 无超时 ⇒ **动作工具挂住**（结构证据，🔶 未实测观感）。
+- 层级源（候选④）：**只报不门**（门它会连带拒掉完全正常的 `take_screenshot` / `{coordinate}`）；真修法在失败点改分类 ⇒ **已随 #111 做掉**（`task` → `environment`）。
+- OCR 语言包（候选⑤）：**范围化**到 `{text}` 的拒绝文案，`diagnose` 已报（`missingLanguageData`）缺的是把事实接到文案上；当全局 gate 会白丢截图/点击（OCR 本就 fail-open）。
+- **一条 preflight 的潜伏风险**（读 breaker 得出）：一旦把 preflight 接进 `run_device_action`，`environment:` 前缀 + `allowedFails` 默认 1 ⇒ **一次用户可修的条件就开闸冷却 30s** ⇒ 原则落地：**preflight 抛错要么不带该前缀，要么不给它记账权**。
+- `requireEnv` 与 `preflight.run()` **都不接 `AbortSignal`**（四调用点也不传）⇒ 用户取消后仍要等 `adb version` + `adb devices` 跑完才抛。
+
+**待取证（不占编号，也不许现在写实现）**
+
+- **DSH 是否有官方只读子代理扩展点**：本轮**未做 R20 第 1 步**（`src/dsh-types.ts` 镜像里没有子代理创建面**不足以**判定官方没有）。
+  「感知子代理」（复刻 `ask_explorer` 契约：query + 截图 → **多候选坐标**）的可行性**全悬在此**；它与宿主 VLM 原生看同一张图有重复，且会把 S11 删掉的第二个推理环与第二份 token 账单请回来。
+- **`checker` 的提示词替代是「已裁决」还是「当时没想清楚」**：persona 第 6 条（`cordis.patch.yml:45-51`）+ `SELF_CHECK_PROMPT` 是**仅有**的东西；上游 checker 的权威来自**工具表而非提示词**（枚举只读 `dumpsys` 探针、正则校验参数、固定 argv）且**放行判定在模型外算**，
+  而我们 `report_task_status` 的 `status` / `tests_failed` 是**模型自己填的数**（`reportTaskStatus.ts:51-70`）⇒ 台账**无裁决条目**，这是一条**未结的差距**，不是一笔已放弃的债。
+- **`ctx.llm` 由第三方插件直接发起 VLM 调用是否合规**：seam 存在（`LlmRuntime.stream`，消息可带 `ImageBlock`），但官方列出的直接消费方只有 `agent-loop` 与 `compaction-basic`；宿主是否允许 / 如何计费与记日志**未查证**。
+
+**已就地标注（本轮做的四条 R28 更正）**
+
+- §四 **G88 行**：推迟判定的**成本依据已过期**——原写「为调试图引入 sharp/libvips 不划算」，而仓内已有**零依赖** PNG 解码（`src/effect/png.ts:103`）与编码（`src/ocr/image.ts:119`）⇒ 画框＝改 RGB 缓冲，无新依赖；且**宿主自己渲染工具结果里的 image 块**（`runDeviceAction.ts:693-694`）⇒ 标注图不需要卡片。真闸门仍是**元素源可信度**（与 G92 挂钩）。
+- §七「**前置-6**」的判定段：同上两条失效依据，并改写**解锁条件的形态**——从「等 UI slot 出现」改成「等元素源可信」，届时走「工具结果的 image 块」路线（不需要 client 卡片，也就不必绕 `tests/clientHalf.spec.ts:64-75` 的禁列）。
+- §七「**前置-2**」的互斥行：补两条一手事实（`uiautomator dump` **自己就是** UiAutomation 占位者，且 `UiAutomationShellWrapper.connect()` 调**无参** `connect()` ⇒ 默认压制 a11y 服务、**无 flag 可免**），并把「天生互斥」限定到正确的轴上（helper ⟂ 任何 UiAutomation 使用者；dump 与 uia2 只是**冲突窗口时长**不同，属可调和）。
+- CHANGELOGS **#85**：该条把「调试录屏」与上游 `artemis/agents/video_analyzer/**`（**感知能力**，已按 D8 砍）混为一谈，须点名以免误导下一个人。
+- §七「**重审综合**」的指针：`能力重审-1` 条目原先引「§七「重审综合」」而该节不存在（**悬空指针**），本节即其补落点。
+
+**录屏维持放弃的一手依据**：宿主无视频承载面——上游全仓 `getDisplayMedia` 0 命中、`.mp4` 0 命中，subsystems 无录制页，附件准入只接受 `png/jpeg/webp/gif` ⇒ **MP4 连附件通道都不存在**；等价替代是帧序列（每步截图已落附件存储 + `session-log-export` 打成含 `media/` 的 ZIP）。
+
+**D20 判读**：轨迹、overlay、录屏三面**都不冲突**——`task/fold.ts` 已自述设计来源是 session log 与官方子系统文档；画框/配色无上游文本可搬（与 T3 差分同性质）；`adb shell screenrecord` 是 Android 平台能力而非 artemis 资产。**唯一红线**：`artemis/agents/video_analyzer/*.md` 是 prompt 正文，照抄即违规。
+
+**判据方法论产出（与 #111 同族，供将来复用）**：「零消费者」判据必须**两侧都查**（本仓 grep **且** 宿主声明面 / 官方 subsystem 文档）——只查本仓会出**假阴性**（G88 已发生一次）；
+须区分**载体缺失**与**消费者缺失**（载体可被宿主新增能力一夜填平）；**成本论证要带时效戳**，过期理由会继续推迟本该重估的事。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
