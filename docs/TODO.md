@@ -804,9 +804,9 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **Done means**
 
-- [ ] `package.json` 有 `packageManager: pnpm@11.21.0`，`pnpm-workspace.yaml` 有 `pmOnFail: error`
-- [ ] 匹配态安装 exit 0 且 **lockfile 零变化**；A/B 实测不符时 exit 1、且失败发生在改动之前
-- [ ] `verify` 三段全绿；`check-docs` / `check-env` exit 0
+- [x] `package.json` 有 `packageManager: pnpm@11.21.0`，`pnpm-workspace.yaml` 有 `pmOnFail: error`
+- [x] 匹配态安装 exit 0 且 **lockfile 零变化**；A/B 实测不符时 exit 1、且失败发生在改动之前
+- [x] `verify` 三段全绿；`check-docs` / `check-env` exit 0
 - [ ] `AGENTS.md` 写明钉法、误配处置、升版流程，以及「从仓库根跑不受本钉约束」这条边界
 - [ ] 基建-3 / CHANGELOGS #98 里那笔「未钉版本」的债**就地标注已结清**并指向本条；§零 与「新分支特有」清单同步
 
