@@ -112,7 +112,7 @@ const KEYCODES: Record<string, string> = {
 
 type DispatchResult =
   | { ok: true; value: unknown }
-  | { ok: false; failure: "environment" | "task" | "internal"; message: string };
+  | { ok: false; failure: "environment" | "task" | "internal" | "cancelled"; message: string };
 
 /**
  * Breaker/gate device key (S4 矩阵：auto 端点默认键）。省略、非字符串或空串的
@@ -195,6 +195,32 @@ const RESOLVE_ATTEMPTS = 3;
 
 /** Upstream incident threshold: consecutive failures that open an incident. */
 const INCIDENT_THRESHOLD = 3;
+
+/**
+ * The deadline we declare to the host (R15: the registry never executes it, so
+ * this is a claim about our own budget, not a mechanism). Named because
+ * 能力重审-1 checks against it: `wait` must not be able to outlive it, or the
+ * declaration says something untrue.
+ */
+export const RUN_DEVICE_ACTION_TIMEOUT_MS = 45_000;
+
+/**
+ * `wait` ceiling. Strictly below the declared deadline so pool admission and
+ * result shaping still have budget after it — a `wait` that could consume the
+ * whole deadline would make the claim above false by construction.
+ */
+export const WAIT_CEILING_MS = 30_000;
+
+/**
+ * An abort is charged to NEITHER side: the host's deadline and the user's stop
+ * button are both outside the device and outside the model's plan. Charging the
+ * breaker would open it for a whole cooldown because someone pressed stop;
+ * charging the task would tell the model its goal is unclear when the stop
+ * button (or the host deadline) is what ended the call. 能力重审-1.
+ */
+const CANCELLED_MESSAGE =
+  "cancelled by the host deadline or the user's stop — nothing was charged to the device or to you; " +
+  "resend a shorter call or a narrower target";
 
 export function isLadderOn(strictness: ValidatorStrictness | undefined): boolean {
   return (strictness ?? "final") !== "off";
@@ -338,8 +364,13 @@ export interface RouterOptions {
    */
   ocr?(key: string, signal?: AbortSignal): Promise<OcrPage | undefined>;
   hierarchy(key: string, signal?: AbortSignal): Promise<string | undefined>;
-  /** Screen dimensions for 0-1000 → pixel conversion; probe result cached per key. */
-  resolveScreenSize(key: string): Promise<ScreenSize | undefined>;
+  /**
+   * Screen dimensions for 0-1000 → pixel conversion; probe result cached per
+   * key. Takes the caller's signal (能力重审-1): without it this seam was the one
+   * place in the pre-execution path a host deadline could not stop — the frame
+   * probe kept running after the model had already given up.
+   */
+  resolveScreenSize(key: string, signal?: AbortSignal): Promise<ScreenSize | undefined>;
   /**
    * Commit screenshot bytes to the host attachment store and get back the
    * durable reference the model and UI can use. Absent (or returning undefined)
@@ -357,7 +388,8 @@ export interface RouterOptions {
    */
   /** Records that this agent acted in the current turn (G44 ledger). */
   onAction?(): void;
-  captureFrame?(key: string): Promise<string | undefined>;
+  /** Effect frame for the before/after comparison. Signal-threaded, same reason. */
+  captureFrame?(key: string, signal?: AbortSignal): Promise<string | undefined>;
   compareFrames?(
     beforeB64: string,
     afterB64: string,
@@ -387,7 +419,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const target = (args.target ?? {}) as TargetInput;
     if (target.coordinate !== undefined) assertNormalizedPair(target.coordinate, "target.coordinate");
     if (typeof target.coordinate?.[0] === "number" && typeof target.coordinate?.[1] === "number") {
-      const size = await requireScreenSize(key);
+      const size = await requireScreenSize(key, signal);
       return {
         x: toPixels(target.coordinate[0], size.width),
         y: toPixels(target.coordinate[1], size.height),
@@ -417,7 +449,16 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     for (let attempt = 1; attempt <= attempts; attempt += 1) {
       const fresh = await fetchHierarchy(key, signal);
       if (fresh === undefined) {
-        throw new Error("task: hierarchy unreadable (not a node list) — re-run get_ui_hierarchy");
+        // An abort that arrives mid-read lands here too, and it must not be
+        // charged to the device - check it first (能力重审-1).
+        if (signal.aborted) throw new Error(`cancelled: ${CANCELLED_MESSAGE}`);
+        // Not a task failure: `uiautomator dump` exits 139 even when it claims
+        // success, so unreadable XML means the dump did not deliver - a device
+        // or host condition the model cannot fix by rewording its goal.
+        throw new Error(
+          "environment: hierarchy unreadable (not a node list) — the dump did not deliver readable XML; " +
+            "check the device connection and re-run get_ui_hierarchy",
+        );
       }
       const hit = resolveTarget(target, fresh, key);
       if ("center" in hit) return { ...hit.center, via: "hierarchy" };
@@ -533,8 +574,8 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     return parseVisibleElements(xml ?? "");
   }
 
-  async function requireScreenSize(key: string): Promise<ScreenSize> {
-    const size = await options.resolveScreenSize(key);
+  async function requireScreenSize(key: string, signal?: AbortSignal): Promise<ScreenSize> {
+    const size = await options.resolveScreenSize(key, signal);
     if (!size) {
       throw new Error(
         "environment: screen size unavailable (probe screenshot failed) — set the plugin `screenSize` config or check the device",
@@ -560,26 +601,45 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           "Where to act. {index} = the #N handle from YOUR latest get_ui_hierarchy output on this device (preferred; " +
           "it follows that same element while it can still be recognised, and is refused rather than guessed " +
           "when it cannot be — a handle you never saw does not exist); " +
-          "{coordinate:[x,y]} in 0-1000 as fallback; {text} matches text/content-desc/resource-id. " +
+          "{coordinate:[x,y]} in 0-1000 as fallback; {text} is the deterministic channel for a visible label " +
+          "the nodes do not carry (it also reads the frame's own pixels). " +
           "Required by click/long_press/input_text/focus_and_clear_text.",
         properties: {
           index: { type: "number", description: "The #N handle from your latest get_ui_hierarchy output on this device." },
           coordinate: { type: "array", items: { type: "number" }, description: "[x,y] normalized to 0-1000." },
-          text: { type: "string", description: "Substring to locate the element." },
+          text: {
+            type: "string",
+            description:
+              "Visible label to locate. Matched first against the hierarchy (text/content-desc/resource-id), then " +
+              "against the frame's own pixels, so it reaches labels a canvas or WebView never exposes as nodes. " +
+              "This is the deterministic channel: the plugin computes the point itself and records which source " +
+              "answered, unlike coordinate which you estimate from a screenshot. If nothing matches, read the " +
+              "screenshot and use coordinate instead — retrying this will not help.",
+          },
         },
       },
       end_coordinate: { type: "array", items: { type: "number" }, description: "Swipe end [x,y] normalized to 0-1000." },
       target_description: { type: "string", description: "Short human description of the target, recorded with the action." },
       text: { type: "string", description: "Text for input_text (supports \\n)." },
       clear_before_input: { type: "boolean", description: "input_text: clear existing text first (default append)." },
-      duration_ms: { type: "number", description: "Hold/swipe/wait duration in milliseconds." },
+      // No `maximum` here: the official value-schema DSL accepts only `type`,
+      // `enum`, `const` plus annotations on a scalar (verified in
+      // @deepseek-ai/dsh-tools' own compiler, 能力重审-1) and rejects anything
+      // else as an author-schema violation. So the ceiling is enforced in the
+      // executor below and stated here for the model.
+      duration_ms: {
+        type: "number",
+        description: `Hold/swipe/wait duration in milliseconds (0-${WAIT_CEILING_MS}; longer is refused).`,
+      },
       key: { type: "string", description: "press_key key: home/enter/delete/tab/search/menu/app_switch/volume_up/volume_down/power, digits, or a raw KEYCODE_* name." },
       package: { type: "string", description: "Package name for launch_app/stop_app." },
       url: { type: "string", description: "URL for open_link." },
       device_serial: { type: "string", description: "Target device key; omit for the configured default." },
       reason: { type: "string", required: true, description: "One sentence on why this action moves the task forward." },
     },
-    timeoutMs: 45_000,
+    // R15: the registry never executes this — it is a claim about our budget.
+    // WAIT_CEILING_MS and the signal seams are what keep the claim honest.
+    timeoutMs: RUN_DEVICE_ACTION_TIMEOUT_MS,
     /**
      * S3/R14 并发声明：只读观察动作可并发，变更类独占（缺省 exclusive，fail-closed）。
      * 宿主调度只定"谁可并行"，同一设备的串行仍由工具内闸门强制。
@@ -688,7 +748,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
           // Anything escaping dispatch is our own bug, not a device or task
           // signal (G38) — except a user abort, which keeps its meaning.
           if (exec.signal.aborted) {
-            return { ok: false, failure: "task", message: "action cancelled by the user" } as const;
+            return { ok: false, failure: "cancelled", message: CANCELLED_MESSAGE } as const;
           }
           return {
             ok: false,
@@ -704,7 +764,9 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
             );
           }
           if (result.failure === "environment") breaker.recordEnvironmentFailure(key);
-          else breaker.recordTaskFailure(key);
+          // `cancelled` records nothing on either side: the host deadline and the
+          // user's stop button are not device faults and not model mistakes.
+          else if (result.failure === "task") breaker.recordTaskFailure(key);
           logger.warn(`[route] refused (class=${result.failure}): ${result.message}`);
           if (result.failure === "task") throwTaskFailure(result.message);
           throw new Error(`${result.failure}: ${result.message}`);
@@ -751,12 +813,34 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         if (!Number.isFinite(n) || n < 0) {
           return { ok: false, failure: "task", message: "duration_ms must be a finite number >= 0" };
         }
+        // A `wait` longer than the deadline we declare could never report back:
+        // the host would abort and swap in TOOL_TIMEOUT while our own ledger had
+        // already recorded a success (能力重审-1).
+        if (n > WAIT_CEILING_MS) {
+          return {
+            ok: false,
+            failure: "task",
+            message: `duration_ms must be <= ${WAIT_CEILING_MS} — the tool's own deadline is ${RUN_DEVICE_ACTION_TIMEOUT_MS}ms, and a longer wait could never report back`,
+          };
+        }
       }
-      const ms = Math.min(60_000, Math.max(0, Number(args.duration_ms ?? 1000)));
-      await new Promise((resolve) => {
-        const timer = setTimeout(resolve, ms);
+      const ms = Math.min(WAIT_CEILING_MS, Math.max(0, Number(args.duration_ms ?? 1000)));
+      await new Promise<void>((resolve) => {
+        // The host deadline is allowed to cut a wait short (能力重审-1): without
+        // this the sleep ran to its full length after the model gave up, and
+        // `recordSuccess` below contradicted what the model was told.
+        const onAbort = () => {
+          clearTimeout(timer);
+          resolve();
+        };
+        const timer = setTimeout(() => {
+          exec.signal.removeEventListener("abort", onAbort);
+          resolve();
+        }, ms);
+        exec.signal.addEventListener("abort", onAbort, { once: true });
         timer.unref?.();
       });
+      if (exec.signal.aborted) return { ok: false, failure: "cancelled", message: CANCELLED_MESSAGE };
       return { ok: true, value: { waited_ms: ms } };
     }
 
@@ -782,6 +866,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       if (message.startsWith("task:")) {
         return { ok: false, failure: "task", message: message.replace(/^(environment|task):\s*/, "") };
       }
+      // An abort that surfaced as a throw (the resolution ladder's unreadable
+      // hierarchy) keeps its own class — without this branch it would fall to
+      // `internal` and reach the model as a plugin bug (能力重审-1).
+      if (message.startsWith("cancelled:")) {
+        return { ok: false, failure: "cancelled", message: message.replace(/^cancelled:\s*/, "") };
+      }
       return { ok: false, failure: "internal", message };
     }
 
@@ -792,12 +882,12 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const nativeHierarchy = action === "get_ui_hierarchy";
     const precomputed = nativeHierarchy || value !== undefined;
     const observesEffect = !nativeHierarchy && EFFECT_OBSERVED_ACTIONS.has(action);
-    const before = observesEffect ? await captureFrameSafe(key) : undefined;
+    const before = observesEffect ? await captureFrameSafe(key, exec.signal) : undefined;
     try {
       structured = precomputed ? undefined : await options.execute({ tool, payload }, key, exec.signal);
     } catch (error) {
       if (exec.signal.aborted) {
-        return { ok: false, failure: "task", message: "action cancelled by the user" };
+        return { ok: false, failure: "cancelled", message: CANCELLED_MESSAGE };
       }
       const message = error instanceof Error ? error.message : String(error);
       // G33's rule one layer down: a prefixed answer carries its class, and an
@@ -831,13 +921,19 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
       if (elements === undefined) {
         // Same rule the resolution ladder already applies (G68 ⑤): an
         // unreadable observation is the bypass case, so it must not come back
-        // to the model as a successful read of the screen.
+        // to the model as a successful read of the screen. It is environment,
+        // not task (能力重审-1): the dump exited 139 even when it claimed
+        // success, so unreadable XML is a delivery failure the model cannot fix
+        // by rewording its goal — and an abort landing here is neither.
+        if (exec.signal.aborted) {
+          return { ok: false, failure: "cancelled", message: CANCELLED_MESSAGE };
+        }
         return {
           ok: false,
-          failure: "task",
+          failure: "environment",
           message:
-            "hierarchy unreadable (not a node list) — re-run get_ui_hierarchy, " +
-            "or take a screenshot and use {coordinate:[x,y]}",
+            "hierarchy unreadable (not a node list) — the dump did not deliver readable XML; " +
+            "check the device connection, or take a screenshot and use {coordinate:[x,y]}",
         };
       }
       // G67: this is the ONLY place the live observation is written. What the
@@ -886,7 +982,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     // S11 step 3: the router observes the screen itself instead of trusting the
     // model's reading of it.
     await settle(EFFECT_SETTLE_MS);
-    const after = await captureFrameSafe(key);
+    const after = await captureFrameSafe(key, exec.signal);
     const coordinates = Array.isArray(payload.coordinates) ? payload.coordinates : undefined;
     const changed =
       before && after ? await compareFramesSafe(before, after, tool, coordinates) : undefined;
@@ -954,15 +1050,15 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
     const hit = resolveTarget(tgt, fresh, deviceKey);
     if (!("center" in hit)) return { status: "missing" };
     const center = hit.center;
-    const size = await requireScreenSize(deviceKey);
+    const size = await requireScreenSize(deviceKey, signal);
     const nx = Math.max(0, Math.min(1000, Math.round((center.x / size.width) * 1000)));
     const ny = Math.max(0, Math.min(1000, Math.round((center.y / size.height) * 1000)));
     return { status: "found", normalized: [nx, ny] };
   }
 
-  async function captureFrameSafe(key: string): Promise<string | undefined> {
+  async function captureFrameSafe(key: string, signal?: AbortSignal): Promise<string | undefined> {
     try {
-      return await options.captureFrame?.(key);
+      return await options.captureFrame?.(key, signal);
     } catch (error) {
       logger.warn(`[route] effect frame failed: ${(error as Error)?.message ?? error}`);
       return undefined;
@@ -1000,7 +1096,7 @@ export function defineRunDeviceAction(options: RouterOptions): ToolDefinitionInp
         return { tool: "long_press_on", payload: { coordinates: [x, y], duration: Number(args.duration_ms ?? 1000) }, via };
       }
       case "swipe": {
-        const size = await requireScreenSize(key);
+        const size = await requireScreenSize(key, signal);
         const from = (args.target as TargetInput | undefined)?.coordinate;
         const to = args.end_coordinate as number[] | undefined;
         assertNormalizedPair(from, "target.coordinate");

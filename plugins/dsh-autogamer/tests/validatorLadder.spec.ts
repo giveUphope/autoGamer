@@ -151,7 +151,12 @@ describe("validator ladder: pre-execution retries", () => {
     harness.hierarchies.push("not-json{{{", WITH_TARGET, WITH_TARGET);
     await expect(
       tool.execute({ action: "click", target: { index: 1 }, reason: "t" }, exec() as never),
-    ).rejects.toThrow(/^task: hierarchy unreadable/);
+      // `environment`, not `task`, since 能力重审-1. The class was the bug: it
+      // charged the model for a dump that never delivered (`uiautomator dump`
+      // exits 139 even on success, so unreadable XML is a delivery failure),
+      // told it its goal was unclear, and kept the breaker shut while every
+      // read kept dying. The fail-fast half of this lock is unchanged.
+    ).rejects.toThrow(/^environment: hierarchy unreadable/);
     expect(hierarchyCalls()).toBe(1);
   });
 

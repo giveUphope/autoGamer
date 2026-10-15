@@ -282,6 +282,36 @@ describe("apply(): screen size sourcing wiring", () => {
   });
 
   /**
+   * 能力重审-1, second link of the same chain. `tests/router-errors.spec.ts`
+   * proves the ROUTER hands a signal to `resolveScreenSize` / `captureFrame`; it
+   * cannot prove the PRODUCTION seams in `src/index.ts` forward one, because it
+   * stubs both. This is the lock for that link, and it needed a new recorder
+   * (`signalSeen` in tests/support/fakeAdb.ts) because `calls` records argv only:
+   * a dropped `{ signal }` still compiles (both signatures take `signal?`) and
+   * still produces the same argv, so the old recorder could not tell it apart.
+   *
+   * Identity, not "a signal existed": the call's own signal has to be the one
+   * that reaches adb, or a stale or freshly minted one would pass for it.
+   * Mutation: drop `{ signal }` at either index.ts seam and this goes red.
+   */
+  it("forwards the call signal into both production probe seams", async () => {
+    const tool = await registerToolWith(Config());
+    const controller = new AbortController();
+    await tool.execute(
+      { action: "click", target: { coordinate: [500, 500] }, reason: "probe path" },
+      { signal: controller.signal } as never,
+    );
+
+    const probes = A.signalSeen.filter((call) => screencapArgv.test(call.args.join(" ")));
+    expect(probes.length, "size probe plus the effect pair").toBe(3);
+    for (const probe of probes) {
+      expect(probe.signal, `probe reached adb with no signal: ${probe.args.join(" ")}`).toBe(
+        controller.signal,
+      );
+    }
+  });
+
+  /**
    * G76, measured on the live emulator: `wm size` says 900x1600 while the frame
    * of the same device says 1600x900, so an operator who copied the wm numbers
    * would put every tap half a screen off — and nothing used to check.

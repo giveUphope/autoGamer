@@ -146,16 +146,33 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
   本机实测 `dsh --profile web --dump-config` 的组合树里确有该行（`- id: timeout-policy` / `name: '@deepseek-ai/dsh-tool-call-timeout-policy'`，**无 `disabled`**，即启用中）。
   ⚠️ 核验时的一次陷阱：紧邻上一行 `@deepseek-ai/dsh-tool-workflow` 带 `disabled: true`，**不读上下文就会把它错安到 timeout-policy 头上**（R25 的老坑，本轮实测又遇到一次）。
   ⇒ **本分支现状 = 外层兜底 + 内层自实现的嵌套**：包装层对**声明了 `timeoutMs`** 的工具真的设 deadline（我们 `run_device_action` 声明 45s、`report_task_status` 声明 5s），
-  而 adb 子进程（`src/device/adb.ts`）、OCR（`src/ocr/recognize.ts`）、可选外部提供方后端（`src/artemis/mcpBackend.ts`）三处仍各自自实现超时并观测取消信号。
-  **这不是重复实现**：内层通常先返回（各自的超时更贴近子系统），包装层是兜底。
+  而 adb 子进程（`src/device/adb.ts`）、OCR（`src/ocr/recognize.ts`）、可选外部提供方后端（`src/artemis/mcpBackend.ts`）、环境闸门（`src/env/preflight.ts`）四处仍各自自实现超时并观测取消信号。
+  ⚠️ **2026-10-15 能力重审-1 更正上一版这句话（方向写反了）**：原文写「内层通常先返回，包装层是兜底」——
+  实测是**外层的计时器先到、内层后到，且内层的结果被事后替换丢弃**（包装层 `await next()`，到点只是 abort 派生信号，等主体停稳后再换结果）。
+  「兜底」这个词在这里描述的不是时序，而是意图。代价是两条可离线构造的冲突：内层最坏路径 ≈204s（3 轮 ×(dump 30s+cat 10s)+capture 20s+OCR 8s）
+  远超声明的 45s，且**同一事件会被记成三种类**（见下）。
+- **⚠️ 只有声明了 `timeoutMs` 的工具才有宿主 deadline**：包装层对未声明者直接 `return next()` ⇒ 本插件 7 个工具里只有 2 个有外层上限，
+  其余 5 个**完全没有**。⇒ 「删掉自实现、只靠包装层」不是可行终态。
+- **声明 `timeoutMs` 按上游类型注释即「断言本工具把 `exec.signal` 转发给可协作实现并能在 abort 时停稳」**：
+  2026-10-15 实测**这条断言此前为假**——`captureFrame` / `resolveScreenSize` 两缝的签名里没有 signal，效果帧与屏幕尺寸探测不可取消；
+  `wait` 能睡到 60s > 45s。能力重审-1 已把两缝接上 signal、把 `wait` 压到 30s（`WAIT_CEILING_MS < RUN_DEVICE_ACTION_TIMEOUT_MS`），声明才变诚实。
+- **⚠️ 超时的分类必须自带第四类**：abort 属于**既非设备也非模型**——宿主 deadline 与用户停止键都在设备之外、也在模型计划之外。
+  记 `environment` 会因 `allowedFails` 默认 1 而**一次就开闸冷却 30s**（用户按一次停止就锁死后续动作）；记 `task` 会告诉模型「目标不清楚」并污染 incident 计数。
+  故路由新增 `cancelled` 类：两侧都不记账，模型收到 `cancelled: ...`（`runDeviceAction.ts` 的 `CANCELLED_MESSAGE`）。
+  同理「层级读不回」判 `environment` 不判 `task`：`uiautomator dump` 成功也退 139，**唯一可信判据是读回文件校验**，读不回＝dump 没送达，模型改措辞修不好。
 - **包装层的四条实测事实**（读 `packages/guard/timeout-policy/src/index.ts` @ `master`）：
   1. **零入参、零配置** ⇒ 守则「待补清单」原写的"包装层入参是什么"是**伪问题**，已就地作废；
   2. **协作式、只通知不硬停**：它 `await next()` 等下游真正停稳后才替换结果；忽略 `exec.signal` 的工具会让调用方继续等待；
   3. **结构化错误形状**：`{ isError: true, error: { message, info: { name: 'ToolTimeoutError', code: 'TOOL_TIMEOUT' } } }`
-     —— 注意 code 在 **`error.info.code`**，不在 `error.code`；将来要在 `classify.ts` 里分类超时，判据取这里；
+     —— 注意 code 在 **`error.info.code`**，不在 `error.code`；
+     ⚠️ **2026-10-15 更正**：上一版写「将来要在 `classify.ts` 里分类超时」——**那个落点是错的**：`classify.ts` 只在我们工具体内被调用，拿不到包装层的错误；
+     要识别 `TOOL_TIMEOUT` 必须挂 `tools/result` / `post-execute` 一类的宿主监听器（本分支**尚未挂**，仍登记为差距）。
   4. 多个 `tools/execute` 包装层**按注册顺序组合、顺序决定语义**（注册在外层覆盖整个重试，在内层覆盖每次尝试）。
-- **🔶 一条从未被触发过的交互**：包装层与我们的内层超时同时存在，但 #97 的宿主 live 里七个工具都正常返回 ⇒ **这两层同时计时的情形一次都没量过**。
-  要实测需要制造一次真超时（要设备）。**在量到之前不许写"两层不冲突"这种结论**（R25）。
+- **✅ 两层同时计时的情形：已可离线构造，🔶 但从未在真宿主里跑过**（2026-10-15 能力重审-1 改判）。
+  上一版写「一次都没量过」并暗示「要实测需要设备」——**后半句是错的**：构造点是 `wait` + `duration_ms` 超过声明的 deadline，
+  当时 `wait` 上限 60s 无 abort 监听，于是包装层 45s 到点 abort、把成功的 `{waited_ms}` 换成 `TOOL_TIMEOUT`，而内部已 `recordSuccess` ⇒
+  **模型可见答案与内部台账必然相反**。该构造与修复都在 `tests/router-errors.spec.ts`（离线可复跑）。
+  仍不可离线验证的只有**宿主进程里的真实观察**（包装层是否确实替换、模型实际收到什么）——那一条仍标 🔶，需宿主会话而非设备。
 - **包名不会变**：该包 `src/index.ts` 里的 `FIXME` 建议改名 `@deepseek-ai/dsh-timeout-guard`，但其 README 的 dev-note 记明改名台账已把
   `@deepseek-ai/dsh-tool-call-timeout-policy` 定为既定名称、该 FIXME 已陈旧 ⇒ 本守则引用的包名可以放心沿用。
 

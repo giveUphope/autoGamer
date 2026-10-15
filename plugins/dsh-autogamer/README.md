@@ -59,8 +59,11 @@ src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
   `synth-hard-frame.mjs`（生成 G92 的合成难帧夹具；`--scan` 另打印 padding × scale 参数表）
 - 执行策略 skill：`skills/autogamer-flash/SKILL.md`
 
-> `src/ocr/image.ts` 与 `src/ocr/regions.ts` 目前**没有生产消费者**（只有探针与锁）：区域识别是 G92 的第二级阶梯，
-> 接线与常量定值要等真机探针 B/C。别按「没人调用」删掉，也别当成已经在跑的 OCR 路径。
+> `src/ocr/image.ts` 与 `src/ocr/regions.ts` **未接线**（只有探针与锁，没有生产消费者）。这不是「还没来得及」：
+> P1 的候选框全部来自层级 bounds，而「层级没有框」正是 OCR 存在的唯一理由，所以 P1 在需要它的那些帧上
+> **结构性地帮不上**（`regions.ts` 自己的日志就是这么写的）。区域识别是 G92 的第二级阶梯，
+> **到期条件 = 真机探针 B 的 needle 命中率 ≥ 整帧基线**；到那天才接线并定常量，没到就保持未接线。
+> 别按「没人调用」删掉，也别当成已经在跑的 OCR 路径。
 
 ## 命令
 

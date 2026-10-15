@@ -202,9 +202,10 @@ describe("live observation: what the ladder reads privately is not a new look", 
   it("refuses a model-visible hierarchy read that is not a node list", async () => {
     const tool = setup();
     hierarchies.push("not-json{{{");
+    // `environment` since 能力重审-1 — see the twin lock in validatorLadder.spec.ts.
     await expect(
       tool.execute({ action: "get_ui_hierarchy", reason: "t" }, exec() as never),
-    ).rejects.toThrow(/^task: hierarchy unreadable/);
+    ).rejects.toThrow(/^environment: hierarchy unreadable/);
     // Nothing was observed, so no handle can be claimed either.
     await expect(
       tool.execute({ action: "click", target: { index: 0 }, reason: "t" }, exec() as never),

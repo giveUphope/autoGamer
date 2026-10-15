@@ -14,11 +14,20 @@ honest reporting.
 1. One action per `run_device_action` call, with a one-sentence `reason`.
 2. Prefer the `#N` handle from the latest `get_ui_hierarchy` output as
    `target: {index: N}`; use `[x,y]` coordinates (0-1000) only when no element matches.
-3. Handles are only valid for the dump they came from: after any action that
+3. `target: {text}` is the deterministic channel, not a fuzzy fallback: the
+   plugin resolves the label against the nodes first and then against the
+   frame's own pixels, so it is the right tool for a label you can read but the
+   hierarchy does not carry (canvas and WebView text). Use it once. If it finds
+   nothing, the label is not on this screen — look at the screenshot and use
+   `coordinate`; repeating the same string will fail the same way.
+4. Handles are only valid for the dump they came from: after any action that
    changes the screen, call `get_ui_hierarchy` again before using `#N`.
-4. If an action is refused, do not repeat it verbatim: re-observe, adjust the
+5. If an action is refused, do not repeat it verbatim: re-observe, adjust the
    target, or change approach. The tool escalates to verification on its own.
-5. Keep bursts tight: navigation and typing need no commentary between calls.
+6. A `cancelled:` result means the host deadline or a user stop ended the call.
+   Nothing was charged to the device or to you: send a narrower call rather than
+   the same one again.
+7. Keep bursts tight: navigation and typing need no commentary between calls.
 
 ## Planning (complex tasks only)
 

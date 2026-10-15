@@ -261,13 +261,13 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
    * keep the old space forever - the TTL is what bounds that. The configured
    * value is still checked against whatever frame is current at the time.
    */
-  async function resolveScreenSize(key: string): Promise<ScreenSize | undefined> {
+  async function resolveScreenSize(key: string, signal?: AbortSignal): Promise<ScreenSize | undefined> {
     const configured = configuredScreenSize(config.screenSize);
     const now = Date.now();
     const cached = screenSizeCache.get(key);
     let probed = cached !== undefined && now - cached.at < SCREEN_SIZE_TTL_MS ? cached.size : undefined;
     if (probed === undefined) {
-      probed = await probe.frame(serialOfKey(key));
+      probed = await probe.frame(serialOfKey(key), { signal });
       if (probed) screenSizeCache.set(key, { size: probed, at: now });
     }
     if (configured) {
@@ -434,8 +434,8 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     // itself rather than trusting the model's account of what happened. Since
     // T3 the verdict is computed here from the frames themselves (G84), so the
     // action server is no longer consulted for it.
-    captureFrame: async (key) => {
-      const png = await probe.capture(serialOfKey(key));
+    captureFrame: async (key, signal) => {
+      const png = await probe.capture(serialOfKey(key), { signal });
       return png?.toString("base64");
     },
     compareFrames: async (before, after, action, coordinates) => {

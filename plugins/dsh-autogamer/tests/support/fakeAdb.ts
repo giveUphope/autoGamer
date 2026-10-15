@@ -40,6 +40,14 @@ export interface AdbReply {
 const UNANSWERED: AdbReply = { code: 1, stderr: "error: device not found" };
 
 export interface FakeAdbRuntime {  readonly calls: string[][];
+  /**
+   * What each spawn was handed about cancellation (能力重审-1). `calls` alone
+   * cannot tell "no signal was passed at all" from "the call's own live signal
+   * was passed" — and that difference is the entire content of the two probe
+   * seams, whose signatures take `signal?` so dropping one still compiles.
+   * The signal itself is kept (not just a boolean) so a lock can check identity.
+   */
+  readonly signalSeen: { args: string[]; signal?: AbortSignal }[];
   readonly rules: { readonly match: RegExp; readonly reply: () => AdbReply }[];
   on(match: RegExp, reply: AdbReply | (() => AdbReply)): void;
   reset(): void;
@@ -50,20 +58,24 @@ export interface FakeAdbRuntime {  readonly calls: string[][];
 
 export function createFakeAdbRuntime(): FakeAdbRuntime {
   const calls: string[][] = [];
+  const signalSeen: { args: string[]; signal?: AbortSignal }[] = [];
   const rules: { match: RegExp; reply: () => AdbReply }[] = [];
   const runtime: FakeAdbRuntime = {
     calls,
+    signalSeen,
     rules,
     on(match, reply) {
       rules.push({ match, reply: typeof reply === "function" ? reply : () => reply });
     },
     reset() {
       calls.length = 0;
+      signalSeen.length = 0;
       rules.length = 0;
     },
     answer(args, options) {
       const argv = args.join(" ");
       calls.push([...args]);
+      signalSeen.push({ args: [...args], signal: options?.signal });
       // Last registered rule wins, so a test can override the defaults that
       // beforeEach installed.
       let hit: { match: RegExp; reply: () => AdbReply } | undefined;
