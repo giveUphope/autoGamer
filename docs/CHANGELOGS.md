@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）。 |
 
 
 ## 写入规则
@@ -646,3 +646,39 @@
 - `git grep -n "clientHalf.spec" -- plugins` ⇒ **只命中 `client.js` 自己的注释**（那个 spec 已随 T4 删除）⇒ **G95** 的判据起点。
 - 插件 `verify` 读数不变（本条只改文档）；`.githooks/pre-commit` 在暂存 `docs/**` 时照旧跑门禁。
 - **未做**：不接那个包装层（自实现超时保留）、不动 `classify.ts`（`error.info.code` 的分类口径已记进 R15，等真有超时再落）、不因 `ctx.slots` 未命中就动 G88。
+
+### #107 `client.js` 的浏览器半边锁恢复（G95 结案；一次 T4 混称导致的连坐删除）
+
+#### 问题描述
+
+`git grep -n "clientHalf.spec" -- plugins` **只命中 `client.js` 自己的注释** ⇒ 那条注释在撒谎：它声称由 `tests/clientHalf.spec.ts` 锁着，而那个 spec 已在 T4（`3677a49`）被删。
+于是**留在交付面里的 `client.js` 零自动化锁**，而它为 5 个工具注册 `tool.call.toolview` 卡片，是 R18 路线的唯一实现（G88 将来解锁时的起点）。
+
+根因不是「顺手删过头」，是一次**混称**：
+
+1. T2-f 的提供方清点写下「模块本体与其 `clientHalf` / `mcpBackend` 规格 ⇒ T4 裁决删除或保留为可选面」；
+2. **那一句把两个不同的东西并称了** —— `mcpBackend` 的规格锁 `src/artemis/mcpBackend.ts`（确属 provider 链），而 `clientHalf.spec.ts` 锁 `client.js`；
+3. T4 据此把 `clientHalf.spec.ts` 与 `actionClient` / `mockServer` / `scrcpy` 三个**确属**该删的并列删除。
+
+#### 整改方案与实施
+
+- **R20 第 1 步先查两处一手原文**：上游 decoration 模板（HTTP 200，686 B）逐字确认 `window.__ModuleLoader__.load` + `require('react')` + `inject:['slots']` + `ctx.slots.inject(slot, () => ctx.slots.register({name,id,order}, C))`
+  ⇒ **同时彻底排除了上一轮那个怀疑**（`capability-seams.md` 只画宿主侧 `ctx.*`，它对 `ctx.slots` 的沉默从来不是证据）；模板的 `register` 不含 `key`，我们多传的 `key` 依据在 **R18**。
+  另读本仓历史 `3677a49^:tests/clientHalf.spec.ts`（77 行）⇒ 它锁的四组今天**全部仍成立**。
+- **恢复，不重写**：`git checkout 3677a49^ -- plugins/dsh-autogamer/tests/clientHalf.spec.ts`。**六条断言一条没改即全绿**
+  ⇒ 反证 `client.js` 与 manifest 半边自 T4 以来未动。方案里「不许假设恢复就绿、不许为绿改 `client.js`」的约束**做了且未被触发**。
+- **改 `client.js` 头注释**：原句现在成真，并**补上这条锁的边界** —— 它锁结构，**不证明卡片在浏览器里渲染过**；
+  后者要一次真会话，而五个工具全过 `requireEnv` ⇒ **需设备**，标 🔶。R21：别把「有锁」读成「验过 live」。
+
+#### 验收标准
+
+- **三条变异各红一次，且恰好一条红**（R27）：① `CELLS` 删掉 `autogamer_diagnose` ⇒ 「五个 wire key」红（报 `toolview key for autogamer_diagnose`）；
+  ② 加 `const _ = require('lodash');` ⇒ 「imports nothing but react」红（**这正是 R18「不许第二个框架/宿主 Client 包」的机械形态**）；
+  ③ `package.json` 的 `files` 去掉 `client.js` ⇒ manifest 那条红。三次均 `1 failed | 5 passed`；还原后 `git status --short` 对 `plugins/` **零差异**。
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **43 文件 / 472 通过**（上一绿态 42/466，+1 文件 +6 条）；`node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` ⇒ exit 0。
+- ⚠️ **两处当场自纠**：
+  1. 恢复时用 PowerShell 的 `git show … > file` 重定向，PowerShell 5 把文件写成 **UTF-16**，esbuild 报解析失败 —— **报错长得像代码问题，实际是编码问题**（R25：一条错误串只能证明那次失败发生）。正解 `git checkout <commit> -- <path>`（按字节写文件）。
+  2. 方案里那条闭环判据我写成「`git grep clientHalf.spec -- plugins` ⇒ 命中**两处**」—— **实测只有 1 处**，因为 spec 内部不自指文件名。
+     判据改成两条并列且都要能红：`git grep` 命中注释 + **`Test-Path plugins/dsh-autogamer/tests/clientHalf.spec.ts`** ⇒ 修复前 **False**（注释在撒谎）、修复后 **True**。
+- **非目标**：不删 `client.js`；不做 live 渲染验证（需设备）；不扩 UI 能力（G88 仍待需求）；不动 manifest 形状（它就是被锁的对象）。
+- 提交：方案 `a3578ac` → 实现与结案（本提交）。

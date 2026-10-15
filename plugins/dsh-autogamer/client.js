@@ -21,6 +21,15 @@
  * slot, and any binary frame push do NOT exist upstream — this file must
  * never reference them (locked by tests/clientHalf.spec.ts).
  *
+ * What that lock is and is not: it asserts the STRUCTURE above (manifest half,
+ * ModuleLoader shape, the five wire keys, react-only requires, the cut-API
+ * negative list). It does NOT prove a card ever rendered in a browser — that
+ * needs a real session, and since all five tools sit behind `requireEnv`, it
+ * needs a device too (🔶). Do not read "has a lock" as "verified live" (R21).
+ * Its history: T4 deleted this spec by mistake, reading it as a provider-chain
+ * spec (see TODO §七 G95); it was restored unchanged and all six assertions
+ * held, which is itself the evidence that this file has not moved since.
+ *
  * Owner props are read tolerantly: the exact prop contract lives only in the
  * live inspect catalog (`cordis_inspect what:"client"`), so no card may assume
  * a field. Live data channels (polling, controls) need a mounted proof first;

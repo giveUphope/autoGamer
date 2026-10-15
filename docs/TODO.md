@@ -60,6 +60,13 @@
   **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
   而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
   ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **G95 已结清（2026-10-15，CHANGELOGS #107）**：`client.js` 的浏览器半边锁**恢复**，六条断言一条没改即全绿 ⇒ 反证 `client.js` 与 manifest 半边自 T4 以来未动。
+  根因是 T2-f 清点时把「`clientHalf` / `mcpBackend` 规格」**混称**，T4 据此把 `tests/clientHalf.spec.ts` 当 provider 链规格连坐删除（`3677a49`），
+  而它锁的是 `client.js`（交付面里、R18 路线唯一实现）⇒ 该文件一度**零锁**，且头注释还写着「locked by tests/clientHalf.spec.ts」= **指向不存在的文件**。
+  三条变异各红一次且恰好一条红（删一个 wire key / 加 `require('lodash')` / 从 `files` 去掉 `client.js`）；注释已改成事实并**写明锁的边界**（锁结构，**不证明卡片在浏览器渲染过**——五个工具全过 `requireEnv`，那条 🔶 需设备）。
+  ⚠️ 本轮两处自纠：① 恢复时用 PowerShell 重定向把文件写成 **UTF-16**，esbuild 报错长得像代码问题、实为编码问题 ⇒ 正解 `git checkout <commit> -- <path>`；
+  ② 方案里那条闭环判据我**假设** spec 会自指文件名，实测只有 1 处命中 ⇒ 改成「注释指向的文件是否存在」（`Test-Path` 修复前 False / 修复后 True），**判据要能红才算数**。
+  `verify` **43 文件 / 472 通过**（+1 文件 +6 条）；`check-docs` / `check-env` exit 0。详见 §七「G95」。
 - **调研-1 已落地（2026-10-15，CHANGELOGS #106）**：把守则「待补清单」里那五份从未读过的上游文档读完并回写，**本轮推翻了我上一轮自己写下的一个判断** ——
   R15 原写「包装层未接」，实测**是错的**：上游 `packages/guard/timeout-policy/` 写明该包装层**零配置、随 `dsh` 基础组合默认启用**，
   且本机 `dsh --profile web --dump-config` 的组合树里确有 `- id: timeout-policy`（**无 `disabled`**）⇒ 我们不是选择不接，它是默认就在。
@@ -191,7 +198,6 @@
 | G92 | 内置 OCR 的**召回面**在真帧上不成立：1600×900 桌面页 24 个带文字节点，OCR 与层级**同时**答得出的只有 0–3 个（逐帧方差大）；小字浅色 CJK 被读成 `只@45/wep@33` 一类（不是门槛挡掉，是没认出字形） | **T5 新立**（安全面已锁：fail-open、只补不抢、歧义不猜、不可读帧先拒）。**2026-10-15 已量过放大假设：整帧 1×/1.5×/2×/3× ⇒ 0/1/3/0 命中（3× 还贵 70%），而同一屏 140×70 的**局部裁剪 @2×** 能正确读出「游戏 中 心」⇒ 瓶颈是**整页版面分析**不是像素尺寸**；解法形态是「按区域识别」。**2026-10-15 已立项，方案见 §七「G92 · OCR 按区域识别」**（探针 A 可离线先行，探针 B/C 待设备） |
 | G78 | `adb forward` 生命周期归属未定 —— **随 helper 路线不采用而退出 T2 前置**（口径是「不需要设计」，不是「已解决」） | 待需求（复刻 helper 时重查，见 §七「前置-2」） |
 | G88 | 画面标注 overlay（在截图上画元素框与标签）——**本分支无消费者，判为推迟**；清点与解锁条件见 §七「前置-6」 | 待需求（不在 T1–T4 排期内。**2026-10-15 复核仍未解锁**：宿主侧没有承载标注图的 UI 落点（R18），而 OCR 内置之后，「画框」要成立还多了一个前置——元素源本身要可信 ⇒ 与 **G92** 挂钩。要做时是「UI slot + 可信元素源」的新条目，不是给截图加一层绘制） |
-| G95 | **`client.js` 在 T4 被连坐删掉了锁，却留在交付面里** —— `tests/clientHalf.spec.ts` 随 provider 链删除（`3677a49`），但 `client.js` 仍在 `files` / `exports` / `dsh.client` 声明里，且为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁**；它的头注释还写着「locked by tests/clientHalf.spec.ts」，**指向一个已不存在的文件** | **调研-1 发现（2026-10-15）**，无需设备可做：① 写回一个只锁**结构事实**的小 spec（5 个 key、slot 名、不引用未声明服务、不 import 宿主 Client 包 = R18）；② 修掉注释里那句谎话。**删它的理由不适用**：`client.js` 不是 provider 链成员，它在交付面里且是 R18 路线的唯一实现（G88 将来解锁时的起点） |
 
 > **本表只列还开着的事**（R28：结案的行不再占位，去 §七 与 CHANGELOGS 找记录）。
 > G72（提供方形状）与 G74（映射层按旧 5 工具面锁形状）**不在本分支跟踪**：它们随 T4 消解。
@@ -1097,10 +1103,35 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **Done means**
 
-- [ ] `tests/clientHalf.spec.ts` 恢复，四组断言逐条复核（不成立者按实测改判据并记理由，不许改 `client.js` 求绿）
-- [ ] 三条变异各红一次且恰好对应那条锁；还原后 `verify` 复绿、工作树对 `plugins/` 零差异
-- [ ] `client.js` 注释改回事实并写明锁的边界（结构锁 ≠ live 渲染验证，后者 🔶 需设备）
-- [ ] G95 结案（§四 删行）、§零 指针、CHANGELOGS 条目；`check-docs` / `check-env` exit 0
+- [x] `tests/clientHalf.spec.ts` 恢复，四组断言逐条复核（不成立者按实测改判据并记理由，不许改 `client.js` 求绿）
+- [x] 三条变异各红一次且恰好对应那条锁；还原后 `verify` 复绿、工作树对 `plugins/` 零差异
+- [x] `client.js` 注释改回事实并写明锁的边界（结构锁 ≠ live 渲染验证，后者 🔶 需设备）
+- [x] G95 结案（§四 删行）、§零 指针、CHANGELOGS 条目；`check-docs` / `check-env` exit 0
+
+**结案记录（2026-10-15）**
+
+- **恢复即绿，六条断言一条没改**：`git checkout 3677a49^ -- plugins/dsh-autogamer/tests/clientHalf.spec.ts` 之后 `6 passed`。
+  ⇒ 方案里那句「不许假设恢复就绿」的检查**做了、结论是它成立**：自 T4 以来 `client.js` 与 `package.json` 的 manifest 半边确实没动过，
+  **一条判据都不用改**。这也反过来证明方案里「不为了绿去改 `client.js`」的约束不是空话 —— 它有可能是被违反的，只是这次没触发。
+- ⚠️ **一次操作层面的翻车，值得记**：第一次恢复用 PowerShell 的 `git show … > file` 重定向，
+  PowerShell 5 按默认编码把文件写成 **UTF-16**，esbuild 直接解析失败（`1 failed / no tests`，而错误栈指向 esbuild、与测试内容毫无关系）。
+  ⇒ **正解是 `git checkout <commit> -- <path>`**：它按字节写文件，顺带把条目 stage 好。判据上也要注意：这种失败的报错**长得像代码问题**，
+  实际是编码问题 —— 与本分支记录的「一串错误只能证明那次失败发生、不能证明因果」是同一条（R25）。
+- **三条变异各红一次，且恰好一条红**（R27）：
+  | 变异 | 改哪 | 红的锁 |
+  |---|---|---|
+  | ① | `client.js` 的 `CELLS` 删掉 `autogamer_diagnose` 一行 | 「五个 wire key」⇒ 报 `toolview key for autogamer_diagnose` |
+  | ② | 加一行 `const _ = require('lodash');` | 「imports nothing but react」⇒ 报 `not to match` + 那条**排除 react 的 require 正则**（**这正是 R18「不许第二个框架/宿主 Client 包」的机械形态**；⚠️ **正则本身不要用单反引号包** —— C2 会把反引号里的内容当仓内路径查，会假红） |
+  | ③ | `package.json` 的 `files` 去掉 `client.js` | manifest 那条 ⇒ 报 `expected [...] to include 'client.js'` |
+  三次都是 `1 failed | 5 passed`，其余五条不受影响；全部还原后 `git status --short` 对 `plugins/` **零差异**（只剩新增的 spec）。
+- **注释改成事实，并写明这条锁的边界**：`client.js` 头注释原来那句「locked by tests/clientHalf.spec.ts」现在成真（此前是谎话），
+  同时补上「它锁结构、**不证明卡片在浏览器里渲染过**」—— 后者要一次真会话，而五个工具全过 `requireEnv` ⇒ **需设备**，标 🔶。R21：别把「有锁」读成「验过 live」。
+- ⚠️ **方案里那条闭环判据我自己写错了，当场改口径**（R27）：我写的是「`git grep clientHalf.spec -- plugins` ⇒ 命中**两处**（spec 自身 + 注释）」——
+  **实测只有 1 处**，因为 spec 内部**不自指文件名**（它的头注释是 "Browser-half locks (Phase 3)"）。
+  真正能咬住这条的判据是**注释指向的文件是否存在**：`Test-Path plugins/dsh-autogamer/tests/clientHalf.spec.ts`
+  ⇒ 修复前 **False**（注释在撒谎），修复后 **True**。判据改成两条并列，**都要能红**。
+- 读数：`verify` **43 文件 / 472 通过**（上一绿态 42/466，+1 文件 +6 条）；`check-docs` / `check-env` exit 0。
+- 提交：方案 `a3578ac` → 实现与结案（本提交）。
 
 **非目标**：不删 `client.js`；不做 live 渲染验证（需设备）；不扩 UI 能力（G88 仍待需求）；不动 `package.json` 的 manifest 形状（它就是被锁的对象）。
 
