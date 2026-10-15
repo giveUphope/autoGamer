@@ -1047,6 +1047,63 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **非目标**：不接那个包装层（本插件的超时自实现保留，R15 的嵌套形态已写清）；不动 `classify.ts`（`error.info.code` 的分类口径记进 R15，等真有超时再落）；不因 `ctx.slots` 未命中就改动任何 UI 计划（G88 仍待需求）。
 
+### G95 · 恢复 `client.js` 的浏览器半边锁（T4 的连坐删除；方案 2026-10-15 立项，R22）
+
+**根因（已查实，不是推测）**：这不是「顺手删过头」，是一次**混称导致的连坐**：
+
+1. T2-f 的提供方清点记：`src/artemis/` 已无消费者 ⇒「模块本体与其 `clientHalf` / `mcpBackend` 规格 ⇒ **T4 裁决删除或保留为可选面**」；
+2. **那一句把两个不同的东西混称了** —— `mcpBackend` 的规格锁的是 `src/artemis/mcpBackend.ts`（确属 provider 链，该删），
+   而 `tests/clientHalf.spec.ts` 锁的是 **`client.js`**（浏览器半边，与 provider 链毫无关系）；
+3. T4（`3677a49`）据那句把 `tests/clientHalf.spec.ts` 一并删除，与 `actionClient` / `mockServer` / `scrcpy` 三个**确属**该删的并列；
+4. ⇒ **`client.js` 留在交付面里却零锁**，而它自己的头注释仍写着「locked by tests/clientHalf.spec.ts」—— **指向一个不存在的文件**。
+   判据起点（可复跑）：`git grep -n "clientHalf.spec" -- plugins` ⇒ **只命中 `client.js` 自己的注释**。
+
+**R20 第 1 步「查」：官方一手原文（两处，都取自上游 `master` / 本仓历史，只读、不搬文本）**
+
+| 出处 | 取到的事实 | 对本方案的作用 |
+|---|---|---|
+| 上游 `packages/preset/agent-preset/skills/cordis-plugin-development/templates/decoration/client.js`（HTTP 200，686 B） | 官方模板逐字是 `window.__ModuleLoader__.load({ id, factory(require) })` + `require('react')` + `return { inject: ['slots'], apply(ctx) { ctx.slots.inject(<slot>, () => ctx.slots.register({ name, id, order }, Component)) } }` | **证实 `ctx.slots.inject/register` 这个形状有一手出处**（调研-1 那次「图谱查不到」的怀疑到此彻底排除：`capability-seams.md` 只画宿主侧）；也说明模板的 `register` 只给 `{name,id,order}`，我们多传的 `key` 依据在 **R18**（keyed slot 按 wire 工具名注册） |
+| 本仓历史 `3677a49^:plugins/dsh-autogamer/tests/clientHalf.spec.ts`（77 行） | 它锁的四组：① manifest 半边（`dsh.client{platform,immediately,inject:['slots']}` + `exports['./client']` + `files` 含 `client.js`）；② ModuleLoader 形状 + 五个 wire key；③ **只准 `require('react')`**（禁第二个框架、禁 `from '@deepseek-ai/'` = R18 的「不许 import 宿主 Client 包」）；④ **负向锁**（`conversation.card` / `ctx.rpc` / `settings.plugin.item` / `WebSocket` / `VideoDecoder` / `multipart/x-mixed-replace` / `fetch(` 一律不得复活） | **这些断言今天仍然全部成立**（`client.js` 与 `package.json` 自 T4 以来未动）⇒ **恢复即可，不必重写**；且它是**我们自己仓库的历史代码**，恢复不触碰 D20（不搬运上游文本） |
+
+**What（范围）**
+
+1. 从历史**恢复** `tests/clientHalf.spec.ts`（`git show 3677a49^:…`），**逐条复核断言今天仍成立**再入库。
+2. **变异校验（R27）**：故意改坏 `client.js` / `package.json`，证明每组锁都会红，且是「恰好那一条」红。
+3. 修 `client.js` 头注释：把「locked by tests/clientHalf.spec.ts」从**谎话**改回事实，并**补上这条锁的边界**（见 How-3）。
+4. 台账：G95 结案（§四 删行）、§零 指针、CHANGELOGS 条目。
+
+**How（做法与关键决策）**
+
+- **恢复，不重写**：那 77 行锁的正是我们要守的东西（manifest 半边 + 形状 + 五个 key + R18 负向锁），重写只会丢断言。
+  但**不许假设「恢复就绿」**：T4 之后 manifest 动过（`actionServerCommand` 等字段被删、`files` 重排），所以恢复后**逐条跑**，
+  哪条不成立就**按实测改判据并把理由写进本条目** —— **不许为了让绿去改 `client.js`**（那是本末倒置）。
+- **为什么锁文本而不是行为**：`client.js` 是手写的 ModuleLoader 格式纯 JS（tsc 编不出，node 也 import 不了）⇒ 只能对文本断言。
+  这与 `deliveryShape.spec` 锁两个 patch 文件互相印证，是本仓已有的手法，**不是新发明**。
+- **⚠️ 明确这条锁的边界（写进 `client.js` 注释）**：它锁**结构事实**，**不证明**卡片在浏览器里真的渲染过。
+  live 渲染验证另需一次真实会话，而**五个工具全过 `requireEnv` 预检** ⇒ **那条验证也需要设备**，本轮不做、标 🔶。
+  别把「有锁」读成「验过」（R21：区分单测证明与 live 证明）。
+- **不删 `client.js`**：它在 `files` / `exports` / `dsh.client` 三处都在，是 R18 路线的唯一实现，G88 将来解锁时的起点。
+
+**Verify（验收命令，在 `plugins/dsh-autogamer/` 内）**
+
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（文件数/用例数按实测记，不预设）。
+- **变异（R27，三条各证明会红）**：
+  ① 从 `client.js` 的 `CELLS` 删掉 `autogamer_diagnose` 一行 ⇒ 「五个 wire key」那条红；
+  ② 在 `client.js` 加一行 `const _ = require('lodash');` ⇒ 「只准 `require('react')`」那条红；
+  ③ `package.json` 的 `files` 去掉 `client.js` ⇒ manifest 那条红。全部还原后复跑须全绿。
+- `node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` ⇒ exit 0。
+- 闭环判据：`git grep -n "clientHalf.spec" -- plugins` ⇒ 命中**两处且都指向真实存在的文件**（spec 自身 + `client.js` 注释）；
+  `git status --short` 在三次变异还原后对 `plugins/` **零差异**。
+
+**Done means**
+
+- [ ] `tests/clientHalf.spec.ts` 恢复，四组断言逐条复核（不成立者按实测改判据并记理由，不许改 `client.js` 求绿）
+- [ ] 三条变异各红一次且恰好对应那条锁；还原后 `verify` 复绿、工作树对 `plugins/` 零差异
+- [ ] `client.js` 注释改回事实并写明锁的边界（结构锁 ≠ live 渲染验证，后者 🔶 需设备）
+- [ ] G95 结案（§四 删行）、§零 指针、CHANGELOGS 条目；`check-docs` / `check-env` exit 0
+
+**非目标**：不删 `client.js`；不做 live 渲染验证（需设备）；不扩 UI 能力（G88 仍待需求）；不动 `package.json` 的 manifest 形状（它就是被锁的对象）。
+
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
 **背景**：前置-4 判定 `rulesInjector` 的 `artemisRepoPath → <repo>/mcp_server/rules.md` 这条供应链是 **D20 红线**（上游目录约定 + 上游 prompt 正文进模型面），归属 G85+G86，要求 T4 二选一定案。本轮先按用户要求做**形式调研**（「先调研这个适合在 DSH 中以何种形式使用」），结论把二选一改成了第三条路：**拆除**。
