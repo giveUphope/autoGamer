@@ -42,6 +42,8 @@
 - **基建-3 已落地（2026-10-15，提交 `9dea904`）**：拉取 T5 后首次装依赖，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS` 并 **exit 1**，且**顺手改写了被跟踪的** `plugins/dsh-autogamer/pnpm-workspace.yaml`（写入 `tesseract.js: set this to true or false` 占位行）。该 `postinstall` 的实质是赞助横幅（`opencollective-postinstall || true`）、无产物，而 OCR 语言数据随包 vendored ⇒ 定案 `allowBuilds: tesseract.js: false`（**保留** `esbuild: true`，vitest 要它的原生二进制）。安装现 **exit 0**、不再改写仓库文件；同机同 lockfile 的 A/B：占位形态 exit 1 / 定案形态 exit 0。`build` rc 0、`test` **38 文件 / 439 通过**。🔶 当时还记了一笔「**pnpm 版本未钉**」的债 —— **已由 基建-4 结清**（`packageManager: pnpm@11.21.0` + `pmOnFail: error`，CHANGELOGS **#99**）：版本不符现在一律 exit 1。范围与取证见 §七「基建-3」与 CHANGELOGS **#98**。
 - **基建-4 已落地（2026-10-15，提交 `6e30db2`）**：把上一条那笔债结清 —— `package.json` 声明 `"packageManager": "pnpm@11.21.0"`（精确版本、无 hash），`pnpm-workspace.yaml` 声明 `pmOnFail: error`。**版本不符时每条 pnpm 命令直接 exit 1**（`install` 与 `pnpm -v` 都实测过），且失败发生在任何下载/改动之前。A/B：`pnpm@9.15.0` ⇒ exit 1 + `This project is configured to use 9.15.0 of pnpm`；改回 ⇒ exit 0 且 **lockfile 零变化**。选型依据取自官方文档：`pmOnFail`（v11 新增，默认 `download`）取代了已移除的 `managePackageManagerVersions`/`packageManagerStrict*`；**选精确版本而非范围**，因为范围正是把「不同机器结论不同」那个洞重新打开；**选 legacy 字段而非 `devEngines.packageManager`**，因为后者会把解析版本写进 lockfile；**选 `error` 而非默认 `download`**，因为后者是静默的网络下载 + 版本切换。本机 `corepack` 未装，故不依赖它。已知边界：钉在插件工程，**从仓库根跑 pnpm 不受约束**；升版流程与误配处置写在 `AGENTS.md`。`verify` **38 文件 / 439 通过**。范围与取证见 §七「基建-4」与 CHANGELOGS **#99**。
 - **基建-5 已落地（2026-10-15，提交 `d524739`）**：把上一条那条「`.npmrc` 死配置无害」的判断**推翻并修好** —— 实测有效默认是 `true`、lockfile 记的是 `false`，于是**裸 `pnpm install --frozen-lockfile` 一直 exit 1**（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。修法：设置搬进 `pnpm-workspace.yaml`（`autoInstallPeers: false`，设置真正被读的那份文件），`.npmrc` 整份删除（全文只有那一行、25 字节、不在 `files` 里）。读数：`pnpm config get autoInstallPeers` → `false`（改前 `undefined`）；裸安装 **exit 0**；文档命令 exit 0；`verify` **38 文件 / 439 通过**；lockfile 全程零变化。**单变量隔离**：把 `.npmrc` 那行临时写回，裸安装仍 exit 0 ⇒ 生效的是文件里的设置，删它去的是重复声明。探针两向证明该设置有牙（自动装入的 peer 只进虚拟 store、不做顶层链接 —— 第一版判据看 `node_modules/react` 是**假绿**，已改读 lockfile）。设置的家写进 `AGENTS.md`。范围与取证见 §七「基建-5」与 CHANGELOGS **#100**。
+- **packed bundle 交付验证已落地（2026-10-15，交付-1）**：`pnpm pack` 出 tarball 后经 web profile 面板完成真实安装（非 link）——**唯一成立的交付形态是面板直接输入 `.tgz` 路径**（`file:` 复制安装，30 依赖落位）；解压目录安装是 `link` 且不装依赖，精简目录必然 `failed to import`（已实测失败）；每个新 profile 首次安装必遇 `tesseract.js` build script 授权（R19 用户点，postinstall 仅赞助横幅，G97 第三源实锤）；替换安装后**必须重启宿主**。重启后 **2/2 组件运行中**，双语 locale 标题/描述与 icon 浏览器实测正确，R6 `--dump-config` exit 0 / unmatched 0 / autogamer 行 10。验证中抓出构建缺陷——**tsc 增量输出不清理，5 个已裁决删除模块（actionClient/mcpText/rulesInjector/scrcpy×2）随 tarball 分发**，已修（构建前 `clean-dist` + 陈旧产物守卫），见 CHANGELOGS **#101**；`verify` 新读数 **39 文件 / 440 通过**。
+  ⚠️ **C 项（三任务工具宿主内点名）阻塞**：本机当前无 `adb`、无设备（D 盘已不在、无模拟器、无监听端口），preflight 闸门要求 adb + 一台 `device` 状态设备，需用户提供真机或模拟器；完整记录见 §七「交付-1」。
 - **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
@@ -1399,3 +1401,33 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - R6：`dsh --profile web --patch <abs>/cordis.patch.yml --dump-config` ⇒ **exit 0 / unmatched 0 / autogamer 行 16**（本片不动 patch，跑它是证明配置字段变化没打断 preset 行）。
 
 **仍开着的**：`G94`（宿主内 live 证明 —— 本机阻塞在宿主的 spawn 路径空格缺陷上，见 §零「挂载面清点」）、`G91`（长按语义，与 G94 同批复测）、`G92`（OCR 召回）、`G88` / `G78`（待需求）。
+
+### 交付-1 · packed bundle 交付验证（2026-10-15，B 项）
+
+> 目的：此前全部 live 证据（#97 / G94）都建立在开发期 `link:` 形态上，而 D7 规定的真实交付形态（`install_bundle`）从未跑过。本片验证「packed 产物 → 面板安装 → 启用 → 面板资源」整条链路。
+
+**What（范围）**
+1. `pnpm pack` 出 tarball，按 `files` 白名单核验内容（这一步抓出 dist 陈旧产物缺陷 → **CHANGELOGS #101** 已修复）。
+2. 用 web profile 侧边栏「添加插件」面板完成真实安装（非 `dsh plugin` 垫片——那是 `pnpm ls` 转发，R2 禁止在 profile 目录跑包管理）。
+3. 安装后核验：组件运行态、双语 locale 渲染、icon、R6 组合树、OCR 数据落位。
+
+**How（官方声明 + 实测路径）**
+- 官方声明（`github.com/deepseek-ai/deepseek-harness` @ `master`，`packages/preset/agent-preset/skills/cordis-plugin-development/SKILL.md` 与 `references/host-plugin.md`，R20 第 1 步原文）：`install_bundle` 的 target 是「**absolute package directory**」；**本地目录安装就是 link checkout，`files` 不过滤链接目录**；「For a packed or published bundle, verify the actual packed file list」；替换已安装包需要**重启**（HMR 只对新装生效）；`approvedBuilds` 仅在用户明确批准 pending build scripts 后才传；安装判据读 `application` / `warnings`，安装后用面板核验 locale 与 icon，禁止「从安装成功推断视觉成功」。
+- **路径一（失败实证）**：tarball 解压成独立精简目录 → 面板输入该目录 → 实际执行 `pnpm add <dir>`，结果 `dsh-autogamer link:<dir>` 且 **`Already up to date`、不装依赖**；精简目录无 `node_modules`，profile 的 `node_modules` 里 `tesseract.js` / `zod` / `@modelcontextprotocol/client` / `@deepseek-ai/schemastery` 全部缺失 → 启用报 `1 entry did not activate dsh-autogamer: failed to import`（组件 2 个中只有宿主自带的 preset 行运行中）。**结论：解压目录 link 不是有效交付形态；link 仅适用于自带 `node_modules` 的完整工程 checkout**（#97 的 live 证明正是这种）。
+- **路径二（成立）**：面板直接输入 `.tgz` 路径（输入框文案为「包名、GitHub 仓库地址或本地目录路径」，实测接受 tarball）→ 执行 `pnpm add <file.tgz> --registry=…npmmirror.com`，识别为 `file:` **复制安装**，30 个依赖全部下载。唯一阻断点：`tesseract.js@7.0.0` 的 postinstall 被 pnpm 默认拦截，`ERR_PNPM_IGNORED_BUILDS` exit 1；由用户在面板点「允许这些脚本并重试」（**R19 user-only**，授权只存该 profile），随后输出仅为赞助横幅（`Thank you for using tesseract.js!` + opencollective 链接 + `Done`）——**G97「postinstall 无产物」裁决的第三来源实锤**。
+- **替换安装需重启的实证**：第一次 link 版的启用记录仍指向旧 target（精简目录已被移除），file 版装好后报 `ENOENT scandir '…\extracted\dsh-autogamer\locale'`、两组件已停用；重启宿主后从 profile `node_modules` 正确解析，再启用即 **2/2 运行中**。
+- 安装后读数：profile 安装位含完整 `dist` / `locale`（en 237B、zh 231B）/ `ocr`（eng 1,984,273B、chi_sim 1,730,011B，字节数与工程一致）/ `skills` / `client.js` / `cordis.patch.yml` / `THIRD_PARTY_NOTICES.md` / `icon.svg`；中文 UI 渲染「AutoGamer 设备执行」+中文描述、切英文渲染「AutoGamer Device」+英文描述（与两 locale JSON 逐字一致），icon 黑底放大镜渲染正常；R6 `dsh --profile web --dump-config` ⇒ **exit 0 / 1324 行 / unmatched 0 / autogamer 行 10**。
+
+**Verify（验收）**
+- [x] tarball 47 条目与 `files` 白名单一致，无 `src/` `tests/` `scripts/` `.d.ts` `pnpm-workspace.yaml` lock 等；修复后无陈旧模块（#101）。
+- [x] 目录 link 安装在缺依赖时**实测失败**（`failed to import`），失败模式与官方「link checkout」声明吻合。
+- [x] `.tgz` file 安装成功、依赖 30 个落位、build script 授权链完整记录、重启后 **2/2 运行中**。
+- [x] 双 locale 标题/描述与 icon 渲染经浏览器实测；R6 声明面 exit 0 / unmatched 0。
+- [ ] **C：三任务工具宿主内点名（阻塞）** —— 见下方阻塞记录。
+
+**交付流程事实（写给下一次安装）**
+1. 对外交付 = 发布 `.tgz`，在面板「添加插件」输入 `.tgz` 路径；**不要**解压后用目录 link（不装依赖）。
+2. 每个新 profile 首次安装**必遇** `tesseract.js` build script 授权弹窗（R19 由用户点；脚本无产物，G97 与本次日志双证）；这是当前 bundle 无法自带跳过的固有授权点（`files` 不能携带 `pnpm-workspace.yaml` 的 `allowBuilds`，R2 禁止手写 profile 配置）。
+3. 从旧版本（含 link 版）替换安装后**必须重启宿主**，否则启用记录指向旧 target / 旧模块代。
+
+**阻塞（C 项，2026-10-15 实测）**：本机当前**无 `adb` 且无设备**——PATH 无 `adb`、`winget` 无 `Google.PlatformTools` 记录、无 Android SDK；无模拟器（`C:\Program Files\NetEase` 只有云音乐；D 盘已不在，当前仅 C 盘；5554/5555/16384 等模拟器端口无监听）。`preflight` 闸门要求 `adb` + `adb-devices` 两项（`src/env/preflight.ts`，所有 autogamer_* 工具含 `run_task` 都过 `requireEnv`），故三任务工具 live 点名在设备到位前无法进行。需要用户提供其一：① 安装 Platform Tools 并开启安卓真机无线调试 / USB 连接；② 安装并启动模拟器。离线锁（`runTask` 7 条、`manageTask` 10 条、`inspectTrace` 9 条 + `taskProjection` 9 条）与 #97 的 5 条宿主实跑证据不受影响。

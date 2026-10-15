@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）。 |
 
 
 ## 写入规则
@@ -458,3 +458,25 @@
 - 回归：文档那条安装命令 exit 0；`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（**38 文件 / 439 通过**）；`node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` ⇒ exit 0；`git grep 'auto-install-peers' -- plugins` ⇒ **零命中**。
 - **方法上的自纠（R27）**：探针第一版判据看的是 `node_modules/react` 存不存在 ⇒ **两种情况都「不存在」，是假绿** —— 自动装入的 peer 只进虚拟 store、不做顶层链接。改成读 lockfile 的 `settings:` 与快照后缀才咬住。这是本分支同类事故的第四次（#92 两条落在桩上、T4 一次判据自我失效、门禁锚点两次腐烂），**判据要落在记录事实的地方，不是落在你以为的路径上**。
 - 提交：方案 `9a07618` → 实现 `d524739`。
+
+### #101 构建前清空 dist：交付 tarball 曾携带五个已删除模块（packed 交付验证发现）
+
+#### 问题描述
+
+- 第一次做 packed 交付验证（`pnpm pack` 出 `dsh-autogamer-0.1.0.tgz`，验证过程见 `TODO.md` §七「交付-1」），列出 tarball 内容发现 **5 个 `src` 已删除模块的陈旧编译产物仍在分发**：
+  `dist/actionClient.js`、`dist/mcpText.js`（T4 按消费者计数删除）、`dist/prompt/rulesInjector.js`（#84 / D20 红线拆除的链）、`dist/scrcpy/input.js`、`dist/scrcpy/server.js`（G93 删除的镜像链）。
+- 根因：`tsc` 向 `outDir` 增量写、**从不删除已无源文件的产物**；而 `package.json` 的 `files` 白名单是 `dist/**/*.js`，于是每次删除源文件后，旧 `.js` 仍原样进 tarball。`dist/` 在 `.gitignore` 里、`git status` 始终干净，所以工作树层面完全看不见这堆死重——只有真正 pack 一次才暴露。
+- 为什么 link 形态没发现：宿主 `link:` 安装时运行时 import 图无人引用这些模块，功能不受影响；但它们是**被裁决删除**的模块（其中 `rulesInjector` 属 D20 红线），以编译形态继续随交付物分发即违背删除裁决。
+
+#### 整改方案与实施
+
+- 新增 `plugins/dsh-autogamer/scripts/clean-dist.mjs`（零依赖，`rmSync(dist)`）；`build` 脚本由 `tsc -p tsconfig.json` 改为 `node scripts/clean-dist.mjs && tsc -p tsconfig.json`，让每次构建的输出树只能镜像 `src`。
+- 新增 `tests/distStaleness.spec.ts` 守卫：`dist` 存在时，每个 emitted `.js` / `.d.ts` 必须有对应的 `src/**/*.ts`，违例即红；`dist` 不存在（vitest 直读 `src` 的场景）时该组 skip，不强制先构建。
+- 清理旧 `dist` 后重建、重新 pack 核验。
+
+#### 验收标准
+
+- 重新 pack 的 tarball 不含上述 5 个模块（`dist/prompt/`、`dist/scrcpy/` 目录不再出现），条目与 `files` 白名单逐一对应。
+- **变异（R27，两条都证明会红/会清）**：① 手工放 `dist/__stale__.js` 与 `dist/prompt/rulesInjector.js` 后跑守卫 ⇒ 测试**红**，且精确报出这两个文件名；② 放假产物后跑 `pnpm build` ⇒ clean 步骤把它们删掉，守卫复绿。
+- 回归：`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（**39 文件 / 440 通过**，上一绿态 38/439，新增守卫 1 条）。
+- 注：`scripts/clean-dist.mjs` 是开发期工具、不进交付 tarball（`files` 白名单未列 `scripts/`，符合预期）。
