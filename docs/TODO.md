@@ -41,6 +41,7 @@
   范围与取证见 §七「基建-2」。
 - **基建-3 已落地（2026-10-15，提交 `9dea904`）**：拉取 T5 后首次装依赖，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS` 并 **exit 1**，且**顺手改写了被跟踪的** `plugins/dsh-autogamer/pnpm-workspace.yaml`（写入 `tesseract.js: set this to true or false` 占位行）。该 `postinstall` 的实质是赞助横幅（`opencollective-postinstall || true`）、无产物，而 OCR 语言数据随包 vendored ⇒ 定案 `allowBuilds: tesseract.js: false`（**保留** `esbuild: true`，vitest 要它的原生二进制）。安装现 **exit 0**、不再改写仓库文件；同机同 lockfile 的 A/B：占位形态 exit 1 / 定案形态 exit 0。`build` rc 0、`test` **38 文件 / 439 通过**。🔶 当时还记了一笔「**pnpm 版本未钉**」的债 —— **已由 基建-4 结清**（`packageManager: pnpm@11.21.0` + `pmOnFail: error`，CHANGELOGS **#99**）：版本不符现在一律 exit 1。范围与取证见 §七「基建-3」与 CHANGELOGS **#98**。
 - **基建-4 已落地（2026-10-15，提交 `6e30db2`）**：把上一条那笔债结清 —— `package.json` 声明 `"packageManager": "pnpm@11.21.0"`（精确版本、无 hash），`pnpm-workspace.yaml` 声明 `pmOnFail: error`。**版本不符时每条 pnpm 命令直接 exit 1**（`install` 与 `pnpm -v` 都实测过），且失败发生在任何下载/改动之前。A/B：`pnpm@9.15.0` ⇒ exit 1 + `This project is configured to use 9.15.0 of pnpm`；改回 ⇒ exit 0 且 **lockfile 零变化**。选型依据取自官方文档：`pmOnFail`（v11 新增，默认 `download`）取代了已移除的 `managePackageManagerVersions`/`packageManagerStrict*`；**选精确版本而非范围**，因为范围正是把「不同机器结论不同」那个洞重新打开；**选 legacy 字段而非 `devEngines.packageManager`**，因为后者会把解析版本写进 lockfile；**选 `error` 而非默认 `download`**，因为后者是静默的网络下载 + 版本切换。本机 `corepack` 未装，故不依赖它。已知边界：钉在插件工程，**从仓库根跑 pnpm 不受约束**；升版流程与误配处置写在 `AGENTS.md`。`verify` **38 文件 / 439 通过**。范围与取证见 §七「基建-4」与 CHANGELOGS **#99**。
+- **基建-5 已落地（2026-10-15，提交 `d524739`）**：把上一条那条「`.npmrc` 死配置无害」的判断**推翻并修好** —— 实测有效默认是 `true`、lockfile 记的是 `false`，于是**裸 `pnpm install --frozen-lockfile` 一直 exit 1**（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。修法：设置搬进 `pnpm-workspace.yaml`（`autoInstallPeers: false`，设置真正被读的那份文件），`.npmrc` 整份删除（全文只有那一行、25 字节、不在 `files` 里）。读数：`pnpm config get autoInstallPeers` → `false`（改前 `undefined`）；裸安装 **exit 0**；文档命令 exit 0；`verify` **38 文件 / 439 通过**；lockfile 全程零变化。**单变量隔离**：把 `.npmrc` 那行临时写回，裸安装仍 exit 0 ⇒ 生效的是文件里的设置，删它去的是重复声明。探针两向证明该设置有牙（自动装入的 peer 只进虚拟 store、不做顶层链接 —— 第一版判据看 `node_modules/react` 是**假绿**，已改读 lockfile）。设置的家写进 `AGENTS.md`。范围与取证见 §七「基建-5」与 CHANGELOGS **#100**。
 - **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
@@ -865,7 +866,7 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - [x] `pnpm config get autoInstallPeers` → `false`（改前 `undefined`）
 - [x] A/B：裸 `pnpm install --frozen-lockfile` 改前 exit 1 + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`、改后 exit 0；两次都不动 lockfile
 - [x] 文档命令仍 exit 0；`verify` 三段全绿；`check-docs` / `check-env` exit 0
-- [ ] `AGENTS.md` 说明设置的家与 `.npmrc` 的用途边界；基建-4 / CHANGELOGS #99 里那笔发现**就地标注结清**；§零 与「新分支特有」清单同步
+- [x] `AGENTS.md` 说明设置的家与 `.npmrc` 的用途边界；基建-4 / CHANGELOGS #99 里那笔发现**就地标注结清**；§零 与「新分支特有」清单同步
 
 **结案记录（2026-10-15）**
 
@@ -880,7 +881,7 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **顺带发现（同轮落账，R28）**
 
-- `plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 **已不被读取**：官方文档写明 v11 起只有 auth/registry 从 `.npmrc` 读（实测 `pnpm config get auto-install-peers` → `undefined`，而同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）。**今天无害**：文档命令都显式带 `--config.autoInstallPeers=false`，且本插件的两个 peer 在 `peerDependenciesMeta` 里都标了 `optional`。**未修** —— 改它需要单独验一次「裸 `pnpm install` 的 peer 行为」，不夹带进本条。
+- `plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 **已不被读取**：官方文档写明 v11 起只有 auth/registry 从 `.npmrc` 读（实测 `pnpm config get auto-install-peers` → `undefined`，而同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）。⚠️ 初版把「今天无害」也写进了这里 —— **该判断已被实测推翻**：lockfile 记着 `autoInstallPeers: false` 而有效默认是 `true`，裸 `pnpm install --frozen-lockfile` 会 exit 1。**已由 基建-5 结清**（设置搬进 `pnpm-workspace.yaml`、`.npmrc` 删除，权威记录见 §七「基建-5」与 CHANGELOGS **#100**）。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
@@ -952,6 +953,7 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
   **⚠️ 事后自纠（2026-10-15）**：当时写「7 例全绿」并不成立 —— M1-C1 的锚点后来被措辞漂移顶掉、在 HEAD 上报 BLIND（见 §零「顺带查出门禁自己盲了一条」）；锚点已改结构定位，现复跑 7 例全落地。
 - [x] **基建-3 · 依赖构建脚本策略定案**（2026-10-15 完成，提交 `9dea904`）：`pnpm-workspace.yaml` 的 `allowBuilds` 增 `tesseract.js: false`（保留 `esbuild: true`）；pnpm 11 的 `ERR_PNPM_IGNORED_BUILDS` 与「安装改写被跟踪文件」两件事一并消解，安装 exit 0；A/B 实测占位形态会红。~~🔶 记债：**pnpm 版本未钉**，本条策略在更新版本上的兼容性未验。~~ **该债已由 基建-4 结清**（CHANGELOGS #99）。范围与取证见 §七「基建-3」、结案记录 CHANGELOGS **#98**。
 - [x] **基建-4 · 包管理器版本钉死**（2026-10-15 完成，提交 `6e30db2`）：`package.json` 的 `"packageManager": "pnpm@11.21.0"` ＋ `pnpm-workspace.yaml` 的 `pmOnFail: error`；版本不符时**每条 pnpm 命令 exit 1**（`install` 与 `pnpm -v` 均实测），且失败发生在下载/改动之前；匹配态安装 exit 0 且 lockfile 零变化。**结清基建-3 记的「未钉版本」那笔债**。边界（从仓库根跑不受约束、升版流程、误配处置）写在 `AGENTS.md`。范围与取证见 §七「基建-4」、结案记录 CHANGELOGS **#99**。
+- [x] **基建-5 · peer 设置搬位，`.npmrc` 删除**（2026-10-15 完成，提交 `d524739`）：`autoInstallPeers: false` 进 `pnpm-workspace.yaml`，哑掉的 `.npmrc` 整份删除；**裸 `pnpm install --frozen-lockfile` 从 exit 1（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）复绿**；lockfile 全程零变化。**结清 #99 记的那笔发现，并推翻其中「今天无害」的判断**。范围与取证见 §七「基建-5」、结案记录 CHANGELOGS **#100**。
 - [x] **rules-1 · rules 注入链拆除**（2026-10-14 完成，提交 `01de3b2`）：`rulesInjector` 链已删（模块 / 配置 `injectRules` / 诊断项 / spec / 夹具 / 契约断言 / README Layout / `systemPrompt` 缝），规则文本由 persona（常驻）+ skill（按需）承载；不迁移记录 **CHANGELOGS #84**。范围与取证见 §七「rules-1」。
 - [x] 本分支的 `CHANGELOGS`（2026-10-14 首次结案时新建：`docs/CHANGELOGS.md`，编号自 **#84** 续起并写明理由；规则：`### #N` 三段、编号永不复用）
 

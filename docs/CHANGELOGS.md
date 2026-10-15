@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 |
-| 三 · 门禁与基建 | #95, #98, #99 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）。 |
 
 
 ## 写入规则
@@ -428,3 +428,33 @@
 - **判据的边界**：它证明的是「版本不符会响」，**不证明 11.21.0 本身是正确选型** —— 那是选定值，升版由人决定，流程在 `AGENTS.md`。
 - 提交：方案 `8f7c835` → 实现 `6e30db2`。
 - **顺带发现（同轮落账，未修）**：`plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 已不被读取（实测 `pnpm config get auto-install-peers` → `undefined`，而同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）。今天无害（文档命令显式带该旗标，且两个 peer 都在 `peerDependenciesMeta` 里标了 `optional`），但**未验裸 `pnpm install` 的 peer 行为**，不夹带进本条，记账在 `TODO.md` §七「基建-4」。
+
+> ⚠️ **上面那条「无害」的判断已被本轮实测推翻，并由 #100 结清**：它不是无害 —— lockfile 记着 `autoInstallPeers: false` 而有效默认是 `true`，于是裸 `pnpm install --frozen-lockfile` 直接 exit 1。权威记录见 **#100**。
+
+### #100 peer 设置搬进 pnpm-workspace.yaml：一条最朴素的命令从 exit 1 复绿（基建-5 结案；结清 #99 记的那笔发现）
+
+#### 问题描述
+
+- #99 的「顺带发现」把 `plugins/dsh-autogamer/.npmrc` 里那行 `auto-install-peers=false` 记成「今天无害，只是没验」。本轮把它量到底，**那个判断是错的**：
+  - pnpm 11 只从 `.npmrc` 读 auth 与 registry（官方文档），所以那行**从未生效**；
+  - 而 pnpm **11.21.0 的有效默认是 `true`**（实测，见下）；
+  - 仓内 lockfile 记着 `settings.autoInstallPeers: false`（每条文档命令都带 `--config.autoInstallPeers=false`）。
+  - 两边对不上 ⇒ **`pnpm install --frozen-lockfile`（不带任何旗标）直接失败**：`[ERR_PNPM_LOCKFILE_CONFIG_MISMATCH] Cannot proceed with the frozen installation. The current "settings.autoInstallPeers" configuration doesn't match the value found in the lockfile`，**exit 1**。
+- 即「无害的死配置」实际是一枚**已经上膛的雷**：最朴素的那条命令今天是坏的，而仓库里没有一处文档说它坏在哪。
+
+#### 整改方案与实施
+
+- `plugins/dsh-autogamer/pnpm-workspace.yaml` 增 **`autoInstallPeers: false`**（v11 的设置家，与既有 `allowBuilds` / `pmOnFail` 同文件）。
+- **删除** `plugins/dsh-autogamer/.npmrc`：全文只有那一行（25 字节），留着等于同一个设置两处声明而其中一处哑。已核对它**不在** `package.json` 的 `files` 里 ⇒ 不进交付 tarball，宿主 `dsh plugin` 走 link/pack 也不读它，删除不影响宿主。
+- **值不变**（仍是 `false`）：本条是搬迁 + 让它生效，不是改策略。文档里那些命令的旗标**一律保留** —— 它们仍有效且与文件一致，去掉会波及整本台账的历史读数且没有收益。
+- `AGENTS.md` 写明「设置的家是 `pnpm-workspace.yaml`；`.npmrc` 只留给 auth/registry」，并把「设错地方 ⇒ 朴素命令变红」这一具体后果写在旁边。
+
+#### 验收标准
+
+- 设置真的被读到：插件目录 `pnpm config get autoInstallPeers` ⇒ **`false`**（改前 `undefined`）。
+- **A/B（R27）**：裸 `pnpm install --frozen-lockfile` ⇒ 改前 **exit 1** + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`，改后 **exit 0**；两次之后 `git status --short` 都**不出现** `pnpm-lock.yaml`。
+- **单变量隔离（不只证「一起改完是绿的」）**：把 `.npmrc` 那行临时写回（未跟踪）⇒ 裸安装**仍 exit 0** ⇒ 生效的是文件里的设置，那行从未参与；删除它是去掉重复声明，不是「碰巧同时修好」。
+- **两向证明该设置有牙**（临时区最小工程，`react-dom@19.0.0` + 非可选 peer `react ^19`，不入库）：默认时 lockfile 记 `settings.autoInstallPeers: true` 且虚拟 store 里有自动装入的 `react@19.3.0`、快照写成 `react-dom@19.0.0(react@19.3.0)`；写 `false` 后 lockfile 记 `false`、`react` **不在树里**、快照不带 peer 后缀。
+- 回归：文档那条安装命令 exit 0；`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（**38 文件 / 439 通过**）；`node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` ⇒ exit 0；`git grep 'auto-install-peers' -- plugins` ⇒ **零命中**。
+- **方法上的自纠（R27）**：探针第一版判据看的是 `node_modules/react` 存不存在 ⇒ **两种情况都「不存在」，是假绿** —— 自动装入的 peer 只进虚拟 store、不做顶层链接。改成读 lockfile 的 `settings:` 与快照后缀才咬住。这是本分支同类事故的第四次（#92 两条落在桩上、T4 一次判据自我失效、门禁锚点两次腐烂），**判据要落在记录事实的地方，不是落在你以为的路径上**。
+- 提交：方案 `9a07618` → 实现 `d524739`。

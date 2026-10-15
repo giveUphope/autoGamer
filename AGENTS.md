@@ -64,6 +64,8 @@ Instructions for agents working in this repository.
 - 本机装依赖与跑脚本**要带旗标**（不带时 pnpm 会隐式 install 并重写 lockfile——那是环境产物，别提交）：
   `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false`、
   `pnpm --config.verify-deps-before-run=false run build|test`
+- **设置的家在 `plugins/dsh-autogamer/pnpm-workspace.yaml`**（`allowBuilds` / `autoInstallPeers` / `pmOnFail` 都在那儿，pnpm 11 起只有 auth 与 registry 从 `.npmrc` 读——那条 `.npmrc` 已删，别再加回来）。
+  设错地方的后果不是「不生效」而是**一条最朴素的命令变红**：lockfile 记着 `autoInstallPeers: false` 而有效默认是 `true` 时，裸 `pnpm install --frozen-lockfile` 会 exit 1（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。出处见 CHANGELOGS #100。
 - **依赖的构建脚本策略**写在 `plugins/dsh-autogamer/pnpm-workspace.yaml` 的 `allowBuilds`：`esbuild: true`（vitest 要它的原生二进制）、
   `tesseract.js: false`（其 `postinstall` 只是赞助横幅、无产物）。若安装报 `ERR_PNPM_IGNORED_BUILDS` 并非零退出，
   **先看这一行**，不要直接 `pnpm approve-builds`——那条会把构建脚本放行，且 pnpm 会顺手改写被跟踪的 `pnpm-workspace.yaml`。出处见 CHANGELOGS #98。
