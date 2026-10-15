@@ -10,6 +10,7 @@ import { readFileSync } from "node:fs";
 import { fileURLToPath } from "node:url";
 import type { ToolRunContext } from "@deepseek-ai/dsh-tools";
 import type { DeviceDiagnosis } from "../src/device/diagnose.js";
+import type { HostOutcomeSnapshot } from "../src/hostOutcome.js";
 import { diagnoseDevice, parseCrashLogcat, parseVersionName } from "../src/device/diagnose.js";
 import type { PreflightResult } from "../src/env/preflight.js";
 import type { DshImageAttachment } from "../src/dsh-types.js";
@@ -73,6 +74,7 @@ function defineWith(options?: {
   ocr?: OcrReadout | "throws";
   provider?: ProviderReadout | "throws";
   hierarchy?: HierarchyReadout | "throws";
+  hostOutcomes?: HostOutcomeSnapshot;
 }) {
   const asked: (string | undefined)[] = [];
   const saved: Buffer[] = [];
@@ -127,6 +129,7 @@ function defineWith(options?: {
             return providerReadout;
           },
         }),
+    ...(options?.hostOutcomes === undefined ? {} : { hostOutcomes: () => options.hostOutcomes as HostOutcomeSnapshot }),
     ...(hierarchyReadout === undefined
       ? {}
       : {
@@ -380,6 +383,44 @@ describe("diagnose: who holds the UiAutomation slot is reported, never gated (�
       "utf8",
     );
     expect(source).not.toContain("requireEnv");
+  });
+});
+
+describe("diagnose: host-minted outcomes are reported, never inferred (能力重审-3)", () => {
+  const SNAPSHOT: HostOutcomeSnapshot = {
+    total: 2,
+    byOutcome: { timeout: 1, aborted: 1, "aborted-before-dispatch": 0 },
+    last: { outcome: "timeout", tool: "run_device_action", callId: "call-9", at: "2026-10-15T08:00:00.000Z" },
+  };
+
+  it("renders the counts in the wire shape the report promises", async () => {
+    const { tool } = defineWith({ hostOutcomes: SNAPSHOT });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.host_outcomes).toEqual({
+      total: 2,
+      timeouts: 1,
+      aborted: 1,
+      aborted_before_dispatch: 0,
+      last: { outcome: "timeout", tool: "run_device_action", call_id: "call-9", at: "2026-10-15T08:00:00.000Z" },
+    });
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).toContain("host_timeouts=1");
+  });
+
+  it("keeps an untouched ledger visible as zeros rather than omitting the column", async () => {
+    const { tool } = defineWith({
+      hostOutcomes: { total: 0, byOutcome: { timeout: 0, aborted: 0, "aborted-before-dispatch": 0 } },
+    });
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value.host_outcomes).toEqual({ total: 0, timeouts: 0, aborted: 0, aborted_before_dispatch: 0 });
+  });
+
+  it("says nothing about outcomes it was never asked to read", async () => {
+    const { tool } = defineWith();
+    const value = (await tool.execute({}, exec())) as Record<string, unknown>;
+    expect(value).not.toHaveProperty("host_outcomes");
+    const rendered = tool.output!.render({}, value) as { text?: string }[];
+    expect(rendered[0]?.text).not.toContain("host_timeouts");
   });
 });
 

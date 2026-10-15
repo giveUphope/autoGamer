@@ -167,12 +167,22 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
      —— 注意 code 在 **`error.info.code`**，不在 `error.code`；
      ⚠️ **2026-10-15 更正**：上一版写「将来要在 `classify.ts` 里分类超时」——**那个落点是错的**：`classify.ts` 只在我们工具体内被调用，拿不到包装层的错误；
      要识别 `TOOL_TIMEOUT` 必须挂 `tools/result` / `post-execute` 一类的宿主监听器（本分支**尚未挂**，仍登记为差距）。
+     **✅ 2026-10-15 能力重审-3 已挂，并把上一句的两个候选收成一条**：官方声明面写着 `tools/result` 是 `@mode emit` 的**纯观察点**
+     （`@deepseek-ai/dsh-tools` `lib/types/index.d.ts:88-92`「Notify observers without exposing a mutation or error channel」），
+     而 `tools/post-execute` 是能 accept/replace/block 的 waterfall ⇒ **够用即最弱（R13）取 emit**；想去改宿主那句干巴巴的超时文案才需要 post-execute，本分支不做。
+     接线在 `src/index.ts`（`ctx.on("tools/result", …, { global: true })`）＋归因在 `src/hostOutcome.ts`；🔶 **「真宿主是否会对我们的工具 emit」仍未观察**（`dsh-tools/testing` 没有任何管线 harness，离线补不了 ⇒ 需一次宿主会话）。
+     ⚠️ 另一条同源事实：**`ABORTED` / `ABORTED_BEFORE_DISPATCH` 是安装包导出的常量**（`lib/types/index.d.ts:374-376`），比对要用常量；
+     而 **`TOOL_TIMEOUT` 归宿主 timeout-policy 包所有、不在我们的声明面依赖里** ⇒ 只能写字面量并注明出处。上游改名时两条路**失效方式不同**，这就是差别必须写下来的理由。
   4. 多个 `tools/execute` 包装层**按注册顺序组合、顺序决定语义**（注册在外层覆盖整个重试，在内层覆盖每次尝试）。
 - **✅ 两层同时计时的情形：已可离线构造，🔶 但从未在真宿主里跑过**（2026-10-15 能力重审-1 改判）。
   上一版写「一次都没量过」并暗示「要实测需要设备」——**后半句是错的**：构造点是 `wait` + `duration_ms` 超过声明的 deadline，
   当时 `wait` 上限 60s 无 abort 监听，于是包装层 45s 到点 abort、把成功的 `{waited_ms}` 换成 `TOOL_TIMEOUT`，而内部已 `recordSuccess` ⇒
   **模型可见答案与内部台账必然相反**。该构造与修复都在 `tests/router-errors.spec.ts`（离线可复跑）。
   仍不可离线验证的只有**宿主进程里的真实观察**（包装层是否确实替换、模型实际收到什么）——那一条仍标 🔶，需宿主会话而非设备。
+  **2026-10-15 能力重审-3 把「替换的条件」从推断升成一手事实**（读 `packages/guard/timeout-policy/src/index.ts:56-77`）：包装层 `await next()` 之后
+  **只在自家 timer 真的到点时**替换（`timeoutOf(d.signal, TOOL_TIMEOUT) !== undefined`，作用域到自有 code 正是为了「**别的外层 wrapper 先到期**读成普通上游取消」）。
+  ⇒ **谁赢由内层挂钟决定**：内层先到 ⇒ 模型看到我们自己的消息、包装层不动；外层先到 ⇒ 我们的 `cancelled`/成功被换成 `TOOL_TIMEOUT`。
+  仍未量的只剩**真机上的耗时分布**（45s 该不该调，需设备），而不是这条链的语义。
 - **包名不会变**：该包 `src/index.ts` 里的 `FIXME` 建议改名 `@deepseek-ai/dsh-timeout-guard`，但其 README 的 dev-note 记明改名台账已把
   `@deepseek-ai/dsh-tool-call-timeout-policy` 定为既定名称、该 FIXME 已陈旧 ⇒ 本守则引用的包名可以放心沿用。
 

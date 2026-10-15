@@ -22,6 +22,7 @@
  * reappears.
  */
 import type { DeviceDiagnosis } from "../device/diagnose.js";
+import type { HostOutcomeSnapshot } from "../hostOutcome.js";
 import type { DshImageAttachment, ToolDefinitionInput } from "../dsh-types.js";
 import type { OccupantState } from "../device/hierarchy.js";
 import { preflightErrorText, type PreflightResult } from "../env/preflight.js";
@@ -55,6 +56,13 @@ export interface DiagnoseDeps {
    * still have OCR and `{coordinate}`, so it must not fail a diagnosis.
    */
   hierarchyStatus?(serial: string | undefined, signal?: AbortSignal): Promise<HierarchyReadout>;
+  /**
+   * 能力重审-3: how many of this plugin's calls the host replaced with its own
+   * outcome (an armed deadline expiring, or a caller cancellation). Counted at the
+   * `tools/result` observer, reported here, and never used to gate or to trip the
+   * breaker — a host timeout may only mean the device was slow.
+   */
+  hostOutcomes?(): HostOutcomeSnapshot;
 }
 
 export interface ProviderReadout {
@@ -140,6 +148,31 @@ function hierarchySummary(value: unknown): string {
   return String(hierarchy.occupants ?? "unknown");
 }
 
+/**
+ * Wire shape for the observer's counts. The keys are spelled out rather than
+ * spread from the snapshot so the report keeps a stable shape: `unknown` counts
+ * never leak in, and a caller that reads `host_outcomes.timeouts` always finds
+ * a number.
+ */
+export function hostOutcomeWire(snapshot: HostOutcomeSnapshot): Record<string, unknown> {
+  return {
+    total: snapshot.total,
+    timeouts: snapshot.byOutcome.timeout,
+    aborted: snapshot.byOutcome.aborted,
+    aborted_before_dispatch: snapshot.byOutcome["aborted-before-dispatch"],
+    ...(snapshot.last === undefined
+      ? {}
+      : {
+          last: {
+            outcome: snapshot.last.outcome,
+            tool: snapshot.last.tool,
+            call_id: snapshot.last.callId,
+            at: snapshot.last.at,
+          },
+        }),
+  };
+}
+
 export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
   return {
     name: "autogamer_diagnose",
@@ -147,6 +180,7 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
       "Diagnose the Android device and the plugin's own environment over adb: adb connection, " +
       "screen state, helper APK install and version, recent entries in the device crash log, " +
       "built-in OCR readiness, which process holds the device's single UiAutomation slot, " +
+      "how many of this plugin's own calls the host replaced with its own timeout or cancellation outcome, " +
       "the optional external provider when one is configured, " +
       "and actionable fix recommendations. Also the manual entry for a fresh environment preflight.",
     parameters: {
@@ -184,6 +218,7 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           ocr_ready: { type: "boolean" },
           ocr: { type: "object", additionalProperties: true },
           hierarchy: { type: "object", additionalProperties: true },
+          host_outcomes: { type: "object", additionalProperties: true },
           provider: { type: "object", additionalProperties: true },
         },
         additionalProperties: true,
@@ -200,6 +235,9 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           // Only when the check ran: a report that never asked must not answer.
           (record.ocr_ready === undefined ? "" : `; ocr_ready=${String(record.ocr_ready)}`) +
           (record.hierarchy === undefined ? "" : `; hierarchy=${hierarchySummary(record.hierarchy)}`) +
+          (record.host_outcomes === undefined
+            ? ""
+            : `; host_timeouts=${String((record.host_outcomes as { timeouts?: number }).timeouts ?? 0)}`) +
           (record.provider === undefined ? "" : `; provider=${providerSummary(record.provider)}`);
         // Same rule as the router: the attachment becomes an image block, so it
         // must not also be flattened into the text envelope.
@@ -278,6 +316,9 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
           if (!recommendations.includes(note)) recommendations.push(note);
         }
       }
+      // 能力重审-3: read the observer's counts. No dep means never asked, so the
+      // report must not answer.
+      const hostOutcomes = deps.hostOutcomes?.();
       let screenshot: DshImageAttachment | undefined;
       if (args.include_screenshot === true && deps.capturePng !== undefined && deps.saveScreenshot !== undefined) {
         const png = await deps.capturePng(serial, exec?.signal);
@@ -319,6 +360,7 @@ export function defineDiagnose(deps: DiagnoseDeps): ToolDefinitionInput {
                 ...(hierarchy.error !== undefined ? { error: hierarchy.error } : {}),
               },
             }),
+        ...(hostOutcomes === undefined ? {} : { host_outcomes: hostOutcomeWire(hostOutcomes) }),
         ...(provider === undefined
           ? {}
           : {

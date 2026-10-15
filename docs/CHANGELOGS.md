@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）；G92 合成难帧 —— 三种造法否掉两种、第三种成立，落成一条成对真模型机制锁，变异把参数扫描的结论变成了会红的判据（#108）；设备前置调研：三项逐一查实 mock 顶不到哪一层（三任务工具全过 requireEnv ⇒ 交付-1 C 项无法替代），并修正「需要设备」这个前提——本机虚拟化已启用，缺的是安装不是能力（#109）；联网调研否掉「改一个 PSM 参数就能解决 G92」，并量出 `setParameters` 不可靠（#110）；能力重审-1 的三个零授权确定性修正——abort 收成第四类 `cancelled` 两侧都不记账、`wait` 上限低于声明值、两处 probe 缝接上 signal，含**两条假锁被变异当场证伪**（#111）；能力重审-2 给元素源的 UiAutomation 占用者第一次命名（三态，读不出绝不答「没人占」），并改掉两处「注释指向不存在的锁」——其中一条结构锁当场红在本轮自己写的注释上（#112）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105, #106, #107, #108, #109, #110, #111, #112, #113 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）；读完上游五份未读文档并回写，顺带推翻 #103 刚写下的「包装层未接」（#106）；恢复 `client.js` 的浏览器半边锁，一次 T4 混称导致的连坐删除，六条断言原样复绿（#107）；G92 合成难帧 —— 三种造法否掉两种、第三种成立，落成一条成对真模型机制锁，变异把参数扫描的结论变成了会红的判据（#108）；设备前置调研：三项逐一查实 mock 顶不到哪一层（三任务工具全过 requireEnv ⇒ 交付-1 C 项无法替代），并修正「需要设备」这个前提——本机虚拟化已启用，缺的是安装不是能力（#109）；联网调研否掉「改一个 PSM 参数就能解决 G92」，并量出 `setParameters` 不可靠（#110）；能力重审-1 的三个零授权确定性修正——abort 收成第四类 `cancelled` 两侧都不记账、`wait` 上限低于声明值、两处 probe 缝接上 signal，含**两条假锁被变异当场证伪**（#111）；能力重审-2 给元素源的 UiAutomation 占用者第一次命名（三态，读不出绝不答「没人占」），并改掉两处「注释指向不存在的锁」——其中一条结构锁当场红在本轮自己写的注释上（#112）；能力重审-3 在官方最弱的 emit 观察点 `tools/result` 上看清了宿主替换掉的那一份，归因三态、只计数不决策，并把判据钉在生产接线捕获的 handler 上（#113）。 |
 
 
 ## 写入规则
@@ -908,3 +908,49 @@ G92 的方案 Verify 里有一条标着「（可选）合成难帧」：离线�
   `{text}` 未命中时把候选框 + 帧引用交回模型（契约面改动，需单独设计）；`TOOL_TIMEOUT` 监听器与统一 `Deadline`。
   🔶 `unknown` 态的收窄**必须等真机复验列名**，在那之前不许改成两态。
 - 提交：方案 `ef617ec` → 实现与结案（本提交）。
+
+### #113 能力重审-3：宿主替换掉我们答案的那一份，第一次在 `tools/result` 上被看见（主题项 能力重审-3）
+
+#### 问题描述
+
+工具正文**看不见被宿主换掉的结果**——它就是被换掉的那一份。两条已一手确认的替换路径：
+① 宿主 timeout-policy 对**声明了 `timeoutMs`** 的工具设 deadline，到点 abort、等主体停稳后把结果换成
+`{isError:true, error:{message, info:{name:'ToolTimeoutError', code:'TOOL_TIMEOUT'}}}`（上游 `packages/guard/timeout-policy/src/index.ts:41-47,56-77`，本轮 `gh api` 重取全文 81 行）；
+② 调用方取消而主体已成功时，注册表把成功换成 `info.code = 'ABORTED'`（派发前取消则是 `'ABORTED_BEFORE_DISPATCH'`，`@deepseek-ai/dsh-tools` `lib/index.js:3283-3288,3676-3712`）。
+本插件此前只挂 `session/event` 与 `tools.guard` ⇒ **两条路径都进不了任何分类器**，#111 结案时把它列为「仍然欠着」。
+
+#### 整改方案与实施
+
+- **取证先定落点，再选最弱的够用扩展点（R20 → R13）**：官方把工具管线声明成 `pre / guard / around / post / result`，
+  其中 `tools/result` 是 `@mode emit` 的**纯观察点**（`lib/types/index.d.ts:88-92`「Notify observers without exposing a mutation or error channel into the outcome」），
+  而 `tools/post-execute` 是能 accept / replace / block 的 waterfall。本条目标只是「识别」⇒ **取 emit**；
+  若为了把宿主那句干巴巴的 `tool call timed out after 45000ms` 富化成带 fix 的文案就得用 post-execute——那是去改别人的出口，本条不做。
+- **为什么观察点看到的就是模型拿到的那一份**（这是本条成立的关键）：整包 `notifyResult` **只有一个调用点**，在 `finishScheduledExecution` 里，
+  实参即返回给调用方的 finalResult，而 finalResult 是 dispatch（含 execute 瀑布）→ project → postExecute **全走完之后**的值（`lib/index.js:3362-3395`）。
+- **`src/hostOutcome.ts`**：`hostOutcomeOf(result)` 归成 `timeout` / `aborted` / `aborted-before-dispatch` / `undefined`；`HostOutcomeLedger` 只存三个计数 + 最近一条（结构上有界）。
+  ⚠️ 读的路径是 `error.info.code`——**读 `error.code` 不报错、只是永远不匹配**，计数会安静地停在 0 而测试全绿（R15 记过的同一陷阱）。
+  常量来源分两条并写进注释：`ABORTED*` 用安装包导出常量比对，`TOOL_TIMEOUT` 归宿主包所有、不在我们声明面依赖里 ⇒ 只能是带出处的字面量。
+- **接线 `src/index.ts`**：`ctx.on("tools/result", …, { global: true })`（该 emit 按 `exec.agent` 筛选，`{global:true}` 绕开，与已 live 跑过的 `session/event` 同一规则），
+  **只统计本插件注册的工具**——emit 面向整个注册表，别家插件的超时不是我们的设备慢。
+- **只读不决策**：这条计数**不进 breaker、不进 incident、不改 `classify.ts`、不改任何工具返回体**。
+  `allowedFails` 默认 1 ⇒ 一次 `environment` 记账就开闸冷却 30s，而「宿主超时」可能只是设备慢、**耗时分布从没量过**——与 #111 否决「abort 记 environment」同一条理由。
+- **`autogamer_diagnose` 新增 `host_outcomes` 栏**（`total` / `timeouts` / `aborted` / `aborted_before_dispatch` / `last{outcome,tool,call_id,at}`），
+  形状沿用上一条的**可选 dep、问过才出现**；dep 是**同步**的（读内存账本，无 I/O、无设备可寻），做成 Promise 只会让人以为这里去问了设备。
+- **顺带（`readmeLayout.spec` 的机械锁抓出来的）**：README Layout 必须列全 `src/` ⇒ 新文件一行；同时改掉两条漂移——
+  `runDeviceAction.ts` 行补上 #111 落的**四态分类**（README 此前只写「错误分类」），`classify.ts` 行写明**它看不到宿主替换掉的结果**。
+
+#### 验收标准
+
+- **三条变异**（R27，方案写「各红一次」，①实测红 4 条，因该判据本身是四条样本，如实记）：
+  ① 归因改读 `error.code` ⇒ **4 红**（正向归因 / 错层级反向锁 / 超时进报告 / cancellation 与 timeout 分开计数）；
+  ② 去掉 `{ global: true }` ⇒ **1 红**（订阅形状，且只有从**捕获的接线**断言才抓得到——handler 行为对它无感）；③ 去掉工具名过滤 ⇒ **1 红**。
+- **判据形状是本条的方法论产出**（#111 两条假锁的直接延续）：spec **不自造 handler**，而是从 `apply()` 期间 `ctx.on` 的**实际调用记录里捕获**再驱动；
+  并让它驱动到**已注册的 `autogamer_diagnose` 工具**，断言的是模型会读到的报告体。另有一条自检锁：`OUR_TOOL_NAMES` 排序等于 `apply()` 实际注册的工具名排序 ⇒ **加工具不改名册会红**。
+- 新增 13 条（`tests/hostOutcome.spec.ts` 10 + `tests/diagnose.spec.ts` 3）；`verify` **45 文件 / 510 通过**（上一绿态 44/497）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
+- 🔶 **判据天花板写在台账里**：离线能证「订阅形状 + 归因 + 账本 + 报告」，**证不到「宿主真的对我们的工具 emit」**——`@deepseek-ai/dsh-tools/testing` 全文只有一个工具定义夹具、没有任何管线 harness，
+  所以这条**没有离线补法**，需要一次宿主会话（**不需要设备**）。在量到之前不许写成已生效（R9 / R24）。
+- **未做**（不静默）：不富化宿主文案（需 `tools/post-execute`，理由见上）；不做统一 `Deadline`（重审方案 B，11 文件，其唯一产出「预算该定多少」需真机耗时分布）；
+  不给 `autogamer_diagnose` 新增 `timeoutMs`（R15）；不改 `*.patch.yml`（R6 不适用）。
+- **同时收紧一条 #111 留下的 🔶**：包装层的**替换条件**已是一手事实——它 `await next()` 且**只在自家 timer 到点时**替换（`timeoutOf(d.signal, TOOL_TIMEOUT) !== undefined`）
+  ⇒ **内层先到则模型看到我们自己的消息、外层先到则我们的 `cancelled`/成功被换成 `TOOL_TIMEOUT`**。仍未量的只剩真机耗时分布。守则 R15 已按此改写。
+- 提交：方案 `073229b` → 实现与结案（本提交）。

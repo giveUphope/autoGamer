@@ -60,6 +60,14 @@
   **它意外挖出的真缺口是另一件事**（这条才是有价值的）：`git grep -n "clientHalf.spec" -- plugins` 只命中 `client.js` 自己的注释 ⇒ **那个 spec 已在 T4（`3677a49`）被删**，
   而 `client.js` 仍在交付面里（`files` / `exports` / `dsh.client`）并为 5 个工具注册 `tool.call.toolview` 卡片 ⇒ **零自动化锁 + 注释指向已删文件**。
   ⇒ **新立 G95**（§四），处置见该行：写回一个只锁结构事实的小 spec + 修掉注释里那句谎话。**删它的理由不适用** —— `client.js` 不是 provider 链成员。
+- **能力重审-3 已落地（2026-10-15，方案 `073229b` → 实现与结案 CHANGELOGS #113）**：**宿主替换掉我们答案的那一份第一次被看见** —— 工具正文看不见被换掉的结果（它就是被换掉的那一份），
+  本轮按 R20 读官方声明面后落在**最弱的够用扩展点** `tools/result`（`@mode emit`，改不动结果；`tools/post-execute` 是能 replace/block 的 waterfall，本条不需要也不该用）：
+  `src/hostOutcome.ts` 归因三态（`timeout` / `aborted` / `aborted-before-dispatch`，读 `error.info.code`——**读 `error.code` 不报错、只是永远不匹配**），计数进 `autogamer_diagnose` 的 `host_outcomes` 栏。
+  ⚠️ **只读不决策**：不进 breaker、不进 incident（`allowedFails` 默认 1 ⇒ 一次慢设备开闸 30s，而耗时分布从没量过；同 #111 否决 abort 记 `environment` 的理由）。
+  **判据形状是本轮的产出**（延续 #111 两条假锁）：spec 不自造 handler，而是从 `apply()` 期间 `ctx.on` 的**实际调用记录里捕获**再驱动，并驱动到**已注册的 diagnose 工具**；`OUR_TOOL_NAMES` 由一条锁对齐实际注册集 ⇒ **加工具不改名册会直接红**。
+  变异实测：① 归因读错层级 ⇒ **4 红**（方案原写「各红一次」，如实改判）；② 去掉 `{ global: true }` ⇒ 1 红；③ 去掉工具名过滤 ⇒ 1 红。
+  🔶 **天花板写明**：离线证不到「宿主真的对我们的工具 emit」——`dsh-tools/testing` 无任何管线 harness ⇒ 需一次**宿主会话**（不需设备），量到之前不许写成已生效（R9/R24）。
+  顺带把 #111 留的那条 🔶 **收紧**：包装层替换条件已一手确认（`await next()` 后只在自家 timer 到点时替换 ⇒ 内层先到模型看到我们自己的消息），仍未量的只剩真机耗时分布；守则 R15 已按此改写。`verify` **45 文件 / 510 通过**。
 - **能力重审-2 已落地（2026-10-15，方案 `ef617ec` → 实现与结案 CHANGELOGS #112）**：元素源的 **UiAutomation 占用者第一次有了名字** —— `readUiAutomationOccupants`（`ps -A -o PID,ARGS` + 四个具名 marker）返回**三态** `occupied` / `free` / `unknown`，接到 `autogamer_diagnose` 的新 `hierarchy` 栏（render 只在问过之后出现）。
   一手机制补进台账：`UiAutomationConnection.connect()` 同时刻只容一个客户端，而 **`uiautomator dump` 自己就是占位者**且 `connect()` **无参**⇒默认压制 a11y 服务、**无 flag 可免**（⇒ §七「前置-2」互斥行的轴已重划）。
   ⚠️ **`unknown` 不是装饰**：`-o PID,ARGS` 的列布局**本仓从没量过**（ledger 只有裸 `ps -A` 的读数）⇒ 解析不到 marker **绝不许答「没人占」**（没有证据的健康证明比不报更坏）；收窄这一态**必须等真机复验**。
@@ -1576,10 +1584,29 @@ pad\scale |  1.0  1.5  2.0  3.0
 
 **Done means**
 
-- [ ] `hostOutcomeOf` 三态 + 五种输入形态（成功 / `isError` 无 `info` / 我们自己的错误 / `TOOL_TIMEOUT` / `ABORTED*`）各带离线锁；三条变异各红一次
-- [ ] handler 从 mount 的 `ctx.on` 记录里**捕获**后驱动（不是另造一个），`{ global: true }` 与工具名过滤各有一条锁
-- [ ] `autogamer_diagnose` 报 `host_outcomes`，**没问过就不出现**；description 点名该栏
-- [ ] 台账：§七「重审综合」待立项行 5 改判已做；**#111 留的「两层同时计时」🔶 按本条取证收紧为「语义已知（谁赢由内层挂钟决定，外层到点才替换）、时钟竞赛未量」**；§零 加指针；CHANGELOGS 结案一条
+- [x] `hostOutcomeOf` 三态 + 五种输入形态（成功 / `isError` 无 `info` / 我们自己的错误 / `TOOL_TIMEOUT` / `ABORTED*`）各带离线锁；三条变异各红一次
+- [x] handler 从 mount 的 `ctx.on` 记录里**捕获**后驱动（不是另造一个），`{ global: true }` 与工具名过滤各有一条锁
+- [x] `autogamer_diagnose` 报 `host_outcomes`，**没问过就不出现**；description 点名该栏
+- [x] 台账：§七「重审综合」待立项行 5 改判已做；**#111 留的「两层同时计时」🔶 按本条取证收紧为「语义已知（谁赢由内层挂钟决定，外层到点才替换）、时钟竞赛未量」**；§零 加指针；CHANGELOGS 结案一条
+
+**实施记录（2026-10-15，一处形状偏离方案 + 变异计数如实偏离「各红一次」 + 一条机械锁抓到 README 漏列）**
+
+- **形状偏离**：`hostOutcomes` dep 是**同步** `hostOutcomes?(): HostOutcomeSnapshot`，不像 `hierarchyStatus` / `ocrStatus` 那样是 `async (serial, signal)`。
+  理由：它读的是插件自己的内存账本，**没有任何 I/O 可等**，也没有设备可寻；把它做成 Promise 只会让读者以为这里会去问设备。
+- **归因表放对了位置才有牙**：`error.info.code`（`lib/types/index.d.ts:378-386`）vs `error.code` 的区别不是风格问题——读错层级**不报错、只是永远不匹配**，
+  于是计数永远是 0 而全绿。⇒ 单测里专门写了一条「code 挂错层级的结果必须读成 `undefined`」，变异 ① 就是它红（见下）。
+- **两条常量来源不同已在代码注释写明**：`ABORTED` / `ABORTED_BEFORE_DISPATCH` 用安装包导出常量比对；`TOOL_TIMEOUT` 是宿主包所有的字面量 + 出处。
+- **工具名清单改成自检式**：`OUR_TOOL_NAMES` 不是权威（权威是 `apply()` 注册了什么），
+  由一条锁 `[...definitions.map(name)].sort()` 等于 `[...OUR_TOOL_NAMES].sort()` 兜住 ⇒ **加工具不改名册会直接红**，而不是悄悄漏统计。
+- **三条变异的实测计数**（方案写「各红一次」，①实际红 4 条，理由如下并如实改判）：
+  ① 归因改读 `error.code` ⇒ **4 红**（正向归因、错层级反向锁、宿主超时进报告、cancellation 分开计数——四条都是同一条归因判据的样本）；
+  ② 去掉 `{ global: true }` ⇒ **1 红**（订阅形状）；③ 去掉工具名过滤 ⇒ **1 红**（别家插件的超时不许计到我们头上）。
+- **一条机械锁当场生效**：`readmeLayout.spec.ts` 要求 README 的 Layout **列全 `src/` 每个模块** ⇒ 新增 `src/hostOutcome.ts` 后该锁立刻红，补了那一行才绿。
+  顺带把 README 两条漂移改掉：`runDeviceAction.ts` 行补上**四态分类**（#111 落的 `cancelled` 一直只在代码里、README 还写「错误分类」不列状态），
+  `classify.ts` 行写明**它看不到宿主替换掉的结果**（那条路在 `src/hostOutcome.ts`）——这正是 R15 上轮刚纠正过的落点错误，文档面不许再留第二个版本。
+- **读数**：`verify` **45 文件 / 510 通过**（上一绿态 44/497，+1 文件 +13 条）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
+- **仍然没验的（不静默）**：🔶 宿主真的对我们的工具 emit `tools/result` —— 需一次宿主会话（**不需要设备**）；
+  `dsh-tools/testing` 全文只有一个工具定义夹具、无管线 harness ⇒ 这一条**没有离线补法**，本条不许写成已生效（R9 / R24）。
 
 ### 重审综合 · 六面能力重审的结论、否证与处置（2026-10-15，只读调研，零设备）
 
@@ -1593,7 +1620,7 @@ pad\scale |  1.0  1.5  2.0  3.0
 
 | 面 | 一句话结论 | 处置 | 落点 |
 |---|---|---|---|
-| 超时与执行 | 现状不是「三层兜底」而是**一个共享 abort 信号上的两层记账**：包装层 45s **只 abort 不返回**（`await next()`），我们把 abort 映射成 `task` 级失败 ⇒ 内部台账与模型可见答案互斥 | 三条已修（#111）；`Deadline` 值对象统管四处内层（重审方案 B，11 文件）与 `TOOL_TIMEOUT` 识别**未做** | 本节「待立项」行 5、6 |
+| 超时与执行 | 现状不是「三层兜底」而是**一个共享 abort 信号上的两层记账**：包装层 45s **只 abort 不返回**（`await next()`），我们把 abort 映射成 `task` 级失败 ⇒ 内部台账与模型可见答案互斥 | 三条已修（#111）；`TOOL_TIMEOUT` 识别已挂 `tools/result` 观察点（#113，**只计数不决策**）；`Deadline` 值对象统管四处内层（重审方案 B，11 文件）**仍未做** | 本节「待立项」行 5（✅）、行 6 |
 | OCR 识图 | 保留 `recognize.ts` 的 needle→像素**确定性解析器**，重新定位为「确定性兜底」；**放弃**「区域 OCR 救召回」；**新增一条非 OCR 的召回轴** | 建议 1、2 已做（#111）；建议 3 待立项（本节「现在就做」行 3） | CHANGELOGS #111；下行 3 |
 | 层级元素源 | **保留 dump、不建 uia2 客户端**——uia2 是第二**传输**不是第二**数据源**（两条路都跑 `AccessibilityNodeInfoDumper`）⇒ 换过去**不解决 G92 的渲染区缺席** | 「现在就做」两条：占用者诊断器、`dump --windows` | 下行 1、2 |
 | 闸门与诊断 | 问题不是「2 项太少」而是**闸门放错了地方**：三处真会给出误导性结果的故障都不在 preflight，而 preflight 罩住了两个不碰设备的工具（`manage_task` / `inspect_trace`）、**没罩住唯一真正驱动设备的 `run_device_action`** | 闸门语义按裁决动（需先改规格 ⇒ 待裁决）；两条注释/死代码真相修复「现在就做」 | 下行 4；R19 段 |
@@ -1623,6 +1650,10 @@ pad\scale |  1.0  1.5  2.0  3.0
 
 5. **`TOOL_TIMEOUT` 识别**：插件只挂 `session/event` 与 `tools.guard`，**没有** `tools/result` / `post-execute` / `tools/execute` 监听器 ⇒ 包装层的结构化错误进不了任何分类器。
    正确落点**不是** `classify.ts`（它只在我们的工具体内被调用，拿不到包装层的错误）。⚠️ 动手前须按 **R20** 查官方监听器形态与 `error.info.code` 的确切读法。
+   **✅ 2026-10-15 已做（能力重审-3 / CHANGELOGS #113）**：R20 取证后落在**最弱的够用扩展点** `tools/result`（`@mode emit`，改不动结果），
+   归因 `error.info.code` 三态（timeout / aborted / aborted-before-dispatch），计数进 `autogamer_diagnose` 的 `host_outcomes`；
+   **不进 breaker、不进 incident**（`allowedFails` 默认 1 ⇒ 一次慢设备就开闸冷却 30s，而耗时分布从没量过——同 #111 否决 abort 记 environment 的理由）。
+   🔶 仍欠：宿主真的对我们的工具 emit 这条**只有宿主会话能证**（不需设备），`dsh-tools/testing` 无管线 harness ⇒ 离线补不了。
 6. **统一 `Deadline` 值对象**（重审方案 B）：四处内层（adb / OCR / provider / preflight）各持一份预算与取消观测，三处孤儿计时器（OCR 超时不取消 worker、MCP 计时器从不清除 ⇒ 成功后 30s 仍 `dispose()`、`rm` 子进程 fire-and-forget）。改 11 个文件，**语义不变**、只统一形状。
 
 **需人裁决（R19 授权面，或 R22 要先改规格）**

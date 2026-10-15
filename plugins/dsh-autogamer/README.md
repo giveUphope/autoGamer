@@ -15,7 +15,7 @@ AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`r
 
 ```
 src/index.ts                      插件入口：Config（原生 Schemastery）+ apply() 注册工具
-src/tools/runDeviceAction.ts      执行工具：闸门 → 动作执行 → 错误分类 → 路由日志
+src/tools/runDeviceAction.ts      执行工具：闸门 → 动作执行 → 错误分类（四态 environment / task / internal / **cancelled**，`runDeviceAction.ts:115`；abort 两侧都不记账）→ 路由日志
 src/tools/reportTaskStatus.ts     终态汇报（completed / blocked + tests_failed 双轴）
 src/tools/getDeviceState.ts       只读设备状态（预检门禁 + 本机 adb 探针；不经外部提供方）
 src/tools/runTask.ts              启动任务（500ms 内返回 task_id）
@@ -42,11 +42,12 @@ src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + 
 src/devicePool.ts                 闸门之上的调度：parking / 全局并发 / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）
 src/turnLedger.ts                 回合账本：动过手却没汇报终态的回合
+src/hostOutcome.ts                宿主替换掉我们答案的归因（timeout / aborted / before-dispatch）+ 只增不改的计数账本（能力重审-3，不进熔断也不进事故账）
 src/task/fold.ts                  任务状态折叠：任务记录与步迹由会话日志派生（T1/G82）
 src/task/cache.ts                 任务读模型缓存：由投影变更流喂入，工具按会话读取
 src/task/projection.ts            session 投影单元定义与可选注册（ctx.inject）
 src/task/readModel.ts             步迹整形：尾部门限（manage）与取边+失败（inspect）
-src/classify.ts                   工具层错误分类（environment / task）
+src/classify.ts                   工具正文的错误分类（environment / task；宿主替换掉的结果它看不到——那条路在 src/hostOutcome.ts）
 src/coord.ts                      0-1000 归一坐标换算 + 截图取尺寸（含 configuredScreenSize）
 src/hierarchy.ts                  层级解析：#N 按节点身份在可达界内跟随到当前位置
 src/observations.ts               活观察快照：每 (agent, device) 只存模型最后所见的列表

@@ -13,7 +13,7 @@ import type { ImageAttachmentRef, SaveImageAttachment } from "@deepseek-ai/dsh-a
 import type { Agent } from "@deepseek-ai/dsh-agent";
 import type { SessionId } from "@deepseek-ai/dsh-session";
 import type { MessageId, MessageSourceMap, UserMessage } from "@deepseek-ai/dsh-llm";
-import type { ToolGuard } from "@deepseek-ai/dsh-tools";
+import type { ToolExecution, ToolExecutionResult, ToolGuard } from "@deepseek-ai/dsh-tools";
 
 /**
  * Our message source, declared the way the host says to declare one:
@@ -153,10 +153,21 @@ export interface DshContext {
    * Cordis typed events. `session/event` is scope-filtered, so the G44 listener
    * passes `{ global: true }` (packages/core/scope/README.zh.md:75 - "带
    * `{ global: true }` 的监听器绕过筛选").
+   *
+   * `tools/result` is the registry's `@mode emit` observer: it receives the final
+   * outcome the model gets, so it is the only place a host-armed deadline or a
+   * caller cancellation is visible to us (`@deepseek-ai/dsh-tools`
+   * lib/types/index.d.ts:88-92, and the single `notifyResult` call site at
+   * lib/index.js:3395). It is keyed by `exec.agent`, hence also `{ global: true }`.
    */
   on(
     event: "session/event",
     handler: (session: DshSessionRef, payload: DshSessionEvent) => void,
+    options?: DshEventOptions,
+  ): () => void;
+  on(
+    event: "tools/result",
+    handler: (exec: Readonly<ToolExecution>, result: Readonly<ToolExecutionResult>) => void,
     options?: DshEventOptions,
   ): () => void;
   get?(key: string): unknown;

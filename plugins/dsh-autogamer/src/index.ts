@@ -13,6 +13,7 @@ import { messageId, type DshAgent, type DshContext, type DshImageAttachment, typ
 import { TaskCache } from "./task/cache.js";
 import { registerTaskProjection } from "./task/projection.js";
 import { REPORT_NUDGE, TurnLedger } from "./turnLedger.js";
+import { HostOutcomeLedger, OUR_TOOL_NAMES, hostOutcomeOf } from "./hostOutcome.js";
 import { defineReportTaskStatus } from "./tools/reportTaskStatus.js";
 import { defineRunDeviceAction, deviceKeyOf, ActionIncidents } from "./tools/runDeviceAction.js";
 import { defineGetDeviceState } from "./tools/getDeviceState.js";
@@ -381,6 +382,26 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
     { global: true },
   );
 
+  // 能力重审-3: the host's own substitutions are invisible inside a tool body —
+  // our body is what gets replaced. `tools/result` is the emit observer that sees
+  // the final outcome the model receives, so this is where a deadline the host
+  // armed, or a caller cancellation, can be counted at all.
+  // Counted only, never acted on: no breaker, no incident (see src/hostOutcome.ts).
+  const hostOutcomes = new HostOutcomeLedger();
+  ctx.on(
+    "tools/result",
+    (exec, result) => {
+      // The emit spans the whole registry, so another plugin's timeout is not our
+      // device being slow.
+      if (!OUR_TOOL_NAMES.includes(exec.name)) return;
+      const outcome = hostOutcomeOf(result);
+      if (outcome === undefined) return;
+      hostOutcomes.record(exec.name, outcome, exec.callId);
+      logger.warn(`[host-outcome] ${exec.name} (${exec.callId}): the model was told "${outcome}" instead of our own result`);
+    },
+    { global: true },
+  );
+
   // S4 熔断拒绝出口（R13/G33）：冷却期的拒绝走单调同步 guard，不写进工具正文。
   // 只看 run_device_action 调用——别家工具不动，report_task_status（终态出口）永不拦。
   // plain-context 注册即全局生效；agent-less 执行同样被拒（guardReason 先读全局层）。
@@ -568,6 +589,10 @@ export async function apply(ctx: DshContext, config: PluginConfig = {} as Plugin
           const readout = await readUiAutomationOccupants(serial, { signal });
           return { state: readout.state, names: readout.names };
         },
+        // 能力重审-3: what the host substituted for our answer, counted at the
+        // observer above. Synchronous on purpose — it reads plugin state, so there
+        // is no I/O to await and no serial to resolve.
+        hostOutcomes: () => hostOutcomes.snapshot(),
         ocrStatus: async (serial, signal) => {
           const langs = (config.ocrLanguages ?? OCR_DEFAULT_LANGS)
             .split("+")
