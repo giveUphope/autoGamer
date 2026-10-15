@@ -1449,6 +1449,63 @@ pad\scale |  1.0  1.5  2.0  3.0
 - 内层四处自实现超时仍在（adb / OCR / provider / preflight），未统一成一个 `Deadline`（那是重审的方案 B，改 11 个文件，另立）。
 - `wait` 中途 abort 后仍会 `recordSuccess`？——**已修**（abort 时返回 `cancelled`，不记账账）；但「包装层在真宿主里是否真的替换结果」仍 🔶，需宿主会话而非设备。
 
+### 能力重审-2 · 元素源占用者诊断 + 两处「注释指向不存在的锁」（方案，2026-10-15 立项，R22）
+
+> 来源：§七「重审综合」的「现在就做」行 1 与行 4。本条只取**零授权、离线能判红、且不改动执行路径**的两件。
+
+**R20 第 1 步「查」：本轮实际读到的代码事实**
+
+| 面 | 事实（出处，均已复跑核验） |
+|---|---|
+| 占用者诊断缺位 | `git grep -nE "ps -A\|wetest\|com\.github\.uiautomator\|uiautomator2" -- src` ⇒ **零命中**：今天 `readHierarchyXml` 读不回只给 `undefined`，调用方无法区分「dump 自己失败」与「槽位被别人占着」 |
+| 一手机制 | **同一时刻只能有一个 UiAutomation 连接**（AOSP `UiAutomationConnection.connect()` 在已连接时抛 `Already connected.`），且 **`uiautomator dump` 自己就是占位者**、`UiAutomationShellWrapper.connect()` 调**无参** `connect()` ⇒ 默认压制 a11y 服务（已标注进 §七「前置-2」互斥行） |
+| 本仓已验的输出形状 | §七「前置-2」记录的真机读数用的是 **`ps -A`**（当时「没有任何 uia2 / uiautomator / artemis 进程」）；**`-o PID,ARGS` 的列布局从未在本机量过** ⇒ 见下方「未知态」决策 |
+| 诊断面缺口 | `src/device/diagnose.ts` 从不跑层级读、也不报占用者；`src/tools/diagnose.ts` 的返回体没有层级源这一栏 |
+| 注释说谎 | `src/env/preflight.ts:49` 写「`contracts.spec` locks this list」——**`tests/` 下没有 `contracts.spec.ts`**（40 个 spec 清单实查）；真正的锁在 `tests/preflight.spec.ts:76-77`（`:76` 比 id 列表来自被导出常量 ⇒ 单独会**自愈**；`:77` 的字面量 `[true, true]` 才锁住「只有两项」） |
+| 死 import | `src/tools/diagnose.ts:21` import `requireEnv` 但**从不调用**（`grep -c` 实查＝该文件仅 1 处命中即 import 行）；tsconfig 未开 `noUnusedLocals` ⇒ 编译不报，读者会误以为诊断也过闸门 |
+
+**What（范围）**
+
+1. **占用者诊断器**：新增 `readUiAutomationOccupants(serial, options)`（放 `src/device/hierarchy.ts`，与元素源同源），跑 `adb shell ps -A -o PID,ARGS`，
+   在一组词表上匹配**具名**占用者（`com.wetest.uia2.Main`、`com.github.uiautomator`、`io.appium.uiautomator2`、`androidx.test.runner.MonitoringInstrumentation`），返回三态：
+   `occupied`（命中 ≥1 个名字）／`free`（进程表读得出来但一个都没命中）／`unknown`（非零退出、空输出、或读不出可识别的进程表）。
+   在 `autogamer_diagnose` 的报告里新增一栏 `hierarchy`，`occupied` 与 `unknown` 各给一条 recommendation，`free` 只给事实不给建议。
+2. **两处真相修复**：注释改指**实际存在的**锁并写明「哪一条才锁住数量」；删掉未使用的 `requireEnv` import。
+
+**How（关键决策，含与「现在就做」行 1 的一处偏离）**
+
+- **偏离：不挂在失败路径上，挂在诊断面上。** 「现在就做」行 1 原写「`readHierarchyXml` 返回 `undefined` 时报具名原因」。改到 diagnose 的三个理由：
+  ① 失败路径上补一次 adb 往返要发生在**阶梯的每一次重取**里（`RESOLVE_ATTEMPTS = 3`），把「读不到」变成三条腿的读；
+  ② diagnose 已经并行跑 4 个探针 + 2 条 shell，多一条 `ps` 的边际代价几乎为零；
+  ③ 占用者是**设备属性**而不是**本次调用的属性**，放进诊断面模型能主动问，放进报错则只能等坏一次才知道。
+  ⇒ 失败路径的具名报错**留作后续**（要做时先解决「一次失败只问一次 `ps`」的计数问题）。
+- **必须有 `unknown` 态**：`-o PID,ARGS` 的列布局没在本机量过（表上只有 `ps -A` 的读数）。**读不出来就答「读不出」**，
+  绝不把「解析不到 marker」说成「没有占用者」——后者是一张**假的健康证明**，比不报更坏（R21 反向形态：别把「有读数」写成「验过」）。🔶 真机第一次跑要复验列名，验完才允许把 `unknown` 收窄。
+- **只读、零副作用**：不 `kill`、不 `force-stop`、不卸载任何东西。上游对第三方 blocker 的做法是 `pm uninstall --user 0` 直接卸掉用户的 Maestro（归档只读 blob 查明），**本仓绝不照搬**（R19：这类动作永远 user-only）。
+- **不动 `timeoutMs` 声明面**：新读的超时走 `AdbOptions`（与同文件其它探针一致，10s），不给 `autogamer_diagnose` 新增宿主 deadline（R15：声明了就等于断言能停稳）。
+- **不新增配置项**（R12/R13）：词表是代码内常量，因为它不是策略而是**事实清单**；策略（要不要停掉别人）根本不由插件决定。
+
+**Verify（验收命令）**
+
+- 三条变异各红一次、且**恰好一条红**（R27）：
+  ① 从词表删掉 `com.wetest.uia2.Main` ⇒ 「命中 uia2 服务器时报具名占用者」红；
+  ② 把 `unknown` 分支改成返回 `free`（即读不出时当作没人占） ⇒ 「读不出可识别进程表时答 unknown、不许答 free」红；
+  ③ 把 recommendation 的生成条件从 `occupied` 改成 `free` ⇒ 「free 时不给建议」红。
+- 死 import 的反证：删掉 `requireEnv` import 后 `verify` 仍全绿 ⇒ 证明它本就没被执行路径用到；再补一条**结构锁**断言 `src/tools/diagnose.ts` 不出现 `requireEnv`（防止有人日后再加回来却以为闸门在跑）。
+- 注释锁：`git grep -n "contracts.spec" -- plugins/dsh-autogamer/src` ⇒ **零命中**；且 `Test-Path plugins/dsh-autogamer/tests/preflight.spec.ts` ⇒ True（照 #107 的做法：**判据要能红**，单靠 `git grep` 命中数不够）。
+- 回归：`pnpm --config.verify-deps-before-run=false run verify` 三段全绿（读数在 Done 段如实记录）；`node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` ⇒ exit 0。
+- 声明面自检（R6）：本片**不改 patch**，故不跑 `--dump-config`；若实施中被迫改了 `*.patch.yml`，当轮补跑。
+
+**非目标**：不接失败路径的具名报错；不加 `dump --windows`（它的**收益只有真机能判**，离线只能锁 argv，按 R27 不许以「重写」立项，登记在 §七「重审综合」）；
+不接线区域 OCR；不做 `TOOL_TIMEOUT` 监听器（须先按 R20 查官方形态）；不动 breaker 与分类语义；不 `force-stop` / 不卸载任何包。
+
+**Done means**
+
+- [ ] `readUiAutomationOccupants` 三态落地且词表、`unknown` 判定各带离线单测；三条变异各红一次
+- [ ] `autogamer_diagnose` 报告新增 `hierarchy` 栏，`occupied` / `unknown` 各给 recommendation、`free` 不给
+- [ ] `preflight.ts:49` 注释改指实际存在的锁；`diagnose.ts` 的未用 import 删除并补结构锁
+- [ ] `verify` 全绿、`check-docs` / `check-env` exit 0；§七「重审综合」的「现在就做」行 1、4 改判为已做，行 2 保持待立项
+
 ### 重审综合 · 六面能力重审的结论、否证与处置（2026-10-15，只读调研，零设备）
 
 > **缘起**：用户逐项质证「对照表里有些能力未实现或被改造」后要求「分派子代理完成所有面的重审」（2026-10-15）。六个只读子代理各查一面，
