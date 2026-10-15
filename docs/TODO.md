@@ -30,6 +30,13 @@
   本文件 §四 只剩三条**非待办**行：**G92**（OCR 整页召回——已量过并否证简单方案，解法「按区域识别」已**立项于 §七，探针 A 离线管线已落地、探针 B/C 待设备**）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）。
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（三段脚本的形状与 `build` 的差别见 `AGENTS.md`「命令」）。
   全部 py 实现均不在本分支（按 D19 归零）。
+- **进度与待拍板（2026-10-15，能力重审三连落地之后清点）**：三条已结清 —— **#111** abort 归入第四类 `cancelled`（两侧都不记账）/ `wait` 上限低于声明值 / 两处 probe 缝接上 signal；
+  **#112** 元素源的 UiAutomation 占用者第一次被命名（三态，读不出绝不答「没人占」）+ 两处「注释指向不存在的锁」改掉；
+  **#113** 在官方最弱的 emit 观察点 `tools/result` 上看清**宿主替换掉我们答案的那一份**（归因三态，只计数不决策）。
+  **零授权还能继续的两条**：① §七「重审综合」「现在就做」行 3 —— `{text}` 未命中时把**叶级候选框编号 + 该帧 attachment 引用**交回模型（**契约面改动，须先单独出方案**）；
+  ② #113 欠的**宿主会话核验**（🔶 只需开一次真会话看 `tools/result` 是否送达我们的工具，**不需要设备**）。
+  **等用户拍板的三件**（逐条依据与代价都在 §七「重审综合」，本行只留指针）：装 adb + 一台设备（解锁 G92 探针 B/C、交付-1 C 项、`ps` 列布局的 `unknown` 收窄、45s 预算的真实依据）/ provider 自我循环 A–C′ 取舍（推荐 **C′**：依赖降 optional peer，不动规格与工具面）/ 加 devDependency 做离线 conformance。
+  **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（本轮最后绿态 **45 文件 / 510 通过**）＋ `node scripts/check-docs.mjs`（含 `--selftest`）＋ `node scripts/check-env.mjs`。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
 - **基建-2 已落地（2026-10-14，提交 `f9434cf`）**：`scripts/check-docs.mjs` 六条检查（结清一致性 / 链接可解析 / 派生计数只认权威 / 编号范围自算 /
   表格成形 / 自称完成不得留未勾验收项）+ 内置 `--selftest` 变异（7 例，含 C5 的合法 `\|` 反向例，全不盲）+
