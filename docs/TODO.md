@@ -1130,6 +1130,55 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - **复跑命令与检出环境（R27 判据 4）**：Windows 10 26300 x64 / Node v24.18.0 / 全局 pnpm 12.11.2；在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false > /tmp/i.log 2>&1; echo $?`，门禁在仓库根跑 `node scripts/check-docs.mjs > /tmp/d.log 2>&1; echo $?`（加 `--selftest` 同理）与 `node scripts/check-env.mjs > /tmp/e.log 2>&1; echo $?`。**取码一律这个形状** —— `cmd | tail; echo $?` 拿到的是管道末端的码（R27 判据 5），本轮就犯过一次（见下条）。
 - **一条流程违规如实记账（R22 / R28）**：判据是「`git log` 里方案提交早于实现提交，**无独立方案提交即视为跳步**」。本轮当时只做到「先写条目、后改码」的**动作顺序**，并没有当场提交 ⇒ 下面三条提交全部是**事后补拆**：**方案 `42b697a` → 实现 `c42b495` → 结案与文档面（本提交）**。git log 上的先后因此成立，但**它不是当时发生的顺序**，这句话在本条与 CHANGELOGS **#114** 各写一次，不留「当时按序提交」的假印象。初稿还曾在两处写「结案为本提交」，而当时 HEAD 仍是 `d0d56ce`、一条提交都没有 —— 该句已删（R28 表头列的第一种失效形态正是「台账自称已提交而 `git log` 无此行」）。另有一处取码形状错误：一次 `check-env.mjs` 的读数取自 `| tail` 之后的 `$?`（管道末端码），已按 R27 判据 5 的形状复测。
 
+### 基建-8 · 把「pack 交付清单比对」版本化成零依赖探针（G98 离线半步的判据固化）（方案，2026-10-15 立项，R22）
+
+**背景**：G98 的离线半步已经跑完（读数在 §七「基建-7」的 G98 段），但那条比对当时是一段**写在临时目录里的一次性脚本**。更要紧的是它的第一版是**假判据**：预期取自「当前 `dist` 目录」，于是往 `dist` 塞一个多余 js 会同时改掉两侧，pack 出 50 条照样绿 —— 与 #111 被变异当场打穿的两条假锁同族。**判据的形状本身就是本条的产出**，不固化就会在下一次交付复验里被重新写错一遍。
+
+**取证（R20 第 1 步：查了哪份、它怎么说 —— 官方一手转述，不搬文本，D20；外加本机实测）**
+
+| 出处 | 取到的事实 | 对本方案的作用 |
+|---|---|---|
+| pnpm 官方 `pnpm.io/cli/pack` ＋ 本机 `pnpm pack --help`（12.11.2） | pack 的目标目录旗标是 `--pack-destination`；另有 `--skip-manifest-obfuscation` | 交付流程里 `--destination` 会 **exit 2**（本机实测），旧写法不能抄 |
+| 本机实测（同一工程两跑，**只动一个变量**，R25） | 默认 pack 出的 `package.json` **没有** `packageManager` 键；加 `--skip-manifest-obfuscation` 后**有** | 「钉版不进交付物」不是巧合，是 pnpm 的 manifest 混淆默认行为 ⇒ 探针可以把这条**钉成锁**：哪天默认行为变了，探针红 |
+| §七「交付-1」与 CHANGELOGS **#101** | 交付形态 = 面板输入 `.tgz`；#101 的缺陷正是**陈旧 dist 产物随 tarball 分发**，当时的判据是「按 `files` 白名单核验清单」 | 本探针就是那条核验的版本化，形状必须能抓住 #101 那一类（多余 dist 文件） |
+| §七「基建-7」G98 段（同日实测） | 清单 49 条 = 38（`src/**/*.ts` 1:1 推导）＋ 11 固定条目；`src` 与 `dist` 计数今天严格相等 | **预期必须从 `src` 与 `files` 白名单推**，不能从 `dist` 抄 —— 这是假判据与真判据的分界 |
+
+**What（范围）**
+
+- 新增 `scripts/pack-check.mjs`：**零依赖**（只用 Node 内置：`fs` / `path` / `os` / `child_process` / `zlib`，tar 头自己解析）。
+- 断言四类：**extra**（tarball 里有、构成式里没有）、**missing**（构成式里有、tarball 里没有）、**banned**（`src/` `tests/` `scripts/` `*.d.ts` `pnpm-lock.yaml` `pnpm-workspace.yaml` 出现在包里）、**混淆锁**（packed `package.json` 不含 `packageManager`）。
+- 退出码语义写死：**0** 通过 / **1** 清单或混淆锁不符 / **2** 前置缺失（`dist` 不存在、`pnpm pack` 自身失败）—— 没有这个区分，「exit 非 0」就分不清是判据咬了还是环境没准备好。
+- 可选 `--tarball <path>`：对**既有** tarball 复跑同一判据（也是变异与历史包复验的正规通路，不靠改脚本源码来造红）。
+- 文档面：本条 + `AGENTS.md`「命令」加一行指针 + CHANGELOGS 新条目；§四 G98 行同步成「判据已版本化」。
+- **非目标**：不进 `pre-commit`（pack 要先 `build`，太慢）；**本分支无 CI**，不许写成「由 CI 保证」（R27）；不装任何 tar/stream 依赖（加 devDependency 是人的决定）；不动 vitest 与产品代码；**面板输入 `.tgz` 的安装复验不在本条**（R19 用户点，G98 因此不结案）。
+
+**How（做法与关键决策）**
+
+- **预期与被测物必须异源**：预期 = `package.json` 的 `files` 白名单（用最小 glob 匹配器展开，`*` 只跨单段、`**` 跨多段）∪ `{README.md, package.json}`（打包器强制携带）∪ 由 `src/**/*.ts` 1:1 推导的 `dist/*.js`。被测 = tarball 实际条目。**两边没有任何共同输入**，所以 `dist` 里多一个文件只会红，不会两侧同改。
+- **不写死条目数**：47 / 49 这类派生数一律不落在判据里（R28 判据 4「读数不写死」；交付-1 那句 47 与可复算的 46 至今差 1，正是写死数的下场）。
+- **探针不 build**：`AGENTS.md` 写明 `verify` 不含 `clean-dist` ⇒ pack 前必须先 `build`；探针只做「`dist` 不在就当环境没准备好」（exit 2），不静默替人补构建。
+- **临时目录**：`mktemp` 于 `os.tmpdir()`，`finally` 里 `rmSync`；判据自带「仓库零残留」的自证（跑完 `git status --short` 应为空）。
+- 之所以自己解析 tar 而不是 `tar -tzf`：探针要在非 Git-Bash 的 shell（PowerShell / cmd）里同样能跑，外部 `tar` 不在保证范围内。
+
+**Verify（验收命令）**
+
+- 前置：`cd plugins/dsh-autogamer` 跑 `pnpm --config.verify-deps-before-run=false run build` ⇒ exit 0；回仓库根跑 `node scripts/pack-check.mjs > /tmp/pc.log 2>&1; echo $?` ⇒ **exit 0**（取码形状按 R27 判据 5，不读管道末端）。
+- **变异 A（多余 dist，#101 的形状）**：`echo "// deliberate probe" > plugins/dsh-autogamer/dist/_pack-probe.js` ⇒ 探针 **exit 1** 且输出点名 `dist/_pack-probe.js`；删掉复跑 ⇒ exit 0。
+- **变异 B（缺失 dist）**：`mv plugins/dsh-autogamer/dist/hostOutcome.js` 挪走 ⇒ 探针 **exit 1** 且报 missing 含 `dist/hostOutcome.js`；`build` 复原 ⇒ exit 0。
+- **变异 C（混淆锁）**：`pnpm pack --skip-manifest-obfuscation` 另出一份 tarball，喂 `node scripts/pack-check.mjs --tarball <该包>` ⇒ **exit 1** 并报 `packageManager` 出现在 packed manifest（证明这条锁也在观察东西，不是摆设）。
+- **变异 D（前置缺失）**：`rm -rf plugins/dsh-autogamer/dist` 后跑探针 ⇒ **exit 2**（不是 1），并提示先 `build`；复建 ⇒ exit 0。
+- **R27 的反向义务**：每条变异都要先证明改动确实进了被执行的路径（改的是探针真正读取的目录与断言字段），再读颜色。
+- 收尾：`node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` exit 0；跑完 `git status --short` **为空**（无临时产物落进仓库）。
+
+**Done means**
+
+- [ ] `scripts/pack-check.mjs` 落地，零依赖（只用 Node 内置），且**默认 exit 0** 的绿态是真跑出来的
+- [ ] 变异 A / B / C / D 各红一次，且红在预期的那一项上（extra、missing、混淆锁、exit 2 前置）
+- [ ] 判据不与被测物同源：预期由 `files` 白名单 ∪ 强制携带 ∪ `src` 推导构成，`dist` 只出现在被测侧
+- [ ] 不写死条目数；`--tarball` 可对既有包复跑
+- [ ] 文档面对齐：`AGENTS.md` 一行指针、CHANGELOGS 新条目、§四 G98 状态同步；`check-docs` / `--selftest` / `check-env` 全绿
+- [ ] 仓库零残留（临时目录自清，`git status --short` 空）
+
 ### 调研-1 · 上游五份未读文档读完并回写（含一条推翻自己上一版的实测）（2026-10-15 结案；CHANGELOGS #106）
 
 > 性质：**只读调研 + 文档回写**，不改任何代码。起因是「还有哪些无需设备的内容」这个清点 —— 守则「待补清单」那份
