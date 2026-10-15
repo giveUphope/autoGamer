@@ -717,6 +717,47 @@
 - **检查 5 的切分口径是本轮真金白银学到的**：两次探针各错一种——第一次按裸 `|` 切分，把一条写了合法 `\|` 的合规表行判成多一列；第二次用 BRE `'\\|'` 数转义串，把「有 1 个」读成「0 个」。最终 `grep -o -F '\|'` 才取到准数，确认文档没错、**错的是判据命令的口径**（R27 判据 6：判据本身要先被证明量的是对的东西）。
 - 变异样本**直接用本轮修掉的 6 处真实漂移**（即 `258f7b7` 的反向），不造伪样本。
 
+### 基建-3 · 依赖构建脚本策略定案（`tesseract.js` 的 postinstall 不执行）（方案，2026-10-15 立项，R22）
+
+**背景**：拉取 T5（内置 OCR，`tesseract.js` 首次进入依赖面）后在本机装依赖，`pnpm install --frozen-lockfile` **退出码 1**：
+
+```
+[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: tesseract.js@7.0.0
+Run "pnpm approve-builds" to pick which dependencies should be allowed to run scripts.
+```
+
+- **版本面**：仓库**没有钉 pnpm 版本**（根无 `package.json`，插件 `package.json` 无 `packageManager` 字段，根无 `.npmrc`），本机实测 **pnpm 11.21.0**。新 pnpm 把「被拦截的构建脚本」当**错误**退出，旧版只当告警 ⇒ 同一条命令在不同机器上结论不同，而仓库里没有任何一处能解释这个 1 从哪来。
+- **更要紧的一条**：安装动作**改了被跟踪文件** —— `plugins/dsh-autogamer/pnpm-workspace.yaml` 被写入占位行 `tesseract.js: set this to true or false`（本轮已 `git checkout` 还原，未入库）。安装改仓库文件不是可以靠「记得 `git checkout`」兜住的事：下一个新增依赖会再发生一次。
+- **该脚本的实质**（读 `node_modules/tesseract.js/package.json`）：`postinstall = "opencollective-postinstall || true"` —— 打印一条赞助横幅，**无任何功能性产物**。而 OCR 的语言数据是**随包 vendored** 的（`ocr/*.traineddata.gz` 已进 `files`、`langPath` 指包内，见 #93），所以不存在「必须构建才有产物」这回事。
+- **为什么不能只是「本机忽略掉」**：那等于把决策留给每个人，于是每个新依赖都要重新吵一遍、且新 clone 的人会先撞上一次 unexplained exit 1。口径要写进被跟踪文件。
+
+**What（范围）**
+
+- `plugins/dsh-autogamer/pnpm-workspace.yaml` 的 `allowBuilds` 增一行 **`tesseract.js: false`**（沿用文件里既有的键与 `esbuild: true` 的写法，不引入新键名）。
+- 保留 `esbuild: true`：vitest 依赖它的原生二进制，那条**确实**需要构建 —— 本条只处置「无产物的横幅脚本」，不顺手放宽别的。
+- 文档：本条（方案 → 结案）+ `AGENTS.md` 安装段一句指针 + 结案后的 CHANGELOGS 条目；§零 与 §七「新分支特有」清单同步。
+- **非目标**：不 pin pnpm 版本（那是另一件事，本条不夹带）；不改 lockfile、不改插件 `package.json`、不加依赖、不动 `.npmrc`。
+
+**How（做法与关键决策）**
+
+- 取 `false` 而**不是删键**：键显式存在即表态（pnpm 只对显式 `true` 执行），删掉等于回到「每次安装改仓库文件 + 非零退出」的老形状。
+- 判据跟着脚本的性质走，不跟着包名走：**该依赖的安装脚本无产物、且只出网打印** ⇒ 不执行。将来若某个 postinstall 真的产出东西（例如要编译原生模块），这条必须同步改 `true` —— 解锁条件记在 Done means 的备注里。
+- **安装后 `git status --short` 里 `pnpm-workspace.yaml` 必须不出现**，这是「策略已定案」与「碰巧没触发」的分界。
+
+**Verify（验收命令）**
+
+- 在 `plugins/dsh-autogamer/`：`pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**，输出无 `ERR_PNPM_IGNORED_BUILDS`；随后仓库根 `git status --short` 中 `pnpm-workspace.yaml` 不出现。
+- **A/B（判据会红，R27）**：把该行还原成占位文本（`tesseract.js: set this to true or false`）⇒ 同一条命令回到 **exit 1** + `ERR_PNPM_IGNORED_BUILDS`；撤掉即复绿。本轮的「改前」读数就是这个形状——同机、同 lockfile、同命令，唯一变量是这一行。
+- 回归：`pnpm --config.verify-deps-before-run=false run build` ⇒ exit 0；`… run test` ⇒ 全绿（本轮实测 **38 文件 / 439 通过**）；`node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` ⇒ exit 0。
+
+**Done means**
+
+- [ ] `allowBuilds` 含 `tesseract.js: false`，且安装不再改写该文件（`git status --short` 里没有它）
+- [ ] 安装 exit 0 且无 `ERR_PNPM_IGNORED_BUILDS`；A/B 实测占位形态会红（exit 1）、撤回复绿
+- [ ] `build` exit 0、`test` 全绿；`check-docs` / `check-env` exit 0
+- [ ] `AGENTS.md` 安装段落指针；CHANGELOGS 结案条目 + §零 状态行 + §七「新分支特有」清单同步
+- [ ] 备注：解锁条件 = 将来某个依赖的 `postinstall` **确有产物**（要编译原生模块等）⇒ 该条必须改 `true`，并在此处与 CHANGELOGS 同时记明依据
+
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
 **背景**：前置-4 判定 `rulesInjector` 的 `artemisRepoPath → <repo>/mcp_server/rules.md` 这条供应链是 **D20 红线**（上游目录约定 + 上游 prompt 正文进模型面），归属 G85+G86，要求 T4 二选一定案。本轮先按用户要求做**形式调研**（「先调研这个适合在 DSH 中以何种形式使用」），结论把二选一改成了第三条路：**拆除**。
