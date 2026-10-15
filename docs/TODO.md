@@ -1097,14 +1097,28 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **Done means**
 
-- [ ] `package.json` 的 `packageManager` = `pnpm@12.11.2`，且锁文件已由 12 重建、frozen install exit 0
-- [ ] A/B-1（改回旧钉 ⇒ 每条命令 exit 1）与 A/B-2（换回旧锁文件 ⇒ frozen exit 1）各实测红一次，改回均复绿
-- [ ] `build` + `verify` 全绿，读数不低于 45 文件 / 510 通过
-- [ ] `allowBuilds` 两项在 12 上的行为实测确认（esbuild 执行 / tesseract.js 不执行）
-- [ ] `AGENTS.md` 的字面版本号副本改成指向 `package.json`，并写明 12 的两处行为差异；CHANGELOGS **#114** 记依据与「#99 的零-churn 取舍已反转」
-- [ ] 五类残留按显式路径删除，`D:\.pnpm-store\v11` 保留；删除后 frozen install 复绿
+- [x] `package.json` 的 `packageManager` = `pnpm@12.11.2`，且锁文件已由 12 重建、frozen install exit 0
+- [x] A/B-1（改回旧钉 ⇒ 每条命令 exit 1）与 A/B-2（换回旧锁文件 ⇒ frozen exit 1）各实测红一次，改回均复绿
+- [x] `build` + `verify` 全绿，读数不低于 45 文件 / 510 通过
+- [x] `allowBuilds` 两项在 12 上的行为实测确认（esbuild 执行 / tesseract.js 不执行）
+- [x] `AGENTS.md` 的字面版本号副本改成指向 `package.json`，并写明 12 的两处行为差异；CHANGELOGS **#114** 记依据与「#99 的零-churn 取舍已反转」
+- [x] 五类残留按显式路径删除，`D:\.pnpm-store\v11` 保留；删除后 frozen install 复绿
 
+**结案记录（2026-10-15）**
 
+- **机器侧**：全局 pnpm 由 `npm install -g pnpm@11.21.0` 起步、再 `npm install -g pnpm@latest` 到 **12.11.2**（`where pnpm` 仍是 `AppData\Roaming\npm`，未引入 corepack 前置）。
+- **改钉与锁文件**：`packageManager` → `pnpm@12.11.2`；非 frozen `install` exit 0 并**只改 `pnpm-lock.yaml`**（`git diff --numstat` ⇒ **158 插入 / 0 删除**）；形状与探针一致 —— 两份 YAML 文档拼接，env lock 在行 1–157（`packageManagerDependencies.pnpm: 12.11.2` ＋ **42** 个 `@pnpm/exe.<平台>` 条目），原项目锁从行 158 起 `lockfileVersion: '9.0'` 一字未动。复跑 frozen ⇒ **exit 0**。
+- **A/B-1（新钉有牙）**：`packageManager` 置回 `pnpm@11.21.0` ⇒ `pnpm --version` **exit 1**，报 `ERR_PNPM_BAD_PM_VERSION` / `This project is configured to use 11.21.0 of pnpm. Your current pnpm is v12.11.2`；改回 ⇒ exit 0。
+- **A/B-2（锁文件迁移是必要条件）**：锁文件换回 `git show HEAD:` 那份（1384 行）⇒ frozen install **exit 1**，报 `ERR_PNPM_FROZEN_LOCKFILE_WITH_OUTDATED_LOCKFILE`（`Cannot update packageManagerDependencies with "frozen-lockfile"`）；换回新版（1542 行）⇒ exit 0。
+- **`allowBuilds` 在 12 上仍被读**：**手删 `node_modules` 后**的干净 frozen install ⇒ **exit 0**，91 包 `reused 91 / downloaded 0`，日志里只有 `esbuild@0.21.5 ... postinstall$ node install.js` → `Done` 一条脚本行，**`tesseract.js` 没有 postinstall 行**、无 `ERR_PNPM_IGNORED_BUILDS`；`node_modules/.pnpm/esbuild@0.21.5/.../bin/esbuild` 在位。
+- **回归**：`build` exit 0（`clean-dist` + `tsc`）；`verify` 三段 exit 0 ⇒ **45 文件 / 510 通过**，与本轮基线持平不降。
+- **残留清理**：删 `D:\.pnpm-store\v10`（981M）、corepack `pnpm@10.12.1`（21M）、`.tools\pnpm\11.7.0`（19M）与 `11.21.0`（14M）、`AppData\Local\pnpm\store`（955M）、9 个 `_tmp_*` 空目录 ⇒ 合计约 **1.93 GB**；`D:\.pnpm-store` 现只剩 `v11`，`AppData\Local\pnpm` 只剩 `bin`。**删除后复跑 frozen install 仍 exit 0** —— 这条才是「删的都是不被引用的残留」的证明。
+- **探针的隔离性**：所有会改写锁文件的试验都先在 `scratch/pm12-probe/`（复制 manifest + 锁文件）里跑，仓库副本当时零改动；结案后探针目录已删。
+- **一处需要纠正的旧表述（R28）**：#99 取证表里「反向读法：钉 11 不给 lockfile 加东西 ⇒ 选 legacy 字段可保持 lockfile 零 churn」当年成立、如今被本条**反转**（钉 12 会追加一份 env lock 文档）；已在该处就地标注，不静默保留。
+- **顺带发现当轮落账**：`pnpm pack` 的交付形态在 12 上未复验 ⇒ **新立 G98** 进 §四（离线可先比对 tarball 清单；面板内安装与重启复验属 R19 用户点）。本条不做，只在表里占位，不静默丢弃。
+- **字节类口径（R27 判据 3，两种口径分开写）**：「158 插入 / 0 删除」量的是 **blob**（`git diff --numstat`，受 `.gitattributes` 的 `* text=auto eol=lf` 规范化）；「42 个条目 / 行 1–157 / 1542 行」量的是**工作树**（`grep -c` / `grep -n` / `wc -l` 直读文件）。本检出是 LF，两口径数值恰好一致，但复跑要按各自口径读。
+- **复跑命令与检出环境（R27 判据 4）**：Windows 10 26300 x64 / Node v24.18.0 / 全局 pnpm 12.11.2；在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false > /tmp/i.log 2>&1; echo $?`，门禁在仓库根跑 `node scripts/check-docs.mjs > /tmp/d.log 2>&1; echo $?`（加 `--selftest` 同理）与 `node scripts/check-env.mjs > /tmp/e.log 2>&1; echo $?`。**取码一律这个形状** —— `cmd | tail; echo $?` 拿到的是管道末端的码（R27 判据 5），本轮就犯过一次（见下条）。
+- **一条流程违规如实记账（R22）**：R22 的机械判据是「`git log` 里方案提交早于实现提交，无独立方案提交即视为跳步」。本轮的实际顺序是**先写条目、后改码**，但**当时没有提交** —— 三条提交都是事后补拆的：方案 `42b697a` → 实现（本提交）→ 结案与文档面（下一条）。所以 git log 上的顺序成立，**它不是当时发生的**，这一点在这里与 CHANGELOGS **#114** 各声明一次，不留「当时按序提交」的假印象。另有一处取码形状错误（一次 `check-env | tail` 之后读 `$?`，即管道末端的码），重跑已按 R27 判据 5 的形状复测。
 ### 调研-1 · 上游五份未读文档读完并回写（含一条推翻自己上一版的实测）（2026-10-15 结案；CHANGELOGS #106）
 
 > 性质：**只读调研 + 文档回写**，不改任何代码。起因是「还有哪些无需设备的内容」这个清点 —— 守则「待补清单」那份

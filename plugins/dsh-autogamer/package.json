@@ -1,7 +1,7 @@
 {
   "name": "dsh-autogamer",
   "version": "0.1.0",
-  "packageManager": "pnpm@11.21.0",
+  "packageManager": "pnpm@12.11.2",
   "private": true,
   "description": "AutoGamer device-execution content plugin for DSH: run_device_action router tool, device gate/breaker, and the autogamer agent preset.",
   "dsh": {
