@@ -59,7 +59,8 @@ src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
 - 脚本在 `scripts/`（`.mjs`）：`clean-dist.mjs`（`build` 前清空 `dist`）、`conformance-live.mjs`（读宿主会话日志的取证工具）、
   `synth-hard-frame.mjs`（生成 G92 的合成难帧夹具；`--scan` 另打印 padding × scale 参数表）、
   `probe-recall.mjs`（**G92 探针 B**：真机同屏帧 + 层级，报整帧 / P1 / P3 的命中数与耗时；`--new-labels` 只报「像素读得出、层级读不出」的标签，`--quick` 跳过参数扫描）、
-  `probe-p2.mjs`（**G92 探针 C**：纯渲染帧上的 P2 版面投影分割；`--sweep` 扫极性与行阈值，`--needles` 传入 VLM 参照读手给出的文字）
+  `probe-p2.mjs`（**G92 探针 C**：纯渲染帧上的 P2 版面投影分割；`--sweep` 扫极性与行阈值，`--needles` 传入 VLM 参照读手给出的文字）、
+  `probe-attachment-form.mjs`（**G99 归因探针**：同一 OpenAI 兼容端点只变 `image_url.url` 的形体 —— 引用 / 裸 base64 / data URL 各发一次，用「现场那句只有引用形体能复现」定论未编码发生在宿主侧。零依赖、不读 `dist`，故不必先 `build`。退出码 0 归因成立 / 1 判别塌了 / 2 端点不可达）
 - 执行策略 skill：`skills/autogamer-flash/SKILL.md`
 
 > `src/ocr/image.ts` 与 `src/ocr/regions.ts` **已于 2026-10-16 接进阶梯**（G92 探针 B 两次满足到期条件）：
