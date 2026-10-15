@@ -8,7 +8,7 @@
 > 复跑：`git grep -n -E 'uv run|ruff|pytest|check_doc_|artemis mcp' -- docs/migration/plugin-contract-rules.md`）
 > —— 随迁没有遗留 py 判据；**TS 侧重写时新增的判据必须用 TS 工具**，不得回落到 py 命令行。
 > 依据：上游 [deepseek-ai/deepseek-harness](https://github.com/deepseek-ai/deepseek-harness) @ master 的官方 skill / 包 README / 源码，加上本机 0.2.0-rc.2 实测。逐条标 **文档口径**（官方文字）、**源码口径**（上游源码）、**实测口径**（本机产物）。
-> 覆盖范围：首轮成文（R1…R19）改写了 `TODO.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34；R20…R28 是此后陆续新增的条款，回写位置记在各条自己的「判据」段与 `TODO.md` / `CHANGELOGS.md` 的引用里。**现行条款数与范围只看 `registry.md`**，本行只描述那几轮的回写去向，不是条款全集。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
+> 覆盖范围：首轮成文（R1…R19）改写了 `TODO.md` 的 D7 / D15 / D16 / D17 与 S3 / S4 / S5 / S6 / S8 / S9 / S11 / P3，并派生差距条目 G30 / G31 / G32 / G33 / G34；R20…R28 是此后陆续新增的条款，回写位置记在各条自己的「判据」段与 `TODO.md` / `CHANGELOGS.md` 的引用里。**现行条款数与范围只看 [`../TODO.md`](../TODO.md)**（`registry.md` 属归档分支，本分支不携带），本行只描述那几轮的回写去向，不是条款全集。两者冲突时以本守则的编号条款为准并回改 todo，不在两处各留一份说法。
 
 ---
 
@@ -27,7 +27,7 @@
 | `--patch <path>`（可重复，应用在 profile 层之后） | 官方声明的 overlay 机制 | **允许，作为开发期主路径**（**文档口径** `dsh --help` 的 Options 段） |
 | `plugin_manager` 工具 / Web 侧边栏「插件」面板 | 正规引入与启停 | **允许，交付形态走这条**（**文档口径** `dsh-plugin-manager` = 「shared by dsh CLI, Web and agent tools」；`dsh-client-ui-plugin-manager` = 「the sidebar Plugins panel **installs, enables, disables, retries, and composes**」） |
 
-- **判据**：实验用 patch 文件一律放 `plugins/dsh-autogamer/spike/`，路径里不得出现 `~/.dsh/profiles/**` 的写入。
+- **判据**：实验用 patch 文件一律放工程内的临时目录（归档分支写死 `plugins/dsh-autogamer/spike/`，该目录**未随迁**到本分支；本分支的判定要点与路径无关），路径里不得出现 `~/.dsh/profiles/**` 的写入。
 - **纠正记录**：上一轮我把 `--patch` 也归入"官方禁止的一侧"，过度收敛——被禁的是手写 profile 常驻文件，`--patch` 是 `dsh --help` 里明列的选项。同时我把侧边栏面板误判成只读展示页，实际它具备安装/启停能力。
 
 ## R3 preset 只能由 bundle 补丁承载
@@ -130,7 +130,7 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 **注册表绝不强制执行定义里的 `timeoutMs`**；要强制必须挂 `@deepseek-ai/dsh-tool-call-timeout-policy` 包装层。取消是协作式且等完全停稳：工具主体必须观测 `exec.signal`；主体前取消记 `ABORTED_BEFORE_DISPATCH`，主体后取消只能把成功替换为 `ABORTED`；超时报 `TOOL_TIMEOUT`；未知工具与抛异常工具都收敛成 `UNKNOWN_TOOL` 结构化错误，**调用失败但不结束轮次**。
 
 - **出处**：**文档口径** `packages/core/tools/README.zh.md:126,235`。
-- **判据**：任何"超时已生效"的说法必须指出是谁执行的——包装层，还是我们 `ActionClient` 里的 `Promise.race`（现状是后者，`timeoutMs: 45_000` 只是给模型看的声明）。
+- **判据**：任何"超时已生效"的说法必须指出是谁执行的——包装层，还是我们自己实现的超时。**本分支现状（T4 起）**：包装层未接，`timeoutMs` 仍是给模型看的声明，超时由三处自实现并观测取消信号 —— adb 子进程 `src/device/adb.ts`、OCR `src/ocr/recognize.ts`、可选外部提供方后端 `src/artemis/mcpBackend.ts`（归档分支那个 `ActionClient` 的 `Promise.race` 已随 T4 删除）。
 
 ## R16 不许自写会话事件类型；可回放状态走 `presentationMeta` 或投影
 
@@ -159,7 +159,7 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 另一条授权红线：**授予或确认权限的动作（批准工具调用、回答 agent 的提问、放宽策略）保持 user-only，agent 不得执行也不得授权**；同一操作只实现一次（Host service 方法），UI 与 agent 工具共用它，不许两边各写一份逻辑。
 
 - **出处**：**文档口径** `references/host-plugin.md:3,29-55`、`references/user-actions.md:11`。
-- **判据**：`package.json` 里 `exports`/`files` 是否含 locale 与 icon；面板出现默认插画或包名回退即不合格。本项目当前**两项都缺**，已登记为 G32。
+- **判据**：`package.json` 里 `exports`/`files` 是否含 locale 与 icon；面板出现默认插画或包名回退即不合格。**本分支现状**：`locale/{en,zh}.json`（各自带 `meta.title` / `meta.description`）与 `icon.svg` 均在位并已随包分发，且经 web 面板逐 locale 核验过标题/描述/图标渲染（归档分支把这条记作 **G32「两项都缺」，该编号属归档台账**）。
 
 ---
 
@@ -179,7 +179,7 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 `src/dsh-types.ts` 里每一处手写镜像的宿主形状（服务方法、事件签名、结果字段）都必须带**出处 + 版本 + 是否 live 验证过**。宿主 npm 包在 rc.2 只随 app.asar 分发、npm 上的版本可能不同版（如 `@deepseek-ai/dsh-attachment` 是 `0.0.1-rc.1`），所以镜像有时不可避免——但它是**负债**，不是免费桩。凡"只有单测绿、没有 live 证据"的宿主交互，在 `docs/TODO.md` 里必须标 🔶 并写明缺哪条证据；单测里的假 context 必须按真实语义实现（教训见 changelogs #10：假 ctx 没有 `effect`，让自注销缺陷在 CI 里隐身）。
 
 - **出处**：**文档口径** D15/R1（只用声明面）+ 本仓库 changelogs #10 的实测教训；`@deepseek-ai/dsh-llm` 的 `lib/types/*.d.ts` 引 `@deepseek-ai/dsh-attachment` 而本机未安装该版（tsc 因 skipLibCheck 静默放行，等于类型盲区）。
-- **判据**：审查表（`docs/TODO.md`「宿主交互实现审查」）里每一项都有 已证 / 仅单测 / 猜测 三态之一；出现"猜测"项必须在本轮内改正、加探针或回退，不许长期挂账。
+- **判据**：审查表里每一项都有 已证 / 仅单测 / 猜测 三态之一；出现"猜测"项必须在本轮内改正、加探针或回退，不许长期挂账。**本分支的落点**：归档分支那张「宿主交互实现审查」表**未随迁**；这里的三态由两处承担 —— `src/dsh-types.ts` 每处镜像的「出处 + 版本 + 单测/live」注释，以及 `docs/TODO.md` §七 各收口记录里的 🔶 标注（宿主交互的 live 证据记在 CHANGELOGS）。
 
 ## R22 功能实现三步序：查官方文档 → 写 todo 方案 → 才动代码
 

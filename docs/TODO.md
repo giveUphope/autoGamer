@@ -28,7 +28,7 @@
 - **阶段：T1–T5 全部落地，宿主内 live 证明已完成（2026-10-15）**。插件工程已搬入（搬迁-1）；T1 的三条任务工具、T2 的十五工具面、T3 的效果判定、T4 的收尾与溯源清理、T5 的内置 OCR 均在 TS 侧，`verify` 全绿；
   **宿主内真会话已跑通**（R6/R7/R9/R24 四条读数：面板 2/2 运行中、`Config` 返回 `status:"schema"`、七个工具对模型可见、会话日志 7 次工具调用与 7 次结果），权威记录在 CHANGELOGS **#97**。
   本文件 §四 只剩三条**非待办**行：**G92**（OCR 整页召回——已量过并否证简单方案，解法「按区域识别」已**立项于 §七，探针 A 离线管线已落地、探针 B/C 待设备**）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）。
-  **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（build + typecheck + vitest 三段）。
+  **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（三段脚本的形状与 `build` 的差别见 `AGENTS.md`「命令」）。
   全部 py 实现均不在本分支（按 D19 归零）。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
 - **基建-2 已落地（2026-10-14，提交 `f9434cf`）**：`scripts/check-docs.mjs` 六条检查（结清一致性 / 链接可解析 / 派生计数只认权威 / 编号范围自算 /
@@ -42,9 +42,19 @@
 - **基建-3 已落地（2026-10-15，提交 `9dea904`）**：拉取 T5 后首次装依赖，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS` 并 **exit 1**，且**顺手改写了被跟踪的** `plugins/dsh-autogamer/pnpm-workspace.yaml`（写入 `tesseract.js: set this to true or false` 占位行）。该 `postinstall` 的实质是赞助横幅（`opencollective-postinstall || true`）、无产物，而 OCR 语言数据随包 vendored ⇒ 定案 `allowBuilds: tesseract.js: false`（**保留** `esbuild: true`，vitest 要它的原生二进制）。安装现 **exit 0**、不再改写仓库文件；同机同 lockfile 的 A/B：占位形态 exit 1 / 定案形态 exit 0。`build` rc 0、`test` **38 文件 / 439 通过**。🔶 当时还记了一笔「**pnpm 版本未钉**」的债 —— **已由 基建-4 结清**（`packageManager: pnpm@11.21.0` + `pmOnFail: error`，CHANGELOGS **#99**）：版本不符现在一律 exit 1。范围与取证见 §七「基建-3」与 CHANGELOGS **#98**。
 - **基建-4 已落地（2026-10-15，提交 `6e30db2`）**：把上一条那笔债结清 —— `package.json` 声明 `"packageManager": "pnpm@11.21.0"`（精确版本、无 hash），`pnpm-workspace.yaml` 声明 `pmOnFail: error`。**版本不符时每条 pnpm 命令直接 exit 1**（`install` 与 `pnpm -v` 都实测过），且失败发生在任何下载/改动之前。A/B：`pnpm@9.15.0` ⇒ exit 1 + `This project is configured to use 9.15.0 of pnpm`；改回 ⇒ exit 0 且 **lockfile 零变化**。选型依据取自官方文档：`pmOnFail`（v11 新增，默认 `download`）取代了已移除的 `managePackageManagerVersions`/`packageManagerStrict*`；**选精确版本而非范围**，因为范围正是把「不同机器结论不同」那个洞重新打开；**选 legacy 字段而非 `devEngines.packageManager`**，因为后者会把解析版本写进 lockfile；**选 `error` 而非默认 `download`**，因为后者是静默的网络下载 + 版本切换。本机 `corepack` 未装，故不依赖它。已知边界：钉在插件工程，**从仓库根跑 pnpm 不受约束**；升版流程与误配处置写在 `AGENTS.md`。`verify` **38 文件 / 439 通过**。范围与取证见 §七「基建-4」与 CHANGELOGS **#99**。
 - **基建-5 已落地（2026-10-15，提交 `d524739`）**：把上一条那条「`.npmrc` 死配置无害」的判断**推翻并修好** —— 实测有效默认是 `true`、lockfile 记的是 `false`，于是**裸 `pnpm install --frozen-lockfile` 一直 exit 1**（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。修法：设置搬进 `pnpm-workspace.yaml`（`autoInstallPeers: false`，设置真正被读的那份文件），`.npmrc` 整份删除（全文只有那一行、25 字节、不在 `files` 里）。读数：`pnpm config get autoInstallPeers` → `false`（改前 `undefined`）；裸安装 **exit 0**；文档命令 exit 0；`verify` **38 文件 / 439 通过**；lockfile 全程零变化。**单变量隔离**：把 `.npmrc` 那行临时写回，裸安装仍 exit 0 ⇒ 生效的是文件里的设置，删它去的是重复声明。探针两向证明该设置有牙（自动装入的 peer 只进虚拟 store、不做顶层链接 —— 第一版判据看 `node_modules/react` 是**假绿**，已改读 lockfile）。设置的家写进 `AGENTS.md`。范围与取证见 §七「基建-5」与 CHANGELOGS **#100**。
-- **packed bundle 交付验证已落地（2026-10-15，交付-1）**：`pnpm pack` 出 tarball 后经 web profile 面板完成真实安装（非 link）——**唯一成立的交付形态是面板直接输入 `.tgz` 路径**（`file:` 复制安装，30 依赖落位）；解压目录安装是 `link` 且不装依赖，精简目录必然 `failed to import`（已实测失败）；每个新 profile 首次安装必遇 `tesseract.js` build script 授权（R19 用户点，postinstall 仅赞助横幅，G97 第三源实锤）；替换安装后**必须重启宿主**。重启后 **2/2 组件运行中**，双语 locale 标题/描述与 icon 浏览器实测正确，R6 `--dump-config` exit 0 / unmatched 0 / autogamer 行 10。验证中抓出构建缺陷——**tsc 增量输出不清理，5 个已裁决删除模块（actionClient/mcpText/rulesInjector/scrcpy×2）随 tarball 分发**，已修（构建前 `clean-dist` + 陈旧产物守卫），见 CHANGELOGS **#101**；`verify` 新读数 **39 文件 / 440 通过**。
+- **packed bundle 交付验证已落地（2026-10-15，交付-1）**：`pnpm pack` 出 tarball 后经 web profile 面板完成真实安装（非 link）——**唯一成立的交付形态是面板直接输入 `.tgz` 路径**（`file:` 复制安装，30 依赖落位）；解压目录安装是 `link` 且不装依赖，精简目录必然 `failed to import`（已实测失败）；每个新 profile 首次安装必遇 `tesseract.js` build script 授权（R19 用户点，postinstall 仅赞助横幅，「无产物」裁决见 §七「基建-3」/ CHANGELOGS **#98**，此处为第三来源实锤）；替换安装后**必须重启宿主**。重启后 **2/2 组件运行中**，双语 locale 标题/描述与 icon 浏览器实测正确，R6 `--dump-config` exit 0 / unmatched 0 / autogamer 行 10。验证中抓出构建缺陷——**tsc 增量输出不清理，5 个已裁决删除模块（actionClient/mcpText/rulesInjector/scrcpy×2）随 tarball 分发**，已修（构建前 `clean-dist` + 陈旧产物守卫），见 CHANGELOGS **#101**；`verify` 新读数 **39 文件 / 440 通过**。
   ⚠️ **C 项（三任务工具宿主内点名）阻塞**：本机当前无 `adb`、无设备（D 盘已不在、无模拟器、无监听端口），preflight 闸门要求 adb + 一台 `device` 状态设备，需用户提供真机或模拟器；完整记录见 §七「交付-1」。
 - **G92 探针 A 已落地（2026-10-15，离线，CHANGELOGS #102）**：区域 OCR 管线 `src/ocr/image.ts`（裁剪/最近邻放大/PNG 编码，零依赖）+ `src/ocr/regions.ts`（层级叶级候选→裁剪 padding 8→@2×→逐块 recognize→坐标映射回全屏，预算/signal/fail-open）。新增 3 测试文件 26 条；真模型夹具实测 16 候选全在 y≤204、16 块 ≈1457ms、命中均落回候选框（映射不漂），并**实证 P1 对层级缺席的渲染区（y≈240 缩略图）无效**（P1 对 TapTap/游戏中心 undefined，整帧命中），强化 P2/P3 必要性。三处变异（坐标映射/容器过滤/fail-open）各红一次；本轮**未接产品阶梯**。`verify` 新读数 **42 文件 / 466 通过**。探针 B/C 与 C 项共用同一设备前置（adb + 设备），G92 不结案。
+- **文档对齐-1 已落地（2026-10-15，CHANGELOGS #103）**：把**七个文档面**逐条对当前实现核一遍并改掉漂移，**每条改动都配一条可复跑的核验**（`git grep` / 读源码 / 跑门禁），逐条清单见 §七「文档对齐-1」与 CHANGELOGS **#103**。本轮**未改任何代码**：
+  ① **规格 §二** 三行仍挂着已结案的 **G94 / G91**（任务编排、轨迹持久化、长按语义）⇒ 改成实测结论 + 指针 #97，并把「三任务工具宿主内点名仍未做」如实留给「交付-1」C 项；
+  ② **规格 §一.3** 还写着 `artemisRepoPath` 是活的配置路径 ⇒ 该字段 T4 已删（`contracts.spec` 有「stay removed」锁），实际只剩 `artemisMcpCommand`（默认 `[]`，唯一消费者 `autogamer_diagnose`）；**§一.1** 的「CI 无 python job」补上「本分支无 CI」这个前提；
+  ③ **规格 §四.1** 那句「py 侧已知为扁平」是**已被前置-1 否证的旧表述**（设备侧是嵌套树，「扁平」是解析产物）⇒ 就地更正并指向前置-1 实测结论；
+  ④ **守则 R15 / R19 / R21 / R2 四条判据**引的都是已删或未随迁的东西（`ActionClient` 的 `Promise.race`、「两项都缺，已登记为 G32」、`docs/TODO.md`「宿主交互实现审查」表、`spike/` 目录）⇒ 逐条改成现状 + 本分支的落点；
+  ⑤ **插件 README** 的 Layout 仍写 preflight「7 项 / 可按 provider·device 范围取」（实际 `run()` 无参数、只两项）、`getDeviceState`「外部 ARTEMIS 透传」（透传已删，provider 唯一消费者是诊断）、脚本清单漏了 `clean-dist.mjs`，且两个 `src/ocr/` 模块**没有生产消费者**却长得像在跑的路径 ⇒ 全部标注；
+  ⑥ **`verify` 的形状**：它是 `tsc → tsc → vitest`，**不含** `clean-dist`（那步只在 `build`，#101）⇒ 「交付/pack 前必须先 `build`」写进 `AGENTS.md` 与插件 README（原文两处都写成「build + typecheck + test」）；
+  ⑦ **`AGENTS.md`** 仍写「本分支尚无 CHANGELOGS 文件」（该文件 #84 起就在用了）、「四期路线」（实为 T1–T5），并补上 `scripts/ocr-probe.mjs` 与交付形态的指针；**根 `README.md`** 的「现状」还停在「从零重建中」⇒ 改写为已落地 + 唯一真待办 G92。
+  ⚠️ 顺带修掉一处**悬空编号**：交付-1 里三处引用的 `G97`「postinstall 无产物」裁决，在本分支与归档 `registry.md` 里**都不存在这个编号** ⇒ 改指 §七「基建-3」/ CHANGELOGS **#98**。
+  `verify` 读数不变（**42 文件 / 466 通过**，与对齐前同读数）；门禁 `check-docs`（含 `--selftest`）与 `check-env` exit 0。逐条核验见 §七「文档对齐-1」与 CHANGELOGS #103。
 - **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
@@ -1415,7 +1425,7 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 **How（官方声明 + 实测路径）**
 - 官方声明（`github.com/deepseek-ai/deepseek-harness` @ `master`，`packages/preset/agent-preset/skills/cordis-plugin-development/SKILL.md` 与 `references/host-plugin.md`，R20 第 1 步原文）：`install_bundle` 的 target 是「**absolute package directory**」；**本地目录安装就是 link checkout，`files` 不过滤链接目录**；「For a packed or published bundle, verify the actual packed file list」；替换已安装包需要**重启**（HMR 只对新装生效）；`approvedBuilds` 仅在用户明确批准 pending build scripts 后才传；安装判据读 `application` / `warnings`，安装后用面板核验 locale 与 icon，禁止「从安装成功推断视觉成功」。
 - **路径一（失败实证）**：tarball 解压成独立精简目录 → 面板输入该目录 → 实际执行 `pnpm add <dir>`，结果 `dsh-autogamer link:<dir>` 且 **`Already up to date`、不装依赖**；精简目录无 `node_modules`，profile 的 `node_modules` 里 `tesseract.js` / `zod` / `@modelcontextprotocol/client` / `@deepseek-ai/schemastery` 全部缺失 → 启用报 `1 entry did not activate dsh-autogamer: failed to import`（组件 2 个中只有宿主自带的 preset 行运行中）。**结论：解压目录 link 不是有效交付形态；link 仅适用于自带 `node_modules` 的完整工程 checkout**（#97 的 live 证明正是这种）。
-- **路径二（成立）**：面板直接输入 `.tgz` 路径（输入框文案为「包名、GitHub 仓库地址或本地目录路径」，实测接受 tarball）→ 执行 `pnpm add <file.tgz> --registry=…npmmirror.com`，识别为 `file:` **复制安装**，30 个依赖全部下载。唯一阻断点：`tesseract.js@7.0.0` 的 postinstall 被 pnpm 默认拦截，`ERR_PNPM_IGNORED_BUILDS` exit 1；由用户在面板点「允许这些脚本并重试」（**R19 user-only**，授权只存该 profile），随后输出仅为赞助横幅（`Thank you for using tesseract.js!` + opencollective 链接 + `Done`）——**G97「postinstall 无产物」裁决的第三来源实锤**。
+- **路径二（成立）**：面板直接输入 `.tgz` 路径（输入框文案为「包名、GitHub 仓库地址或本地目录路径」，实测接受 tarball）→ 执行 `pnpm add <file.tgz> --registry=…npmmirror.com`，识别为 `file:` **复制安装**，30 个依赖全部下载。唯一阻断点：`tesseract.js@7.0.0` 的 postinstall 被 pnpm 默认拦截，`ERR_PNPM_IGNORED_BUILDS` exit 1；由用户在面板点「允许这些脚本并重试」（**R19 user-only**，授权只存该 profile），随后输出仅为赞助横幅（`Thank you for using tesseract.js!` + opencollective 链接 + `Done`）——**基建-3「postinstall 无产物」裁决的第三来源实锤**（该裁决本体见 §七「基建-3」与 CHANGELOGS **#98**；⚠️ 本行原先写的 `G97` 是一个**在本分支与归档 registry 里都不存在的编号**，已按 R28 就地更正）。
 - **替换安装需重启的实证**：第一次 link 版的启用记录仍指向旧 target（精简目录已被移除），file 版装好后报 `ENOENT scandir '…\extracted\dsh-autogamer\locale'`、两组件已停用；重启宿主后从 profile `node_modules` 正确解析，再启用即 **2/2 运行中**。
 - 安装后读数：profile 安装位含完整 `dist` / `locale`（en 237B、zh 231B）/ `ocr`（eng 1,984,273B、chi_sim 1,730,011B，字节数与工程一致）/ `skills` / `client.js` / `cordis.patch.yml` / `THIRD_PARTY_NOTICES.md` / `icon.svg`；中文 UI 渲染「AutoGamer 设备执行」+中文描述、切英文渲染「AutoGamer Device」+英文描述（与两 locale JSON 逐字一致），icon 黑底放大镜渲染正常；R6 `dsh --profile web --dump-config` ⇒ **exit 0 / 1324 行 / unmatched 0 / autogamer 行 10**。
 
@@ -1428,7 +1438,7 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **交付流程事实（写给下一次安装）**
 1. 对外交付 = 发布 `.tgz`，在面板「添加插件」输入 `.tgz` 路径；**不要**解压后用目录 link（不装依赖）。
-2. 每个新 profile 首次安装**必遇** `tesseract.js` build script 授权弹窗（R19 由用户点；脚本无产物，G97 与本次日志双证）；这是当前 bundle 无法自带跳过的固有授权点（`files` 不能携带 `pnpm-workspace.yaml` 的 `allowBuilds`，R2 禁止手写 profile 配置）。
+2. 每个新 profile 首次安装**必遇** `tesseract.js` build script 授权弹窗（R19 由用户点；脚本无产物，基建-3 / CHANGELOGS **#98** 与本次日志双证）；这是当前 bundle 无法自带跳过的固有授权点（`files` 不能携带 `pnpm-workspace.yaml` 的 `allowBuilds`，R2 禁止手写 profile 配置）。
 3. 从旧版本（含 link 版）替换安装后**必须重启宿主**，否则启用记录指向旧 target / 旧模块代。
 
 **阻塞（C 项，2026-10-15 实测）**：本机当前**无 `adb` 且无设备**——PATH 无 `adb`、`winget` 无 `Google.PlatformTools` 记录、无 Android SDK；无模拟器（`C:\Program Files\NetEase` 只有云音乐；D 盘已不在，当前仅 C 盘；5554/5555/16384 等模拟器端口无监听）。`preflight` 闸门要求 `adb` + `adb-devices` 两项（`src/env/preflight.ts`，所有 autogamer_* 工具含 `run_task` 都过 `requireEnv`），故三任务工具 live 点名在设备到位前无法进行。需要用户提供其一：① 安装 Platform Tools 并开启安卓真机无线调试 / USB 连接；② 安装并启动模拟器。离线锁（`runTask` 7 条、`manageTask` 10 条、`inspectTrace` 9 条 + `taskProjection` 9 条）与 #97 的 5 条宿主实跑证据不受影响。
@@ -1494,3 +1504,44 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - **变异（R27，三处植入均精确锁红，已还原）**：① `mapHitToFrame` 去掉 origin 偏移 ⇒ 3 条坐标映射锁红（含嵌套 words、端到端）；③ 单块 catch 内 `continue` 改抛错 ⇒ 「单块抛错仍扫描其余」红；④ 容器过滤改为放行全部 ⇒ 「丢弃包含候选的容器」红（容器框 `[10,10,200,200]` 漏入）。变异②（阶梯锁）本轮不适用，待接线。
 - **门禁**：`verify` **42 文件 / 466 测试全过**（探针 A 新增 3 文件 26 条：image 10 + regions 14 + probe 2；基线 39/440）；`check-docs --selftest` 7 变异无假绿；`check-env` 干净；README Layout 已同步 `image.ts`/`regions.ts`。
 - **对 B/C 的输入**：P1 工程面已就绪，唯一未答的是「层级缺席渲染区」的召回——那是探针 B（真机难帧重采、扫 padding/scale/过滤常量）与探针 C（纯 webview 帧判 P2 去留）的范围，均需 adb + 设备。本轮**未接产品阶梯**（`runDeviceAction.ts` 的 hierarchy→整帧 OCR 阶梯未动），接线属探针 B/C 后的 Done 项。
+
+### 文档对齐-1 · 全仓文档面对齐当前实现（2026-10-15 结案；CHANGELOGS #103）
+
+> 性质：**纯文档轮**，不改任何代码。起因是读文档时发现多处「文档说的」与「代码/实测的」已经分叉，而本分支的纪律
+> 要求文档是下一个 agent 的唯一现状来源（R28）。分七面逐条核，每条改动都带可复核出处；**不新建编号**，
+> 因为这不是一个待办条目，而是一次对齐动作。
+
+**What（范围）** —— 七个文档面：`AGENTS.md`、根 `README.md`、插件 `README.md`、规格 `docs/migration/ts-fullstack-spec.md`、
+守则 `docs/migration/plugin-contract-rules.md`、台账 `docs/TODO.md`、变更史 `docs/CHANGELOGS.md`。
+
+**How（做法与关键决策）**
+
+1. **先立判据再动笔**：每条漂移都要有一条「能复跑的核验」（`git grep` 命中数 / 读源码的导出与默认值 / 跑一次门禁），
+   拿不出核验的**不算漂移、不改**。本轮每条改动都配了核验，清单在 CHANGELOGS #103 的验收段。
+2. **三类漂移分开处置**（不混成一句「更新了一下」）：
+   - **① 指向已删/已结案对象**：就地改成现状 + 指针（规格三行的 G91/G94、`artemisRepoPath`、守则 R15/R19）；
+   - **② 与实测相反的旧表述**：就地更正并写明「原先那句被什么否证」（规格 §四.1 的「扁平」、`G97` 那个不存在的编号）；
+   - **③ 缺失的操作事实**：补上但不复制（`verify` 的真实形状、`clean-dist`、交付形态、`ocr-probe.mjs` 指针）。
+3. **单一权威不被破坏**：派生的读数一个都不新增；§四 开放差距表**不动**（本轮不结清任何 `G*`）；
+   同一事实只在一处展开，别处一律写指针（例如 `verify` 的形状写进 `AGENTS.md`，`TODO.md` §零只留指针）。
+4. **不越权**：本轮**不碰代码**。凡「文档说的」要改代码才成立（如区域 OCR 未接线），写成**边界声明**而不是实现任务。
+
+**Verify（验收命令）**
+
+- `node scripts/check-docs.mjs` 与 `node scripts/check-docs.mjs --selftest` ⇒ exit 0（本轮改了表格行与多段散文，
+  C5 表格成形 / C2 链接可解析 / C3 派生计数 / C6 完成度对账都会被牵动，必须全跑）。
+- `node scripts/check-env.mjs` ⇒ exit 0（本轮不产生 py）。
+- `pnpm --config.verify-deps-before-run=false run verify`（在 `plugins/dsh-autogamer/`）⇒ **42 文件 / 466 通过**，
+  与对齐前同读数 —— 证明**只动了文档**；其中 `readmeLayout.spec` 会机械核对插件 README 的 Layout 块与 `src/` 实际文件。
+- 悬空编号自查：`git grep -nE "[G]97 第三源实锤|[G]97 与本次日志双证|[G]97「postinstall 无产物」裁决" -- docs AGENTS.md README.md` ⇒ **零命中**（对齐前 3 处活引用）。
+  模式写成字符类是刻意的：**零命中型判据不能把自己写进被搜文件里**，否则它在 docs 里就会命中自己而永远红不了（R27 的老坑，本轮第一次写成裸串就踩了）。
+  `G97` 这个串现在只剩**记录这次删除**的行（§七 交付-1 的就地标注、本条目、CHANGELOGS #103）——判据只钉「不再当活引用」，不是「文档里不许出现这个串」。
+
+**Done means**
+
+- [x] 规格（§一.1 / §一.3 / §二 四行 / §四.1 与 §四.4）对齐：已结案的 `G91`/`G94` 不再挂在行上、已删配置项不再被当活路径、
+      被前置-1 否证的「扁平」表述就地更正
+- [x] 守则四条判据（R2 / R15 / R19 / R21）指向的对象与本分支现状一致（删掉的、未随迁的都改成现状 + 落点）
+- [x] 插件 README 的 Layout 描述、脚本清单、`verify` 形状与「两个 `src/ocr/` 模块无生产消费者」这条边界写清
+- [x] `AGENTS.md`（CHANGELOGS 已存在、T1–T5、门禁脚本形状、`ocr-probe` 与交付指针）与根 `README.md`（现状不再写「从零重建中」）
+- [x] 悬空编号 `G97` 的**活引用**清零并按 R28 就地标注更正理由；`verify` 读数不变（纯文档轮）；门禁三条命令全 exit 0

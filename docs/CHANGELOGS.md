@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）。 |
 
 
 ## 写入规则
@@ -501,3 +501,51 @@
 - **变异（R27，三处植入均精确锁红后还原）**：① `mapHitToFrame` 丢 origin ⇒ 3 条坐标映射锁红；③ 单块 catch 由 `continue` 改抛错 ⇒ fail-open 锁红；④ 容器过滤放行全部 ⇒ 「丢弃容器」红（容器框漏入）。变异②（阶梯锁）因本轮不接阶梯而不适用，留待接线。
 - `pnpm --config.verify-deps-before-run=false run verify` ⇒ **42 文件 / 466 全过**（基线 39/440，新增 3 文件 26 条）；`node scripts/check-docs.mjs --selftest` 7 变异无假绿；`node scripts/check-env.mjs` 干净；README Layout 已同步 `image.ts`/`regions.ts`。
 - 未闭环（不静默）：探针 B（真机难帧召回、定 padding/scale/过滤常量）与探针 C（纯 webview 帧判 P2 去留）均阻塞在 adb + 设备，与「交付-1」C 项同一前置；G92 不结案。
+
+### #103 文档对齐-1：七个文档面逐条对齐当前实现（纯文档轮；含一处指向不存在编号的悬空引用）
+
+#### 问题描述
+
+读文档准备下一片时，发现**文档说的**与**代码/实测的**已经分叉，而本分支的纪律把文档当作下一个 agent 的唯一现状来源（R28）——
+分叉本身就是负债。逐面核出的漂移分三类：**指向已删或已结案的对象**、**与实测相反的旧表述**、**缺失的操作事实**；
+逐条清单与核验都在本条的「验收标准」段，不在这里复述（避免同一份清单有两处）。最刺眼的一条是悬空编号：
+交付-1 三处引用的 `G97`（「postinstall 无产物」裁决），**在本分支与归档 `registry.md` 里都不存在**。
+
+#### 整改方案与实施
+
+- **规格 `ts-fullstack-spec.md`**：§二 三行（设备动作 / 任务编排 / 轨迹持久化）仍挂着已结案的 **G91 / G94** ⇒ 改成实测结论并指向 **#97**，
+  同时把「**三任务工具的宿主内点名仍未做**」如实留给 `TODO.md` §七「交付-1」C 项（#97 的会话里实跑的是执行路由与设备态那几条）；
+  §一.3 仍把已删的 `artemisRepoPath` 写成活路径 ⇒ 改为「配置面只剩 `artemisMcpCommand`（默认 `[]`），唯一消费者是 `autogamer_diagnose`」；
+  §一.1 的「CI 无 python job」补上「本分支无 CI」这个前提；§四.1 那句「py 侧已知为扁平」是**前置-1 已否证**的旧表述（设备侧是嵌套树，
+  「扁平」是解析产物）⇒ 就地更正；§四.4 的提供方边界补上「T4 已全部完成」。
+  OCR 行补记区域化第二级已落地但**未接产品阶梯、当前无生产消费者**（G92 探针 A）。
+- **守则 `plugin-contract-rules.md`**：四条判据指向的对象与本分支现状不符 ⇒ R15（`ActionClient` 的 `Promise.race` 随 T4 删除，
+  超时改由 `src/device/adb.ts` / `src/ocr/recognize.ts` / `src/artemis/mcpBackend.ts` 自实现）、R19（「两项都缺，已登记为 G32」——locale 与 icon 早已在位并经面板核验）、
+  R21（引的「宿主交互实现审查」表属归档分支，未随迁）、R2（`spike/` 目录未随迁）；文首的编号权威由 `registry.md` 改指 `../TODO.md`。
+- **插件 `README.md`**：Layout 里 preflight 仍写「7 项 / 可按 provider·device 范围取」（实际 `run()` 无参数、只两项）、
+  `getDeviceState` 写「外部 ARTEMIS 透传」（透传已删，provider 唯一消费者是诊断）、脚本清单漏 `clean-dist.mjs`；
+  补一条边界声明：`src/ocr/{image,regions}.ts` **没有生产消费者**（别当已在跑的 OCR 路径，也别按「没人调用」删掉）；
+  「引入与验证」新增**交付形态三条**（面板输入 `.tgz` / 每个新 profile 首次安装必遇 `tesseract.js` 构建脚本授权（R19 用户点）/ 替换安装后必须重启宿主）。
+- **`AGENTS.md`**：「已结案变更 → 本分支尚无 CHANGELOGS 文件」不成立（该文件 #84 起就在用）、「四期路线」实为 T1–T5；
+  新增 `verify` 的真实形状（`tsc → tsc → vitest`，**不含** `clean-dist`，那步只在 `build` ⇒ 交付/pack 前必须先 `build`）、
+  `scripts/ocr-probe.mjs` 与交付形态的指针。
+- **根 `README.md`**：「现状」还停在「从零重建中」⇒ 改写为已落地 + 唯一真待办（G92，区域识别未接线、等真机探针），G88/G78 标为待需求。
+- **`TODO.md`**：清掉三处 `G97`（改指 §七「基建-3」/ **#98**，并按 R28 就地标注更正理由）；§零「复测」那行的 `verify` 描述改为指向 `AGENTS.md`；
+  新增 §七「文档对齐-1」条目（What/How/Verify/Done）与 §零 指针行。
+
+#### 验收标准
+
+- **逐条可复核**（本轮每条改动都配了核验，而不是「看着顺眼」）：preflight 两项与无 scope 参数 ⇒ 读 `src/env/preflight.ts`
+  （`PREFLIGHT_CHECK_IDS = ["adb","adb-devices"]`、`run()` 无参）；`getDeviceState` 无 provider ⇒ 读 `src/tools/getDeviceState.ts` 的 deps；
+  `artemisRepoPath` 已删 ⇒ `git grep -n artemisRepoPath -- plugins/dsh-autogamer/src` **零命中**（且 `tests/conformance/contracts.spec.ts` 有「stay removed」锁）；
+  `verify` 不含 clean ⇒ 读 `package.json` 的 `scripts`（`build` 有、`verify` 没有）；locale/icon 在位 ⇒ 读 `locale/{en,zh}.json` 与 `icon.svg`。
+- **悬空引用的活引用清零**：`git grep -nE "[G]97 第三源实锤|[G]97 与本次日志双证|[G]97「postinstall 无产物」裁决" -- docs AGENTS.md README.md` ⇒ **零命中**（对齐前 3 处）。
+  模式写成字符类 `[G]97` 是因为**零命中型判据一旦把自己写进被搜文件就会命中自己**（第一版写成裸 `G97…`，一跑就红，当场改口径，R27）。
+  `G97` 这个串本身仍出现在**记录这次删除**的行里（`TODO.md` 的就地标注与文档对齐-1 条目、本条），这是 R28 要求的「就地标注」而不是残留活引用——
+  判据因此只钉「不再当活引用」，不写成「全文不得出现该串」。
+- **纯文档轮证明**：`pnpm --config.verify-deps-before-run=false run verify`（在 `plugins/dsh-autogamer/`）⇒ **42 文件 / 466 通过**，
+  与对齐前同读数；其中 `tests/readmeLayout.spec.ts` 机械核对插件 README 的 Layout 块与 `src/` 实际文件（Layout 行描述被改，文件名列表未动）。
+- 门禁：`node scripts/check-docs.mjs` 与 `node scripts/check-docs.mjs --selftest` ⇒ exit 0（本轮动了表格行、散文与两处清单）；
+  `node scripts/check-env.mjs` ⇒ exit 0。
+- 不结清任何 `G*`、不动 §四 开放差距表、不新增任何派生读数（§零那条只写「读数不变」并给复测命令）。
+- 提交：方案与结案同一条 commit（本条是文档动作，无实现可分；方案先行（R22）适用于**代码**改动，文档轮的做法记录在 `TODO.md` §七「文档对齐-1」的 How-1）。

@@ -9,7 +9,7 @@ Instructions for agents working in this repository.
 **`legacy-fork-v2-dsh-plugin`**（第二次尝试：收缩为 DSH 插件形态，含全部历史实现与调研台账）与
 **`legacy-fork-v1`**（初版二开，未达效果）。本分支（**`main`**）从零重建。
 
-**终态**：TS 全栈、py 归零（**D19**）。判据与四期路线见 `docs/migration/ts-fullstack-spec.md`。
+**终态**：TS 全栈、py 归零（**D19**）。判据与分期路线（T1–T5）见 `docs/migration/ts-fullstack-spec.md`。
 
 ## 两条终态决议（现行，优先于一切历史约定）
 
@@ -78,6 +78,13 @@ Instructions for agents working in this repository.
   - 出处见 CHANGELOGS #99。
 - 声明面自检：`dsh --profile <name> --patch <abs path> --dump-config`（`dsh` 取 PATH，**不要写死安装盘符**）
 - `dsh plugin` 只是包管理转发垫片，只证明「装了」，**不证明「生效」**（R9）
+- **门禁脚本的真实形状**：`verify` = `tsc -p tsconfig.json` → `tsc -p tsconfig.spec.json` → `vitest run`，
+  **不含** `clean-dist`（那一步只在 `build` 里，CHANGELOGS #101）⇒ **`pnpm pack` / 交付前必须先跑 `build`**。
+- 版本化离线探针：`node scripts/ocr-probe.mjs`（吃仓内夹具 PNG，证明 OCR 零网络、无临时文件残留）；
+  判据与读数见 `docs/TODO.md` §七「T5 收口记录」。
+- **交付形态**（面板输入 `.tgz` / 每个新 profile 首次安装必遇 `tesseract.js` 构建脚本授权（R19 用户点）/
+  替换安装后必须重启宿主）写在插件 `README.md`「引入与验证」，实测记录在 `docs/TODO.md` §七「交付-1」——
+  **别把 tarball 解压成目录去 link**（不装依赖，实测必然 `failed to import`）。
 - **文档门禁（TS 版，2026-10-14 落地，基建-2）**：`node scripts/check-docs.mjs` —— 六条机械检查（结清一致性 / 链接可解析 /
   派生计数只认权威 / 编号范围自算 / 表格成形（只在未转义 `|` 处切分）/ 自称完成不得留未勾验收项）；`--selftest` 内置变异自证不假绿
   （**变异锚点必须落在文档结构上——章节标题、表格分隔行——绝不在正文文字上**：散文会被实测改动重写，锚点一腐烂，判据就静默失效，本分支已因此两次 BLIND）。
@@ -111,7 +118,8 @@ Instructions for agents working in this repository.
 ## 文档纪律
 
 - **一个派生事实只有一个权威**：编号范围与计数 → `docs/TODO.md`；进度与阻塞 → `docs/TODO.md` §零；
-  已结案变更 → 本分支尚无 CHANGELOGS 文件（结案时新建，规则同下）；其它地方只写**指针**，不写副本
+  已结案变更 → `docs/CHANGELOGS.md`（本分支自己的台账，**从 #84 起续号**，归档分支用到 #83；写它的规则见该文件头部）；
+  其它地方只写**指针**，不写副本
 - **方案先行**（R22）：任何非平凡改动先把自足条目写进 `docs/TODO.md`（What / How / Verify / Done 四段），
   方案提交早于实现提交；实施中每完成一个检查点**当轮**勾选并记录偏差
 - **顺带发现当轮落账**：未修 → `docs/TODO.md` 差距行；已顺手修 → 结案条目

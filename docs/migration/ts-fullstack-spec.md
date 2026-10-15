@@ -11,9 +11,9 @@
 
 D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
-1. **仓库 py 归零**：`artemis/`、`mcp_server/`、`third_party/`、`pyproject.toml`、`uv.lock` 与 py 测试树全部从本仓库删除；CI 不再有 python job 或 py 依赖安装步骤。可复跑的判据是 `git ls-files '*.py'` 为空。
+1. **仓库 py 归零**：`artemis/`、`mcp_server/`、`third_party/`、`pyproject.toml`、`uv.lock` 与 py 测试树全部从本仓库删除；CI 不再有 python job 或 py 依赖安装步骤。可复跑的判据是 `git ls-files '*.py'` 为空（本分支**无 CI**，故「无 python job」以「无 CI」成立，判据仍是那一条命令）。
 2. **TS 全栈**：`plugins/dsh-autogamer/` 是唯一实现面。设备执行、效果判定、图像/OCR、轨迹读取、诊断全部在 TS 侧完成，不再依赖任何常驻外部进程。
-3. **外部 ARTEMIS 降为可选提供方**：仓库**不内置、不 vendored、不为它开开发依赖**。仅保留 adapter 能显式指向一个**用户自行安装的外部 ARTEMIS**（MCP 后端，走现有 `artemisMcpCommand` + `artemisRepoPath` 路径）；未配置即走 TS 原生。
+3. **外部 ARTEMIS 降为可选提供方**：仓库**不内置、不 vendored、不为它开开发依赖**。仅保留 adapter 能显式指向一个**用户自行安装的外部 ARTEMIS**（MCP 后端）；未配置即走 TS 原生。**T4 后的实际形状**：配置面只剩 `artemisMcpCommand`（默认 `[]`＝永不 spawn），唯一消费者是 `autogamer_diagnose` 的 `provider{…}` 项；`artemisRepoPath` / `uvPath` 随三种 py 语义一并删除（记录见 `../TODO.md` §七「前置-4 实测结论」与「T4 收口记录」）。
 4. **能力不丢**：§二 矩阵每一行都必须有 TS 落点与判据；任何被判定不迁移的能力，必须在**本分支**留下明确的放弃记录（结案条目；本分支首次结案时新建 `docs/CHANGELOGS.md`），不允许静默消失。
 5. **溯源归零（D20）**：仓库不留存任何来自上游的信息——代码、prompt 文本、vendored 树、派生文档、copyright 头、指向上游的 git 元数据；`LICENSE` 为本项目自撰的 MIT 文本（版权人 giveUphope），非上游文本。判据见 §八。
 
@@ -28,19 +28,21 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 > 「已具备」= TS 侧代码在跑；「部分」= 有骨架但契约未对齐；「未开工」= 待 T1–T4 实现。
 > **本列只在落点发生结构变动时才改**（例：某能力从「无 TS 落点」变成「有骨架」）；某一期的实时进度、阻塞与测试读数一律看
 > [`../TODO.md`](../TODO.md) §零与 §七，**不要拿本列当现状**（它已经滞后过一次：T1 切片 1–3 落地后本表仍写「未开工」）。
+> **一条例外**：行里指向**已结案编号**的 🔶 标记必须随结案同步改掉（否则下一个人会去追一个已经关闭的差距）——
+> 本表为此在 2026-10-15 清过一次（`G91` / `G94` ⇒ CHANGELOGS #103）。
 
 | 能力（上游面） | 现载体 | TS 落点 | 判据 | 状态 |
 |---|---|---|---|---|
-| 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | ~~与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参~~ **T4 起为分区锁**：那份 2026-10-13 的活服务名单是历史权威，锁「11 条原生 + 2 条本地 + 2 条带理由放弃 = 15」，并逐个打到 `runNativeAction` 上证明 case 在（外加反向对照） | **已本地化（T2-c/d/e）+ 覆盖面已锁（T4）**：`src/device/act.ts` 产出同一套字符串契约，动作面直呼清单归零；长按语义 🔶 ⇒ **G91** |
+| 设备动作 15 工具（tap / swipe / input / launch / …） | py `adb_server.py` | adb CLI + on-device 协议客户端（自实现） | ~~与 `tests/fixtures/py-action-tools.json` 工具面逐字同名同参~~ **T4 起为分区锁**：那份 2026-10-13 的活服务名单是历史权威，锁「11 条原生 + 2 条本地 + 2 条带理由放弃 = 15」，并逐个打到 `runNativeAction` 上证明 case 在（外加反向对照） | **已本地化（T2-c/d/e）+ 覆盖面已锁（T4）**：`src/device/act.ts` 产出同一套字符串契约，动作面直呼清单归零；长按语义已复测成立（现行 `input swipe x y x y 1500` 在真机真的弹出长按菜单，**G91 结案**，CHANGELOGS **#97**） |
 | 截图 | py 动作面 | `adb exec-out screencap -p` | 同设备同帧的 PNG IHDR 尺寸等于帧空间（已验 1600x900） | **已本地化（T2-a 尺寸取源 / T2-c 取帧）**：`src/device/state.ts` 问帧 IHDR（手填 `screenSize` 与帧不符即拒 ⇒ G76 结清，缓存自 T4 起带 5s TTL ⇒ G90 结清）；`ActionClient` 与其脚本已于 T4 删除 |
 | UI 层级 dump | 设备 `uiautomator dump` 出 **XML 嵌套树**，py 侧解析成 JSON 再给插件 | 原生：`adb shell uiautomator dump` + 自带 XML 解析（`parsed_bounds` 由我们自己产出） | 实测 wire 形状（2026-10-15）：77 节点 / 19 属性且每节点全带 / **无 `children`** / 嵌套深度 12 / bounds 全是 `[l,t][r,b]` —— 详见 `../TODO.md` §七「前置-1 实测结论」 | **已本地化（T2-b）**：`src/device/hierarchy.ts` 读回校验 + `src/hierarchy.ts` 的 XML 入口；`get_ui_hierarchy` 不再过传输（取证与两条测量自纠见 §七「T2-b 层级收口记录」） |
 | 动作执行闸门 / 熔断 / 分类 | 插件 TS | — | 现有 spec 锁 | 已具备 |
 | 效果判定 `compare_ui_frames` | py 委托上游 `check_ui_change` | `src/effect/{png,diff}.ts`：按其设计移植（遮罩 / 双管线 / ROI 回落 / 分支表；常量带出处） | 判别用例集（5+2 条）+ 三处变异 + 真帧冒烟；~~与 py 的同输入同输出对照 🔶~~ **T4 判定：该对照在本分支永不可得**（仓内无 py、无解释器，比对脚本已删）⇒ 由覆盖面分区锁替代 | **已落地（T3）+ 判据已换（T4）**：差分本地跑，插件不再调 `compare_ui_frames` |
-| OCR | py `httpx` → Google Vision（要 API key） | **T5 内置离线 WASM**：`tesseract.js` + 包内语言包（零配置、无网络）；上游 key 路线**不采用**（与「无需额外安装配置」冲突） | 层级未命中才走 OCR；`target_source` 进 `presentationMeta`；版本化探针离线复跑 | **已落地（2026-10-15）**：`src/ocr/recognize.ts` + `ocr/*.traineddata.gz`（实测 boot 168ms、**657ms/帧**、双语 gz 合计 **3.5 MB**）；14 条变异各红一次。**小字 CJK 真帧召回弱 ⇒ G92** |
+| OCR | py `httpx` → Google Vision（要 API key） | **T5 内置离线 WASM**：`tesseract.js` + 包内语言包（零配置、无网络）；上游 key 路线**不采用**（与「无需额外安装配置」冲突）。区域化第二级：`src/ocr/image.ts`（裁剪/放大/编码，零依赖）+ `src/ocr/regions.ts`（候选→逐块识别→映射回全屏） | 层级未命中才走 OCR；`target_source` 进 `presentationMeta`；版本化探针离线复跑 | **已落地（2026-10-15）**：`src/ocr/recognize.ts` + `ocr/*.traineddata.gz`（实测 boot 168ms、**657ms/帧**、双语 gz 合计 **3.5 MB**）；14 条变异各红一次。**小字 CJK 真帧召回弱 ⇒ G92**；区域管线已落地但**未接产品阶梯、当前无生产消费者**（G92 探针 A，真模型实测同时固化「P1 覆盖不到层级缺席的渲染区」这条边界，见 `../TODO.md` §七「G92 · OCR 按区域识别」） |
 | 画面标注 overlay | py `PIL` / `cv2` | **推迟（G88）**：插件不产出标注图（截图原样交付）；清点见 `../TODO.md` §七「前置-6」 | （未定，随 G88 解锁再填） | 推迟（解锁形态须走 R18 的 client toolview） |
-| 任务编排 `run_task` / `manage_task` / `inspect_trace` | py 引擎（langgraph 图） | TS 单层路由（S11）+ DSH agent loop | 三条工具不再调 `mobile_*`；任务由 TS 侧循环驱动 `run_device_action` | 离线可证部分**已完成（T1 / G82 结案）**：三条工具改读会话投影，引擎方法已从类型面与实现面删除；**live 绑定核验 🔶 ⇒ G94** |
+| 任务编排 `run_task` / `manage_task` / `inspect_trace` | py 引擎（langgraph 图） | TS 单层路由（S11）+ DSH agent loop | 三条工具不再调 `mobile_*`；任务由 TS 侧循环驱动 `run_device_action` | 已完成（T1 / G82 结案）：三条工具改读会话投影，引擎方法已从类型面与实现面删除；**宿主内 live 证明已完成**（预设挂载 / 工具可见性 / 会话日志四条读数，**G94 结案**，CHANGELOGS **#97**）。⚠️ 仍未做的是**这三条工具本身的宿主内点名** ⇒ `../TODO.md` §七「交付-1」C 项（阻塞在 adb + 设备） |
 | 诊断 `diagnose` | py `core.diagnostics` | TS 探针 | ~~就绪七项同判~~ **T4 起：门只问两件真事**（`adb` / 有设备），其余由诊断自己探（连接 / 锁态 / 帧 / helper 版本 / crash 日志 / OCR 就绪 / 可选提供方是否应答） | **已本地化（T2-f + T5 + T4）**：`src/device/diagnose.ts` 拼装，提供方与 OCR 两条**只报不门** |
-| 轨迹 / 步骤持久化 | py `data_engine`（SQLite） | DSH session log（首选）或 better-sqlite3 | 回放同一步集 | 部分（已选 session log 一侧：步迹由 `tool/result` 折叠进投影，SQLite 路线未采用；「回放同一步集」**待 live 🔶 ⇒ G94**） |
+| 轨迹 / 步骤持久化 | py `data_engine`（SQLite） | DSH session log（首选）或 better-sqlite3 | 回放同一步集 | 部分（已选 session log 一侧：步迹由 `tool/result` 折叠进投影，SQLite 路线未采用；宿主会话里「读日志→折叠→读模型」这一侧已实测（CHANGELOGS **#97**），但「回放同一步集」要经三任务工具点名，**仍 🔶** ⇒ `../TODO.md` §七「交付-1」C 项） |
 | rules 注入 | ~~`<repo>/mcp_server/rules.md`~~ **链已拆除** | **不迁移**：由 `persona` 行（常驻、agent 作用域）+ skill（按需）承载 | 组合内 persona 行与 skill 在位的 R3/R6 面；模型面交付须新会话（R7）核 | 已砍（rules-1 · CHANGELOGS #84） |
 | 录屏 / 视频分析 | py ffmpeg 系 | 不迁移（D12：一期无录像） | 放弃记录进本分支 CHANGELOGS | 已砍（放弃记录：CHANGELOGS #85） |
 | notes / plan 语法 | py `utils`（checker / explorer 用） | **不迁移**：那两个消费者按 **D8** 就不迁，插件树实测**零消费者**（`src/` 内 `notes` / `plan` 只出现在一句给模型的提示文案里） | 放弃记录进本分支 CHANGELOGS | 已砍（放弃记录：**CHANGELOGS #94**；将来若真出现计划状态机需求，另立编号按 R12/R13 设计） |
@@ -81,11 +83,10 @@ D19/D20 的终态是**五条同时成立**，缺一条不算收敛：
 
 按守则 **R25**（先读机制文档、一次只测一个变量）逐项取证，任一项未测不许开工对应期：
 
-1. **uiautomator dump 的真 wire 形态**：`adb shell uiautomator dump` 输出到设备的 XML 是什么形状，与 py 解析后的扁平列表如何对应（py 侧已知为扁平、无 `children`）。
+1. **uiautomator dump 的真 wire 形态**：`adb shell uiautomator dump` 输出到设备的 XML 是什么形状，与 py 解析后的扁平列表如何对应。**实测结论（2026-10-15）**：设备侧是**嵌套树**、**没有 `children` 属性**（嵌套靠元素表达，实测最大深度 12）；「扁平」是旧实现**解析之后**的产物，不是 wire 形状——本行原先那句「py 侧已知为扁平」据此更正，逐项读数见 `../TODO.md` §七「前置-1 实测结论」。
 2. **helper（accessibility APK）服务协议**：端口、握手、请求/响应格式、`adb forward` 生命周期（与 **G78** 的残留问题同源）。
 3. **`compare_ui_frames` 的算法与阈值**：py 委托的 `check_ui_change` 判据是什么，阈值取多少。
-4. **外部提供方接入的边界**：`artemisMcpCommand` / `artemisRepoPath` 在 T1–T3 期间仍可用，T4 后它的语义只剩「可选外部 ARTEMIS」。
-   **已完成的部分**：`artemisRepoPath` 的 rules 文本消费者已随 **rules-1** 拆除（CHANGELOGS #84），余下三种 py 语义（cwd / pyproject 探测 / uv project）待 T4。
+4. **外部提供方接入的边界**：`artemisMcpCommand` / `artemisRepoPath` 在 T1–T3 期间仍可用，T4 后它的语义只剩「可选外部 ARTEMIS」。**已全部完成**：rules 文本消费者随 **rules-1** 拆除（CHANGELOGS #84），余下三种 py 语义（cwd / pyproject 探测 / uv project）与 `uvPath` 在 T4 一并删除 ⇒ 配置面只剩 `artemisMcpCommand`，唯一消费者是 `autogamer_diagnose`。
 
 ## 五、风险与不做项
 

@@ -7,10 +7,18 @@
 
 ## 现状
 
-**从零重建中**。终态是 **TS 全栈、py 归零**（D19）：
+功能面已落地：插件工程在 [`plugins/dsh-autogamer/`](plugins/dsh-autogamer/)，
+设备动作、层级、截图、效果判定、诊断、任务三件套与**随包离线 OCR** 全部在 TS 侧（D19：仓内无 py）。
+宿主内 live 证明（执行路由 + 预设 + 工具可见性 + 会话日志）与 packed bundle 交付验证都已完成
+（记录见 [`docs/CHANGELOGS.md`](docs/CHANGELOGS.md)）；三任务工具的宿主内点名仍待设备。
 
-- 计划与终态规格：[`docs/migration/ts-fullstack-spec.md`](docs/migration/ts-fullstack-spec.md)
-- 执行流程与开放项：[`docs/TODO.md`](docs/TODO.md)
+仍开着的事只有一条真待办：**G92** —— 内置 OCR 在真机小字浅色 CJK 上的**召回**不足，解法形态是
+「按区域识别」，离线管线已落地、**尚未接进产品阶梯**，常量与接线要等真机探针（需 adb + 设备）。
+**G88 / G78** 是清点后判为无消费者的**待需求**，不是没做完。开放差距表与进度只认下面这一份台账。
+
+- 执行流程、开放差距与实测读数：[`docs/TODO.md`](docs/TODO.md)（本分支编号权威）
+- 终态规格与能力矩阵：[`docs/migration/ts-fullstack-spec.md`](docs/migration/ts-fullstack-spec.md)
+- 已结案变更：[`docs/CHANGELOGS.md`](docs/CHANGELOGS.md)
 - 宿主契约守则：[`docs/migration/plugin-contract-rules.md`](docs/migration/plugin-contract-rules.md)
 
 旧 fork 的两版尝试在归档分支：**`legacy-fork-v2-dsh-plugin`**（DSH 插件形态，含完整实现与调研台账，不再演进）

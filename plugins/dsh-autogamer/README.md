@@ -17,7 +17,7 @@ AutoGamer 的设备执行插件（DSH 内容插件）。**只提供内容**：`r
 src/index.ts                      插件入口：Config（原生 Schemastery）+ apply() 注册工具
 src/tools/runDeviceAction.ts      执行工具：闸门 → 动作执行 → 错误分类 → 路由日志
 src/tools/reportTaskStatus.ts     终态汇报（completed / blocked + tests_failed 双轴）
-src/tools/getDeviceState.ts       只读设备状态（预检门禁 + 可选外部 ARTEMIS 透传）
+src/tools/getDeviceState.ts       只读设备状态（预检门禁 + 本机 adb 探针；不经外部提供方）
 src/tools/runTask.ts              启动任务（500ms 内返回 task_id）
 src/tools/manageTask.ts           任务状态/停止/注入
 src/tools/inspectTrace.ts         轨迹查看（summary 取边加失败步）
@@ -28,7 +28,7 @@ src/artemis/mcpBackend.ts         外部提供方的 MCP stdio 后端（懒连�
 src/artemis/types.ts              外部提供方后端接口
 src/effect/png.ts                 最小 PNG 解码（depth 8 / colorType 2·6 / 非隔行）
 src/effect/diff.ts                效果差分：遮罩 / 双管线 / ROI 回落（T3/G84）
-src/env/preflight.ts              环境预检（7 项，60 秒缓存，可按 provider / device 范围取）
+src/env/preflight.ts              环境预检：只问两件真事（adb 在 PATH + 有设备），60 秒缓存
 src/device/adb.ts                 唯一的 adb 出口（自实现超时 + 取消信号 + 二进制安全）
 src/device/roster.ts              设备清单：adb devices 解析 + android_id 去重（G75/G65）
 src/device/state.ts               设备态本地探针（连接 / 前台 / 屏幕 / 帧 / helper）
@@ -53,9 +53,13 @@ src/observations.ts               活观察快照：每 (agent, device) 只存�
 src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
 ```
 
-- 测试在 `tests/`（vitest，含 30+ 语义锁 spec；conformance 下为生成式契约与真实 runtime 挂载）
-- 脚本在 `scripts/`（conformance-live，读宿主会话日志的取证工具；`.mjs`）
+- 测试在 `tests/`（vitest，数十个语义锁 spec；条数是派生事实，权威在 [`../../docs/TODO.md`](../../docs/TODO.md) §零；
+  conformance 下为生成式契约与真实 runtime 挂载）
+- 脚本在 `scripts/`（`.mjs`）：`clean-dist.mjs`（`build` 前清空 `dist`）与 `conformance-live.mjs`（读宿主会话日志的取证工具）
 - 执行策略 skill：`skills/autogamer-flash/SKILL.md`
+
+> `src/ocr/image.ts` 与 `src/ocr/regions.ts` 目前**没有生产消费者**（只有探针与锁）：区域识别是 G92 的第二级阶梯，
+> 接线与常量定值要等真机探针 B/C。别按「没人调用」删掉，也别当成已经在跑的 OCR 路径。
 
 ## 命令
 
@@ -66,7 +70,7 @@ pnpm --config.verify-deps-before-run=false run test
 
 # 类型门禁：tests/ 也纳入 tsc（tsconfig.spec.json，G81）
 pnpm --config.verify-deps-before-run=false run typecheck
-pnpm --config.verify-deps-before-run=false run verify   # build + typecheck + test
+pnpm --config.verify-deps-before-run=false run verify   # src tsc → spec tsc → vitest
 
 # 每次改 patch 后强制自检（R6）：exit 0 且 grep 不到 unmatched
 dsh --profile web --patch <abs>/cordis.patch.yml --dump-config
@@ -74,6 +78,9 @@ dsh --profile web --patch <abs>/cordis.patch.yml --dump-config
 
 > 本机跑 pnpm 必须带 `--config.verify-deps-before-run=false`，否则会隐式 install 并改写
 > `pnpm-lock.yaml`（环境产物，不提交）。dsh 取 PATH，不写死安装盘符。
+>
+> `verify` **不含** `clean-dist`（那一步只在 `build` 里，CHANGELOGS #101）⇒ **`pnpm pack` / 交付前必须先跑 `build`**；
+> 只改测试或只做回归时 `verify` 一条就够。
 
 ## 引入与验证
 
@@ -83,6 +90,16 @@ dsh --profile web --patch <abs>/cordis.patch.yml --dump-config
   `cordis_inspect_query`（`Tool` / `Config.listConfigs`）、`inspectCompositions()`；
   `dsh plugin` 只是包管理垫片，只证明装了、不证明生效。
 - 声明只影响之后创建的 Agent（R7）：复验一律开新会话。
+
+**交付形态（实测结论，写给下一次安装的人）**
+
+1. 对外交付 = 发布 `pnpm pack` 出的 `.tgz`，在面板「添加插件」里**直接输入 tarball 路径**。
+   解压成目录再输入是 `link` 安装、**不装依赖**，精简目录必然 `failed to import`（已实测失败）。
+2. 每个新 profile 首次安装**必遇** `tesseract.js` 构建脚本授权弹窗（**R19：由用户点**）。
+   该 `postinstall` 只打印一条赞助横幅、无产物（CHANGELOGS #98），而语言数据随包 vendored。
+   bundle 无法自带跳过：`files` 带不了 `pnpm-workspace.yaml`，而 R2 禁止手写 profile 配置。
+3. **替换安装后必须重启宿主**（含从开发期 `link:` 换过来），否则启用记录仍指向旧 target。
+   重启后在面板核验组件运行中与双语 locale 标题/描述/icon —— 判「生效」只认官方检查器（R9）。
 
 ## 契约要点（踩过坑的）
 
