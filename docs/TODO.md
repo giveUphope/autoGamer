@@ -1358,6 +1358,62 @@ pad\scale |  1.0  1.5  2.0  3.0
 
 **非目标**：不改 `recognize.ts` 的封装（setParameters 的取舍留到真机探针 B 有需要时再定）；不做 P2/P3；不因 PSM 结论动任何默认值。
 
+### 能力重审-1 · 三个零授权的确定性修正（OCR 契约收窄 / 区域 OCR 标注未接线 / 超时三处缺陷）（方案，2026-10-15 立项，R22）
+
+> 来源：六面能力重审（子代理只读调研，2026-10-15，见 §七「重审综合」）。本条只取**零授权、离线可判、且改完不引入新退化**的三项。
+
+**R20 第 1 步「查」：本轮实际读到的代码事实**
+
+| 面 | 事实（出处） |
+|---|---|
+| OCR 契约 | schema 里 `text: "Substring to locate the element."`（`runDeviceAction.ts` target 块）；`SKILL.md:15-16` **主动不推荐** `{text}`（「优先 `#N`；坐标仅在无匹配时用」） |
+| 区域 OCR | `regions.ts` / `image.ts` **无生产消费者**（`git grep recognizeRegions -- src` 只命中自身；`README.md:62-63` 自陈） |
+| P1 的结构性边界 | P1 候选源是**层级 bounds** ⇒ 层级无框时「P1 cannot add anything」（`regions.ts:78-111,192-196`） |
+| 超时 · 声明值 | `runDeviceAction.ts:582` `timeoutMs: 45_000`；`reportTaskStatus.ts:25` `timeoutMs: 5_000`；宿主对**未声明者** `return next()` ⇒ **7 个工具里只有 2 个有宿主 deadline** |
+| 超时 · 内层最坏 | `RESOLVE_ATTEMPTS=3`（`:194`）× (dump 30s + cat 10s) + capture 20s + OCR 8s ≈ **204s** |
+| 超时 · 同一事件三种分类 | abort 时：hierarchy 读 ⇒ `task: hierarchy unreadable`（`:420`）｜动作 ⇒ `task: action cancelled by the user`（`:691,:800`）｜截图 ⇒ `environment: screencap returned no frame`（`:1064`）⇒ **environment 那条会开 breaker** |
+| 超时 · 两缝丢 signal | `resolveScreenSize(key)`（`:342`）与 `captureFrame?(key)`（`:360`）的签名里**没有 signal** ⇒ 效果帧与屏幕尺寸探测**不可取消** |
+| 超时 · `wait` | 本地处理，**无 abort 监听**；`duration_ms` 无上限校验（`:575` schema 未写 max）⇒ 可超过 45s 声明值 |
+
+**⚠️ 我修正了重审的一条建议（先记，因为它改变了做法）**
+
+重审建议「方案 C：删掉两处 `timeoutMs` 声明」。**该建议漏算一个数字**：删掉后模型的最坏等待从 **45s 变成 204s**（内层最坏路径），对慢设备是**实质退化**。
+⇒ 本条**不删声明**，改为「**保留兜底 + 让内层真正响应 signal + 统一 abort 的分类**」：45s 到点 abort 后模型拿到的必须是 `environment`（不是 `task`），且插件内部必须**真的停下**（今天它还在跑 ladder、可能已经点了屏幕多次）。
+
+**What（范围）**
+
+1. **OCR 契约收窄**（零代码路径）：`target.text` 的 schema 描述与 `SKILL.md` 写明分工 —— `{text}` 的语义是「**不看图也能算出的确定性落点**」；看不清就用 `{coordinate}`（模型自己看帧）。理由：OCR 与 VLM 的**互补区只剩「定位」**（可复算、可在 `target_source` 追责），**验证**已由像素差分承担（`effect/diff.ts:195`）。
+2. **区域 OCR 明确标注「未接线 + 到期条件」**：`§四 G92 行` 与插件 `README` 各写一句 —— 当前不接线；**到期条件 = 探针 B 的真机数字 ≥ 整帧基线**。理由：P1 候选源与触发条件互斥（层级无框 ⇒ P1 结构性地帮不上），而那正是 OCR 存在的理由 ⇒ 不接线的依据是**逻辑**，不是「还没来得及」。
+3. **超时三处确定性缺陷**：
+   - a. **abort 的分类统一为 `environment`**（`:420` / `:691` / `:800` 三处）⇒ 宿主超时不再污染 incident、不再让模型收到「任务失败」；
+   - b. **`wait` 上限 ≤ `timeoutMs`**：给 `duration_ms` 加 `maximum`（或执行前钳制），使声明值变诚实；
+   - c. **补两处 signal 缝**：`resolveScreenSize` / `captureFrame` 的签名加 `signal`，`index.ts` 侧透传 ⇒ 45s abort 能真正停住整条链路。
+
+**非目标**：不删 `timeoutMs`（理由见上）；不做统一 `Deadline` 值对象（那是重审的方案 B，改动 11 个文件，**另立**）；不改 adb / OCR / provider 三处内层超时本身；不接线区域 OCR；不改 P1/P2/P3 任何逻辑。
+
+**How（关键决策）**
+
+- **先改分类、再补 signal**：顺序不能反。若只补 signal 不改分类，abort 仍会被记成 `task`（`tests/router-errors.spec.ts:156-181` **正锁着**这个行为）⇒ 模型仍收到「任务失败」且 incident 照计。
+- **`{text}` 的描述要给出「为什么用我」，不是「不要用我」**：模型看不到 `{coordinate}` 之外的理由，就会在无框画面上反复试 `{text}`。描述里必须点明它是**确定性**通道。
+- **区域 OCR 只写「未接线 + 到期条件」，不加阻止接线的锁**：接不接它由探针 B 的数字决定，加锁等于把结论钉死成「永不接线」。
+
+**Verify（验收命令）**
+
+- 三条变异各红一次（R27）：
+  ① 把 `:420`/`:691`/`:800` 任意一处的 `environment` 改回 `task` ⇒ 新锁「宿主 abort 记 environment、不计 incident」红；
+  ② 把 `duration_ms` 的上限改大到 > `timeoutMs` ⇒ 「`wait` ≤ 声明值」那条红；
+  ③ 从 `index.ts` 侧删掉任一 signal 透传 ⇒ 「两处 probe 缝都接了 signal」那条红。
+- 回归：`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（`router-errors.spec.ts` 需按新语义改，**改判据的理由写进该 spec 注释**）。
+- `node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` ⇒ exit 0。
+- 边界自查：`git grep -n "timeoutMs:" -- src` 仍为 2 处（**没删**，与本条决策一致）。
+
+**Done means**
+
+- [ ] `{text}` 的 schema 描述与 `SKILL.md` 写明「确定性通道」分工
+- [ ] 区域 OCR 在 `§四 G92 行` 与插件 `README` 标注「未接线 + 到期条件」，且**未加阻止接线的锁**
+- [ ] abort 三处统一为 `environment`；`duration_ms` 有上限；两处 probe 缝接上 signal；三条变异各红一次
+- [ ] `verify` 三段全绿、`check-docs` / `check-env` exit 0；R15 的现状描述按本条实测同步（**它现在写的那句「内层通常先返回、包装层是兜底」方向是错的**）
+
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
 **背景**：前置-4 判定 `rulesInjector` 的 `artemisRepoPath → <repo>/mcp_server/rules.md` 这条供应链是 **D20 红线**（上游目录约定 + 上游 prompt 正文进模型面），归属 G85+G86，要求 T4 二选一定案。本轮先按用户要求做**形式调研**（「先调研这个适合在 DSH 中以何种形式使用」），结论把二选一改成了第三条路：**拆除**。
