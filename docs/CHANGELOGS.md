@@ -11,7 +11,7 @@
 | 分类 | 条目 | 范围 |
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
-| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 |
+| 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
 | 三 · 门禁与基建 | #95, #98, #99, #100, #101 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）。 |
 
 
@@ -480,3 +480,24 @@
 - **变异（R27，两条都证明会红/会清）**：① 手工放 `dist/__stale__.js` 与 `dist/prompt/rulesInjector.js` 后跑守卫 ⇒ 测试**红**，且精确报出这两个文件名；② 放假产物后跑 `pnpm build` ⇒ clean 步骤把它们删掉，守卫复绿。
 - 回归：`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（**39 文件 / 440 通过**，上一绿态 38/439，新增守卫 1 条）。
 - 注：`scripts/clean-dist.mjs` 是开发期工具、不进交付 tarball（`files` 白名单未列 `scripts/`，符合预期）。
+
+### #102 G92 探针 A：区域 OCR 管线落地（P1 候选裁剪/放大/逐块识别/坐标映射）
+
+#### 问题描述
+
+- T5 已实测（数字见 `TODO.md` G92）：整帧 OCR 的瓶颈是 tesseract 的**整页版面分析**而非像素——真机桌面 24 个文字节点整帧只认出 0–3 个，而把「游戏中心」所在 140×70 块裁出 @2× 即正确读出。G92 立项的「按区域识别」需要先有一条**可验证的区域管线**：裁剪候选框、放大、逐块喂给现有单例 worker、把块内 bbox 映射回全屏。仓内此前只有 PNG 解码，无裁剪/放大/编码。
+- 探针 A 的目标是离线证明**机制正确**（坐标不漂、候选过滤对、失败 fail-open），不证明召回增益（增益要真机难帧，探针 B/C）。
+
+#### 整改方案与实施
+
+- 新增 `src/ocr/image.ts`（零依赖）：`cropImage`（行拷贝裁剪 + 越界 clip）、`upscaleNearest`（最近邻，支持分数倍、rounded reverse mapping 不丢源像素）、`encodePng`（depth-8 / color-type-2 RGB / filter None / `deflateSync` / 手写 CRC32 表）、`clipBox`/`paddedBox`；解码复用 `src/effect/png.ts`，延续 T5 否掉 `sharp`/`pngjs` 的口径。
+- 新增 `src/ocr/regions.ts`：`selectRegionCandidates`（有效 bounds、非零、不越界、面积比 ≤0.25、同 bounds 去重、丢弃完全包含其他候选的容器、面积升序、cap 40）、`mapHitToFrame`（块内 bbox 经 scale 与裁剪 origin 映射回全屏，含嵌套 words）、`recognizeRegions`（逐块裁剪→padding 8→@2×→编码→`recognize`，合并进 `OcrPage`；墙钟预算 30s + `AbortSignal`，单块返回 undefined 或抛错都跳过 = fail-open）。导出 `DEFAULT_REGION_OPTIONS`，常量留待探针 B 真机重定。
+- **探针 A 不改产品阶梯**（`runDeviceAction.ts` 的 hierarchy→整帧 OCR 阶梯未动）；区域识别是未来的第二级，接线属探针 B/C 后。
+- **真模型实测修正了原方案预期（R28）**：夹具帧（Chrome tab overview）候选过滤后 16 个叶级框**全部落在 y≤204**（标签栏/工具栏/omnibox/状态栏），而整帧能读的 `TapTap`→(1206,241)、`游戏中心`→(1003,240) 在 y≈240 的缩略图渲染区，层级里只有全屏容器 ⇒ **P1 对二者 undefined**。这不是管线缺陷，而是 G92「核心设计矛盾」的离线实证：P1 只覆盖「层级有结构无文本」，纯渲染区要靠 P2/P3。16 块全扫 ≈1457ms（整帧 1666ms），且每个区域命中都落回其候选框内（坐标映射端到端证据）。
+
+#### 验收标准
+
+- 新增测试 3 文件 26 条：`tests/ocrImage.spec.ts`（10，像素级裁剪/放大/编码 + 编码往返 `decodePng` 像素一致）、`tests/ocrRegions.spec.ts`（14，候选过滤/容器去重/坐标映射/预算/signal/fail-open）、`tests/ocrRegionProbe.spec.ts`（2，真模型：命中落回候选框、P1 边界 + 整帧对照）。
+- **变异（R27，三处植入均精确锁红后还原）**：① `mapHitToFrame` 丢 origin ⇒ 3 条坐标映射锁红；③ 单块 catch 由 `continue` 改抛错 ⇒ fail-open 锁红；④ 容器过滤放行全部 ⇒ 「丢弃容器」红（容器框漏入）。变异②（阶梯锁）因本轮不接阶梯而不适用，留待接线。
+- `pnpm --config.verify-deps-before-run=false run verify` ⇒ **42 文件 / 466 全过**（基线 39/440，新增 3 文件 26 条）；`node scripts/check-docs.mjs --selftest` 7 变异无假绿；`node scripts/check-env.mjs` 干净；README Layout 已同步 `image.ts`/`regions.ts`。
+- 未闭环（不静默）：探针 B（真机难帧召回、定 padding/scale/过滤常量）与探针 C（纯 webview 帧判 P2 去留）均阻塞在 adb + 设备，与「交付-1」C 项同一前置；G92 不结案。

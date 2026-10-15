@@ -27,7 +27,7 @@
 - **许可与 git 历史裁定（2026-10-14，用户裁定）**：① `LICENSE` **重写为本项目自撰 MIT 全文**（版权人 giveUphope，2026），保持开源、不再随迁上游 Apache-2.0 文本（含原 `Copyright 2026 Google LLC` 附录行）；② **git 历史保留**——历史中的上游内容仅作记录存在，不影响当前新方案设计与实现，D20 判据只覆盖工作树层。裁定展开见规格 §八。
 - **阶段：T1–T5 全部落地，宿主内 live 证明已完成（2026-10-15）**。插件工程已搬入（搬迁-1）；T1 的三条任务工具、T2 的十五工具面、T3 的效果判定、T4 的收尾与溯源清理、T5 的内置 OCR 均在 TS 侧，`verify` 全绿；
   **宿主内真会话已跑通**（R6/R7/R9/R24 四条读数：面板 2/2 运行中、`Config` 返回 `status:"schema"`、七个工具对模型可见、会话日志 7 次工具调用与 7 次结果），权威记录在 CHANGELOGS **#97**。
-  本文件 §四 只剩三条**非待办**行：**G92**（OCR 整页召回——已量过并否证简单方案，解法是「按区域识别」这项**新设计**，需要时另立条目）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）。
+  本文件 §四 只剩三条**非待办**行：**G92**（OCR 整页召回——已量过并否证简单方案，解法「按区域识别」已**立项于 §七，探针 A 离线管线已落地、探针 B/C 待设备**）、**G88 / G78**（清点后判为无消费者的**待需求**，不是没做完）。
   **读数不写死**（R28 判据 4）：复测 = 在 `plugins/dsh-autogamer/` 跑 `pnpm --config.verify-deps-before-run=false run verify`（build + typecheck + vitest 三段）。
   全部 py 实现均不在本分支（按 D19 归零）。
 - **环境残留护栏（2026-10-14 落地，基建-1）**：本机从旧 fork 切到 orphan main 后曾残留约 1 GB 旧栈（`.venv` / `__pycache__` / 旧 `apps/node_modules` / `traces` 等，均被 `.gitignore` 忽略、`git status` 干净），已清理。检测固化为仓库规则：`scripts/check-env.mjs`（H1 被跟踪 py 硬失败 / H2 工作树 py 栈残留失败 / NOTE 仅列运行数据，白名单 `node_modules`/`dist`/`.git`）；`.githooks/post-checkout` 与 `post-merge` 切分支/拉取后跑检测、**只警告不阻断**；`pre-push` 追加 H1 硬拦（拒绝推送被跟踪 py）。A/B 已实测，新环境拉取流程见 `AGENTS.md`「新环境拉取」。
@@ -44,6 +44,7 @@
 - **基建-5 已落地（2026-10-15，提交 `d524739`）**：把上一条那条「`.npmrc` 死配置无害」的判断**推翻并修好** —— 实测有效默认是 `true`、lockfile 记的是 `false`，于是**裸 `pnpm install --frozen-lockfile` 一直 exit 1**（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。修法：设置搬进 `pnpm-workspace.yaml`（`autoInstallPeers: false`，设置真正被读的那份文件），`.npmrc` 整份删除（全文只有那一行、25 字节、不在 `files` 里）。读数：`pnpm config get autoInstallPeers` → `false`（改前 `undefined`）；裸安装 **exit 0**；文档命令 exit 0；`verify` **38 文件 / 439 通过**；lockfile 全程零变化。**单变量隔离**：把 `.npmrc` 那行临时写回，裸安装仍 exit 0 ⇒ 生效的是文件里的设置，删它去的是重复声明。探针两向证明该设置有牙（自动装入的 peer 只进虚拟 store、不做顶层链接 —— 第一版判据看 `node_modules/react` 是**假绿**，已改读 lockfile）。设置的家写进 `AGENTS.md`。范围与取证见 §七「基建-5」与 CHANGELOGS **#100**。
 - **packed bundle 交付验证已落地（2026-10-15，交付-1）**：`pnpm pack` 出 tarball 后经 web profile 面板完成真实安装（非 link）——**唯一成立的交付形态是面板直接输入 `.tgz` 路径**（`file:` 复制安装，30 依赖落位）；解压目录安装是 `link` 且不装依赖，精简目录必然 `failed to import`（已实测失败）；每个新 profile 首次安装必遇 `tesseract.js` build script 授权（R19 用户点，postinstall 仅赞助横幅，G97 第三源实锤）；替换安装后**必须重启宿主**。重启后 **2/2 组件运行中**，双语 locale 标题/描述与 icon 浏览器实测正确，R6 `--dump-config` exit 0 / unmatched 0 / autogamer 行 10。验证中抓出构建缺陷——**tsc 增量输出不清理，5 个已裁决删除模块（actionClient/mcpText/rulesInjector/scrcpy×2）随 tarball 分发**，已修（构建前 `clean-dist` + 陈旧产物守卫），见 CHANGELOGS **#101**；`verify` 新读数 **39 文件 / 440 通过**。
   ⚠️ **C 项（三任务工具宿主内点名）阻塞**：本机当前无 `adb`、无设备（D 盘已不在、无模拟器、无监听端口），preflight 闸门要求 adb + 一台 `device` 状态设备，需用户提供真机或模拟器；完整记录见 §七「交付-1」。
+- **G92 探针 A 已落地（2026-10-15，离线，CHANGELOGS #102）**：区域 OCR 管线 `src/ocr/image.ts`（裁剪/最近邻放大/PNG 编码，零依赖）+ `src/ocr/regions.ts`（层级叶级候选→裁剪 padding 8→@2×→逐块 recognize→坐标映射回全屏，预算/signal/fail-open）。新增 3 测试文件 26 条；真模型夹具实测 16 候选全在 y≤204、16 块 ≈1457ms、命中均落回候选框（映射不漂），并**实证 P1 对层级缺席的渲染区（y≈240 缩略图）无效**（P1 对 TapTap/游戏中心 undefined，整帧命中），强化 P2/P3 必要性。三处变异（坐标映射/容器过滤/fail-open）各红一次；本轮**未接产品阶梯**。`verify` 新读数 **42 文件 / 466 通过**。探针 B/C 与 C 项共用同一设备前置（adb + 设备），G92 不结案。
 - **rules-1 已落地（2026-10-14，提交 `01de3b2`）**：`rulesInjector` 整链拆除（模块 / `injectRules` 配置 / 诊断项 / 5+2+2+1 条相关锁 / 夹具 / README Layout），
   `systemPrompt` 缝（手镜像 + `inject` 条目 + Tier-1 断言）随链消失；**引导图保留 `dsh-system-prompt`**（agent loop 经它解析，删了会挂载失败——五条 mount 测试变红即证）。
   插件树内 `rulesInjector|injectRules|rulesFilePath|mcp_server/rules` **零命中**；R27 变异（`injectRules` 塞回 schema ⇒ contracts 字段锁红）已闭环。
@@ -1432,9 +1433,9 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **阻塞（C 项，2026-10-15 实测）**：本机当前**无 `adb` 且无设备**——PATH 无 `adb`、`winget` 无 `Google.PlatformTools` 记录、无 Android SDK；无模拟器（`C:\Program Files\NetEase` 只有云音乐；D 盘已不在，当前仅 C 盘；5554/5555/16384 等模拟器端口无监听）。`preflight` 闸门要求 `adb` + `adb-devices` 两项（`src/env/preflight.ts`，所有 autogamer_* 工具含 `run_task` 都过 `requireEnv`），故三任务工具 live 点名在设备到位前无法进行。需要用户提供其一：① 安装 Platform Tools 并开启安卓真机无线调试 / USB 连接；② 安装并启动模拟器。离线锁（`runTask` 7 条、`manageTask` 10 条、`inspectTrace` 9 条 + `taskProjection` 9 条）与 #97 的 5 条宿主实跑证据不受影响。
 
-### G92 · OCR 按区域识别（方案，2026-10-15 立项，R22，未开工）
+### G92 · OCR 按区域识别（方案 2026-10-15 立项；探针 A 已完成，B/C 待设备）
 
-> 本条只立方案，不写实现（R22：方案提交早于实现提交）。真机数据全部来自 T5 收口记录，这里只引用不复测。
+> 2026-10-15 立项只立方案（R22）。探针 A（离线机制）于 2026-10-15 完成并跑通真模型，收口记录见条末；真机数据仍引自 T5，不复测。
 
 **背景（T5 已实测，数字不再重跑）**
 - 真机桌面帧（1600×900，`emulator-5554`）24 个带文字节点，整帧 OCR 与层级同时认出的只有 **0–3/24**；整帧最近邻放大 1×/1.5×/2×/3× ⇒ **0/1/3/0** 命中（3× 还贵 70%）；同一屏把「游戏中心」所在 **140×70 块裁出 @2×** ⇒ 正确读出「游戏 中 心」。结论：瓶颈是 **tesseract 的整页版面分析**（像素够，混排下小块不被当文字行），不是放大常量。
@@ -1460,23 +1461,36 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - P2 不硬推：探针 B/C 若证明它在真机上切不出行，本条降级为 P1+P3 并重写范围，不允许带失败算法落地。
 
 **Verify（探针，一次一个变量，R25）**
-- **探针 A（离线，现有夹具，机制正确性）**：`screen-chrome-tab-overview.png` + `hierarchy-chrome.xml`（45 节点，bounds 为帧空间）跑 P1：① 裁剪/放大/重编码用合成图做像素级断言；② 逐块结果经坐标映射回全屏后，整帧已读出的 `TapTap`→(1206,241)、`游戏中心`→(1003,240) 仍命中且落点不漂；③ 全屏根节点等候选被过滤。**该帧整帧本就能读，不证召回增益，只证管线**。
+- **探针 A（离线，现有夹具，机制正确性）**：`screen-chrome-tab-overview.png` + `hierarchy-chrome.xml`（45 节点，bounds 为帧空间）跑 P1：① 裁剪/放大/重编码用合成图做像素级断言；② 逐块结果经坐标映射回全屏后落点不漂（**实测口径见条末收口：P1 候选不覆盖 y≈240 渲染区，故该帧 `TapTap`/`游戏中心` 经 P1 为 undefined——这不是管线缺陷，而是「核心设计矛盾」的离线实证；映射正确性改由「每个命中都落回其候选框内」锁死**）；③ 全屏根节点等候选被过滤。**该帧整帧本就能读，不证召回增益，只证管线**。
 - **探针 B（真机，召回增益，需设备）**：重采 T5 桌面难帧 + 同屏 `uiautomator dump`，对 整帧 / P1 / P3 报 24 个文字节点的命中数与总耗时；扫描 padding {0,8,16,24}、scale {1.5,2,3} 与候选过滤规则，定常量。
 - **探针 C（真机，无层级场景，需设备）**：采一帧 webview 网页或游戏画面（层级仅一个渲染容器、无文本节点），判 P2 能否切出文字行并读出；这是 G92 真正的目标场景，P2 失败即触发降级。
 - （可选）合成难帧：把已知文字缩小/降对比度/贴进混排背景，离线复现「整帧失败、裁剪成功」，只作机制回归，**不替代真机召回数字**。
 - 单测锁与变异（R27）：裁剪/放大/编码像素级锁、坐标映射锁、候选过滤锁、阶梯锁（整帧命中不调区域 / 区域命中不回落模型 / 区域失败不阻断动作）；变异：① 映射丢偏移 ⇒ 落点锁红；② 区域永远跑 ⇒ 阶梯锁红；③ 区域失败改抛错 ⇒ fail-open 锁红；④ 候选过滤放行根节点 ⇒ 去重锁红。
 - `verify` 全绿、`check-docs`（含 `--selftest`）与 `check-env` exit 0。
 
-**Done means（立项，未勾不代表完成）**
-- [ ] PNG 裁剪/最近邻放大/编码零依赖落地，像素级锁
-- [ ] `regions.ts` 管线 + 坐标映射 + 候选过滤落地
-- [ ] 探针 A 离线绿（坐标映射不漂、管线通）
+**Done means（探针 A 已勾，B/C 与接线待设备/待真机）**
+- [x] PNG 裁剪/最近邻放大/编码零依赖落地，像素级锁（`src/ocr/image.ts`，`tests/ocrImage.spec.ts` 10 条）
+- [x] `regions.ts` 管线 + 坐标映射 + 候选过滤落地（`src/ocr/regions.ts`，`tests/ocrRegions.spec.ts` 14 条）
+- [x] 探针 A 离线绿（真模型夹具 2 条：映射不漂、P1 边界固化，见收口记录）
 - [ ] 探针 B 真机召回数字入账（P1/P3 vs 整帧），padding/scale/候选常量定
 - [ ] 探针 C 判定 P2 去留：落地或明确降级为 P1+P3
-- [ ] 阶梯接线 + 消费路径锁 + 四条变异各红一次
+- [ ] 阶梯接线 + 消费路径锁 + 四条变异各红一次（① 映射丢偏移、③ 区域失败改抛错、④ 容器过滤放行根节点 已各红一次；**② 阶梯锁本轮不适用**——探针 A 不接产品阶梯，留待接线）
 - [ ] 真机端到端：层级未命中的标签经区域 OCR 命中并点对
 - [ ] G92 结案（或按探针结论重写范围，R28）
 
 **非目标**：不引入 `sharp`/`pngjs`/OpenCV 类图像依赖；不做整页排版还原/阅读顺序；不改整帧 OCR 的安全语义；不动 G88（overlay 仍待需求）；不承诺纯画布艺术字场景。
 
 **阻塞**：探针 B/C 与「交付-1」C 项共用同一设备前置（adb + 一台 `device` 状态设备）；探针 A 可离线先行，不等设备。
+
+**探针 A 收口记录（2026-10-15，离线真模型）**
+
+- **落地**：`src/ocr/image.ts`（`cropImage` 行拷贝裁剪 / `upscaleNearest` 支持分数倍、rounded reverse mapping / `encodePng` depth-8 color-type-2 RGB、filter None、`deflateSync`、手写 CRC32 表；`clipBox`/`paddedBox`；解码复用 `src/effect/png.ts`）与 `src/ocr/regions.ts`（`selectRegionCandidates` / `mapHitToFrame` / `recognizeRegions`，导出 `DEFAULT_REGION_OPTIONS`）。
+- **默认常量（探针 B 待真机重定）**：paddingPx 8、scale 2、maxAreaRatio 0.25（剔除近全屏容器）、maxRegions 40、totalBudgetMs 30000（墙钟预算，R15 自实现 + 观测 `AbortSignal`）；候选按面积升序、小框先扫，去重同 bounds、丢弃完全包含其他候选的容器；单块 `recognize` 返回 undefined **或抛错**都跳过（fail-open）。
+- **夹具真模型实测（`tests/ocrRegionProbe.spec.ts`，2 条真模型锁）**：
+  - 候选过滤后 **16 个叶级框，全部落在 y≤204**（顶部标签栏、工具栏、omnibox、状态栏）；`TapTap`/`游戏中心` 所在 **y≈240 缩略图渲染区在层级里只有全屏容器**（`compositor_view_holder` / 网页视图 / NAF clickable view 均为 `[0,31][1600,900]` 级，被面积比/容器规则剔除）。
+  - **16 块全扫描 ≈1457ms，整帧 1666ms（94 hits）**；区域扫描在这帧不比整帧贵，且成本与候选数线性。
+  - **坐标映射端到端锁**：每个区域命中的全屏坐标都落在产出它的候选框（含 padding）内，无漂移（例：状态栏框 `[0,0][1600,31]` 内读出 `03:27`→[8,9][49,20]；omnibox 框内命中 y∈[145,162]）。
+  - **对预期②的修正（R28，不静默保留）**：原方案设想「逐块映射回全屏后 TapTap/游戏中心仍命中」，**实测 P1 对二者均为 undefined**——不是管线错误，而是该帧能读的目标恰在层级缺席的渲染区。这正是「核心设计矛盾」的离线实证：**P1 只覆盖「层级有结构无文本」，对纯渲染区无能为力**；它强化了 P2/P3（投影分割/网格）的必要性，而不是证明 P1 足够。测试据此固化为「P1 边界 + 整帧对照」双断言（P1 undefined、整帧命中 (1206,241)/(1003,240)），不照搬旧坐标写死成功。
+- **变异（R27，三处植入均精确锁红，已还原）**：① `mapHitToFrame` 去掉 origin 偏移 ⇒ 3 条坐标映射锁红（含嵌套 words、端到端）；③ 单块 catch 内 `continue` 改抛错 ⇒ 「单块抛错仍扫描其余」红；④ 容器过滤改为放行全部 ⇒ 「丢弃包含候选的容器」红（容器框 `[10,10,200,200]` 漏入）。变异②（阶梯锁）本轮不适用，待接线。
+- **门禁**：`verify` **42 文件 / 466 测试全过**（探针 A 新增 3 文件 26 条：image 10 + regions 14 + probe 2；基线 39/440）；`check-docs --selftest` 7 变异无假绿；`check-env` 干净；README Layout 已同步 `image.ts`/`regions.ts`。
+- **对 B/C 的输入**：P1 工程面已就绪，唯一未答的是「层级缺席渲染区」的召回——那是探针 B（真机难帧重采、扫 padding/scale/过滤常量）与探针 C（纯 webview 帧判 P2 去留）的范围，均需 adb + 设备。本轮**未接产品阶梯**（`runDeviceAction.ts` 的 hierarchy→整帧 OCR 阶梯未动），接线属探针 B/C 后的 Done 项。

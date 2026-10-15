@@ -36,6 +36,8 @@ src/device/hierarchy.ts           uiautomator dump 读回 + XML 扁平化（T2-b
 src/device/act.ts                 动作执行：input / am / monkey 的原生路线与字符串契约（T2-c/d/e）
 src/device/diagnose.ts            本机诊断：连接 / 锁态 / helper 版本 / crash 日志（T2-f）
 src/ocr/recognize.ts              内置离线 OCR：随包语言数据、单例 worker、命中框收紧、失败即当作没有（T5）
+src/ocr/image.ts                  区域 OCR 图像工具：RGB 裁剪 / 最近邻放大 / PNG 编码（零依赖，G92）
+src/ocr/regions.ts                区域 OCR 管线：层级叶级候选 → 裁剪放大逐块识别 → 映射回全屏（G92 探针 A）
 src/gate.ts                       per-device FIFO 闸门（弱表 promise 链 + tracked pending）
 src/devicePool.ts                 闸门之上的调度：parking / 全局并发 / roster 与准入
 src/breaker.ts                    设备熔断（closed / open / half-open）
