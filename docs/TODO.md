@@ -861,11 +861,18 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **Done means**
 
-- [ ] `pnpm-workspace.yaml` 含 `autoInstallPeers: false`；`.npmrc` 已删除；全仓零处再以 kebab 形式声明同一设置
-- [ ] `pnpm config get autoInstallPeers` → `false`（改前 `undefined`）
-- [ ] A/B：裸 `pnpm install --frozen-lockfile` 改前 exit 1 + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`、改后 exit 0；两次都不动 lockfile
-- [ ] 文档命令仍 exit 0；`verify` 三段全绿；`check-docs` / `check-env` exit 0
+- [x] `pnpm-workspace.yaml` 含 `autoInstallPeers: false`；`.npmrc` 已删除；全仓零处再以 kebab 形式声明同一设置
+- [x] `pnpm config get autoInstallPeers` → `false`（改前 `undefined`）
+- [x] A/B：裸 `pnpm install --frozen-lockfile` 改前 exit 1 + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`、改后 exit 0；两次都不动 lockfile
+- [x] 文档命令仍 exit 0；`verify` 三段全绿；`check-docs` / `check-env` exit 0
 - [ ] `AGENTS.md` 说明设置的家与 `.npmrc` 的用途边界；基建-4 / CHANGELOGS #99 里那笔发现**就地标注结清**；§零 与「新分支特有」清单同步
+
+**结案记录（2026-10-15）**
+
+- 实施：`pnpm-workspace.yaml` 增 `autoInstallPeers: false`；`git rm plugins/dsh-autogamer/.npmrc`（该文件全文只有那一行、25 字节，且不在 `files` 里，不进交付 tarball）。
+- **单变量隔离（不只证「一起改完是绿的」）**：把 `.npmrc` 那行**临时写回**（未跟踪）⇒ 裸 `pnpm install --frozen-lockfile` 仍 **exit 0** ⇒ 生效的是文件里的设置，那行 `.npmrc` 确实不参与；删掉即删除重复声明，不是「碰巧同时修好」。
+- 读数：`pnpm config get autoInstallPeers` ⇒ **`false`**（改前 `undefined`）；裸安装 **exit 0**（改前 exit 1 + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）；文档那条命令 exit 0；`verify` **38 文件 / 439 通过**；`git grep 'auto-install-peers' -- plugins` **零命中**；两次安装后 `pnpm-lock.yaml` 均未出现在 `git status`。
+- 提交：方案 `9a07618` → 实现（本提交）→ 结案（下一提交）。
 
 **方法上的自纠（R27，同轮记）**
 
