@@ -2504,8 +2504,8 @@ pad\scale |  1.0  1.5  2.0  3.0
   - **实验（新会话，一次只动一个变量）**：只让模型调一次 `run_device_action action=take_screenshot`。读数：**同一轮内先「已调用工具 run_device_action · take_screenshot」，随即「本轮运行失败 400 "'url' field must be a base64 encoded image." / INVALID_REQUEST」**，紧接着的第二回合同一处再失败一次。
   - **旁证（工具确实产出了图）**：`~/.dsh/attachments/v1/objects/8c…` 这一分片目录的 mtime 与那次调用同分钟（01:53）⇒ 附件已持久化、结果里带的就是引用；提供方拿到的仍是同一个非 base64 形体。
   - ⇒ **影响面按实测升级**：`take_screenshot` 与 `autogamer_diagnose{include_screenshot:true}` **两条路径同病**，在本地提供方上「让模型看画面」整体不可用（这不是我方能力退化，是宿主那条编码步缺失）。
-  - ⚠️ **一条关于「只认会话日志」的新读数坑（R24 的连带）**：这个失败会话的 `session.v4.jsonl.zstd` 在事后 **4 分钟与 8 分钟两个检查点都仍是 328 字节 / 4 条记录**（header + 三条策略），回合记录**还没落盘** —— 上一轮那个同样失败的会话（00:56 开）也是到 **01:14** 才出现完整记录。⇒ **日志落盘是滞后的：在窗口内读不到回合记录 ≠ 没发生**，据此判「没发生」会把真实事件判没。本轮因此按「面板渲染 + 附件仓 mtime」记为已测，并把「回合记录落盘后复核」留在下面这条待办里。
-  - 🔶 **仍欠**：等 38a6e038 的回合记录落盘后用 `node plugins/dsh-autogamer/scripts/conformance-live.mjs`（或直接解 zstd 帧）复跑一次，把这条从「面板读数」升成「日志读数」。
+  - ⚠️ **一条关于「只认会话日志」的新读数坑（R24 的连带）**：这个失败会话的 `session.v4.jsonl.zstd` 在事后 **4 分钟、8 分钟、35 分钟** 三个检查点都仍是 **328 字节 / 4 条记录**（header + 三条策略），回合记录**始终没落盘** —— 而上一轮同样失败的会话（00:56 开）到 **01:14** 出现了完整记录。⇒ 结论要比「落盘滞后」更硬一层：**触发条件未知，不是等一等就来**（可能是切换/关闭会话或宿主退出时才写；本轮没有去重启用户的宿主来验证）。**据此判「没发生」不可靠，但反过来「等了 35 分钟还没有」也不能当成「没发生」的证据**。本轮因此按「面板渲染 + 附件仓 mtime」记为已测。
+  - 🔶 **仍欠**：找到回合记录的落盘触发条件后再复跑（`node plugins/dsh-autogamer/scripts/conformance-live.mjs`，`AUTOGAMER_SESSION=session-38a6e038-…`），把这条从「面板读数」升成「日志读数」。⚠️ 别用「重启宿主」去逼它落盘 —— 那是动用户的运行环境，且会把 G98 那扇门的状态弄乱。
 - **耗时分布入账（45s 预算的依据，各 5 次均值，本机 MuMu）**：`uiautomator dump` **2036ms**（主导项）｜ `exec-out screencap -p` 534ms ｜ `input tap` 53ms ｜ `getprop` 38ms ｜ `dumpsys window` 46ms ｜ OCR 整帧 1235–2498ms ｜ P1 区域 584–832ms。⇒ 一条最坏路径的动作级阶梯（dump + tap + 前后两帧差分 + 一次整帧 + 一次区域）约 **6–8 秒**，**45s 在这台设备上没有上调依据**；`dump` 是唯一稳定上到秒级的内层调用，慢设备场景的分布仍未量（G99 修好后补）。
 - **`uiautomator dump` 旗标 A/B（2026-10-16 真机，量的是「现在就做」行 2 的那个 🔶）**
   - 同一屏（TapTap，900×1600）、同一台（`emulator-5554`）三种旗标各 dump 一次，全部**用生产的两个函数**解析（`parseHierarchyXml` 数节点、`parseVisibleElements` 数模型看到的列表条目、`selectRegionCandidates(…, 900, 1600, {})` 数 P1 候选）：
