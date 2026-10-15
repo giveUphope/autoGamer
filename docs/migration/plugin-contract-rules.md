@@ -98,6 +98,12 @@ preset 的服务提供方与其**全部**消费方要共处一个 `cordis:group`
 本机 spike 全程 `0.2.0-rc.2`；上游已发 `dsh-v0.2.1-alpha.1`（2026-10-03）与 `dsh-v0.2.1-alpha.2`（2026-10-09），alpha.1 主题即「让 Agent 给自己造插件」。
 
 - **判据**：`gh api repos/deepseek-ai/deepseek-harness/releases` 与本机版本号比对；版本不一致时 conformance fixture 一律视为**过期**，升级要重录。
+- ⚠️ **本条已经过期过一次，而它没有机械门禁兜底**（2026-10-15 实测）：上游 **2026-10-14 又发了 `dsh-v0.2.1-alpha.3`**，而上面这行仍只记到 alpha.2。
+  `check-docs` 的六条检查里**没有一条查版本**，所以本条只能靠人记得跑 —— 这正是它会腐烂的原因。
+  alpha.3 的 release notes 里有**两条直接触及本插件**：①「修复插件更新或重新安装后仍运行旧代码的问题，启用热重载时可直接生效、不能热重载才提示重启」
+  ⇒ `TODO.md` §七「交付-1」那条「替换安装后必须重启宿主」是 **rc.2 上的实测**，在 alpha.3 上很可能不再必要（插件 README 那条已加版本限定）；
+  ②「子智能体可通过配置选用独立 Agent Preset 预设」，与本插件的 preset 面相关。
+  **升不升是人的决定**（升则按本条判据，全部 conformance fixture 视为过期、且 live 证据要在新版本上重跑），本条只负责把事实摆出来。
 
 ## R12 Host 插件的导出形态二选一，不许混用
 
@@ -305,6 +311,13 @@ PTC 运行规则写明：**独立只读调用可以并发，变更类调用独�
 
 1. **已逐字读**：三个官方 skill（`cordis-plugin-development` / `editing-cordis-compositions` / `cordis-composition-reference`）及其 `references/host-plugin.md`、`references/practices.md`、`references/ui-plugin.md`、`references/user-actions.md`、`references/verification.md`、`references/mcp-bundle.md`，加上 `agent-preset` 与 `agent-preset-registry` 的 README 与 `src/mount.ts`、`packages/core/scope` README、`docs/cordis-primer.zh.md`、`docs/cli-help.zh.md`、`docs/cookbook/adding-a-tool.zh.md` 与 `adding-a-package.zh.md`、`packages/core/tools/README.zh.md`、shipped `presets/minimal.patch.yml`。**R12-R19 全部来自这些一手文本。**
 2. **已按 R20 补读**：`docs/subsystems/session.zh.md` 的 `session/event` 条目（1299-1317，scope-filtered dispatch 的原文，R20 的反例即出自此处）。
-3. **仍未读，不许凭印象引用**：`docs/capability-seams.md`（63 KB，已取回）、`docs/tool-catalog.md`（102 KB，已取回，官方口径就该按关键词 grep 而非整读）、`docs/dsh-tool-call-timeout-policy`（R15 提到的包装层，其包 README 未读）、`packages/jobs/jobs/README.zh.md`（S2 长任务与 owner 语义）、`docs/subsystems/scope.zh.md`。
-4. **一条已定论的悬案**：`install_bundle` 在 CLI 侧没有等价物——本机 `dsh --help` 只列 `dsh`（boot）与 `dsh plugin`（= pnpm 转发，`--help` 打出来是 pnpm 11.7.0 的帮助），上游 `docs/cli-help.zh.md:29,71` 同述。所以 R2 表里第三层的两条可执行路径是**Web 侧边栏「插件」面板**与**在会话里让 agent 调 `plugin_manager`**（D17）；「shared by dsh CLI」那句里的 CLI 部分指的应是 `dsh plugin` 这层 pnpm 垫片，不是 install_bundle。G31 据此收口。
+3. **仍未读，不许凭印象引用**（**路径已于 2026-10-15 用 `gh api contents` 逐个核实存在**，括号内是实测字节数）：
+   `docs/capability-seams.md`（65092）、`docs/tool-catalog.md`（102356，官方口径就该按关键词 grep 而非整读）、
+   `packages/jobs/jobs/README.zh.md`（10059，S2 长任务与 owner 语义）、`docs/subsystems/scope.zh.md`（3763）。
+   ⚠️ **第五份原先写的路径不存在**：~~`docs/dsh-tool-call-timeout-policy`~~ ⇒ 真实路径是 **`packages/guard/timeout-policy/README.zh.md`**
+   （**包名 `@deepseek-ai/dsh-tool-call-timeout-policy` 未变**，只是仓库路径挪到了 `packages/guard/` 下；该包当时的 `version` 已到 `0.2.1-alpha.3`）。
+   这条本身就是 **R20 的现成案例**：路径是凭印象写的，一查就 404 —— 与本条标题「不许凭印象引用」互为镜像。
+4. 一条已定论的悬案：`install_bundle` 在 CLI 侧没有等价物——本机 `dsh --help` 只列 `dsh`（boot）与 `dsh plugin`（= pnpm 转发，`--help` 打出来是 pnpm 11.7.0 的帮助），上游 `docs/cli-help.zh.md:29,71` 同述。所以 R2 表里第三层的两条可执行路径是**Web 侧边栏「插件」面板**与**在会话里让 agent 调 `plugin_manager`**（D17）；「shared by dsh CLI」那句里的 CLI 部分指的应是 `dsh plugin` 这层 pnpm 垫片，不是 install_bundle。G31 据此收口。
 5. **待查的真实字段名**：R14 的「并行安全属性」与 R15 的超时包装层入参，官方文本只给了名称描述没给字段名 —— 必须用 `cordis_inspect_query` 在装好的 Harness 上取真名（R1/R9 的口径），取到之前不许写代码。
+   **2026-10-15 补一条更省的路**（本条尚未执行）：开宿主会话要模型凭据，而**上游公开仓库里可能直接写着** —— 包装层的 `packages/guard/timeout-policy/` 有 `types`，`defineTool` 的类型在 `packages/core/tools`。
+   ⇒ 先读这两处的声明面；只有那里也查不到，才回到 `cordis_inspect_query`。

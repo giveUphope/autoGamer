@@ -100,6 +100,9 @@ dsh --profile web --patch <abs>/cordis.patch.yml --dump-config
    bundle 无法自带跳过：`files` 带不了 `pnpm-workspace.yaml`，而 R2 禁止手写 profile 配置。
 3. **替换安装后必须重启宿主**（含从开发期 `link:` 换过来），否则启用记录仍指向旧 target。
    重启后在面板核验组件运行中与双语 locale 标题/描述/icon —— 判「生效」只认官方检查器（R9）。
+   > 版本限定：这条是 **0.2.0-rc.2 上的实测**。上游 `dsh-v0.2.1-alpha.3`（2026-10-14）的 release notes 称
+   > 「修复插件更新或重新安装后仍运行旧代码的问题，启用热重载时可直接生效、不能热重载才提示重启」⇒
+   > 升级到该版本后**先按提示判断**，别无条件重启（出处见守则 R11）。
 
 ## 契约要点（踩过坑的）
 

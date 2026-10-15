@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97, #102 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 G92 区域 OCR 的离线管线（探针 A：裁剪/放大/编码 + 候选逐块识别 + 坐标映射）落地，真模型实测同时固化了 P1 对纯渲染区无效的边界（#102）。 |
-| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）。 |
+| 三 · 门禁与基建 | #95, #98, #99, #100, #101, #103, #104, #105 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）；`autoInstallPeers` 搬进设置真正被读的那份文件并删掉哑掉的 `.npmrc`，裸 `pnpm install --frozen-lockfile` 从 exit 1 复绿（#100）；构建前清空 `dist` 并加陈旧产物守卫，消除 tsc 增量输出把已删除模块打进交付 tarball 的洞（#101，packed 交付验证发现）；一次纯文档的全面对齐，各处漂移各带一条核验清掉，其中一处是**指向不存在编号**的悬空引用（#103）；补第七条检查 C7「§四 编号唯一性」并把另一条盲区**判定为不写**（当前零样本，写了就是永不红的假判据，#104）；守则自身两条时效校正——R11 版本门禁已过期（上游发了 alpha.3，而门禁里没有一条检查查版本）、待补清单里一条凭印象写的路径实测 404（#105）。 |
 
 
 ## 写入规则
@@ -580,3 +580,30 @@
 - **顺带确认职责边界**：那次变异**没有**触发 C1（C1 只对「§四 之外带结清措辞」的编号响，被改那行讲的是「退出前置」、无结清词）⇒ 两条检查互相不代偿。
 - 回归：`node scripts/check-env.mjs` exit 0；插件 `pnpm --config.verify-deps-before-run=false run verify` ⇒ **42 文件 / 466 通过**（本片不动插件代码，读数不变）。
 - 提交：方案 `0e74e9e` → 实现与结案（本提交）。
+
+### #105 守则自身两条时效校正：R11 版本门禁已过期、一处路径凭印象写成 404
+
+#### 问题描述
+
+用户问「还有哪些无需设备 / 需要调研的内容」，我按 R25 先清点而不是凭印象答。清点时跑了守则 **R11 的版本判据本身**，结果它当场报了两条**守则自己**的问题：
+
+1. **R11 已过期**：本行只记到 `dsh-v0.2.1-alpha.2`（2026-10-09），而上游 **2026-10-14 就发了 `dsh-v0.2.1-alpha.3`**。而 `check-docs` 的七条检查里**没有一条查版本** ⇒ 这条判据没有任何机械兜底，只能靠人记得跑 —— 这正是它腐烂的原因。
+2. **待补清单第 3 项有一条路径是凭印象写的**：`docs/dsh-tool-call-timeout-policy` 实测 **404**；真实路径 `packages/guard/timeout-policy/README.zh.md`。而那一条标题恰恰是「**不许凭印象引用**」—— 清单自己违反了自己的规矩。
+
+#### 整改方案与实施
+
+- **R11** 补记该事实与两条**直接触及本插件**的 alpha.3 release notes：
+  - 「修复插件更新或重新安装后仍运行旧代码的问题，启用热重载时可直接生效、不能热重载才提示重启」
+    ⇒ `TODO.md` §七「交付-1」的「替换安装后必须重启宿主」是 **rc.2 上的实测**，在 alpha.3 上很可能不再必要；插件 README 那条已加版本限定，避免在新版上无条件重启（上一轮刚写进去的那条，正好被这条新闻打中）。
+  - 「子智能体可通过配置选用独立 Agent Preset 预设」—— 与本插件的 preset 面相关。
+  - **升不升 alpha.3 留给人决定**：按 R11 判据，升则全部 conformance fixture 视为过期、live 证据要在新版本上重跑。
+- **待补清单第 3 项**：更正第五份的路径（**包名 `@deepseek-ai/dsh-tool-call-timeout-policy` 未变**，只是仓库路径挪到 `packages/guard/` 下，该包 `version` 已到 `0.2.1-alpha.3`），并把这五条**逐个用 `gh api contents` 核实存在**、记下实测字节数 ⇒ 结论是「五份里四份可取回、第五份路径更正后也可取回」，纯读、零设备。
+- **待补清单第 5 项**（R14/R15 的真实字段名）：补一条**更省的路** —— 台账原写「必须用 `cordis_inspect_query` 在装好的 Harness 上取真名」，而开宿主会话要模型凭据；上游公开仓库的 `packages/guard/timeout-policy/types` 与 `packages/core/tools` 可能直接写着 ⇒ **先读声明面，查不到才回到 `cordis_inspect_query`**（顺序反过来能省一整轮带凭据的会话）。
+
+#### 验收标准
+
+- 版本判据本身可复跑：`gh api repos/deepseek-ai/deepseek-harness/releases --jq '.[].tag_name'` ⇒ 首条 `dsh-v0.2.1-alpha.3`；`--jq '.[].published_at'` ⇒ 首条 `2026-10-14`。
+- 路径失效的证据：`gh api repos/deepseek-ai/deepseek-harness/contents/packages/dsh-tool-call-timeout-policy/README.zh.md` ⇒ **404 Not Found**；改为 `.../contents/packages/guard/timeout-policy/package.json` ⇒ 取到，其 `name` 字段 = `@deepseek-ai/dsh-tool-call-timeout-policy`、`version` = `0.2.1-alpha.3`（**包名对、路径错**）。
+- 四份文档存在性：`contents/docs/capability-seams.md` → 65092；`contents/docs/tool-catalog.md` → 102356；`contents/packages/jobs/jobs/README.zh.md` → 10059；`contents/docs/subsystems/scope.zh.md` → 3763（字节数写进守则，便于日后发现上游改动）。
+- 本条**只改文档**：插件 `verify` 读数不变；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
+- 未做（留给下一轮，且都不需要设备）：把上述四份文档真读一遍、按结论回写 R14 / R15 / S2 相关条款。
