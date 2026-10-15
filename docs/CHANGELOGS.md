@@ -12,7 +12,7 @@
 |---|---|---|
 | 一 · 插件边界与溯源 | #84, #85 | 外部来源的切断（rules 链拆除）与被判定不迁移能力的放弃记录（录屏/视频分析）。 |
 | 二 · 能力迁移（T1–T4） | #86, #87, #88, #89, #90, #91, #92, #93, #94, #96, #97 | 判定与执行从 py 面收回到 TS 侧：效果判定差分（T3 第一片 / G84）、设备面本地化（T2-a / G75·G76 结清）、层级读取本地化（T2-b）、12 条动作与截图本地化（T2-c/d/e）、诊断本地化与提供方清点（T2-f）；两条**推迟判定**（OCR / G87 后被 T5 反转、画面标注 overlay / G88）；OCR 内置离线 WASM 与那条推迟的**反转结案**（T5 / G87 结清、召回缺口新立 G92）；T4 收尾（门收成两项、按消费者计数删除动作面客户端与镜像链、adapter 首次获得消费者、G82/83/84/85/86/89/90/93 八条结案、`notes/plan` 放弃记录）；以及 #93 交付后测出的一条崩溃路径修复（不可读帧先验再交给 worker，#96）。 宿主内 live 证明（R6/R7/R9/R24 四条读数齐）与 G91 长按语义复测结案，含一条一直报假的取证判据被修好（#97）。 |
-| 三 · 门禁与基建 | #95, #98 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）。 |
+| 三 · 门禁与基建 | #95, #98, #99 | 文档门禁自身的可信度：变异锚点一律落到文档结构上，`--selftest` 进 `pre-commit`（两次 BLIND 的复发记录）；依赖安装策略定案：`tesseract.js` 的 `postinstall` 明写 `allowBuilds: false`，安装不再非零退出、不再改写被跟踪的 `pnpm-workspace.yaml`（#98）；包管理器版本钉死 `packageManager` + `pmOnFail: error`，版本不符一律 exit 1，把「不同机器结论不同」变成「响」（#99）。 |
 
 
 ## 写入规则
@@ -396,3 +396,35 @@
 - **A/B（R27）**：同一台机器、同一 lockfile、同一条命令 —— 占位形态（`tesseract.js: set this to true or false`）**exit 1**，定案形态 **exit 0**。本条「问题描述」里那次安装的读数就是占位形态的原始证据，唯一变量就是这一行。
 - 回归：`pnpm --config.verify-deps-before-run=false run build` ⇒ exit 0；`… run test` ⇒ **38 文件 / 439 通过**；`node scripts/check-docs.mjs`（6 checks / 9 tracked md）与 `node scripts/check-env.mjs` ⇒ exit 0。
 - 提交：方案 `2fb1982`（R22 先方案后实现）→ 实现 `9dea904`。
+
+> **本条记的那笔债（pnpm 版本未钉）已由 #99 结清**，`pmOnFail: error` 现在会在版本不符时 exit 1。下面这段保留作当时的读数。
+
+### #99 包管理器版本钉死：版本不符一律 exit 1（基建-4 结案；结清 #98 记的那笔债）
+
+#### 问题描述
+
+- #98 结案时按规矩记了一笔债：**仓库不钉 pnpm 版本**（根无 `package.json`、插件包无 `packageManager`、根无 `.npmrc`；本机实测 11.21.0），所以「#98 那条策略在更新版本上是否仍被支持」**未验**。
+- 债的根子是 #98 的问题描述里那件事本身：**pnpm 各版本对「依赖的构建脚本被拦截」处理不一致**（新版非零退出，旧版只告警）。同一条安装命令在不同机器上结论不同，而仓库里没有任何一处能解释这个差异。
+- 取证面（R20 第 1 步，官方文档，转述不搬文本）：
+  - `pnpm.io/settings/cli` 的 `pmOnFail`（Added in v11.0.0，**默认 `download`**）定义版本不符时的四种行为 `download` / `error` / `warn` / `ignore`，并**取代已被移除的** `managePackageManagerVersions`、`packageManagerStrict`、`packageManagerStrictVersion`；错误信息自带绕过方式。
+  - `pnpm.io/package_json` 的 `devEngines.packageManager`（Added in v11.0.0）支持**版本范围**，但解析出的版本会写进 `pnpm-lock.yaml` 的 `packageManagerDependencies`；同页说明 legacy `packageManager` 字段在声明 pnpm 12 时才会把解析信息写进 lockfile。
+  - `pnpm.io/settings` 写明 v11 起**只有 auth/registry 从 `.npmrc` 读**，其余设置一律在 `pnpm-workspace.yaml`。
+  - 本机实测：`pnpm -v` = 11.21.0；**`corepack` 未安装**（Node 24.14.1）⇒ 钉法必须走 pnpm 自带机制。
+
+#### 整改方案与实施
+
+- `plugins/dsh-autogamer/package.json` 增 `"packageManager": "pnpm@11.21.0"`；同目录 `pnpm-workspace.yaml` 增 `pmOnFail: error`。
+- **精确版本而不是范围**：范围会把 #98 那个洞重新打开 —— 11.5 与 12.x 对「构建脚本被拦截」的处理不同，非零退出与否会随范围漂移。
+- **legacy 字段而不是 `devEngines.packageManager`**：后者按官方文档会把解析版本写进 lockfile；前者在本版本下 lockfile 零变化（实测 `pnpm-lock.yaml` 不出现在 `git status` 里）。本仓库把 lockfile 变动视为需要解释的产物。
+- **`error` 而不是默认的 `download`**：默认行为是**下载并改用**声明版本 —— 一次静默的网络动作加一次版本切换；判据要求不一致时立刻暴露。
+- **不写 hash**（`pnpm@11.21.0+sha512.…`）：hash 校验的是下载物，而 `error` 模式下不会下载；corepack 缺席也生成不出来。
+- **边界（如实写进 `AGENTS.md`）**：钉在插件工程 —— 全仓唯一的 `package.json`，也是所有文档命令的工作目录；**从仓库根跑 pnpm 不受本钉约束**（根无 manifest，那也不是文档化的用法）。误配时的临时绕过（`--pm-on-fail=ignore|warn`）、正解与升版流程一并写进 `AGENTS.md`。
+
+#### 验收标准
+
+- 匹配态：`pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**，且 `pnpm-lock.yaml` **不出现在** `git status --short` 里。
+- **A/B（R27）**：`packageManager` 改成 `pnpm@9.15.0` ⇒ 那条安装命令 **exit 1**，报 `[ERROR] This project is configured to use 9.15.0 of pnpm. Your current pnpm is v11.21.0`，且失败**发生在任何下载/改动之前**（`node_modules` 与 lockfile 均无变化）；改回即复绿。`pnpm -v` 同样 exit 1 —— 即**每条命令都受约束**，不只安装。
+- 回归：`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿（**38 文件 / 439 通过**）；`node scripts/check-docs.mjs`（6 checks / 9 tracked md）与 `node scripts/check-env.mjs` ⇒ exit 0。
+- **判据的边界**：它证明的是「版本不符会响」，**不证明 11.21.0 本身是正确选型** —— 那是选定值，升版由人决定，流程在 `AGENTS.md`。
+- 提交：方案 `8f7c835` → 实现 `6e30db2`。
+- **顺带发现（同轮落账，未修）**：`plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 已不被读取（实测 `pnpm config get auto-install-peers` → `undefined`，而同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）。今天无害（文档命令显式带该旗标，且两个 peer 都在 `peerDependenciesMeta` 里标了 `optional`），但**未验裸 `pnpm install` 的 peer 行为**，不夹带进本条，记账在 `TODO.md` §七「基建-4」。
