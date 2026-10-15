@@ -1530,6 +1530,57 @@ pad\scale |  1.0  1.5  2.0  3.0
 - `verify` **44 文件 / 497 通过**（上一绿态 44/479，+18 条）；`check-docs`（含 `--selftest`）与 `check-env` exit 0。
 - 声明面（R6）：本片**未改** `cordis.patch.yml` ⇒ 无需 `--dump-config`；也**未**给 `autogamer_diagnose` 新增 `timeoutMs`（R15：声明即断言能停稳，新读只带 `AdbOptions.timeoutMs = 10s`）。
 
+### 能力重审-3 · 识别宿主铸出来的工具结果（`tools/result` 观察点）（方案，2026-10-15 立项，R22）
+
+> 来源：§七「重审综合」待立项行 5（`TOOL_TIMEOUT` 识别）。行 6（统一 `Deadline`）本条**不做**，理由写在非目标里。
+> 本条是 R22 三步序的第一份产出：**先把官方声明面读全**（下表全部本轮实读，出处到文件:行），**方案提交早于实现提交**。
+
+**R20 第 1 步「查」：官方声明面读到的事实**
+
+| 面 | 事实 | 出处（本轮实读） |
+|---|---|---|
+| 管线的官方形状 | 五段 `pre / guard / around / post / result`；`tools/execute` 的文件注释直接写着「Around-dispatch waterfall **for timeout, retry, or metrics**」；`tools/result` 是 `@mode emit` 的**纯观察点**——「Notify observers without exposing a mutation or error channel into the outcome」，载荷 `(exec, result)`，`exec` 进监听器前已 `Object.freeze` | 安装包 `@deepseek-ai/dsh-tools` `lib/types/index.d.ts:2`、`:51-58`、`:88-92`；`lib/index.js:3386`、`:3408-3409` |
+| **观察点看到的就是模型拿到的那一份** | `notifyResult` 在整包里**只有一个调用点**（`finishScheduledExecution` 内），其实参就是返回给调用方的 finalResult；而 finalResult 是 `dispatch（含 execute 瀑布）→ project → postExecute` 全走完之后的值 ⇒ **包装层的替换已被包含在内** | `lib/index.js:3362-3370`、`:3395` |
+| 超时结果的字段 | `{isError:true, error:{message, info:{name:'ToolTimeoutError', code:'TOOL_TIMEOUT'}}}`；⚠️ `TOOL_TIMEOUT` 由**宿主 timeout-policy 自己拥有**，不在 `dsh-tools` 的导出里 ⇒ 我们只能按字面量匹配，且注释必须写明来源（与 `ABORTED*` 的来源不同，见下行） | 上游 `packages/guard/timeout-policy/src/index.ts:25`、`:41-47`（本轮 `gh api` 重取全文 81 行，与上一轮保存的副本逐点一致） |
+| 取消结果的字段 | 注册表自己铸 `{name:'AbortError', code:'ABORTED'}`，取消发生在派发前则是 `'ABORTED_BEFORE_DISPATCH'`；**这两个常量在声明面可取**（`export declare const`）⇒ 用常量匹配而不是抄字面 | `@deepseek-ai/dsh-tools` `lib/types/index.d.ts:374-376`；`lib/index.js:2528-2530`、`:3676-3691`、`:3283-3288` |
+| **两层计时的可观察语义**（把 #111 留的 🔶 收紧一档） | 包装层 `await next()`，且**只在自家 timer 真的到点时**替换（`timeoutOf(d.signal, TOOL_TIMEOUT) !== undefined`；注释还写明「作用域到该 code 是为了让**别的外层 wrapper 先到期**读成普通的上游取消，而不是本包装层的超时」）⇒ **内层先到 ⇒ 模型看到我们自己的消息、不替换**；**外层先到 ⇒ 我们的 `cancelled`/成功被换成 `TOOL_TIMEOUT`** | 上游同文件 `:56-77`（`apply()`） |
+| 注册方式有官方先例、也有本仓先例 | 宿主包装层自己就是用 `ctx.on('tools/execute', …)` 注册的；本插件的 `session/event` 监听已在宿主真会话跑过（#97），且 `tools/result` 与它同样是**按 agent 筛选**的 emit ⇒ `{ global: true }` 绕开筛选那条规则直接适用 | 上游同文件 `:56`；本仓 `src/index.ts:345-380`；`packages/core/scope/README.zh.md:75`（`src/dsh-types.ts` 注释已引） |
+| **没有官方离线跑管线的测试面** | `@deepseek-ai/dsh-tools/testing` 全文只导出一个 `defineContentToolFixture`（工具定义夹具，且标 `@internal`），**没有任何 registry / 管线 harness** ⇒ 本条判据最高只能到「**生产接线的订阅形状 + 处理器归因**」；「emit 在真宿主里是否送达我们的工具」属**宿主会话**问题（不是设备问题），未量之前不许写成已验 | `lib/types/testing.d.ts`（全文） |
+
+**What（范围）**
+
+1. 新增 `src/hostOutcome.ts`：纯函数 `hostOutcomeOf(result)` 把 finalResult 归成 `timeout` / `aborted` / `aborted-before-dispatch` / `undefined`；小账本 `HostOutcomeLedger` 按工具名累计次数并记最近一条（`code` + 工具名 + callId）。
+2. `src/index.ts` 订阅 `ctx.on("tools/result", …, { global: true })`，**只统计本插件的工具**（emit 面向整个注册表，别家插件的超时不许算到我们头上）。
+3. `autogamer_diagnose` 新增 `host_outcomes` 栏，形状照本条之前已落地的 `hierarchy`：**可选 dep 注入、问过才出现在报告里**；tool description 点名这一栏（R19 展示元信息义务）。
+4. **不改任何既有策略**：这条读数不进 breaker、不进 incident、不改 `classify.ts`、不改任何工具的返回体。
+
+**How（关键决策）**
+
+- **选最弱的够用扩展点（R13）**：用 `tools/result`（emit，改不动结果），**不用** `tools/post-execute`（waterfall，能 accept / replace / block）。若目标是「把宿主那句干巴巴的 `tool call timed out after 45000ms` 富化成带 fix 的文案」，必须走 post-execute —— 本条**不做**：那是去改别人的出口，且需要更强扩展点，而目标本身（识别）用观察点已够。
+- **不计入 breaker**（同 #111 对 abort 的否决理由）：`allowedFails` 默认 1 ⇒ 一次 `environment` 记账就开闸冷却 30s。宿主超时**可能只是设备慢**——内层最坏路径 #111 已收窄，但**耗时分布从没量过**（§七「重审综合」需裁决段：真机才能定 45s 该不该上调）⇒ 拿未量过的东西去开闸，就是把猜测当依据（R27）。同一条理由否掉计入 `task`（那是把宿主的时钟归给模型）。
+- **账本只增不改，且监听器必须吞掉一切异常**：官方在 emit 处写着「Listener failures are contained」并把监听器异常只记 warn ⇒ 我们不许把一个观察器的失败变成工具失败或会话失败。
+- **两种来源必须分开**：`ABORTED` / `ABORTED_BEFORE_DISPATCH` 用安装包导出的常量比对（`lib/types/index.d.ts:374-376`）；`TOOL_TIMEOUT` **只能写字面量**——它归宿主 timeout-policy 包所有、不在我们的声明面依赖里。注释必须写明这个差别，否则将来上游改名时两条路的失效行为不一致，很难查。
+- **判据必须落在生产接线**（#111 的两条假锁直接教训）：spec **不许自己 new 一个 handler 再来测它**——那样「接线错了」永远抓不到。必须从 mount 时 `ctx.on` 的**实际调用记录里捕获那个函数引用**，再喂合成 finalResult；`{ global: true }` 也要从同一条记录里断言（它是筛选语义的唯一开关，去掉照样编译通过）。
+
+**非目标**：不做统一 `Deadline`（重审方案 B）——纯形状重构、改 11 个文件、语义不变，而它唯一的新产出（预算参数该定多少）**需要真机耗时分布**才能定；等 §七「设备前置调研」的解锁之后另立。不富化宿主文案（理由见 How 行 1）；不碰失败路径具名报错（能力重审-2 已记）；不给 `autogamer_diagnose` 新增 `timeoutMs`（R15：声明即断言能停稳）；不改 `*.patch.yml`（R6 不适用）。
+
+**Verify（验收命令）**
+
+- 三条变异各红一次（R27）：
+  ① 把归因读的路径从 `error.info.code` 改成 `error.code`（R15 记过的字段位置陷阱）⇒ 「宿主超时读成 timeout」红；
+  ② 从 `ctx.on("tools/result", …)` 去掉 `{ global: true }` ⇒ 订阅形状红（**这条必须从捕获的接线断言，不是从 handler 行为断言**）；
+  ③ 去掉工具名过滤 ⇒ 「别家插件的超时不许计到我们头上」那条红。
+- 台账自查：`git grep -n "session/event" -- plugins/dsh-autogamer/src/index.ts` 与新增的 `tools/result` 订阅**同形**（同一 `ctx.on`，`{ global: true }`），二者都在 mount 测试的注入面可见。
+- 🔶 **判据天花板必须写在台账里**：离线能证到「订阅形状 + 归因逻辑 + 账本」，**证不到「宿主真的把 emit 送达我们的工具」**——那需要一次宿主会话（不需要设备）。`dsh-tools/testing` 没有任何管线 harness（全文已查），所以这条没有离线补法。未量之前不许写「已生效」（R9 / R24）。
+- 回归：`pnpm --config.verify-deps-before-run=false run verify` 三段全绿（读数在 Done 段如实记录）；`node scripts/check-docs.mjs`（含 `--selftest`）与 `node scripts/check-env.mjs` ⇒ exit 0。
+
+**Done means**
+
+- [ ] `hostOutcomeOf` 三态 + 五种输入形态（成功 / `isError` 无 `info` / 我们自己的错误 / `TOOL_TIMEOUT` / `ABORTED*`）各带离线锁；三条变异各红一次
+- [ ] handler 从 mount 的 `ctx.on` 记录里**捕获**后驱动（不是另造一个），`{ global: true }` 与工具名过滤各有一条锁
+- [ ] `autogamer_diagnose` 报 `host_outcomes`，**没问过就不出现**；description 点名该栏
+- [ ] 台账：§七「重审综合」待立项行 5 改判已做；**#111 留的「两层同时计时」🔶 按本条取证收紧为「语义已知（谁赢由内层挂钟决定，外层到点才替换）、时钟竞赛未量」**；§零 加指针；CHANGELOGS 结案一条
+
 ### 重审综合 · 六面能力重审的结论、否证与处置（2026-10-15，只读调研，零设备）
 
 > **缘起**：用户逐项质证「对照表里有些能力未实现或被改造」后要求「分派子代理完成所有面的重审」（2026-10-15）。六个只读子代理各查一面，
