@@ -55,7 +55,8 @@ src/dsh-types.ts                  宿主契约镜像（升级 DSH 必复核）
 
 - 测试在 `tests/`（vitest，数十个语义锁 spec；条数是派生事实，权威在 [`../../docs/TODO.md`](../../docs/TODO.md) §零；
   conformance 下为生成式契约与真实 runtime 挂载）
-- 脚本在 `scripts/`（`.mjs`）：`clean-dist.mjs`（`build` 前清空 `dist`）与 `conformance-live.mjs`（读宿主会话日志的取证工具）
+- 脚本在 `scripts/`（`.mjs`）：`clean-dist.mjs`（`build` 前清空 `dist`）、`conformance-live.mjs`（读宿主会话日志的取证工具）、
+  `synth-hard-frame.mjs`（生成 G92 的合成难帧夹具；`--scan` 另打印 padding × scale 参数表）
 - 执行策略 skill：`skills/autogamer-flash/SKILL.md`
 
 > `src/ocr/image.ts` 与 `src/ocr/regions.ts` 目前**没有生产消费者**（只有探针与锁）：区域识别是 G92 的第二级阶梯，
