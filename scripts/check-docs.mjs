@@ -18,6 +18,9 @@
 //                         (split on UNESCAPED pipes only) and closing pipes.
 //   C6 claim vs boxes   : an entry claimed complete elsewhere may not keep
 //                         un-ticked "Done means" boxes.     (drift: 前置-4)
+//   C7 gap id uniqueness: one id may hold one row in the open-gap table. C1
+//                         cannot see this - it collects the ids into a Set.
+//                         (drift: 基建-2 measured it on itself)
 //
 // Scope: `git ls-files '*.md'` — the index, not history. CRLF is normalized
 // before any measurement, so every verdict is checkout-independent.
@@ -171,6 +174,47 @@ function checkClosedVsOpen(files) {
   return [...closedLine].map(([id, lineNo]) =>
     finding(TODO, lineNo, `${id} is called closed here but still holds an open-gap row`),
   );
+}
+
+// --- C7: open-gap table ids must be unique --------------------------------
+/**
+ * The second blind spot 基建-2 measured on itself: duplicating an id inside the
+ * §四 table left the gate green, because C1 collects those ids into a Set - a
+ * Set is precisely what cannot see a duplicate.
+ *
+ * Like C5 this guards a structural invariant rather than a drift that happens to
+ * exist today (§四 is clean as of this writing), so its only real proof is the
+ * mutation, not today's green.
+ *
+ * Scope note: the id shape is `/^G\d+$/`, the same shape C1 accepts, so the two
+ * checks cannot drift apart on what counts as an id. The finding points at the
+ * SECOND occurrence - the first one is the legitimate row.
+ */
+function checkGapIdUniqueness(files) {
+  const todo = files.get(TODO);
+  if (todo === undefined) return [finding(TODO, 0, 'authority file missing from the index')];
+  const gap = section(todo, (l) => l.includes('开放差距'));
+  if (gap === null) return [finding(TODO, 0, 'anchor missing: no section heading containing "开放差距"')];
+  const firstSeen = new Map();
+  const out = [];
+  gap.lines.forEach((line, idx) => {
+    if (!isPipeLine(line)) return;
+    const id = splitRow(line)[1]?.trim();
+    if (!/^G\d+$/.test(id ?? '')) return;
+    const lineNo = gap.start + idx + 1;
+    const seenAt = firstSeen.get(id);
+    if (seenAt === undefined) {
+      firstSeen.set(id, lineNo);
+      return;
+    }
+    out.push(
+      finding(TODO, lineNo, `${id} already holds an open-gap row at line ${seenAt}; an id may appear once`),
+    );
+  });
+  if (firstSeen.size === 0) {
+    return [finding(TODO, gap.start, 'anchor missing: no G rows parsed out of the open-gap table')];
+  }
+  return out;
 }
 
 // --- C2: relative markdown links must resolve ----------------------------
@@ -339,6 +383,7 @@ const CHECKS = [
   { id: 'C4', name: 'range-self-check', run: checkRangeSelfCheck },
   { id: 'C5', name: 'table-shape', run: checkTableShape },
   { id: 'C6', name: 'claim-vs-boxes', run: checkClaimVsBoxes },
+  { id: 'C7', name: 'gap-id-uniqueness', run: checkGapIdUniqueness },
 ];
 
 function runChecks(files) {
@@ -371,6 +416,28 @@ function insertIntoGapTable(text, row) {
   const after = text.indexOf('\n', sep);
   if (after < 0) return text;
   return `${text.slice(0, after + 1)}${row}\n${text.slice(after + 1)}`;
+}
+
+/**
+ * Duplicates the first body row of the §四 open-gap table.
+ *
+ * Structural, like every other mutation here: it reads the row out of the table
+ * instead of naming an id, so a future edit to which gaps are open cannot quietly
+ * stop this from landing (two of this branch's mutations went BLIND that way).
+ * Copying a whole row also keeps the cell count intact, so the mutation is
+ * attributable to C7 rather than also tripping C5.
+ */
+function duplicateFirstGapRow(text) {
+  const at = text.indexOf('## 四、开放差距');
+  if (at < 0) return text;
+  const sep = text.indexOf('|---|', at);
+  if (sep < 0) return text;
+  const firstBody = text.indexOf('\n', sep);
+  if (firstBody < 0) return text;
+  const rowEnd = text.indexOf('\n', firstBody + 1);
+  if (rowEnd < 0) return text;
+  const row = text.slice(firstBody + 1, rowEnd);
+  return `${text.slice(0, rowEnd + 1)}${row}\n${text.slice(rowEnd + 1)}`;
 }
 
 /**
@@ -456,6 +523,14 @@ const MUTATIONS = [
     check: 'C6',
     note: '前置-4 keeps an un-ticked box while claimed complete',
     apply: (text) => untickFirstBoxAfter(text, '### 前置-4'),
+    file: TODO,
+  },
+  {
+    id: 'M8-C7',
+    expect: 'red',
+    check: 'C7',
+    note: 'an id holds two rows in the open-gap table',
+    apply: (text) => duplicateFirstGapRow(text),
     file: TODO,
   },
 ];

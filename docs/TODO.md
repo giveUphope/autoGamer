@@ -36,15 +36,18 @@
   版本化 `.githooks/pre-commit`（**仅文档暂存时**触发；A/B 实测：带漂移提交被拒 `exit 1`，`--no-verify` 才通过）。
   **手工变异**一次五处并行（C2–C6）→ 恰好 5 条 finding、各对应一条检查；C1 另单独变异一次（注入 G81 行 → 1 条、指向正确行）。
   `AGENTS.md` 的「**文档门禁暂缺**」已改写为现状——门禁是**本地钩子 + 手跑**，本分支无 CI，**不许写成「由 CI 保证」**（R27）。
-  ⚠️ 已知盲区（本轮实测）：门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；**也不查 §四 表内编号唯一性**——已实测：把 §四 一行的编号重复一次，门禁仍 `OK` / exit 0，撤掉后照旧，所以这是**真的会漏**的判据缺口。要覆盖这两类须各加一条检查，属后续项。
+  ⚠️ 已知盲区（本轮实测）—— **两条已由 基建-6 分头处置（2026-10-15），本段保留作判据来处**：① 门禁**抓不住**「§零 状态行说未开工、而跟踪行已勾完成」这类**同一事实的两处状态不一致**（它就是本行上一版的样子）；② **也不查 §四 表内编号唯一性**——已实测：把 §四 一行的编号重复一次，门禁仍 `OK` / exit 0，撤掉后照旧，所以这是**真的会漏**的判据缺口。当时写的是「要覆盖这两类须各加一条检查，属后续项」，该句**已作废**：
+  ② 已补为门禁第 **7** 条检查 **C7「§四 编号唯一性」**（CHANGELOGS **#104**）；① **清点后判定不写** —— 今天全仓**零不一致样本**（唯一两个未全勾的条目 交付-1 / G92，其 §零 指针行都如实写了阻塞与待设备），没有样本的判据是永不红的假判据（R27），且条目名**两种形状并存**、`T1`/`T2`/`T3` 各有**两个同名小节** ⇒ 按名配对天然脆。判定与清点证据见 §七「基建-6」。
   （自我更正一笔：这句初稿引的是「我改 G76 时造出重复行、门禁全绿」——但那次我**并没有在重复行还在的时候跑过门禁**，属自己反对过的未证 claims；已改成上面这种实测过的口径。）
-  范围与取证见 §七「基建-2」。
+  范围与取证见 §七「基建-2」与「基建-6」。
 - **基建-3 已落地（2026-10-15，提交 `9dea904`）**：拉取 T5 后首次装依赖，pnpm 11 报 `ERR_PNPM_IGNORED_BUILDS` 并 **exit 1**，且**顺手改写了被跟踪的** `plugins/dsh-autogamer/pnpm-workspace.yaml`（写入 `tesseract.js: set this to true or false` 占位行）。该 `postinstall` 的实质是赞助横幅（`opencollective-postinstall || true`）、无产物，而 OCR 语言数据随包 vendored ⇒ 定案 `allowBuilds: tesseract.js: false`（**保留** `esbuild: true`，vitest 要它的原生二进制）。安装现 **exit 0**、不再改写仓库文件；同机同 lockfile 的 A/B：占位形态 exit 1 / 定案形态 exit 0。`build` rc 0、`test` **38 文件 / 439 通过**。🔶 当时还记了一笔「**pnpm 版本未钉**」的债 —— **已由 基建-4 结清**（`packageManager: pnpm@11.21.0` + `pmOnFail: error`，CHANGELOGS **#99**）：版本不符现在一律 exit 1。范围与取证见 §七「基建-3」与 CHANGELOGS **#98**。
 - **基建-4 已落地（2026-10-15，提交 `6e30db2`）**：把上一条那笔债结清 —— `package.json` 声明 `"packageManager": "pnpm@11.21.0"`（精确版本、无 hash），`pnpm-workspace.yaml` 声明 `pmOnFail: error`。**版本不符时每条 pnpm 命令直接 exit 1**（`install` 与 `pnpm -v` 都实测过），且失败发生在任何下载/改动之前。A/B：`pnpm@9.15.0` ⇒ exit 1 + `This project is configured to use 9.15.0 of pnpm`；改回 ⇒ exit 0 且 **lockfile 零变化**。选型依据取自官方文档：`pmOnFail`（v11 新增，默认 `download`）取代了已移除的 `managePackageManagerVersions`/`packageManagerStrict*`；**选精确版本而非范围**，因为范围正是把「不同机器结论不同」那个洞重新打开；**选 legacy 字段而非 `devEngines.packageManager`**，因为后者会把解析版本写进 lockfile；**选 `error` 而非默认 `download`**，因为后者是静默的网络下载 + 版本切换。本机 `corepack` 未装，故不依赖它。已知边界：钉在插件工程，**从仓库根跑 pnpm 不受约束**；升版流程与误配处置写在 `AGENTS.md`。`verify` **38 文件 / 439 通过**。范围与取证见 §七「基建-4」与 CHANGELOGS **#99**。
 - **基建-5 已落地（2026-10-15，提交 `d524739`）**：把上一条那条「`.npmrc` 死配置无害」的判断**推翻并修好** —— 实测有效默认是 `true`、lockfile 记的是 `false`，于是**裸 `pnpm install --frozen-lockfile` 一直 exit 1**（`ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`）。修法：设置搬进 `pnpm-workspace.yaml`（`autoInstallPeers: false`，设置真正被读的那份文件），`.npmrc` 整份删除（全文只有那一行、25 字节、不在 `files` 里）。读数：`pnpm config get autoInstallPeers` → `false`（改前 `undefined`）；裸安装 **exit 0**；文档命令 exit 0；`verify` **38 文件 / 439 通过**；lockfile 全程零变化。**单变量隔离**：把 `.npmrc` 那行临时写回，裸安装仍 exit 0 ⇒ 生效的是文件里的设置，删它去的是重复声明。探针两向证明该设置有牙（自动装入的 peer 只进虚拟 store、不做顶层链接 —— 第一版判据看 `node_modules/react` 是**假绿**，已改读 lockfile）。设置的家写进 `AGENTS.md`。范围与取证见 §七「基建-5」与 CHANGELOGS **#100**。
 - **packed bundle 交付验证已落地（2026-10-15，交付-1）**：`pnpm pack` 出 tarball 后经 web profile 面板完成真实安装（非 link）——**唯一成立的交付形态是面板直接输入 `.tgz` 路径**（`file:` 复制安装，30 依赖落位）；解压目录安装是 `link` 且不装依赖，精简目录必然 `failed to import`（已实测失败）；每个新 profile 首次安装必遇 `tesseract.js` build script 授权（R19 用户点，postinstall 仅赞助横幅，「无产物」裁决见 §七「基建-3」/ CHANGELOGS **#98**，此处为第三来源实锤）；替换安装后**必须重启宿主**。重启后 **2/2 组件运行中**，双语 locale 标题/描述与 icon 浏览器实测正确，R6 `--dump-config` exit 0 / unmatched 0 / autogamer 行 10。验证中抓出构建缺陷——**tsc 增量输出不清理，5 个已裁决删除模块（actionClient/mcpText/rulesInjector/scrcpy×2）随 tarball 分发**，已修（构建前 `clean-dist` + 陈旧产物守卫），见 CHANGELOGS **#101**；`verify` 新读数 **39 文件 / 440 通过**。
   ⚠️ **C 项（三任务工具宿主内点名）阻塞**：本机当前无 `adb`、无设备（D 盘已不在、无模拟器、无监听端口），preflight 闸门要求 adb + 一台 `device` 状态设备，需用户提供真机或模拟器；完整记录见 §七「交付-1」。
 - **G92 探针 A 已落地（2026-10-15，离线，CHANGELOGS #102）**：区域 OCR 管线 `src/ocr/image.ts`（裁剪/最近邻放大/PNG 编码，零依赖）+ `src/ocr/regions.ts`（层级叶级候选→裁剪 padding 8→@2×→逐块 recognize→坐标映射回全屏，预算/signal/fail-open）。新增 3 测试文件 26 条；真模型夹具实测 16 候选全在 y≤204、16 块 ≈1457ms、命中均落回候选框（映射不漂），并**实证 P1 对层级缺席的渲染区（y≈240 缩略图）无效**（P1 对 TapTap/游戏中心 undefined，整帧命中），强化 P2/P3 必要性。三处变异（坐标映射/容器过滤/fail-open）各红一次；本轮**未接产品阶梯**。`verify` 新读数 **42 文件 / 466 通过**。探针 B/C 与 C 项共用同一设备前置（adb + 设备），G92 不结案。
+- **基建-6 已落地（2026-10-15，CHANGELOGS #104）**：把基建-2 自测时记下的**两条门禁盲区**分头处置 —— ②「§四 表内编号唯一性不查」补为门禁第 **7** 条检查 **C7**（`checkGapIdUniqueness`；C1 把编号收进 `Set`，结构上就看不见重复）；①「同一事实两处状态不一致」**清点后判定不写**：今天全仓**零不一致样本**（唯一两个未全勾的条目 交付-1 4/5、G92 3/8，其 §零 指针行都如实写了阻塞与待设备），且条目名两种形状并存、`T1`/`T2`/`T3` 各有两个同名小节 ⇒ 按名配对天然脆。**没样本的判据是假判据（R27）**，故记判定不占编号，将来有真实样本再按记录的清点法走。
+  变异：**M8-C7**（结构锚点＝整行复制，不点编号不碰散文）`--selftest` 里 `ok -> C7 1 finding(s)`；**真实文件手工变异**（`G78` 行改成 `G92`）⇒ exit 1 且 finding **指被改的那一行**（报出首次出现行号），改回 exit 0 且 diff 零差异；那次变异**未**触发 C1 ⇒ 两条检查职责边界符合预期。门禁 **7 checks / 8 变异无假绿**，`check-env` exit 0，插件 `verify` 读数不变（本片不动插件代码）。范围与取证见 §七「基建-6」。
 - **文档对齐-1 已落地（2026-10-15，CHANGELOGS #103）**：把**七个文档面**逐条对当前实现核一遍并改掉漂移，**每条改动都配一条可复跑的核验**（`git grep` / 读源码 / 跑门禁），逐条清单见 §七「文档对齐-1」与 CHANGELOGS **#103**。本轮**未改任何代码**：
   ① **规格 §二** 三行仍挂着已结案的 **G94 / G91**（任务编排、轨迹持久化、长按语义）⇒ 改成实测结论 + 指针 #97，并把「三任务工具宿主内点名仍未做」如实留给「交付-1」C 项；
   ② **规格 §一.3** 还写着 `artemisRepoPath` 是活的配置路径 ⇒ 该字段 T4 已删（`contracts.spec` 有「stay removed」锁），实际只剩 `artemisMcpCommand`（默认 `[]`，唯一消费者 `autogamer_diagnose`）；**§一.1** 的「CI 无 python job」补上「本分支无 CI」这个前提；
@@ -945,10 +948,26 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **Done means**
 
-- [ ] C7「§四 编号唯一性」落地并进 `CHECKS`，今天对现状 exit 0
-- [ ] M8-C7 变异落地；`--selftest` 8 例无假绿；真实文件上手工变异红/绿各一次且 finding 指对行
-- [ ] 盲区①的「不写」判定与清点证据落本条目；§零 基建-2 的 ⚠️ 就地更新（不再写「属后续项」）
-- [ ] `check-docs` / `check-env` exit 0；插件 `verify` 读数不变
+- [x] C7「§四 编号唯一性」落地并进 `CHECKS`，今天对现状 exit 0
+- [x] M8-C7 变异落地；`--selftest` 8 例无假绿；真实文件上手工变异红/绿各一次且 finding 指对行
+- [x] 盲区①的「不写」判定与清点证据落本条目；§零 基建-2 的 ⚠️ 就地更新（不再写「属后续项」）
+- [x] `check-docs` / `check-env` exit 0；插件 `verify` 读数不变
+
+**结案记录（2026-10-15）**
+
+- **落地**：`scripts/check-docs.mjs` 增 `checkGapIdUniqueness`（登记为 **C7 / `gap-id-uniqueness`**）、进 `CHECKS`、文件头检查清单补一行；`--selftest` 增 **M8-C7** 与它的结构锚点 `duplicateFirstGapRow()`。
+- **实现口径**：
+  - 复用 `section(todo, 含「开放差距」)` + `splitRow`，**编号形状 `/^G\d+$/` 与 C1 完全一致** ⇒ 两条检查不会在「什么算一个编号」上分叉；
+  - finding 指向**第二次出现**的行，消息里带上第一次的行号（C1 / C5 的风格：指出哪一行，不整表点名）；
+  - 锚点缺失（表没了 / 一行 G 编号都解析不出）与 C1 同款报错，不静默跳过（基建-2 的 How 纪律）。
+  - **为什么 C1 看不见这件事**：C1 把这些编号收进 `Set` —— Set 正是「去重」的结构，也就是**结构上不可能看见重复**。C7 是它的补集，不是重复劳动。
+- **变异（R27，两手都要）**：
+  - `--selftest` 的 **M8-C7**：`ok -> C7 1 finding(s)`。锚点是**表结构**（读出第一行数据行并整行复制），不点任何编号、不碰散文 ⇒ 将来 §四 换哪几条差距都不会让它悄悄失明；整行复制还保证单元格数不变，所以这条变异的颜色**只**归 C7。
+  - **真实文件手工变异**：把 §四 里 `G78` 那一行的编号改成表内已有的 `G92` ⇒ `check-docs` **exit 1**，输出 `C7 docs/TODO.md:165 -> G92 already holds an open-gap row at line 164` ⇒ **finding 指的正是被改的那一行**；改回 ⇒ exit 0，`git diff` 对该文件**零差异**（撤销干净）。
+  - **一条顺带的确认**：那次变异**没有**触发 C1（C1 只对「§四 之外带结清措辞」的编号响，而被改那行讲的是「退出前置」，没有结清词）⇒ 两条检查的职责边界符合预期，不是互相代偿。
+- **门禁与回归**：`check-docs` ⇒ **7 checks / 9 files，exit 0**；`--selftest` ⇒ **8 变异，无假绿**；`check-env` exit 0；插件 `verify` **42 文件 / 466 通过**（本片不动插件代码，读数不变）。
+- **盲区①为什么就此打住**（判定，不是搁置）：清点见方案段两张表 —— 当前**零样本**，且按名配对有两条结构性脆点（条目名两种形状、`T1`/`T2`/`T3` 同名小节）。**将来真出现不一致时的正确做法**：先照本条的清点法跑一遍，把**真实样本**贴进本条目，再决定检查形状；不要凭想象写一个靠词表的启发式检查 —— 那会是一台永不红的假绿机器。
+- 提交：方案 `0e74e9e` → 实现与结案（本提交）。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 

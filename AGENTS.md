@@ -85,8 +85,8 @@ Instructions for agents working in this repository.
 - **交付形态**（面板输入 `.tgz` / 每个新 profile 首次安装必遇 `tesseract.js` 构建脚本授权（R19 用户点）/
   替换安装后必须重启宿主）写在插件 `README.md`「引入与验证」，实测记录在 `docs/TODO.md` §七「交付-1」——
   **别把 tarball 解压成目录去 link**（不装依赖，实测必然 `failed to import`）。
-- **文档门禁（TS 版，2026-10-14 落地，基建-2）**：`node scripts/check-docs.mjs` —— 六条机械检查（结清一致性 / 链接可解析 /
-  派生计数只认权威 / 编号范围自算 / 表格成形（只在未转义 `|` 处切分）/ 自称完成不得留未勾验收项）；`--selftest` 内置变异自证不假绿
+- **文档门禁（TS 版，2026-10-14 落地，基建-2；2026-10-15 补第七条，基建-6）**：`node scripts/check-docs.mjs` —— 七条机械检查（结清一致性 / 链接可解析 /
+  派生计数只认权威 / 编号范围自算 / 表格成形（只在未转义 `|` 处切分）/ 自称完成不得留未勾验收项 / §四 编号唯一性）；`--selftest` 内置变异自证不假绿
   （**变异锚点必须落在文档结构上——章节标题、表格分隔行——绝不在正文文字上**：散文会被实测改动重写，锚点一腐烂，判据就静默失效，本分支已因此两次 BLIND）。
   **触发**：版本化 `.githooks/pre-commit`，暂存路径命中 `docs/**`、`AGENTS.md`、`README.md` 时跑门禁，命中前者或 `scripts/check-docs.mjs` 时**再跑 `--selftest`**（87ms），失败即拒绝提交；
   逃生口 `git commit --no-verify` 属**故意行为**，须在台账写明理由。**本分支无 CI** ⇒ 门禁是本地钩子 + 手跑，**不许写成「由 CI 保证」**（R27）。
