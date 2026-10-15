@@ -817,6 +817,60 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 - **A/B（R27）**：`packageManager` 置 `pnpm@9.15.0` ⇒ 文档那条安装命令 **exit 1**（`This project is configured to use 9.15.0 of pnpm. Your current pnpm is v11.21.0`），**报错在任何下载/改动之前**（`node_modules` 与 lockfile 无变化）；`pnpm -v` 同样 exit 1 ⇒ 约束覆盖每条命令，不只安装；改回即复绿。
 - 提交：方案 `8f7c835` → 实现 `6e30db2` → 结案（本提交）。
 
+### 基建-5 · peer 设置搬进 `pnpm-workspace.yaml`，`.npmrc` 那行死配置删除（方案，2026-10-15 立项，R22）
+
+**背景**：基建-4 的「顺带发现」记了一笔债 —— `plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 **不被读取**。本轮把这件事量到底，发现它不是「无害的死配置」，而是**一条会红的命令**：
+
+- 仓内 lockfile 已记录 `settings.autoInstallPeers: false`（每条文档命令都带 `--config.autoInstallPeers=false`）。
+- 而 pnpm 11.21.0 的**有效默认是 `true`**（实测，见下方取证）。
+- 于是任何不带那个旗标的命令直接失败：`pnpm install --frozen-lockfile` ⇒ **`[ERR_PNPM_LOCKFILE_CONFIG_MISMATCH] Cannot proceed with the frozen installation. The current "settings.autoInstallPeers" configuration doesn't match the value found in the lockfile`** ⇒ **exit 1**。
+- 也就是说：**一条最朴素的命令今天是坏的**，而仓库里没有一处文档说它坏在哪。
+
+**取证（R20 第 1 步：官方文档 + 本机实测；转述不搬文本，D20）**
+
+| 出处 | 取到的事实 | 对本方案的作用 |
+|---|---|---|
+| pnpm 官方文档 `pnpm.io/settings` | pnpm 从命令行 / 环境变量 / `pnpm-workspace.yaml` 取配置；**只有 auth 与 registry 从 `.npmrc` 读** | `.npmrc` 里那行是**不被读取**的死配置，不是「另一处等效写法」 |
+| pnpm 官方文档 `pnpm.io/settings/peer-dependencies` §`autoInstallPeers` | 文档写的默认值是 **`true`**；缺失的**非可选** peer 会被自动装入 | 决定「默认值不可信、必须显式声明」 |
+| 本机实测（临时区最小工程，`react-dom@19.0.0` + 非可选 peer `react ^19`） | 默认时 lockfile 记 `settings.autoInstallPeers: true` 且虚拟 store 里**有**自动装入的 `react@19.3.0`，快照写成 `react-dom@19.0.0(react@19.3.0)`；写 `autoInstallPeers: false` 后 lockfile 记 `false`、`react` **不在树里**、快照不带 peer 后缀 | **两向**证明这个设置有牙，同时确认 11.21.0 的有效默认 = `true` |
+| 本机实测（插件工程内） | `pnpm config get auto-install-peers` → `undefined`（同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）⇒ `.npmrc` 那行确实没生效 | 死配置的**直接**读数 |
+| 本机实测（插件工程内） | 裸 `pnpm install --frozen-lockfile` ⇒ `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH` / **exit 1**；且失败发生在写 lockfile 之前（`git status` 干净） | 本条要修的**具体**故障，不是推测 |
+| 本机核对（交付面） | `.npmrc` **不在** `package.json` 的 `files` 里 ⇒ 不进交付 tarball；`dsh plugin` 走 link/pack 也不读它 | 删它不影响宿主 |
+
+**What（范围）**
+
+- `plugins/dsh-autogamer/pnpm-workspace.yaml` 增 **`autoInstallPeers: false`**（v11 的设置家，与既有 `allowBuilds` / `pmOnFail` 同文件）。
+- **删除** `plugins/dsh-autogamer/.npmrc` —— 全文件只有那一行（25 字节），留着等于同一个设置有两处声明而其中一处是哑的。
+- 文档：本条 + 结案后的 CHANGELOGS；`AGENTS.md` 写明「设置的家是 `pnpm-workspace.yaml`；`.npmrc` 只留给 auth/registry」；**基建-4 记的那笔发现就地标注结清**（R28），§零 与「新分支特有」同步。
+- **非目标**：**不动文档里那些命令的旗标**（`--config.autoInstallPeers=false` 继续有效且与文件一致，去掉它们会波及整本台账的历史读数，且没有收益）；不改 peer 声明本身；不 pin Node；不夹带别的配置搬迁。
+
+**How（做法与关键决策）**
+
+- **搬进 `pnpm-workspace.yaml` 而不是留着 `.npmrc`**：官方口径如此，且实测 `config get` 只有从该文件读得到。两处声明同一件事、其中一处哑掉，是本分支反复吃过的亏（配置、注释、文档三类都算）。
+- **删 `.npmrc` 而不是把它改成注释说明**：一个 25 字节、唯一作用不被读取的文件，留着的收益是零、风险是下一个人以为它生效。真要 auth/registry 设置时按官方口径加回来即可（那本就是 `.npmrc` 的用途）。
+- **值不变（仍是 `false`）**：本条是**搬迁 + 让它生效**，不是改策略；策略变更要单独立条目。
+- **修好之后「朴素命令」就成立**：lockfile 记录的 `false` 与有效配置一致 ⇒ 裸 `pnpm install --frozen-lockfile` 从 exit 1 变 exit 0。这条是本条真正的验收物，不是「配置文件更好看」。
+
+**Verify（验收命令）**
+
+- 设置真的被读到：插件目录内 `pnpm config get autoInstallPeers` ⇒ **`false`**（改前 `undefined`）。
+- **A/B（R27，判据会红）**：裸 `pnpm install --frozen-lockfile` ⇒ 改前 **exit 1** + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`，改后 **exit 0**；两次之后 `git status --short` 都必须**不出现** `pnpm-lock.yaml`。
+- **两向证明设置有牙**（临时区最小工程，不入库；读数抄进本条正文）：默认 ⇒ lockfile 记 `true` 且虚拟 store 有自动装入的 peer；`false` ⇒ lockfile 记 `false`、peer 不在树里、快照不带 peer 后缀。
+- 回归：文档那条命令 `pnpm --config.verify-deps-before-run=false install --frozen-lockfile --config.autoInstallPeers=false` ⇒ **exit 0**；`pnpm --config.verify-deps-before-run=false run verify` ⇒ 三段全绿；`node scripts/check-docs.mjs` 与 `node scripts/check-env.mjs` ⇒ exit 0。
+- 删除的边界核对：`git grep -n 'auto-install-peers' -- plugins` ⇒ **零命中**（`.npmrc` 已删，且 `pnpm-workspace.yaml` 用的是 camelCase 的 `autoInstallPeers`）。
+
+**Done means**
+
+- [ ] `pnpm-workspace.yaml` 含 `autoInstallPeers: false`；`.npmrc` 已删除；全仓零处再以 kebab 形式声明同一设置
+- [ ] `pnpm config get autoInstallPeers` → `false`（改前 `undefined`）
+- [ ] A/B：裸 `pnpm install --frozen-lockfile` 改前 exit 1 + `ERR_PNPM_LOCKFILE_CONFIG_MISMATCH`、改后 exit 0；两次都不动 lockfile
+- [ ] 文档命令仍 exit 0；`verify` 三段全绿；`check-docs` / `check-env` exit 0
+- [ ] `AGENTS.md` 说明设置的家与 `.npmrc` 的用途边界；基建-4 / CHANGELOGS #99 里那笔发现**就地标注结清**；§零 与「新分支特有」清单同步
+
+**方法上的自纠（R27，同轮记）**
+
+- 探针第一版的判据是看 `node_modules/react` 存不存在 ⇒ **两种情况都「不存在」，是假绿**：自动装入的 peer 只进虚拟 store（`node_modules/.pnpm/react@…`），**不做顶层链接**。改成读 lockfile 的 `settings:` 与快照的 peer 后缀（`react-dom@19.0.0(react@19.3.0)`）才咬住。教训与本分支已记的两次同类事故同源：**判据要落在「记录事实的地方」，不是落在你以为的路径上**。
+
 **顺带发现（同轮落账，R28）**
 
 - `plugins/dsh-autogamer/.npmrc` 里的 `auto-install-peers=false` 在 pnpm 11 **已不被读取**：官方文档写明 v11 起只有 auth/registry 从 `.npmrc` 读（实测 `pnpm config get auto-install-peers` → `undefined`，而同目录 `allowBuilds` 从 `pnpm-workspace.yaml` 读得到）。**今天无害**：文档命令都显式带 `--config.autoInstallPeers=false`，且本插件的两个 peer 在 `peerDependenciesMeta` 里都标了 `optional`。**未修** —— 改它需要单独验一次「裸 `pnpm install` 的 peer 行为」，不夹带进本条。
