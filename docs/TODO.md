@@ -752,11 +752,12 @@ Run "pnpm approve-builds" to pick which dependencies should be allowed to run sc
 
 **Done means**
 
-- [ ] `allowBuilds` 含 `tesseract.js: false`，且安装不再改写该文件（`git status --short` 里没有它）
-- [ ] 安装 exit 0 且无 `ERR_PNPM_IGNORED_BUILDS`；A/B 实测占位形态会红（exit 1）、撤回复绿
-- [ ] `build` exit 0、`test` 全绿；`check-docs` / `check-env` exit 0
+- [x] `allowBuilds` 含 `tesseract.js: false`，且安装不再改写该文件（`git status --short` 里没有它）
+- [x] 安装 exit 0 且无 `ERR_PNPM_IGNORED_BUILDS`；A/B 实测占位形态会红（exit 1）、撤回复绿
+- [x] `build` exit 0、`test` 全绿；`check-docs` / `check-env` exit 0
 - [ ] `AGENTS.md` 安装段落指针；CHANGELOGS 结案条目 + §零 状态行 + §七「新分支特有」清单同步
-- [ ] 备注：解锁条件 = 将来某个依赖的 `postinstall` **确有产物**（要编译原生模块等）⇒ 该条必须改 `true`，并在此处与 CHANGELOGS 同时记明依据
+
+> **解锁条件（不是待办）**：将来某个依赖的 `postinstall` **确有产物**（要编译原生模块之类）⇒ 该条必须改 `true`，并在此处与 CHANGELOGS 同时记明依据。本条判定的是「无产物、只出网打印」这一类，不是对 `tesseract.js` 的永久否决。
 
 ### rules-1 · rules 注入链拆除（D20 红线；前置-4 §三 定案后提前执行；方案，2026-10-14 立项，R22）
 
