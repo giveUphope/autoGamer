@@ -88,8 +88,14 @@ Instructions for agents working in this repository.
 - **提供方形体探针**（要一个 OpenAI 兼容端点）：`node plugins/dsh-autogamer/scripts/probe-attachment-form.mjs`（G99 归因：同一端点只变 `image_url.url` 的形体，退出码 **0** 归因成立 / **1** 判别塌了 / **2** 端点不可达；零依赖、不读 `dist`，所以**不必先 `build`**）。读数与四色变异见 CHANGELOGS **#117**。
   取上游文档原文时本机要带 `--ssl-no-revoke`：不带时 schannel 报 `curl: (35) CRYPT_E_NO_REVOCATION_CHECK`，那是 TLS 吊销列表取不到、**不等于文档 404**，别据此判「资料不存在」。
 - **交付清单探针**：`node scripts/pack-check.mjs`（零依赖，自己跑 `pnpm pack` 并解析 tar）。判据的形状是它的要点：**预期与被测物异源** —— 预期由 `package.json` 的 `files` 白名单 ∪ 打包器强制携带（`package.json`/`README*`/`LICEN[CS]E*`）∪ 由 `src/**/*.ts` 1:1 推导的 `dist/*.js` 构成，**`dist` 目录本身不参与**（拿 `dist` 当预期时，塞进一个多余 js 会同时改掉两侧 ⇒ 一条永不红的假判据）。退出码：**0** 通过 / **1** 清单或混淆锁不符 / **2** 前置没就绪 —— 跑之前先 `build`（`verify` 不含 `clean-dist`，见上）。`--tarball <path>` 可对既有包复跑。读数与四类变异见 §七「基建-8」/ CHANGELOGS #115。
-- **交付形态**（面板输入 `.tgz` / 每个新 profile 首次安装必遇 `tesseract.js` 构建脚本授权（R19 用户点）/
-  替换安装后必须重启宿主）写在插件 `README.md`「引入与验证」，实测记录在 `docs/TODO.md` §七「交付-1」——
+- **⚠️ 装 packed 之前先确认 profile 的安装形态——本分支被它删穿过一次源码树**：若 `~/.dsh/profiles/<p>/package.json` 里 `dsh-autogamer` 是 `link:<本仓工作树>`（`node_modules/dsh-autogamer` 是指向源码树的符号链接），那么在该 profile 上**装 `.tgz` 或移除**会**顺着链接把删除落在工作树**。
+  2026-10-16 实测代价：`.gitignore`、`client.js`、`cordis.patch.yml`、`icon.svg`、`locale/en.json`、`locale/zh.json` 六个受跟踪文件 + 整个 `dist`（git 看不见）消失；`git restore -- plugins/dsh-autogamer` → `install --frozen-lockfile` → `build` → `verify` 45/526 → `pack-check` 49 条，零丢失。
+  ⇒ **验 packed 形态一律另开一个 profile**：`dsh <名> --from-default-profile web`。机械护栏待做 = **G101**；事故与官方依据见 `docs/TODO.md` §七「插件安装调研-1」。
+- **交付形态**（面板输入 `.tgz` / 每个新 profile 首次安装必遇 `tesseract.js` 构建脚本授权（R19 用户点，**授权按包名持久保存在该 profile，同一 profile 只需一次**）/
+  **重复安装必须先移除再装**：官方 `installBundle` 在 v0.2.1-alpha.2 起对已安装的包**在跑 pnpm 之前**就报 `already-installed`（tarball 这类 spec 例外——要跑完 pnpm 才知道包名，所以仍可能覆盖装），
+  而 link→复制版这种「解析目录变化」的替换官方语义是 `restart-required` + `restartReason: 'package-moved'` ⇒ 仍需重启宿主。
+  **别在同一个 profile 上反复换安装形态**：Windows 上覆盖被运行中宿主占用的目录会 `EPERM: rename …_tmp_… -> <包名>`（本机两次失败实测））
+  写在插件 `README.md`「引入与验证」，实测记录在 `docs/TODO.md` §七「交付-1」，**官方安装形状九条 + 对本机的适用性在 §七「插件安装调研-1」**——
   **别把 tarball 解压成目录去 link**（不装依赖，实测必然 `failed to import`）。
 - **文档门禁（TS 版，2026-10-14 落地，基建-2；2026-10-15 补第七条，基建-6）**：`node scripts/check-docs.mjs` —— 七条机械检查（结清一致性 / 链接可解析 /
   派生计数只认权威 / 编号范围自算 / 表格成形（只在未转义 `|` 处切分）/ 自称完成不得留未勾验收项 / §四 编号唯一性）；`--selftest` 内置变异自证不假绿
