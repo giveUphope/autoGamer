@@ -258,6 +258,23 @@ describe("browser half: cards render the measured prop path", () => {
     expect(out.tags).not.toContain("dt");
   });
 
+  it("renders the device-state card from its own envelope (the fifth cell)", () => {
+    const cards = loadCards();
+    const out = flatten(cardOf(cards, "autogamer_get_device_state")(hostProps({
+      toolName: "autogamer_get_device_state",
+      // Measured live 2026-10-16: the value itself carries "|" separators.
+      text: "device_serial=emulator-5554; connected=true; current_package=com.taptap; " +
+        "screen_summary=connected | screen on and unlocked | frame 900x1600 | helper APK installed; " +
+        "accessibility_helper_installed=true",
+    })));
+    expect(out.texts).toContain("connected true");
+    for (const key of ["device_serial", "connected", "current_package", "screen_summary", "accessibility_helper_installed"]) {
+      expect(out.texts, `row for ${key}`).toContain(key);
+    }
+    // A "|" inside a value is content, not a separator.
+    expect(out.texts).toContain("connected | screen on and unlocked | frame 900x1600 | helper APK installed");
+  });
+
   it("no longer pretends the Host passes result / value / output", () => {
     for (const dead of ["props.result", "props.value", "props.output"]) {
       expect(CLIENT, `the Host never passes ${dead}`).not.toContain(dead);
